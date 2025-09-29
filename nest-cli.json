@@ -1,0 +1,6 @@
+{
+  "projects": {},
+  "compilerOptions": {
+    "webpack": true
+  }
+}
