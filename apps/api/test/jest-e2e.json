@@ -1,0 +1,19 @@
+{
+  "moduleFileExtensions": [
+    "js",
+    "json",
+    "ts"
+  ],
+  "rootDir": ".",
+  "testEnvironment": "node",
+  "testRegex": ".e2e-spec.ts$",
+  "transform": {
+    "^.+\\.(t|j)s$": "ts-jest"
+  },
+  "moduleNameMapper": {
+    "@app/lib": "<rootDir>/../libs/lib/src",
+    "@app/lib/(.*)": "<rootDir>/../libs/lib/src/$1",
+    "@shared/data-import": "<rootDir>/../libs/data-import/src",
+    "@shared/data-import/(.*)": "<rootDir>/../libs/data-import/src/$1"
+  }
+}

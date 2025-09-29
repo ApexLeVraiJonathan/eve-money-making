@@ -1,0 +1,59 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model TypeId {
+  id Int @id @map("type_id")
+  published Boolean 
+  name String @map("type_name")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("item_types")
+}
+
+model RegionId {
+  id Int @id @map("region_id")
+  name String @map("region_name")
+  systems   SolarSystemId[]
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("regions")
+}
+
+model SolarSystemId {
+  id Int @id @map("solar_system_id")
+  regionId Int @map("region_id")
+  region    RegionId @relation(fields: [regionId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  stations  StationId[]
+  name String @map("solar_system_name")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([regionId])
+  @@map("solar_systems")
+}
+
+model StationId {
+  id Int @id @map("station_id")
+  solarSystemId Int @map("solar_system_id")
+  solarSystem   SolarSystemId @relation(fields: [solarSystemId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  name String @map("station_name")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([solarSystemId])
+  @@map("stations")
+}

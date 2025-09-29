@@ -1,0 +1,39 @@
+### Import type IDs
+POST http://localhost:3000/import/type-ids HTTP/1.1
+content-type: application/json
+
+{
+    "batchSize": 5000
+}
+
+### Import region IDs
+POST http://localhost:3000/import/region-ids HTTP/1.1
+content-type: application/json
+
+{
+    "batchSize": 5000
+}
+
+### Import solar system IDs
+POST http://localhost:3000/import/solar-system-ids HTTP/1.1
+content-type: application/json
+
+{
+    "batchSize": 5000
+}
+
+### Import NPC station IDs
+POST http://localhost:3000/import/npc-station-ids HTTP/1.1
+content-type: application/json
+
+{
+    "batchSize": 5000
+}
+
+### Import all (type, region in parallel -> solar -> stations)
+POST http://localhost:3000/import/all HTTP/1.1
+content-type: application/json
+
+{
+    "batchSize": 5000
+}
