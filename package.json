@@ -1,0 +1,15 @@
+{
+  "name": "eve-money-making",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "build": "pnpm -r run build",
+    "dev": "pnpm --filter api dev",
+    "lint": "echo \"(add eslint later)\""
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "packageManager": "pnpm@10.15.0"
+}
