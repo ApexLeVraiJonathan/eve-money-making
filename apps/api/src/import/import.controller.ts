@@ -29,4 +29,24 @@ export class ImportController {
   async importAll(@Body() body?: { batchSize?: number }) {
     return this.importService.importAll(body?.batchSize);
   }
+
+  @Post('market-trades/day')
+  async importMarketTradesByDay(
+    @Body() body: { date: string; batchSize?: number },
+  ) {
+    return this.importService.importMarketOrderTradesByDate(
+      body.date,
+      body.batchSize,
+    );
+  }
+
+  @Post('market-trades/missing')
+  async importMarketTradesMissing(
+    @Body() body?: { daysBack?: number; batchSize?: number },
+  ) {
+    return this.importService.importMissingMarketOrderTrades(
+      body?.daysBack,
+      body?.batchSize,
+    );
+  }
 }

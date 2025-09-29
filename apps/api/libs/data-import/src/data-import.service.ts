@@ -34,6 +34,24 @@ export class DataImportService {
     }
   }
 
+  /** Return ISO dates for the last N days ending at yesterday (UTC) */
+  getLastNDates(n: number): string[] {
+    const dates: string[] = [];
+    const yesterday = new Date();
+    // normalize to UTC midnight and move to yesterday
+    yesterday.setUTCHours(0, 0, 0, 0);
+    yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+    for (let i = n - 1; i >= 0; i--) {
+      const d = new Date(yesterday);
+      d.setUTCDate(yesterday.getUTCDate() - i);
+      const yyyy = d.getUTCFullYear();
+      const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
+      const dd = String(d.getUTCDate()).padStart(2, '0');
+      dates.push(`${yyyy}-${mm}-${dd}`);
+    }
+    return dates;
+  }
+
   /** Simple batcher: flush when buffer reaches `size`. */
   createBatcher<T>(opts: {
     size: number;

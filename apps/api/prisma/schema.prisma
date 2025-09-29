@@ -14,46 +14,96 @@ datasource db {
 }
 
 model TypeId {
-  id Int @id @map("type_id")
-  published Boolean 
-  name String @map("type_name")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  id        Int      @id @map("type_id")
+  published Boolean
+  name      String   @map("type_name")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  marketTrades MarketOrderTradeDaily[]
 
   @@map("item_types")
 }
 
 model RegionId {
-  id Int @id @map("region_id")
-  name String @map("region_name")
+  id        Int             @id @map("region_id")
+  name      String          @map("region_name")
   systems   SolarSystemId[]
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  createdAt DateTime        @default(now()) @map("created_at")
+  updatedAt DateTime        @updatedAt @map("updated_at")
+
+  marketTrades MarketOrderTradeDaily[]
 
   @@map("regions")
 }
 
 model SolarSystemId {
-  id Int @id @map("solar_system_id")
-  regionId Int @map("region_id")
-  region    RegionId @relation(fields: [regionId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  id        Int         @id @map("solar_system_id")
+  regionId  Int         @map("region_id")
+  region    RegionId    @relation(fields: [regionId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   stations  StationId[]
-  name String @map("solar_system_name")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  name      String      @map("solar_system_name")
+  createdAt DateTime    @default(now()) @map("created_at")
+  updatedAt DateTime    @updatedAt @map("updated_at")
 
   @@index([regionId])
   @@map("solar_systems")
 }
 
 model StationId {
-  id Int @id @map("station_id")
-  solarSystemId Int @map("solar_system_id")
-  solarSystem   SolarSystemId @relation(fields: [solarSystemId], references: [id], onDelete: Restrict, onUpdate: Cascade)
-  name String @map("station_name")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  id             Int              @id @map("station_id")
+  solarSystemId  Int              @map("solar_system_id")
+  solarSystem    SolarSystemId    @relation(fields: [solarSystemId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  name           String           @map("station_name")
+  createdAt      DateTime         @default(now()) @map("created_at")
+  updatedAt      DateTime         @updatedAt @map("updated_at")
+  TrackedStation TrackedStation[]
+
+  marketTrades MarketOrderTradeDaily[]
 
   @@index([solarSystemId])
   @@map("stations")
+}
+
+model TrackedStation {
+  id        String    @id @default(uuid()) @map("id")
+  stationId Int       @map("station_id")
+  station   StationId @relation(fields: [stationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  @@index([stationId])
+  @@map("tracked_stations")
+}
+
+/// Daily aggregated market order trades per station and type
+model MarketOrderTradeDaily {
+  // Composite primary key for a unique daily aggregate per station/type/side
+  scanDate   DateTime @db.Date @map("scan_date")
+  locationId Int      @map("location_id")
+  typeId     Int      @map("type_id")
+  isBuyOrder Boolean  @map("is_buy_order")
+
+  regionId Int     @map("region_id")
+  hasGone  Boolean @map("has_gone")
+  amount   Int     @map("amount")
+  high     Decimal @db.Decimal(28, 2) @map("high")
+  low      Decimal @db.Decimal(28, 2) @map("low")
+  avg      Decimal @db.Decimal(28, 2) @map("avg")
+  orderNum Int     @map("order_num")
+  iskValue Decimal @db.Decimal(28, 2) @map("isk_value")
+
+  // Relations
+  region  RegionId  @relation(fields: [regionId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  type    TypeId    @relation(fields: [typeId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  station StationId @relation(fields: [locationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@id([scanDate, locationId, typeId, isBuyOrder])
+  @@index([regionId])
+  @@index([locationId])
+  @@index([typeId])
+  @@map("market_order_trades_daily")
 }

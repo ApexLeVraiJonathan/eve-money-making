@@ -385,4 +385,148 @@ export class ImportService {
 
     return results;
   }
+
+  async importMarketOrderTradesByDate(date: string, batchSize = 5000) {
+    const context = ImportService.name;
+    const startedAt = Date.now();
+    this.logger.log(
+      `Starting import of marketOrderTrades_daily_${date}.csv (batchSize=${batchSize})`,
+      context,
+    );
+
+    // Collect tracked station IDs to filter rows
+    const tracked = await this.prisma.trackedStation.findMany({
+      select: { stationId: true },
+    });
+    const trackedSet = new Set(tracked.map((t) => t.stationId));
+
+    let inserted = 0,
+      skipped = 0,
+      totalRows = 0;
+
+    try {
+      const yyyy = date.slice(0, 4);
+      const url = `${this.BASE_URL_ADAM4EVE}/MarketOrdersTrades/${yyyy}/marketOrderTrades_daily_${date}.csv`;
+      const res = await axios.get(url, { responseType: 'stream' });
+      const input = res.data as Readable;
+
+      const batcher = this.dataImportService.createBatcher<{
+        scanDate: Date;
+        locationId: number;
+        typeId: number;
+        isBuyOrder: boolean;
+        regionId: number;
+        hasGone: boolean;
+        amount: number;
+        high: string;
+        low: string;
+        avg: string;
+        orderNum: number;
+        iskValue: string;
+      }>({
+        size: batchSize,
+        flush: async (items) => {
+          const { count } = await this.prisma.marketOrderTradeDaily.createMany({
+            data: items,
+            skipDuplicates: true,
+          });
+          inserted += count;
+        },
+      });
+
+      const scanDate = new Date(`${date}T00:00:00.000Z`);
+      await this.dataImportService.streamCsv<Record<string, string>>(
+        input,
+        async (row) => {
+          totalRows++;
+          const locationId = Number(row.location_id);
+          if (!trackedSet.has(locationId)) {
+            skipped++;
+            return;
+          }
+          const regionId = Number(row.region_id);
+          const typeId = Number(row.type_id);
+          const isBuyOrder = row.is_buy_order === '1';
+          const hasGone = row.has_gone === '1';
+          const amount = Number(row.amount);
+          const high = row.high;
+          const low = row.low;
+          const avg = row.avg;
+          const orderNum = Number(row.orderNum);
+          const iskValue = row.iskValue;
+          if (
+            !Number.isInteger(locationId) ||
+            !Number.isInteger(regionId) ||
+            !Number.isInteger(typeId) ||
+            !Number.isInteger(amount) ||
+            !Number.isInteger(orderNum)
+          ) {
+            skipped++;
+            return;
+          }
+          await batcher.push({
+            scanDate,
+            locationId,
+            typeId,
+            isBuyOrder,
+            regionId,
+            hasGone,
+            amount,
+            high,
+            low,
+            avg,
+            orderNum,
+            iskValue,
+          });
+        },
+      );
+
+      await batcher.finish();
+    } catch (error) {
+      if (error instanceof Error) {
+        this.logger.error(
+          `Failed during import of marketOrderTrades_daily_${date}.csv`,
+          error.stack,
+          context,
+        );
+      } else {
+        this.logger.error(
+          `Failed during import of marketOrderTrades_daily_${date}.csv: ${String(error)}`,
+          undefined,
+          context,
+        );
+      }
+      throw error;
+    } finally {
+      const durationMs = Date.now() - startedAt;
+      this.logger.log(
+        `Finished import: marketOrderTrades_daily_${date} in ${durationMs}ms (inserted=${inserted}, skipped=${skipped}, totalRows=${totalRows}, batchSize=${batchSize})`,
+        context,
+      );
+    }
+
+    return { inserted, skipped, totalRows, batchSize };
+  }
+
+  async getMissingMarketOrderTradeDates(daysBack = 15) {
+    const dates = this.dataImportService.getLastNDates(daysBack);
+    const missing: string[] = [];
+    for (const date of dates) {
+      const dayStart = new Date(`${date}T00:00:00.000Z`);
+      const count = await this.prisma.marketOrderTradeDaily.count({
+        where: { scanDate: dayStart },
+      });
+      if (count === 0) missing.push(date);
+    }
+    return missing;
+  }
+
+  async importMissingMarketOrderTrades(daysBack = 15, batchSize = 5000) {
+    const missing = await this.getMissingMarketOrderTradeDates(daysBack);
+    const results: Record<string, unknown> = {};
+    for (const date of missing) {
+      results[date] = await this.importMarketOrderTradesByDate(date, batchSize);
+    }
+    return { missing, results };
+  }
 }

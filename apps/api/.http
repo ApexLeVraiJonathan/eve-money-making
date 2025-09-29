@@ -37,3 +37,42 @@ content-type: application/json
 {
     "batchSize": 5000
 }
+
+### Market trades by day
+POST http://localhost:3000/import/market-trades/day HTTP/1.1
+content-type: application/json
+
+{
+  "date": "2025-09-28",
+  "batchSize": 5000
+}
+
+### Market trades missing (last 15 days by default)
+POST http://localhost:3000/import/market-trades/missing HTTP/1.1
+content-type: application/json
+
+{
+  "daysBack": 15,
+  "batchSize": 5000
+}
+
+###
+### Tracked Stations
+###
+
+### Tracked Stations - Create
+POST http://localhost:3000/tracked-stations HTTP/1.1
+content-type: application/json
+
+{
+  "stationId": 60005686
+}
+
+### Tracked Stations - List
+GET http://localhost:3000/tracked-stations HTTP/1.1
+
+### Tracked Stations - Get by id
+GET http://localhost:3000/tracked-stations/00000000-0000-0000-0000-000000000000 HTTP/1.1
+
+### Tracked Stations - Delete by id
+DELETE http://localhost:3000/tracked-stations/00000000-0000-0000-0000-000000000000 HTTP/1.1
