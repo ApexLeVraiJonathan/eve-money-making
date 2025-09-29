@@ -25,12 +25,25 @@ type FetchOptions = {
 
 @Injectable()
 export class EsiService {
-  private readonly baseUrl = 'https://esi.evetech.net';
+  private readonly baseUrl =
+    process.env.ESI_BASE_URL ?? 'https://esi.evetech.net';
   private readonly userAgent = process.env.ESI_USER_AGENT ?? '';
-  private readonly defaultTimeoutMs = 15000;
-  private readonly slowDownRemainThreshold = 5;
-  private readonly slowDownDelayMs = 500;
-  private readonly maxConcurrency = 4;
+  private readonly defaultTimeoutMs = Number(
+    process.env.ESI_TIMEOUT_MS ?? 15000,
+  );
+  private readonly slowDownRemainThreshold = Number(
+    process.env.ESI_ERROR_SLOWDOWN_REMAIN_THRESHOLD ?? 5,
+  );
+  private readonly slowDownDelayMs = Number(
+    process.env.ESI_ERROR_SLOWDOWN_DELAY_MS ?? 500,
+  );
+  private readonly maxConcurrency = Number(
+    process.env.ESI_MAX_CONCURRENCY ?? 4,
+  );
+  private readonly maxRetries = Number(process.env.ESI_MAX_RETRIES ?? 3);
+  private readonly retryBaseDelayMs = Number(
+    process.env.ESI_RETRY_BASE_DELAY_MS ?? 400,
+  );
 
   private readonly cache = new Map<string, CacheEntry>();
   private readonly inflight = new Map<string, Promise<unknown>>();
@@ -225,85 +238,109 @@ export class EsiService {
           validateStatus: (s) => (s >= 200 && s < 300) || s === 304,
         };
 
-        const res = await axios.request(config);
-        const resHeaders = Object.fromEntries(
-          Object.entries(res.headers).map(([k, v]) => [
-            k.toLowerCase(),
-            Array.isArray(v) ? v.join(',') : String(v),
-          ]),
-        ) as Record<string, string | undefined>;
+        let attempt = 0;
+        // retry loop for transient/network errors, respecting validateStatus
 
-        this.updateErrorBudget(resHeaders);
+        while (true) {
+          try {
+            const res = await axios.request(config);
+            const resHeaders = Object.fromEntries(
+              Object.entries(res.headers).map(([k, v]) => [
+                k.toLowerCase(),
+                Array.isArray(v) ? v.join(',') : String(v),
+              ]),
+            ) as Record<string, string | undefined>;
 
-        // 304: use cache
-        if (res.status === 304 && cached && cached.data !== undefined) {
-          const newExpires = this.parseExpires(resHeaders) ?? cached.expiresAt;
-          cached.expiresAt = newExpires;
-          this.cache.set(key, cached);
-          // Persist extended expiry
-          if (newExpires) {
+            this.updateErrorBudget(resHeaders);
+
+            // 304: use cache
+            if (res.status === 304 && cached && cached.data !== undefined) {
+              const newExpires =
+                this.parseExpires(resHeaders) ?? cached.expiresAt;
+              cached.expiresAt = newExpires;
+              this.cache.set(key, cached);
+              // Persist extended expiry
+              if (newExpires) {
+                await this.prisma.esiCacheEntry
+                  .update({
+                    where: { key },
+                    data: { expiresAt: new Date(newExpires) },
+                  })
+                  .catch(() => undefined);
+              }
+              return {
+                data: cached.data as T,
+                status: cached.status ?? 200,
+                meta: {
+                  fromCache: true,
+                  etag: cached.etag,
+                  expiresAt: cached.expiresAt,
+                },
+              };
+            }
+
+            const etag = resHeaders['etag'];
+            const lastModified = resHeaders['last-modified'];
+            const expiresAt = this.parseExpires(resHeaders);
+
+            const entry: CacheEntry = {
+              etag: etag ?? cached?.etag,
+              lastModified: lastModified ?? cached?.lastModified,
+              expiresAt: expiresAt ?? cached?.expiresAt,
+              data: res.data as T,
+              status: res.status,
+            };
+            this.cache.set(key, entry);
+
+            // Persist in DB
             await this.prisma.esiCacheEntry
-              .update({
+              .upsert({
                 where: { key },
-                data: { expiresAt: new Date(newExpires) },
+                create: {
+                  key,
+                  etag: entry.etag ?? null,
+                  lastModified: entry.lastModified ?? null,
+                  expiresAt: entry.expiresAt ? new Date(entry.expiresAt) : null,
+                  status: entry.status ?? null,
+                  body: entry.data as object,
+                },
+                update: {
+                  etag: entry.etag ?? null,
+                  lastModified: entry.lastModified ?? null,
+                  expiresAt: entry.expiresAt ? new Date(entry.expiresAt) : null,
+                  status: entry.status ?? null,
+                  body: entry.data as object,
+                },
               })
               .catch(() => undefined);
+
+            return {
+              data: res.data as T,
+              status: res.status,
+              meta: {
+                fromCache: false,
+                etag: entry.etag,
+                expiresAt: entry.expiresAt,
+              },
+            };
+          } catch (err) {
+            attempt++;
+            // Retry only for network/5xx-like errors
+            const axiosStatus = err?.response?.status as number | undefined;
+            const isRetryable =
+              axiosStatus === undefined ||
+              (axiosStatus >= 500 && axiosStatus < 600);
+            if (!isRetryable || attempt >= this.maxRetries) {
+              throw err;
+            }
+            // exponential backoff with jitter
+            const backoff =
+              this.retryBaseDelayMs * Math.pow(2, attempt - 1) +
+              Math.floor(Math.random() * 200);
+            await new Promise((r) => setTimeout(r, backoff));
+            // loop and retry
           }
-          return {
-            data: cached.data as T,
-            status: cached.status ?? 200,
-            meta: {
-              fromCache: true,
-              etag: cached.etag,
-              expiresAt: cached.expiresAt,
-            },
-          };
         }
-
-        const etag = resHeaders['etag'];
-        const lastModified = resHeaders['last-modified'];
-        const expiresAt = this.parseExpires(resHeaders);
-
-        const entry: CacheEntry = {
-          etag: etag ?? cached?.etag,
-          lastModified: lastModified ?? cached?.lastModified,
-          expiresAt: expiresAt ?? cached?.expiresAt,
-          data: res.data as T,
-          status: res.status,
-        };
-        this.cache.set(key, entry);
-
-        // Persist in DB
-        await this.prisma.esiCacheEntry
-          .upsert({
-            where: { key },
-            create: {
-              key,
-              etag: entry.etag ?? null,
-              lastModified: entry.lastModified ?? null,
-              expiresAt: entry.expiresAt ? new Date(entry.expiresAt) : null,
-              status: entry.status ?? null,
-              body: entry.data as object,
-            },
-            update: {
-              etag: entry.etag ?? null,
-              lastModified: entry.lastModified ?? null,
-              expiresAt: entry.expiresAt ? new Date(entry.expiresAt) : null,
-              status: entry.status ?? null,
-              body: entry.data as object,
-            },
-          })
-          .catch(() => undefined);
-
-        return {
-          data: res.data as T,
-          status: res.status,
-          meta: {
-            fromCache: false,
-            etag: entry.etag,
-            expiresAt: entry.expiresAt,
-          },
-        };
       } finally {
         this.release();
       }

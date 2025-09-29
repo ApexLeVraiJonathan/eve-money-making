@@ -17,6 +17,7 @@ model TypeId {
   id        Int      @id @map("type_id")
   published Boolean
   name      String   @map("type_name")
+  volume    Decimal? @map("volume_m3") @db.Decimal(28, 2)
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
@@ -79,7 +80,7 @@ model TrackedStation {
 /// Daily aggregated market order trades per station and type
 model MarketOrderTradeDaily {
   // Composite primary key for a unique daily aggregate per station/type/side
-  scanDate   DateTime @db.Date @map("scan_date")
+  scanDate   DateTime @map("scan_date") @db.Date
   locationId Int      @map("location_id")
   typeId     Int      @map("type_id")
   isBuyOrder Boolean  @map("is_buy_order")
@@ -87,11 +88,11 @@ model MarketOrderTradeDaily {
   regionId Int     @map("region_id")
   hasGone  Boolean @map("has_gone")
   amount   Int     @map("amount")
-  high     Decimal @db.Decimal(28, 2) @map("high")
-  low      Decimal @db.Decimal(28, 2) @map("low")
-  avg      Decimal @db.Decimal(28, 2) @map("avg")
+  high     Decimal @map("high") @db.Decimal(28, 2)
+  low      Decimal @map("low") @db.Decimal(28, 2)
+  avg      Decimal @map("avg") @db.Decimal(28, 2)
   orderNum Int     @map("order_num")
-  iskValue Decimal @db.Decimal(28, 2) @map("isk_value")
+  iskValue Decimal @map("isk_value") @db.Decimal(28, 2)
 
   // Relations
   region  RegionId  @relation(fields: [regionId], references: [id], onDelete: Restrict, onUpdate: Cascade)

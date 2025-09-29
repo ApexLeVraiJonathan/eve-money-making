@@ -4,6 +4,7 @@ import type { Readable } from 'node:stream';
 
 import { PrismaService } from '../prisma/prisma.service';
 import { DataImportService } from '@shared/data-import';
+import { EsiService } from '../esi/esi.service';
 
 @Injectable()
 export class ImportService {
@@ -13,6 +14,7 @@ export class ImportService {
     private readonly logger: Logger,
     private readonly prisma: PrismaService,
     private readonly dataImportService: DataImportService,
+    private readonly esi: EsiService,
   ) {}
 
   async importTypeIds(batchSize = 5000) {
@@ -359,7 +361,9 @@ export class ImportService {
       results.solarSystems = solarSystemsResult;
 
       const stationsResult = await this.importNpcStationIds(batchSize);
+      const volumesResult = await this.importTypeVolumes();
       results.stations = stationsResult;
+      results.typeVolumes = volumesResult;
     } catch (error) {
       if (error instanceof Error) {
         this.logger.error(
@@ -384,6 +388,67 @@ export class ImportService {
     }
 
     return results;
+  }
+
+  async importTypeVolumes() {
+    const context = ImportService.name;
+    const startedAt = Date.now();
+    this.logger.log(`Starting import of type volumes (ESI)`, context);
+
+    let updated = 0;
+    let checked = 0;
+    const concurrency = 50;
+    const pageSize = 5000;
+    let lastId: number | undefined;
+
+    // Process all missing types in ascending id pages
+    for (;;) {
+      const types = await this.prisma.typeId.findMany({
+        where: {
+          published: true,
+          volume: null,
+          ...(lastId ? { id: { gt: lastId } } : {}),
+        },
+        select: { id: true },
+        orderBy: { id: 'asc' },
+        take: pageSize,
+      });
+      if (types.length === 0) break;
+
+      let idx = 0;
+      const worker = async () => {
+        for (;;) {
+          const i = idx++;
+          if (i >= types.length) break;
+          const typeId = types[i].id;
+          try {
+            const { data } = await this.esi.fetchJson<{ volume?: number }>(
+              `/latest/universe/types/${typeId}/`,
+            );
+            checked++;
+            if (typeof data.volume === 'number') {
+              await this.prisma.typeId.update({
+                where: { id: typeId },
+                data: { volume: data.volume.toString() },
+              });
+              updated++;
+            }
+          } catch {
+            this.logger.warn(`Failed to fetch volume for type ${typeId}`);
+          }
+        }
+      };
+
+      await Promise.all(Array.from({ length: concurrency }, () => worker()));
+      lastId = types[types.length - 1].id;
+    }
+
+    const durationMs = Date.now() - startedAt;
+    this.logger.log(
+      `Finished import:type_volumes in ${durationMs}ms (updated=${updated}, checked=${checked})`,
+      context,
+    );
+    return { updated, checked };
   }
 
   async importMarketOrderTradesByDate(date: string, batchSize = 5000) {

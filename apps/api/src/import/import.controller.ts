@@ -30,6 +30,11 @@ export class ImportController {
     return this.importService.importAll(body?.batchSize);
   }
 
+  @Post('type-volumes')
+  async importTypeVolumes() {
+    return this.importService.importTypeVolumes();
+  }
+
   @Post('market-trades/day')
   async importMarketTradesByDay(
     @Body() body: { date: string; batchSize?: number },

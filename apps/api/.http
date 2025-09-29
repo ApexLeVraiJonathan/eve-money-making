@@ -38,6 +38,11 @@ content-type: application/json
     "batchSize": 5000
 }
 
+### Import type volumes (from ESI)
+POST http://localhost:3000/import/type-volumes HTTP/1.1
+content-type: application/json
+
+
 ### Market trades by day
 POST http://localhost:3000/import/market-trades/day HTTP/1.1
 content-type: application/json
