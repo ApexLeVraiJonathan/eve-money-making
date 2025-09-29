@@ -107,3 +107,18 @@ model MarketOrderTradeDaily {
   @@index([typeId])
   @@map("market_order_trades_daily")
 }
+
+/// Cache for ESI responses (ETag/Expires-aware)
+model EsiCacheEntry {
+  key          String    @id @map("key")
+  etag         String?   @map("etag")
+  lastModified String?   @map("last_modified")
+  expiresAt    DateTime? @map("expires_at")
+  status       Int?      @map("status")
+  body         Json?     @map("body")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  @@index([expiresAt])
+  @@map("esi_cache_entries")
+}

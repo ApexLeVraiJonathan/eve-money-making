@@ -36,37 +36,37 @@ export class ImportService {
       );
       const input = res.data as Readable;
 
-    const batcher = this.dataImportService.createBatcher<{
-      id: number;
-      published: boolean;
-      name: string;
-    }>({
-      size: batchSize,
-      flush: async (items) => {
-        const { count } = await this.prisma.typeId.createMany({
-          data: items,
-          skipDuplicates: true,
-        });
-        inserted += count;
+      const batcher = this.dataImportService.createBatcher<{
+        id: number;
+        published: boolean;
+        name: string;
+      }>({
+        size: batchSize,
+        flush: async (items) => {
+          const { count } = await this.prisma.typeId.createMany({
+            data: items,
+            skipDuplicates: true,
+          });
+          inserted += count;
           this.logger.log(`Inserted ${count} type_ids`, context);
-      },
-    });
+        },
+      });
 
-    await this.dataImportService.streamCsv<Record<string, string>>(
-      input,
-      async (row) => {
-        totalRows++;
+      await this.dataImportService.streamCsv<Record<string, string>>(
+        input,
+        async (row) => {
+          totalRows++;
           const id = Number(row.typeID);
           const name = row.typeName?.trim();
-        if (!Number.isInteger(id) || !name) {
-          skipped++;
-          return;
-        }
-        await batcher.push({ id, published: row.published === '1', name });
-      },
-    );
+          if (!Number.isInteger(id) || !name) {
+            skipped++;
+            return;
+          }
+          await batcher.push({ id, published: row.published === '1', name });
+        },
+      );
 
-    await batcher.finish();
+      await batcher.finish();
     } catch (error) {
       if (error instanceof Error) {
         this.logger.error(
