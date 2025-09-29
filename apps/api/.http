@@ -56,6 +56,30 @@ content-type: application/json
   "batchSize": 5000
 }
 
+### Liquidity check (defaults: all tracked stations, 7d, 57%, 1M ISK)
+POST http://localhost:3000/liquidity/check HTTP/1.1
+content-type: application/json
+
+{
+  //"station_id": 60005686,
+  //"windowDays": 7,
+  //"minCoverageRatio": 0.57,
+  //"minLiquidityThresholdISK": 1000000
+}
+
+### Liquidity item stats
+POST http://localhost:3000/liquidity/item-stats HTTP/1.1
+content-type: application/json
+
+{
+  "itemName": "Large Skill Injector",
+  //"itemId": 40520,
+  //"stationName": "Rens VI - Moon 8 - Brutor Tribe Treasury",
+  //"stationId": 60004588,
+  //"isBuyOrder": true,
+  "windowDays": 7
+}
+
 ###
 ### Tracked Stations
 ###
