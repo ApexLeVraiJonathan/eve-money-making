@@ -6,6 +6,7 @@
   "scripts": {
     "build": "pnpm -r run build",
     "dev": "pnpm --filter api dev",
+    "format": "pnpm -r run format",
     "lint": "echo \"(add eslint later)\""
   },
   "keywords": [],
