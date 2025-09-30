@@ -7,5 +7,6 @@ import { LiquidityController } from './liquidity.controller';
   controllers: [LiquidityController],
   providers: [LiquidityService],
   imports: [DataImportModule],
+  exports: [LiquidityService],
 })
 export class LiquidityModule {}

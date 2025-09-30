@@ -14,6 +14,7 @@ type FetchMeta = {
   fromCache: boolean;
   etag?: string;
   expiresAt?: number;
+  headers?: Record<string, string | undefined>;
 };
 
 type FetchOptions = {
@@ -21,6 +22,10 @@ type FetchOptions = {
   headers?: Record<string, string>;
   forceRefresh?: boolean;
   timeoutMs?: number;
+  // When true, bypass in-memory/DB cached short-circuit to perform a conditional
+  // request (with If-None-Match) to obtain fresh response headers (e.g. X-Pages).
+  // This still respects caching (likely returns 304) but gives us headers.
+  preferHeaders?: boolean;
 };
 
 @Injectable()
@@ -51,11 +56,24 @@ export class EsiService {
   // Simple semaphore
   private active = 0;
   private waiters: Array<() => void> = [];
+  private effectiveMaxConcurrency: number = this.maxConcurrency;
+  private readonly minConcurrency: number = Number(
+    process.env.ESI_MIN_CONCURRENCY ?? 2,
+  );
+  private readonly concurrencyDecayFactor: number = Number(
+    process.env.ESI_CONCURRENCY_DECAY ?? 0.5,
+  );
 
   // Error budget
   private errorRemain: number | null = null;
   private errorResetAt: number | null = null; // epoch ms
   private haltUntil: number | null = null; // epoch ms
+  private lastHaltUntilLogged: number | null = null;
+  private lastWaitLogTs: number | null = null;
+  private readonly errorLogThrottleMs: number = Number(
+    process.env.ESI_ERROR_LOG_THROTTLE_MS ?? 5000,
+  );
+  private lastErrorLogAt: Map<string, number> = new Map();
 
   constructor(
     private readonly logger: Logger,
@@ -63,7 +81,7 @@ export class EsiService {
   ) {}
 
   private async acquire(): Promise<void> {
-    if (this.active < this.maxConcurrency) {
+    if (this.active < this.effectiveMaxConcurrency) {
       this.active++;
       return;
     }
@@ -111,17 +129,43 @@ export class EsiService {
       const sec = Number(resetStr);
       if (!Number.isNaN(sec)) this.errorResetAt = Date.now() + sec * 1000;
     }
+    // Adaptive concurrency: if budget low, scale down effective concurrency
+    if (
+      this.errorRemain !== null &&
+      this.errorRemain <= this.slowDownRemainThreshold &&
+      this.effectiveMaxConcurrency > this.minConcurrency
+    ) {
+      const newConc = Math.max(
+        this.minConcurrency,
+        Math.floor(
+          this.effectiveMaxConcurrency * this.concurrencyDecayFactor,
+        ) || this.minConcurrency,
+      );
+      if (newConc < this.effectiveMaxConcurrency) {
+        this.effectiveMaxConcurrency = newConc;
+        this.logger.warn(
+          `ESI: reducing concurrency to ${this.effectiveMaxConcurrency} due to low error budget (remain=${this.errorRemain})`,
+        );
+      }
+    }
     if (
       this.errorRemain !== null &&
       this.errorRemain <= 0 &&
       this.errorResetAt
     ) {
       this.haltUntil = this.errorResetAt;
-      this.logger.warn(
-        `ESI error limit reached. Halting until ${new Date(
-          this.haltUntil,
-        ).toISOString()}`,
-      );
+      if (this.lastHaltUntilLogged !== this.haltUntil) {
+        this.logger.warn(
+          `ESI error limit reached. Halting until ${new Date(
+            this.haltUntil,
+          ).toISOString()}`,
+        );
+        this.lastHaltUntilLogged = this.haltUntil;
+      }
+      // Drop to minimum concurrency when halted
+      if (this.effectiveMaxConcurrency > this.minConcurrency) {
+        this.effectiveMaxConcurrency = this.minConcurrency;
+      }
     }
   }
 
@@ -129,7 +173,10 @@ export class EsiService {
     const now = Date.now();
     if (this.haltUntil && now < this.haltUntil) {
       const waitMs = this.haltUntil - now;
-      this.logger.warn(`Waiting ${waitMs}ms for ESI error limit reset`);
+      if (!this.lastWaitLogTs || now - this.lastWaitLogTs > 1000) {
+        this.logger.warn(`Waiting ${waitMs}ms for ESI error limit reset`);
+        this.lastWaitLogTs = now;
+      }
       await new Promise((r) => setTimeout(r, waitMs));
     }
     if (
@@ -137,6 +184,15 @@ export class EsiService {
       this.errorRemain <= this.slowDownRemainThreshold
     ) {
       await new Promise((r) => setTimeout(r, this.slowDownDelayMs));
+    }
+  }
+
+  private logErrorOnce(key: string, message: string): void {
+    const now = Date.now();
+    const last = this.lastErrorLogAt.get(key) ?? 0;
+    if (now - last >= this.errorLogThrottleMs) {
+      this.logger.warn(message);
+      this.lastErrorLogAt.set(key, now);
     }
   }
 
@@ -160,7 +216,8 @@ export class EsiService {
       cached.data !== undefined &&
       cached.expiresAt &&
       now < cached.expiresAt &&
-      !opts.forceRefresh
+      !opts.forceRefresh &&
+      !opts.preferHeaders
     ) {
       return {
         data: cached.data as T,
@@ -189,7 +246,8 @@ export class EsiService {
       dbEntry.body !== undefined &&
       dbEntry.expiresAt &&
       now < dbEntry.expiresAt.getTime() &&
-      !opts.forceRefresh
+      !opts.forceRefresh &&
+      !opts.preferHeaders
     ) {
       const mem: CacheEntry = {
         etag: dbEntry.etag ?? undefined,
@@ -253,7 +311,7 @@ export class EsiService {
 
             this.updateErrorBudget(resHeaders);
 
-            // 304: use cache
+            // 304: use cache, but still use headers for metadata (including Expires/X-Pages)
             if (res.status === 304 && cached && cached.data !== undefined) {
               const newExpires =
                 this.parseExpires(resHeaders) ?? cached.expiresAt;
@@ -275,6 +333,7 @@ export class EsiService {
                   fromCache: true,
                   etag: cached.etag,
                   expiresAt: cached.expiresAt,
+                  headers: resHeaders,
                 },
               };
             }
@@ -321,15 +380,95 @@ export class EsiService {
                 fromCache: false,
                 etag: entry.etag,
                 expiresAt: entry.expiresAt,
+                headers: resHeaders,
               },
             };
-          } catch (err) {
+          } catch (err: unknown) {
+            const status =
+              typeof err === 'object' && err !== null && 'response' in err
+                ? (err as { response?: { status?: number; headers?: any } })
+                    .response?.status
+                : undefined;
+            const headersRaw =
+              typeof err === 'object' && err !== null && 'response' in err
+                ? (err as { response?: { headers?: any } }).response?.headers
+                : undefined;
+
+            // Handle ESI 420: update error budget and wait until reset before retrying
+            if (status === 420 && headersRaw) {
+              const resHeaders = Object.fromEntries(
+                Object.entries(headersRaw).map(([k, v]) => [
+                  k.toLowerCase(),
+                  Array.isArray(v) ? v.join(',') : v ? String(v) : undefined,
+                ]),
+              ) as Record<string, string | undefined>;
+              this.updateErrorBudget(resHeaders);
+              // Aggressively reduce concurrency on 420
+              if (this.effectiveMaxConcurrency > this.minConcurrency) {
+                this.effectiveMaxConcurrency = Math.max(
+                  this.minConcurrency,
+                  Math.floor(
+                    this.effectiveMaxConcurrency * this.concurrencyDecayFactor,
+                  ) || this.minConcurrency,
+                );
+                this.logger.warn(
+                  `ESI: 420 received; reducing concurrency to ${this.effectiveMaxConcurrency}`,
+                );
+              }
+              // Log diagnostic once per URL+status
+              try {
+                const u = new URL(url);
+                const page = u.searchParams.get('page');
+                const remain = resHeaders['x-esi-error-limit-remain'];
+                const reset = resHeaders['x-esi-error-limit-reset'];
+                const key = `420:${u.pathname}`;
+                this.logErrorOnce(
+                  key,
+                  `ESI 420 rate limit for ${u.pathname}${
+                    page ? `?page=${page}` : ''
+                  } (remain=${remain}, reset=${reset}s)`,
+                );
+              } catch {
+                // ignore URL parse errors
+              }
+              await this.respectErrorBudget();
+              continue;
+            }
+
+            // For other HTTP statuses with headers, still update error budget if present
+            if (headersRaw) {
+              const resHeaders = Object.fromEntries(
+                Object.entries(headersRaw).map(([k, v]) => [
+                  k.toLowerCase(),
+                  Array.isArray(v) ? v.join(',') : v ? String(v) : undefined,
+                ]),
+              ) as Record<string, string | undefined>;
+              this.updateErrorBudget(resHeaders);
+              try {
+                const u = new URL(url);
+                const page = u.searchParams.get('page');
+                const remain = resHeaders['x-esi-error-limit-remain'];
+                const reset = resHeaders['x-esi-error-limit-reset'];
+                const key = `${status ?? 0}:${u.pathname}`;
+                const note =
+                  status === 404 && u.pathname.includes('/markets/')
+                    ? ' (page may not exist)'
+                    : '';
+                this.logErrorOnce(
+                  key,
+                  `ESI ${status ?? 'ERR'} for ${u.pathname}${
+                    page ? `?page=${page}` : ''
+                  }${note} (remain=${remain}, reset=${reset}s)`,
+                );
+              } catch {
+                // ignore URL parse errors
+              }
+            }
+
             attempt++;
             // Retry only for network/5xx-like errors
-            const axiosStatus = err?.response?.status as number | undefined;
             const isRetryable =
-              axiosStatus === undefined ||
-              (axiosStatus >= 500 && axiosStatus < 600);
+              status === undefined || (status >= 500 && status < 600);
             if (!isRetryable || attempt >= this.maxRetries) {
               throw err;
             }
@@ -357,5 +496,18 @@ export class EsiService {
 
     this.inflight.set(key, p);
     return (await p) as { data: T; status: number; meta: FetchMeta };
+  }
+
+  async withMaxConcurrency<T>(
+    maxConcurrency: number,
+    fn: () => Promise<T>,
+  ): Promise<T> {
+    const prev = this.effectiveMaxConcurrency;
+    this.effectiveMaxConcurrency = Math.max(1, Math.floor(maxConcurrency));
+    try {
+      return await fn();
+    } finally {
+      this.effectiveMaxConcurrency = prev;
+    }
   }
 }

@@ -22,8 +22,18 @@
     "strictBindCallApply": false,
     "noFallthroughCasesInSwitch": false,
     "paths": {
-      "@shared/data-import": ["libs/data-import/src"],
-      "@shared/data-import/*": ["libs/data-import/src/*"]
+      "@app/arbitrage-packager": [
+        "libs/arbitrage-packager/src"
+      ],
+      "@app/arbitrage-packager/*": [
+        "libs/arbitrage-packager/src/*"
+      ],
+      "@shared/data-import": [
+        "libs/data-import/src"
+      ],
+      "@shared/data-import/*": [
+        "libs/data-import/src/*"
+      ]
     }
   }
 }

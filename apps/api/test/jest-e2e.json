@@ -11,6 +11,8 @@
     "^.+\\.(t|j)s$": "ts-jest"
   },
   "moduleNameMapper": {
+    "@app/arbitrage-packager": "<rootDir>/../libs/arbitrage-packager/src",
+    "@app/arbitrage-packager/(.*)": "<rootDir>/../libs/arbitrage-packager/src/$1",
     "@app/lib": "<rootDir>/../libs/lib/src",
     "@app/lib/(.*)": "<rootDir>/../libs/lib/src/$1",
     "@shared/data-import": "<rootDir>/../libs/data-import/src",

@@ -77,10 +77,10 @@ POST http://localhost:3000/liquidity/item-stats HTTP/1.1
 content-type: application/json
 
 {
-  "itemName": "Large Skill Injector",
+  "itemName": "IFFA Compact Damage Control",
   //"itemId": 40520,
   //"stationName": "Rens VI - Moon 8 - Brutor Tribe Treasury",
-  //"stationId": 60004588,
+  "stationId": 60005686,
   //"isBuyOrder": true,
   "windowDays": 7
 }
@@ -105,3 +105,38 @@ GET http://localhost:3000/tracked-stations/00000000-0000-0000-0000-000000000000 
 
 ### Tracked Stations - Delete by id
 DELETE http://localhost:3000/tracked-stations/00000000-0000-0000-0000-000000000000 HTTP/1.1
+
+### Arbitrage check (defaults: Jita 4-4, multiplier 5, validate >50%)
+POST http://localhost:3000/arbitrage/check HTTP/1.1
+content-type: application/json
+
+{
+  //"sourceStationId": 60003760,
+  //"arbitrageMultiplier": 5,
+  //"marginValidateThreshold": 50,
+  //"minTotalProfitISK": 1000000,
+  //"stationConcurrency": 4,
+  //"itemConcurrency": 100
+  // Optional: override ESI client concurrency (defaults to itemConcurrency*4)
+  //"esiMaxConcurrency": 480
+  //"salesTaxPercent": 3.37,
+  //"brokerFeePercent": 1.5
+}
+
+### Arbitrage plan packages
+POST http://localhost:3000/arbitrage/plan-packages HTTP/1.1
+content-type: application/json
+
+{
+  "shippingCostByStation": {
+    "60008494": 45000000,
+    "60005686": 19000000,
+    "60011866": 15000000,
+    "60004588": 25000000
+  },
+  "packageCapacityM3": 60000,
+  "investmentISK": 10000000000,
+  "perDestinationMaxBudgetSharePerItem": 0.2,
+  "maxPackagesHint": 20,
+  "allocation": { "mode": "best" }
+}

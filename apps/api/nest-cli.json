@@ -7,6 +7,15 @@
     "webpack": true
   },
   "projects": {
+    "arbitrage-packager": {
+      "type": "library",
+      "root": "libs/arbitrage-packager",
+      "entryFile": "index",
+      "sourceRoot": "libs/arbitrage-packager/src",
+      "compilerOptions": {
+        "tsConfigPath": "libs/arbitrage-packager/tsconfig.lib.json"
+      }
+    },
     "data-import": {
       "type": "library",
       "root": "libs/data-import",
