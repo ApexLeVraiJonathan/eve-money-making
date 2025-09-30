@@ -87,6 +87,90 @@ export class ArbitrageService {
     return cheapest;
   }
 
+  private async fetchStationSellOrders(
+    typeId: number,
+    stationId: number,
+  ): Promise<Array<{ price: number; volume: number }>> {
+    const station = await this.prisma.stationId.findUnique({
+      where: { id: stationId },
+      select: { solarSystemId: true },
+    });
+    if (!station) return [];
+    const system = await this.prisma.solarSystemId.findUnique({
+      where: { id: station.solarSystemId },
+      select: { regionId: true },
+    });
+    if (!system) return [];
+    const regionId = system.regionId;
+
+    let page = 1;
+    let totalPages: number | null = null;
+    const orders: Array<{ price: number; volume: number }> = [];
+    for (;;) {
+      try {
+        const { data, meta } = await this.esi.fetchJson<
+          Array<{
+            order_id: number;
+            type_id: number;
+            is_buy_order: boolean;
+            price: number;
+            volume_remain: number;
+            location_id: number;
+          }>
+        >(`/latest/markets/${regionId}/orders/`, {
+          query: { order_type: 'sell', type_id: typeId, page },
+          preferHeaders: true,
+        });
+        if (meta?.headers && typeof meta.headers['x-pages'] === 'string') {
+          const xp = Number(meta.headers['x-pages']);
+          if (!Number.isNaN(xp) && xp > 0) totalPages = xp;
+        }
+        if (!Array.isArray(data) || data.length === 0) break;
+        for (const o of data) {
+          if (
+            o.location_id === stationId &&
+            !o.is_buy_order &&
+            o.volume_remain > 0
+          ) {
+            orders.push({ price: o.price, volume: o.volume_remain });
+          }
+        }
+        if (totalPages !== null && page >= totalPages) break;
+        page++;
+      } catch (err: unknown) {
+        const status =
+          typeof err === 'object' && err !== null && 'response' in err
+            ? (err as { response?: { status?: number } }).response?.status
+            : undefined;
+        if (status === 404) break;
+        throw err;
+      }
+    }
+    orders.sort((a, b) => a.price - b.price);
+    return orders;
+  }
+
+  private getMarginalUnitPrice(
+    orders: Array<{ price: number; volume: number }>,
+    quantity: number,
+  ): number | null {
+    if (!orders.length) return null;
+    if (quantity <= 0) return null;
+    const required = Math.ceil(quantity);
+    let remaining = required;
+    let lastPrice: number | null = null;
+    for (const o of orders) {
+      if (o.volume <= 0) continue;
+      lastPrice = o.price;
+      if (remaining <= o.volume) {
+        return lastPrice;
+      }
+      remaining -= o.volume;
+    }
+    // Not enough depth to fully satisfy; return highest price available
+    return lastPrice;
+  }
+
   async check(params?: {
     sourceStationId?: number;
     arbitrageMultiplier?: number;
@@ -113,24 +197,32 @@ export class ArbitrageService {
 
     const result: Record<string, DestinationGroup> = {};
 
-    // memoize source prices per type to avoid refetching for each station
-    const sourcePriceCache = new Map<number, number | null>();
-    const sourcePriceInFlight = new Map<number, Promise<number | null>>();
-    const getSourcePrice = async (typeId: number): Promise<number | null> => {
-      if (sourcePriceCache.has(typeId)) {
-        return sourcePriceCache.get(typeId) ?? null;
+    // Memoize source station sell orders by typeId; compute marginal price per quantity
+    const sourceOrdersCache = new Map<
+      number,
+      Array<{ price: number; volume: number }>
+    >();
+    const sourceOrdersInFlight = new Map<
+      number,
+      Promise<Array<{ price: number; volume: number }>>
+    >();
+    const getSourceOrders = async (
+      typeId: number,
+    ): Promise<Array<{ price: number; volume: number }>> => {
+      if (sourceOrdersCache.has(typeId)) {
+        return sourceOrdersCache.get(typeId) ?? [];
       }
-      const inflight = sourcePriceInFlight.get(typeId);
+      const inflight = sourceOrdersInFlight.get(typeId);
       if (inflight) return inflight;
-      const promise = this.fetchCheapestSellAtStation(typeId, sourceStationId)
-        .then((price) => {
-          sourcePriceCache.set(typeId, price);
-          return price;
+      const promise = this.fetchStationSellOrders(typeId, sourceStationId)
+        .then((orders) => {
+          sourceOrdersCache.set(typeId, orders);
+          return orders;
         })
         .finally(() => {
-          sourcePriceInFlight.delete(typeId);
+          sourceOrdersInFlight.delete(typeId);
         });
-      sourcePriceInFlight.set(typeId, promise);
+      sourceOrdersInFlight.set(typeId, promise);
       return promise;
     };
 
@@ -162,16 +254,31 @@ export class ArbitrageService {
               const i = iIdx++;
               if (i >= list.length) break;
               const item = list[i];
-              const [srcPrice, dstPriceFromEsi] = await Promise.all([
-                getSourcePrice(item.typeId),
+              const recentDailyVolume = item.avgDailyAmount;
+              const plannedArbitrageQuantity =
+                recentDailyVolume * arbitrageMultiplier;
+
+              const [sourceOrders, dstPriceFromEsi] = await Promise.all([
+                getSourceOrders(item.typeId),
                 this.fetchCheapestSellAtStation(
                   item.typeId,
                   destinationStationId,
                 ),
               ]);
 
-              const recentDailyVolume = item.avgDailyAmount;
-              const arbitrageQuantity = recentDailyVolume * arbitrageMultiplier;
+              const availableAtSource = sourceOrders.reduce(
+                (acc, o) => acc + (o.volume > 0 ? o.volume : 0),
+                0,
+              );
+              const arbitrageQuantity = Math.min(
+                plannedArbitrageQuantity,
+                availableAtSource,
+              );
+
+              const srcPrice = this.getMarginalUnitPrice(
+                sourceOrders,
+                arbitrageQuantity,
+              );
 
               let destinationPrice = dstPriceFromEsi ?? null;
               let priceValidationSource: PriceValidationSource = 'ESI';
@@ -348,6 +455,21 @@ export class ArbitrageService {
       allocation: params.allocation,
     };
 
-    return this.packager.planMultiDestination(destinations, opts);
+    const plan = this.packager.planMultiDestination(destinations, opts);
+
+    // Attach destination names to packages when available
+    const nameByDest = new Map<number, string | undefined>();
+    for (const group of Object.values(arbitrage)) {
+      const id = group.destinationStationId;
+      const name = (group as { stationName?: string }).stationName;
+      if (!nameByDest.has(id)) nameByDest.set(id, name);
+    }
+
+    for (const pkg of plan.packages) {
+      const n = nameByDest.get(pkg.destinationStationId);
+      if (n) (pkg as { destinationName?: string }).destinationName = n;
+    }
+
+    return plan;
   }
 }

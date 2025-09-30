@@ -54,6 +54,7 @@ export interface PackedUnit {
 export interface PackagePlan {
   packageIndex: number;
   destinationStationId: number;
+  destinationName?: string;
   items: PackedUnit[];
   spendISK: number;
   grossProfitISK: number;
