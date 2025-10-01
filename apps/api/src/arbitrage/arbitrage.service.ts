@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { LiquidityService } from '../liquidity/liquidity.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { EsiService } from '../esi/esi.service';
+import { fetchStationOrders } from '../esi/market-helpers';
 import { ArbitragePackagerService } from '../../libs/arbitrage-packager/src';
 import type {
   DestinationConfig,
@@ -13,6 +14,10 @@ import type {
   Opportunity,
   PriceValidationSource,
 } from './dto/opportunity.dto';
+import type { PlanPackagesRequest } from './dto/plan-packages-request.dto';
+import type { ArbitrageCheckRequest } from './dto/check-request.dto';
+import { applySellFees, computeUnitNetProfit } from './fees';
+import { round2 } from '../common/money';
 
 @Injectable()
 export class ArbitrageService {
@@ -28,8 +33,7 @@ export class ArbitrageService {
     typeId: number,
     stationId: number,
   ): Promise<number | null> {
-    // Use ESI: /latest/markets/{region_id}/orders/ with sell orders, then filter by location_id == stationId
-    // First resolve region from station
+    // Resolve region to query ESI regional markets
     const station = await this.prisma.stationId.findUnique({
       where: { id: stationId },
       select: { solarSystemId: true },
@@ -42,47 +46,17 @@ export class ArbitrageService {
     if (!system) return null;
     const regionId = system.regionId;
 
-    let page = 1;
-    let totalPages: number | null = null;
+    // Use shared helper to fetch station-filtered sell orders
+    const orders = await fetchStationOrders(this.esi, {
+      regionId,
+      typeId,
+      stationId,
+      side: 'sell',
+    });
+    if (!orders.length) return null;
     let cheapest: number | null = null;
-    // Iterate all pages for this type within the region and track min price at station
-    for (;;) {
-      try {
-        const { data, meta } = await this.esi.fetchJson<
-          Array<{
-            order_id: number;
-            type_id: number;
-            is_buy_order: boolean;
-            price: number;
-            volume_remain: number;
-            location_id: number;
-          }>
-        >(`/latest/markets/${regionId}/orders/`, {
-          query: { order_type: 'sell', type_id: typeId, page },
-          // prefer headers so X-Pages can be read even on 304
-          preferHeaders: true,
-        });
-        if (meta?.headers && typeof meta.headers['x-pages'] === 'string') {
-          const xp = Number(meta.headers['x-pages']);
-          if (!Number.isNaN(xp) && xp > 0) totalPages = xp;
-        }
-        if (!Array.isArray(data) || data.length === 0) break;
-        for (const o of data) {
-          if (o.location_id === stationId && !o.is_buy_order) {
-            cheapest =
-              cheapest === null ? o.price : Math.min(cheapest, o.price);
-          }
-        }
-        if (totalPages !== null && page >= totalPages) break;
-        page++;
-      } catch (err: unknown) {
-        const status =
-          typeof err === 'object' && err !== null && 'response' in err
-            ? (err as { response?: { status?: number } }).response?.status
-            : undefined;
-        if (status === 404) break; // no such page; stop paging
-        throw err;
-      }
+    for (const o of orders) {
+      cheapest = cheapest === null ? o.price : Math.min(cheapest, o.price);
     }
     return cheapest;
   }
@@ -103,49 +77,12 @@ export class ArbitrageService {
     if (!system) return [];
     const regionId = system.regionId;
 
-    let page = 1;
-    let totalPages: number | null = null;
-    const orders: Array<{ price: number; volume: number }> = [];
-    for (;;) {
-      try {
-        const { data, meta } = await this.esi.fetchJson<
-          Array<{
-            order_id: number;
-            type_id: number;
-            is_buy_order: boolean;
-            price: number;
-            volume_remain: number;
-            location_id: number;
-          }>
-        >(`/latest/markets/${regionId}/orders/`, {
-          query: { order_type: 'sell', type_id: typeId, page },
-          preferHeaders: true,
-        });
-        if (meta?.headers && typeof meta.headers['x-pages'] === 'string') {
-          const xp = Number(meta.headers['x-pages']);
-          if (!Number.isNaN(xp) && xp > 0) totalPages = xp;
-        }
-        if (!Array.isArray(data) || data.length === 0) break;
-        for (const o of data) {
-          if (
-            o.location_id === stationId &&
-            !o.is_buy_order &&
-            o.volume_remain > 0
-          ) {
-            orders.push({ price: o.price, volume: o.volume_remain });
-          }
-        }
-        if (totalPages !== null && page >= totalPages) break;
-        page++;
-      } catch (err: unknown) {
-        const status =
-          typeof err === 'object' && err !== null && 'response' in err
-            ? (err as { response?: { status?: number } }).response?.status
-            : undefined;
-        if (status === 404) break;
-        throw err;
-      }
-    }
+    const orders = await fetchStationOrders(this.esi, {
+      regionId,
+      typeId,
+      stationId,
+      side: 'sell',
+    });
     orders.sort((a, b) => a.price - b.price);
     return orders;
   }
@@ -171,17 +108,9 @@ export class ArbitrageService {
     return lastPrice;
   }
 
-  async check(params?: {
-    sourceStationId?: number;
-    arbitrageMultiplier?: number;
-    marginValidateThreshold?: number;
-    minTotalProfitISK?: number;
-    stationConcurrency?: number;
-    itemConcurrency?: number;
-    salesTaxPercent?: number; // default 3.37
-    brokerFeePercent?: number; // default 1.5
-    esiMaxConcurrency?: number; // optional override for ESI client
-  }): Promise<Record<string, DestinationGroup>> {
+  async check(
+    params?: ArbitrageCheckRequest,
+  ): Promise<Record<string, DestinationGroup>> {
     const sourceStationId = params?.sourceStationId ?? 60003760; // Jita IV-4
     const arbitrageMultiplier = params?.arbitrageMultiplier ?? 5;
     const marginValidateThreshold = params?.marginValidateThreshold ?? 50; // percent
@@ -190,7 +119,7 @@ export class ArbitrageService {
     const itemConcurrency = Math.max(1, params?.itemConcurrency ?? 20);
     const salesTaxPercent = params?.salesTaxPercent ?? 3.37;
     const brokerFeePercent = params?.brokerFeePercent ?? 1.5;
-    const totalSellFeePct = salesTaxPercent + brokerFeePercent; // applied on sell only
+    const feeInputs = { salesTaxPercent, brokerFeePercent };
 
     // Get liquidity for all tracked stations with defaults
     const liquidity = await this.liquidity.runCheck();
@@ -301,15 +230,15 @@ export class ArbitrageService {
                 }
               }
 
-              // Apply sell-side fees (tax + broker) to destination price only
+              // Apply sell-side fees to destination price only
               const effectiveDestPrice =
                 destinationPrice !== null
-                  ? destinationPrice * (1 - totalSellFeePct / 100)
+                  ? applySellFees(destinationPrice, feeInputs)
                   : null;
 
               const netProfitISK =
-                srcPrice !== null && effectiveDestPrice !== null
-                  ? effectiveDestPrice - srcPrice
+                srcPrice !== null && destinationPrice !== null
+                  ? computeUnitNetProfit(srcPrice, destinationPrice, feeInputs)
                   : 0;
               // Margin as percent gain over cost: ((sell_net - buy)/buy)*100
               const margin =
@@ -320,7 +249,6 @@ export class ArbitrageService {
                 srcPrice !== null ? srcPrice * arbitrageQuantity : 0;
               const totalProfitISK = netProfitISK * arbitrageQuantity;
 
-              const round2 = (n: number) => Math.round(n * 100) / 100;
               const opp: Opportunity = {
                 typeId: item.typeId,
                 name: item.typeName ?? String(item.typeId),
@@ -361,7 +289,6 @@ export class ArbitrageService {
             },
             { cost: 0, profit: 0, marginSum: 0 },
           );
-          const round2 = (n: number) => Math.round(n * 100) / 100;
           const averageMargin = itemsOut.length
             ? round2(totals.marginSum / itemsOut.length)
             : 0;
@@ -398,19 +325,7 @@ export class ArbitrageService {
     return result;
   }
 
-  async planPackages(params: {
-    shippingCostByStation: Record<number, number>;
-    packageCapacityM3: number;
-    investmentISK: number;
-    perDestinationMaxBudgetSharePerItem?: number;
-    maxPackagesHint?: number;
-    destinationCaps?: Record<number, { maxShare?: number; maxISK?: number }>;
-    allocation?: {
-      mode?: 'best' | 'targetWeighted' | 'roundRobin';
-      targets?: Record<number, number>;
-      spreadBias?: number;
-    };
-  }): Promise<PlanResult> {
+  async planPackages(params: PlanPackagesRequest): Promise<PlanResult> {
     // Build DestinationConfig[] from arbitrage check results
     const arbitrage = await this.check();
     // Fetch volumes (m3) for all needed typeIds from DB (TypeId.volume)

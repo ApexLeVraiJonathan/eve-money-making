@@ -1,6 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import axios, { AxiosRequestConfig } from 'axios';
 import { PrismaService } from '../prisma/prisma.service';
+import { normalizeHeaders } from '../common/http';
+import { TokenService } from '../auth/token.service';
 
 type CacheEntry = {
   etag?: string;
@@ -26,6 +28,8 @@ type FetchOptions = {
   // request (with If-None-Match) to obtain fresh response headers (e.g. X-Pages).
   // This still respects caching (likely returns 304) but gives us headers.
   preferHeaders?: boolean;
+  // Optional characterId to call authed endpoints. If present, we add Authorization and auto-refresh when needed.
+  characterId?: number;
 };
 
 @Injectable()
@@ -78,7 +82,14 @@ export class EsiService {
   constructor(
     private readonly logger: Logger,
     private readonly prisma: PrismaService,
+    private readonly tokens: TokenService,
   ) {}
+
+  private async getValidAccessToken(
+    characterId: number,
+  ): Promise<string | null> {
+    return await this.tokens.getValidAccessToken(characterId);
+  }
 
   private async acquire(): Promise<void> {
     if (this.active < this.effectiveMaxConcurrency) {
@@ -120,6 +131,8 @@ export class EsiService {
     const t = Date.parse(exp);
     return Number.isNaN(t) ? undefined : t;
   }
+
+  // Normalize various header shapes (arrays, numbers, booleans) into strings.
 
   private updateErrorBudget(headers: Record<string, string | undefined>): void {
     const remainStr = headers['x-esi-error-limit-remain'];
@@ -285,6 +298,11 @@ export class EsiService {
           'User-Agent': this.userAgent,
           ...(opts.headers ?? {}),
         };
+        // Inject bearer token for authed endpoints
+        if (opts.characterId && !headers['Authorization']) {
+          const bearer = await this.getValidAccessToken(opts.characterId);
+          if (bearer) headers['Authorization'] = `Bearer ${bearer}`;
+        }
         const etagForRequest = cached?.etag ?? dbEntry?.etag ?? undefined;
         if (etagForRequest) headers['If-None-Match'] = etagForRequest;
 
@@ -302,12 +320,7 @@ export class EsiService {
         while (true) {
           try {
             const res = await axios.request(config);
-            const resHeaders = Object.fromEntries(
-              Object.entries(res.headers).map(([k, v]) => [
-                k.toLowerCase(),
-                Array.isArray(v) ? v.join(',') : String(v),
-              ]),
-            ) as Record<string, string | undefined>;
+            const resHeaders = normalizeHeaders(res.headers);
 
             this.updateErrorBudget(resHeaders);
 
@@ -389,19 +402,15 @@ export class EsiService {
                 ? (err as { response?: { status?: number; headers?: any } })
                     .response?.status
                 : undefined;
-            const headersRaw =
+            const headersRaw: unknown =
               typeof err === 'object' && err !== null && 'response' in err
-                ? (err as { response?: { headers?: any } }).response?.headers
+                ? (err as { response?: { headers?: unknown } }).response
+                    ?.headers
                 : undefined;
 
             // Handle ESI 420: update error budget and wait until reset before retrying
             if (status === 420 && headersRaw) {
-              const resHeaders = Object.fromEntries(
-                Object.entries(headersRaw).map(([k, v]) => [
-                  k.toLowerCase(),
-                  Array.isArray(v) ? v.join(',') : v ? String(v) : undefined,
-                ]),
-              ) as Record<string, string | undefined>;
+              const resHeaders = normalizeHeaders(headersRaw);
               this.updateErrorBudget(resHeaders);
               // Aggressively reduce concurrency on 420
               if (this.effectiveMaxConcurrency > this.minConcurrency) {
@@ -437,12 +446,7 @@ export class EsiService {
 
             // For other HTTP statuses with headers, still update error budget if present
             if (headersRaw) {
-              const resHeaders = Object.fromEntries(
-                Object.entries(headersRaw).map(([k, v]) => [
-                  k.toLowerCase(),
-                  Array.isArray(v) ? v.join(',') : v ? String(v) : undefined,
-                ]),
-              ) as Record<string, string | undefined>;
+              const resHeaders = normalizeHeaders(headersRaw);
               this.updateErrorBudget(resHeaders);
               try {
                 const u = new URL(url);

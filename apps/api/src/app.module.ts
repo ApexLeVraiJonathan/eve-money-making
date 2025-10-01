@@ -6,6 +6,7 @@ import { TrackedStationsModule } from './tracked-stations/tracked-stations.modul
 import { LiquidityModule } from './liquidity/liquidity.module';
 import { ArbitrageModule } from './arbitrage/arbitrage.module';
 import { EsiModule } from './esi/esi.module';
+import { AuthModule } from './auth/auth.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { EsiModule } from './esi/esi.module';
     LiquidityModule,
     ArbitrageModule,
     EsiModule,
+    AuthModule,
   ],
   controllers: [],
   providers: [Logger],

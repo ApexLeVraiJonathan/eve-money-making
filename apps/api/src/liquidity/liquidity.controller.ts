@@ -1,20 +1,21 @@
-import { Controller, Post, Body } from '@nestjs/common';
+import { Controller, Post, Body, UsePipes } from '@nestjs/common';
 import { LiquidityService } from './liquidity.service';
 import type { LiquidityItemDto } from './dto/liquidity-item.dto';
+import { ZodValidationPipe } from '../common/zod-validation.pipe';
+import {
+  LiquidityCheckRequestSchema,
+  type LiquidityCheckRequest,
+} from './dto/check-request.dto';
 
 @Controller('liquidity')
 export class LiquidityController {
   constructor(private readonly liquidityService: LiquidityService) {}
 
   @Post('check')
+  @UsePipes(new ZodValidationPipe(LiquidityCheckRequestSchema))
   async check(
     @Body()
-    body?: {
-      station_id?: number;
-      windowDays?: number;
-      minCoverageRatio?: number;
-      minLiquidityThresholdISK?: number;
-    },
+    body: LiquidityCheckRequest,
   ): Promise<
     Record<
       string,

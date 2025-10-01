@@ -123,3 +123,47 @@ model EsiCacheEntry {
   @@index([expiresAt])
   @@map("esi_cache_entries")
 }
+
+/// Users of the application (can be single owner for now)
+model User {
+  id         String         @id @default(uuid()) @map("id")
+  email      String?        @unique @map("email")
+  createdAt  DateTime       @default(now()) @map("created_at")
+  updatedAt  DateTime       @updatedAt @map("updated_at")
+
+  characters EveCharacter[]
+
+  @@map("app_users")
+}
+
+/// Linked EVE characters
+model EveCharacter {
+  id         Int            @id @map("character_id")
+  name       String         @map("character_name")
+  ownerHash  String         @map("owner_hash")
+  userId     String?        @map("user_id")
+  user       User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
+  createdAt  DateTime       @default(now()) @map("created_at")
+  updatedAt  DateTime       @updatedAt @map("updated_at")
+
+  token      CharacterToken?
+
+  @@index([ownerHash])
+  @@map("eve_characters")
+}
+
+/// Stored tokens per character (one active token set per character)
+model CharacterToken {
+  id                   String      @id @default(uuid()) @map("id")
+  characterId          Int         @unique @map("character_id")
+  character            EveCharacter @relation(fields: [characterId], references: [id], onDelete: Cascade)
+  tokenType            String      @map("token_type")
+  accessToken          String      @map("access_token")
+  accessTokenExpiresAt DateTime    @map("access_expires_at")
+  refreshTokenEnc      String      @map("refresh_token_enc")
+  scopes               String      @map("scopes")
+  createdAt            DateTime    @default(now()) @map("created_at")
+  updatedAt            DateTime    @updatedAt @map("updated_at")
+
+  @@map("character_tokens")
+}

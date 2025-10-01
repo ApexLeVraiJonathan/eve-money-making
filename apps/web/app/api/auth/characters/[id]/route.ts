@@ -5,23 +5,21 @@ const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE ||
   "http://localhost:3000";
 
-export async function POST(req: NextRequest) {
+export async function DELETE(
+  _req: NextRequest,
+  { params }: { params: { id: string } }
+) {
   try {
-    const payload = await req.json();
-    const res = await fetch(`${API_BASE}/arbitrage/plan-packages`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(payload),
+    const res = await fetch(`${API_BASE}/auth/characters/${params.id}`, {
+      method: "DELETE",
       cache: "no-store",
     });
     const data = await res.json();
     return NextResponse.json(data, { status: res.status });
   } catch (err) {
     return NextResponse.json(
-      { error: "Failed to fetch plan from API", details: `${err}` },
+      { error: "Failed to unlink character", details: `${err}` },
       { status: 500 }
     );
   }
 }
-
-
