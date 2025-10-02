@@ -8,5 +8,6 @@ import { ImportController } from './import.controller';
   providers: [ImportService, Logger],
   imports: [DataImportModule, EsiModule],
   controllers: [ImportController],
+  exports: [ImportService],
 })
 export class ImportModule {}
