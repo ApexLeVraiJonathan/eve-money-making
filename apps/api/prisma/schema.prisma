@@ -126,10 +126,10 @@ model EsiCacheEntry {
 
 /// Users of the application (can be single owner for now)
 model User {
-  id         String         @id @default(uuid()) @map("id")
-  email      String?        @unique @map("email")
-  createdAt  DateTime       @default(now()) @map("created_at")
-  updatedAt  DateTime       @updatedAt @map("updated_at")
+  id        String   @id @default(uuid()) @map("id")
+  email     String?  @unique @map("email")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   characters EveCharacter[]
 
@@ -138,15 +138,15 @@ model User {
 
 /// Linked EVE characters
 model EveCharacter {
-  id         Int            @id @map("character_id")
-  name       String         @map("character_name")
-  ownerHash  String         @map("owner_hash")
-  userId     String?        @map("user_id")
-  user       User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
-  createdAt  DateTime       @default(now()) @map("created_at")
-  updatedAt  DateTime       @updatedAt @map("updated_at")
+  id        Int      @id @map("character_id")
+  name      String   @map("character_name")
+  ownerHash String   @map("owner_hash")
+  userId    String?  @map("user_id")
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
-  token      CharacterToken?
+  token CharacterToken?
 
   @@index([ownerHash])
   @@map("eve_characters")
@@ -154,28 +154,63 @@ model EveCharacter {
 
 /// Stored tokens per character (one active token set per character)
 model CharacterToken {
-  id                   String      @id @default(uuid()) @map("id")
-  characterId          Int         @unique @map("character_id")
+  id                   String       @id @default(uuid()) @map("id")
+  characterId          Int          @unique @map("character_id")
   character            EveCharacter @relation(fields: [characterId], references: [id], onDelete: Cascade)
-  tokenType            String      @map("token_type")
-  accessToken          String      @map("access_token")
-  accessTokenExpiresAt DateTime    @map("access_expires_at")
-  refreshTokenEnc      String      @map("refresh_token_enc")
-  scopes               String      @map("scopes")
-  createdAt            DateTime    @default(now()) @map("created_at")
-  updatedAt            DateTime    @updatedAt @map("updated_at")
+  tokenType            String       @map("token_type")
+  accessToken          String       @map("access_token")
+  accessTokenExpiresAt DateTime     @map("access_expires_at")
+  refreshTokenEnc      String       @map("refresh_token_enc")
+  scopes               String       @map("scopes")
+  createdAt            DateTime     @default(now()) @map("created_at")
+  updatedAt            DateTime     @updatedAt @map("updated_at")
 
   @@map("character_tokens")
 }
 
 /// Snapshot of a planned execution (request + result) for later reconciliation
 model PlanCommit {
-  id        String   @id @default(uuid()) @map("id")
-  request   Json     @map("request")
-  result    Json     @map("result")
-  memo      String?  @map("memo")
+  id               String             @id @default(uuid()) @map("id")
+  request          Json               @map("request")
+  result           Json               @map("result")
+  memo             String?            @map("memo")
+  createdAt        DateTime           @default(now()) @map("created_at")
+  updatedAt        DateTime           @updatedAt @map("updated_at")
+  CycleLedgerEntry CycleLedgerEntry[]
+
+  @@map("plan_commits")
+}
+
+/// Investment cycles for grouping commits and cash flows
+model Cycle {
+  id        String    @id @default(uuid()) @map("id")
+  name      String?   @map("name")
+  startedAt DateTime  @map("started_at")
+  closedAt  DateTime? @map("closed_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  ledgerEntries CycleLedgerEntry[]
+
+  @@map("cycles")
+}
+
+/// Ledger entries (deposits, withdrawals, executions, fees) for a cycle
+model CycleLedgerEntry {
+  id           String      @id @default(uuid()) @map("id")
+  cycleId      String      @map("cycle_id")
+  cycle        Cycle       @relation(fields: [cycleId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  occurredAt   DateTime    @default(now()) @map("occurred_at")
+  entryType    String      @map("entry_type")
+  amount       Decimal     @map("amount_isk") @db.Decimal(28, 2)
+  memo         String?     @map("memo")
+  planCommitId String?     @map("plan_commit_id")
+  planCommit   PlanCommit? @relation(fields: [planCommitId], references: [id], onDelete: SetNull)
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  @@map("plan_commits")
+  @@index([cycleId])
+  @@index([planCommitId])
+  @@map("cycle_ledger")
 }
