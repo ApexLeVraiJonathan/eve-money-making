@@ -8,7 +8,7 @@ const API_BASE =
 export async function POST(req: NextRequest) {
   try {
     const payload = await req.json();
-    const res = await fetch(`${API_BASE}/arbitrage/plan-packages`, {
+    const res = await fetch(`${API_BASE}/import/market-trades/missing`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(payload),
@@ -18,13 +18,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(data, { status: res.status });
   } catch (err) {
     return NextResponse.json(
-      { error: "Failed to fetch plan from API", details: `${err}` },
+      { error: "Failed to backfill missing trades", details: `${err}` },
       { status: 500 }
     );
   }
 }
-
-
-
-
-

@@ -1,4 +1,5 @@
-import { Controller, Post, Body, UsePipes } from '@nestjs/common';
+import { Controller, Post, Body, UsePipes, Req } from '@nestjs/common';
+import type { Request } from 'express';
 import { LiquidityService } from './liquidity.service';
 import type { LiquidityItemDto } from './dto/liquidity-item.dto';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
@@ -6,6 +7,10 @@ import {
   LiquidityCheckRequestSchema,
   type LiquidityCheckRequest,
 } from './dto/check-request.dto';
+import {
+  LiquidityItemStatsRequestSchema,
+  type LiquidityItemStatsRequest,
+} from './dto/item-stats-request.dto';
 
 @Controller('liquidity')
 export class LiquidityController {
@@ -16,27 +21,24 @@ export class LiquidityController {
   async check(
     @Body()
     body: LiquidityCheckRequest,
+    @Req() req: Request,
   ): Promise<
     Record<
       string,
       { stationName: string; totalItems: number; items: LiquidityItemDto[] }
     >
   > {
-    return await this.liquidityService.runCheck(body);
+    const reqId = (req as Request & { reqId?: string }).reqId;
+    return await this.liquidityService.runCheck(body, reqId);
   }
 
   @Post('item-stats')
+  @UsePipes(new ZodValidationPipe(LiquidityItemStatsRequestSchema))
   async itemStats(
-    @Body()
-    body: {
-      itemId?: number;
-      itemName?: string;
-      stationId?: number;
-      stationName?: string;
-      isBuyOrder?: boolean;
-      windowDays?: number;
-    },
+    @Body() body: LiquidityItemStatsRequest,
+    @Req() req: Request,
   ) {
-    return this.liquidityService.getItemStats(body);
+    const reqId = (req as Request & { reqId?: string }).reqId;
+    return this.liquidityService.getItemStats(body, reqId);
   }
 }

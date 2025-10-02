@@ -22,6 +22,10 @@ export default function CharactersPage() {
   const [items, setItems] = React.useState<LinkedCharacter[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
+  const [balances, setBalances] = React.useState<Record<number, number>>({});
+  const [balanceLoading, setBalanceLoading] = React.useState<
+    Record<number, boolean>
+  >({});
 
   const load = React.useCallback(async () => {
     setLoading(true);
@@ -49,6 +53,22 @@ export default function CharactersPage() {
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const handleBalance = async (id: number) => {
+    try {
+      setBalanceLoading((m) => ({ ...m, [id]: true }));
+      const res = await fetch(`/api/auth/wallet?characterId=${id}`, {
+        cache: "no-store",
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || "Failed to get wallet");
+      setBalances((m) => ({ ...m, [id]: Number(data?.balanceISK ?? 0) }));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBalanceLoading((m) => ({ ...m, [id]: false }));
     }
   };
 
@@ -103,6 +123,31 @@ export default function CharactersPage() {
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
+                      <div className="text-xs text-muted-foreground min-w-40 text-right">
+                        {balances[c.characterId] !== undefined ? (
+                          <span>
+                            Balance:{" "}
+                            {new Intl.NumberFormat(undefined, {
+                              style: "currency",
+                              currency: "ISK",
+                              currencyDisplay: "code",
+                              maximumFractionDigits: 2,
+                            })
+                              .format(balances[c.characterId])
+                              .replace("ISK", "ISK")}
+                          </span>
+                        ) : (
+                          <Button
+                            variant="outline"
+                            onClick={() => void handleBalance(c.characterId)}
+                            disabled={!!balanceLoading[c.characterId]}
+                          >
+                            {balanceLoading[c.characterId]
+                              ? "Fetching…"
+                              : "Show balance"}
+                          </Button>
+                        )}
+                      </div>
                       <Button
                         variant="destructive"
                         onClick={() => void handleUnlink(c.characterId)}

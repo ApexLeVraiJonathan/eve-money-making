@@ -47,11 +47,26 @@ export class AuthController {
       maxAge: 10 * 60 * 1000,
     });
     if (returnUrl) {
-      res.cookie('sso_return', returnUrl, {
-        httpOnly: true,
-        sameSite: 'lax',
-        maxAge: 10 * 60 * 1000,
-      });
+      // Whitelist return URL origins via env (comma-separated), fallback to local dev
+      const allow = (
+        process.env.ESI_SSO_RETURN_URL_ALLOWLIST ||
+        'http://localhost:3001,http://127.0.0.1:3001'
+      )
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+      try {
+        const u = new URL(returnUrl);
+        if (allow.includes(u.origin)) {
+          res.cookie('sso_return', returnUrl, {
+            httpOnly: true,
+            sameSite: 'lax',
+            maxAge: 10 * 60 * 1000,
+          });
+        }
+      } catch {
+        // ignore
+      }
     }
 
     const scopes = (process.env.ESI_SSO_SCOPES ?? '')

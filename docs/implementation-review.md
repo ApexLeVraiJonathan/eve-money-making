@@ -40,6 +40,7 @@ Keep the codebase small, readable, and correct. Favor explicit domain boundaries
 - Logging
   - Prefer structured messages (object context) for key steps: station loop timings, item counts, cache hits/misses; include correlation IDs per request.
   - Log `WWW-Authenticate` header details on 401 from ESI to surface missing scope hints.
+  - Expose basic metrics endpoint (`GET /esi/metrics`) and on-demand cleanup (`GET /jobs/esi-cache/cleanup`) for ops visibility.
 - Indexes
   - Confirm DB indexes for `MarketOrderTradeDaily(scanDate, locationId, typeId, isBuyOrder)` support current read patterns; add composite indexes if slow.
 

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
+import Link from "next/link";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -34,7 +35,32 @@ export default function RootLayout({
           enableSystem={false}
           disableTransitionOnChange
         >
-          {children}
+          <header className="border-b">
+            <nav className="container mx-auto max-w-6xl p-4 flex items-center gap-4 text-sm">
+              <Link href="/" className="font-medium">
+                Planner
+              </Link>
+              <Link
+                href="/characters"
+                className="text-muted-foreground hover:text-foreground"
+              >
+                Characters
+              </Link>
+              <Link
+                href="/admin"
+                className="text-muted-foreground hover:text-foreground"
+              >
+                Admin
+              </Link>
+              <Link
+                href="/admin/commits"
+                className="text-muted-foreground hover:text-foreground"
+              >
+                Commits
+              </Link>
+            </nav>
+          </header>
+          <main>{children}</main>
         </ThemeProvider>
       </body>
     </html>

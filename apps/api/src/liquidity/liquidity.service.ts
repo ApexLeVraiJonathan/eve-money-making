@@ -11,12 +11,16 @@ export class LiquidityService {
     private readonly dataImport: DataImportService,
   ) {}
 
-  async runCheck(params?: {
-    station_id?: number;
-    windowDays?: number;
-    minCoverageRatio?: number; // 0..1
-    minLiquidityThresholdISK?: number; // average daily isk_value
-  }): Promise<
+  async runCheck(
+    params?: {
+      station_id?: number;
+      windowDays?: number;
+      minCoverageRatio?: number; // 0..1
+      minLiquidityThresholdISK?: number; // average daily isk_value
+    },
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _reqId?: string,
+  ): Promise<
     Record<
       string,
       { stationName: string; totalItems: number; items: LiquidityItemDto[] }
@@ -173,14 +177,18 @@ export class LiquidityService {
     return items.sort((a, b) => b.avgDailyIskValue - a.avgDailyIskValue);
   }
 
-  async getItemStats(params: {
-    itemId?: number;
-    itemName?: string;
-    stationId?: number;
-    stationName?: string;
-    isBuyOrder?: boolean;
-    windowDays?: number;
-  }): Promise<
+  async getItemStats(
+    params: {
+      itemId?: number;
+      itemName?: string;
+      stationId?: number;
+      stationName?: string;
+      isBuyOrder?: boolean;
+      windowDays?: number;
+    },
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _reqId?: string,
+  ): Promise<
     Record<
       string,
       {

@@ -30,6 +30,8 @@ type FetchOptions = {
   preferHeaders?: boolean;
   // Optional characterId to call authed endpoints. If present, we add Authorization and auto-refresh when needed.
   characterId?: number;
+  // Optional request correlation id for structured logs
+  reqId?: string;
 };
 
 @Injectable()
@@ -56,6 +58,23 @@ export class EsiService {
 
   private readonly cache = new Map<string, CacheEntry>();
   private readonly inflight = new Map<string, Promise<unknown>>();
+  private readonly metrics = {
+    cacheHitMem: 0,
+    cacheHitDb: 0,
+    cacheMiss: 0,
+    http200: 0,
+    http304: 0,
+    http401: 0,
+    http420: 0,
+  } as const satisfies Record<string, number> as unknown as {
+    cacheHitMem: number;
+    cacheHitDb: number;
+    cacheMiss: number;
+    http200: number;
+    http304: number;
+    http401: number;
+    http420: number;
+  };
 
   // Simple semaphore
   private active = 0;
@@ -84,6 +103,36 @@ export class EsiService {
     private readonly prisma: PrismaService,
     private readonly tokens: TokenService,
   ) {}
+
+  getMetricsSnapshot(): {
+    cacheHitMem: number;
+    cacheHitDb: number;
+    cacheMiss: number;
+    http200: number;
+    http304: number;
+    http401: number;
+    http420: number;
+    memCacheSize: number;
+    inflightSize: number;
+    effectiveMaxConcurrency: number;
+    errorRemain: number | null;
+    errorResetAt: number | null;
+  } {
+    return {
+      cacheHitMem: this.metrics.cacheHitMem,
+      cacheHitDb: this.metrics.cacheHitDb,
+      cacheMiss: this.metrics.cacheMiss,
+      http200: this.metrics.http200,
+      http304: this.metrics.http304,
+      http401: this.metrics.http401,
+      http420: this.metrics.http420,
+      memCacheSize: this.cache.size,
+      inflightSize: this.inflight.size,
+      effectiveMaxConcurrency: this.effectiveMaxConcurrency,
+      errorRemain: this.errorRemain,
+      errorResetAt: this.errorResetAt,
+    };
+  }
 
   private async getValidAccessToken(
     characterId: number,
@@ -213,14 +262,18 @@ export class EsiService {
     path: string,
     opts: FetchOptions = {},
   ): Promise<{ data: T; status: number; meta: FetchMeta }> {
+    const pfx = opts.reqId ? `[reqId=${opts.reqId}] ` : '';
     if (!this.userAgent) {
       this.logger.warn(
-        'ESI_USER_AGENT not set; please configure per ESI best practices',
+        `${pfx}ESI_USER_AGENT not set; please configure per ESI best practices`,
       );
     }
 
     const url = this.buildUrl(path, opts.query);
-    const key = this.cacheKey(url);
+    // Token-aware cache key for authed endpoints to avoid cross-character leakage
+    const key = this.cacheKey(
+      opts.characterId ? `${url}#c=${opts.characterId}` : url,
+    );
     const cached = this.cache.get(key);
     const now = Date.now();
 
@@ -232,6 +285,7 @@ export class EsiService {
       !opts.forceRefresh &&
       !opts.preferHeaders
     ) {
+      this.metrics.cacheHitMem++;
       return {
         data: cached.data as T,
         status: cached.status ?? 200,
@@ -262,6 +316,7 @@ export class EsiService {
       !opts.forceRefresh &&
       !opts.preferHeaders
     ) {
+      this.metrics.cacheHitDb++;
       const mem: CacheEntry = {
         etag: dbEntry.etag ?? undefined,
         lastModified: dbEntry.lastModified ?? undefined,
@@ -291,6 +346,7 @@ export class EsiService {
     }
 
     const run = async () => {
+      this.metrics.cacheMiss++;
       await this.respectErrorBudget();
       await this.acquire();
       try {
@@ -326,6 +382,7 @@ export class EsiService {
 
             // 304: use cache, but still use headers for metadata (including Expires/X-Pages)
             if (res.status === 304 && cached && cached.data !== undefined) {
+              this.metrics.http304++;
               const newExpires =
                 this.parseExpires(resHeaders) ?? cached.expiresAt;
               cached.expiresAt = newExpires;
@@ -386,6 +443,7 @@ export class EsiService {
               })
               .catch(() => undefined);
 
+            if (res.status >= 200 && res.status < 300) this.metrics.http200++;
             return {
               data: res.data as T,
               status: res.status,
@@ -410,6 +468,7 @@ export class EsiService {
 
             // Handle ESI 420: update error budget and wait until reset before retrying
             if (status === 420 && headersRaw) {
+              this.metrics.http420++;
               const resHeaders = normalizeHeaders(headersRaw);
               this.updateErrorBudget(resHeaders);
               // Aggressively reduce concurrency on 420
@@ -421,7 +480,7 @@ export class EsiService {
                   ) || this.minConcurrency,
                 );
                 this.logger.warn(
-                  `ESI: 420 received; reducing concurrency to ${this.effectiveMaxConcurrency}`,
+                  `${pfx}ESI: 420 received; reducing concurrency to ${this.effectiveMaxConcurrency}`,
                 );
               }
               // Log diagnostic once per URL+status
@@ -433,7 +492,7 @@ export class EsiService {
                 const key = `420:${u.pathname}`;
                 this.logErrorOnce(
                   key,
-                  `ESI 420 rate limit for ${u.pathname}${
+                  `${pfx}ESI 420 rate limit for ${u.pathname}${
                     page ? `?page=${page}` : ''
                   } (remain=${remain}, reset=${reset}s)`,
                 );
@@ -448,6 +507,7 @@ export class EsiService {
             if (headersRaw) {
               const resHeaders = normalizeHeaders(headersRaw);
               this.updateErrorBudget(resHeaders);
+              if (status === 401) this.metrics.http401++;
               try {
                 const u = new URL(url);
                 const page = u.searchParams.get('page');
@@ -460,7 +520,7 @@ export class EsiService {
                     : '';
                 this.logErrorOnce(
                   key,
-                  `ESI ${status ?? 'ERR'} for ${u.pathname}${
+                  `${pfx}ESI ${status ?? 'ERR'} for ${u.pathname}${
                     page ? `?page=${page}` : ''
                   }${note} (remain=${remain}, reset=${reset}s)`,
                 );

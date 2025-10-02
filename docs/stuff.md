@@ -10,26 +10,36 @@ Constraints and principles
 
 ## Roadmap (phased)
 
-### Phase 1 — Foundations (now)
+### Phase 1 — Foundations (in progress)
 
 - SSO and character linking
   - Use CCP SSO so characters can be linked and authorized for ESI.
   - Encrypt refresh tokens at rest; handle revocation and rotation.
   - Scopes in use: wallet, orders, assets, contracts; optional UI waypoints.
   - Web: `/characters` page to link/unlink and list characters; login supports `returnUrl` to route back to web after callback.
+  - ReturnUrl allowlist + cookie-based redirect (done). Wallet balance endpoint and UI on `/characters` (done).
 - Reliable ESI ingestion
   - Respect ETag/Expires; backoff on 420; track error budget headers.
   - Idempotent importers with checkpoints per character/endpoint.
   - Normalize into an immutable ledger of wallet, orders, assets, contracts.
+  - Token-aware ESI cache keys by `characterId` (done). Metrics and admin page (`/admin`) to view cache/HTTP counters (done). Hourly cache cleanup job and daily staleness check with web backfill button (done).
 - Data correctness and precision
   - Use high‑precision decimals for ISK/volume/fees.
   - Centralize fee/tax formulas (broker, sales, relist, shipping).
+  - Request DTO validation added for liquidity/import/tracked-stations (done). Request ID middleware for traceability (done).
 
-Acceptance criteria
+Acceptance criteria (status)
 
-- Able to link multiple characters to one user and refresh tokens automatically (done).
-- Imports run on schedule and are resumable; no duplicate rows.
-- ISK math is consistent across modules; fees reused from one source.
+- Able to link multiple characters to one user and refresh tokens automatically (done)
+- Imports run on schedule and are resumable; no duplicate rows (done)
+- ISK math is consistent across modules; fees reused from one source (done)
+
+Progress additions (done)
+
+- Admin metrics (`GET /esi/metrics`) and maintenance endpoints (`GET /jobs/esi-cache/cleanup`, `GET /jobs/staleness`), with web proxies and `/admin` page.
+- Token-aware ESI caching, counters for 200/304/401/420, and memory/DB hit/miss.
+- PlanCommit model and `POST /arbitrage/commit` to snapshot planner request/results.
+- Simple site nav (Planner, Characters, Admin) and wallet balance view per character.
 
 ### Phase 2 — Make “Cycle” first‑class
 
@@ -90,6 +100,8 @@ Ingestion and caching
 
 - Use conditional requests (If‑None‑Match) and persist ETag/Expires.
 - Honor X‑Esi‑Error‑Limit headers; adapt concurrency.
+- Token-aware cache keys include `characterId`; hourly cleanup + daily staleness job.
+- Expose lightweight metrics for cache/error‑budget; surface on `/admin`.
 
 Cycle reconciliation
 
@@ -106,6 +118,14 @@ Operations and safety
 - Background jobs/queues for imports and reconciliations.
 - Structured logs and metrics (staleness, ESI error budget, queue depth).
 - Role‑based access (owner vs viewer); regular DB backups and migrations.
+
+Next steps (short‑term, prioritized)
+
+- Observability: add structured logs with `reqId` across Import/Liquidity/ESI; surface 401 scope hints and staleness prominently on `/admin`.
+- UI/ops: add `GET /arbitrage/commits` and a simple web view for recent commits.
+- Fees: centralize fee/tax helpers and reuse in arbitrage calculations end‑to‑end.
+- ESI ergonomics: continue splitting typed clients (characters done; markets/universe next as needed).
+- Phase 2 prep: define minimal reconciliation inputs (wallet tx, orders, contracts) and start mapping PlanCommit → sources.
 
 ## Current status (high level)
 

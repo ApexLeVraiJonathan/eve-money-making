@@ -1,5 +1,18 @@
-import { Body, Controller, Delete, Get, Param, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Post,
+  UsePipes,
+} from '@nestjs/common';
 import { TrackedStationsService } from './tracked-stations.service';
+import { ZodValidationPipe } from '../common/zod-validation.pipe';
+import {
+  TrackedStationCreateSchema,
+  type TrackedStationCreate,
+} from './dto/tracked-station.dto';
 
 @Controller('tracked-stations')
 export class TrackedStationsController {
@@ -8,7 +21,8 @@ export class TrackedStationsController {
   ) {}
 
   @Post()
-  async create(@Body() body: { stationId: number }) {
+  @UsePipes(new ZodValidationPipe(TrackedStationCreateSchema))
+  async create(@Body() body: TrackedStationCreate) {
     return this.trackedStationsService.create(body.stationId);
   }
 

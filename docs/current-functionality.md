@@ -68,6 +68,10 @@ Monorepo with NestJS API (`apps/api`) and Next.js UI (`apps/web`). Primary featu
   - Proxy routes:
     - `apps/web/app/api/auth/characters/route.ts` (GET list)
     - `apps/web/app/api/auth/characters/[id]/route.ts` (DELETE unlink)
+  - Metrics & admin:
+    - API `GET /esi/metrics` → in-memory counters and error budget snapshot; `GET /jobs/esi-cache/cleanup` → purge expired cache now.
+    - Web proxies `apps/web/app/api/metrics/route.ts` and `apps/web/app/api/jobs/esi-cache/cleanup/route.ts`.
+    - Admin page `apps/web/app/admin/page.tsx` shows metrics and exposes cleanup.
 
 ## End‑to‑end flow
 

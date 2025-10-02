@@ -52,6 +52,7 @@ export class ArbitrageService {
       typeId,
       stationId,
       side: 'sell',
+      reqId: undefined,
     });
     if (!orders.length) return null;
     let cheapest: number | null = null;
@@ -110,6 +111,7 @@ export class ArbitrageService {
 
   async check(
     params?: ArbitrageCheckRequest,
+    reqId?: string,
   ): Promise<Record<string, DestinationGroup>> {
     const sourceStationId = params?.sourceStationId ?? 60003760; // Jita IV-4
     const arbitrageMultiplier = params?.arbitrageMultiplier ?? 5;
@@ -160,7 +162,7 @@ export class ArbitrageService {
     const desiredEsiConc =
       params?.esiMaxConcurrency ?? Math.max(1, itemConcurrency * 4);
     this.logger.log(
-      `Arbitrage start: src=${sourceStationId} mult=${arbitrageMultiplier} validate>${marginValidateThreshold}% minProfit=${minTotalProfitISK} stationConc=${stationConcurrency} itemConc=${itemConcurrency} stations=${stations.length} esiConc=${desiredEsiConc}`,
+      `[reqId=${reqId ?? '-'}] Arbitrage start src=${sourceStationId} mult=${arbitrageMultiplier} validate>${marginValidateThreshold}% minProfit=${minTotalProfitISK} stationConc=${stationConcurrency} itemConc=${itemConcurrency} stations=${stations.length} esiConc=${desiredEsiConc}`,
     );
     let sIdx = 0;
     const stationWorkers = Array.from(
@@ -305,7 +307,7 @@ export class ArbitrageService {
             items: itemsOut,
           };
           this.logger.log(
-            `Arb station ${destinationStationId}: items=${itemsOut.length} cost=${round2(
+            `[reqId=${reqId ?? '-'}] Arb station ${destinationStationId}: items=${itemsOut.length} cost=${round2(
               totals.cost,
             )} profit=${round2(totals.profit)} avgMargin=${averageMargin}% ms=${
               Date.now() - stationStart
@@ -320,14 +322,17 @@ export class ArbitrageService {
     });
 
     this.logger.log(
-      `Arbitrage completed in ${Date.now() - startedAt}ms (stations=${stations.length})`,
+      `[reqId=${reqId ?? '-'}] Arbitrage completed in ${Date.now() - startedAt}ms (stations=${stations.length})`,
     );
     return result;
   }
 
-  async planPackages(params: PlanPackagesRequest): Promise<PlanResult> {
+  async planPackages(
+    params: PlanPackagesRequest,
+    reqId?: string,
+  ): Promise<PlanResult> {
     // Build DestinationConfig[] from arbitrage check results
-    const arbitrage = await this.check();
+    const arbitrage = await this.check(undefined, reqId);
     // Fetch volumes (m3) for all needed typeIds from DB (TypeId.volume)
     const typeIds = Array.from(
       new Set(
@@ -386,5 +391,33 @@ export class ArbitrageService {
     }
 
     return plan;
+  }
+
+  async commitPlan(payload: {
+    request: unknown;
+    result: unknown;
+    memo?: string;
+  }) {
+    const row = await this.prisma.planCommit.create({
+      data: {
+        request: payload.request as object,
+        result: payload.result as object,
+        memo: payload.memo ?? null,
+      },
+      select: { id: true, createdAt: true },
+    });
+    this.logger.log(`Plan commit saved id=${row.id}`);
+    return row;
+  }
+
+  async listCommits(params?: { limit?: number; offset?: number }) {
+    const take = Math.min(Math.max(params?.limit ?? 25, 1), 200);
+    const skip = Math.max(params?.offset ?? 0, 0);
+    return await this.prisma.planCommit.findMany({
+      select: { id: true, createdAt: true, memo: true },
+      orderBy: { createdAt: 'desc' },
+      take,
+      skip,
+    });
   }
 }

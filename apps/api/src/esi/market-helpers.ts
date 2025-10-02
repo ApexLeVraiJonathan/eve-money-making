@@ -15,6 +15,7 @@ export async function fetchStationOrders(
     typeId: number;
     stationId: number;
     side: 'buy' | 'sell';
+    reqId?: string;
   },
 ): Promise<Array<{ price: number; volume: number }>> {
   let page = 1;
@@ -33,6 +34,7 @@ export async function fetchStationOrders(
     >(`/latest/markets/${params.regionId}/orders/`, {
       query: { order_type: params.side, type_id: params.typeId, page },
       preferHeaders: true,
+      reqId: params.reqId,
     });
     if (meta?.headers && typeof meta.headers['x-pages'] === 'string') {
       const xp = Number(meta.headers['x-pages']);

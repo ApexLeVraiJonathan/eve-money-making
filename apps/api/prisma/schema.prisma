@@ -167,3 +167,15 @@ model CharacterToken {
 
   @@map("character_tokens")
 }
+
+/// Snapshot of a planned execution (request + result) for later reconciliation
+model PlanCommit {
+  id        String   @id @default(uuid()) @map("id")
+  request   Json     @map("request")
+  result    Json     @map("result")
+  memo      String?  @map("memo")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("plan_commits")
+}
