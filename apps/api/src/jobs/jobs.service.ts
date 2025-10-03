@@ -2,6 +2,8 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { ImportService } from '../import/import.service';
+import { WalletService } from '../wallet/wallet.service';
+import { ReconciliationService } from '../reconciliation/reconciliation.service';
 
 @Injectable()
 export class JobsService {
@@ -9,10 +11,24 @@ export class JobsService {
     private readonly prisma: PrismaService,
     private readonly logger: Logger,
     private readonly imports: ImportService,
+    private readonly wallets: WalletService,
+    private readonly recon: ReconciliationService,
   ) {}
+
+  private jobsEnabled(): boolean {
+    const flag = process.env.ENABLE_JOBS;
+    if (flag !== undefined) {
+      return flag === 'true' || flag === '1' || flag === 'yes';
+    }
+    return process.env.NODE_ENV === 'production';
+  }
 
   @Cron(CronExpression.EVERY_HOUR)
   async runEsiCacheCleanup(): Promise<void> {
+    if (!this.jobsEnabled()) {
+      this.logger.debug('Skipping ESI cache cleanup (jobs disabled)');
+      return;
+    }
     await this.cleanupExpiredEsiCache().catch((e) =>
       this.logger.warn(
         `ESI cache cleanup failed: ${e instanceof Error ? e.message : String(e)}`,
@@ -22,6 +38,10 @@ export class JobsService {
 
   @Cron(CronExpression.EVERY_DAY_AT_2AM)
   async runDailyImports(): Promise<void> {
+    if (!this.jobsEnabled()) {
+      this.logger.debug('Skipping daily imports (jobs disabled)');
+      return;
+    }
     try {
       const { missing } = await this.imports.importMissingMarketOrderTrades(15);
       this.logger.log(
@@ -30,6 +50,23 @@ export class JobsService {
     } catch (e) {
       this.logger.warn(
         `Daily import failed: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
+  }
+
+  @Cron(CronExpression.EVERY_HOUR)
+  async runWalletImportsAndReconcile(): Promise<void> {
+    if (!this.jobsEnabled()) {
+      this.logger.debug('Skipping wallets import/reconcile (jobs disabled)');
+      return;
+    }
+    try {
+      await this.wallets.importAllLinked();
+      await this.recon.reconcileFromWalletStrict(null);
+      this.logger.log('Hourly wallets import and reconcile completed');
+    } catch (e) {
+      this.logger.warn(
+        `Hourly wallets/reconcile failed: ${e instanceof Error ? e.message : String(e)}`,
       );
     }
   }

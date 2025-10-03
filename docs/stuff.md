@@ -23,6 +23,7 @@ Constraints and principles
   - Idempotent importers with checkpoints per character/endpoint.
   - Normalize into an immutable ledger of wallet, orders, assets, contracts.
   - Token-aware ESI cache keys by `characterId` (done). Metrics and admin page (`/admin`) to view cache/HTTP counters (done). Hourly cache cleanup job and daily staleness check with web backfill button (done).
+  - Wallet ingestion implemented (`/wallet-import/character`, `/wallet-import/all`) and reconciliation glue added to generate ledger entries from wallet and link to plan commits.
 - Data correctness and precision
   - Use high‑precision decimals for ISK/volume/fees.
   - Centralize fee/tax formulas (broker, sales, relist, shipping).
@@ -50,10 +51,10 @@ Progress additions (done)
   - Derived state: capital vs inventory vs cash; realized vs unrealized PnL.
 - Cost basis
   - Choose a policy (FIFO or Moving Average) and keep it consistent.
-- Persist and reconcile
-  - Persist plan‑package “commit” snapshots at execution time.
-  - Reconcile to real wallet transactions (buys), contracts (shipping), and orders/fills (sales). Handle partial fills and exceptions.
-  - Use authed ESI with `characterId` for wallet/transactions/orders, with auto‑refresh.
+    — Persist and reconcile
+  - Persist plan‑package “commit” snapshots at execution time. (done)
+  - Reconcile to real wallet transactions (buys), contracts (shipping), and orders/fills (sales). Handle partial fills and exceptions. (wallet→ledger auto‑link shipped; contracts/orders later)
+  - Use authed ESI with `characterId` for wallet/transactions/orders, with auto‑refresh. (done)
 
 Acceptance criteria
 
@@ -105,8 +106,20 @@ Ingestion and caching
 
 Cycle reconciliation
 
-- Store plan‑package commits when you decide to execute.
-- Reconcile by type_id, time window, and tolerances; support manual overrides.
+- Store plan‑package commits when you decide to execute. (done)
+- Reconcile by type_id, time window, and tolerances; support manual overrides. (initial auto‑linking in place)
+
+## Minimal test plan
+
+- Backend
+  - Import wallet for all linked characters: use `GET /wallet-import/all`. Verify rows in `WalletTransaction` and `WalletJournalEntry` via Prisma Studio.
+  - Run reconciliation: `POST /recon/reconcile`. Verify `CycleLedgerEntry` rows created and some `planCommitId` set.
+  - Create a new cycle if needed: `POST /ledger/cycles { startedAt: now }`. Compute NAV: `GET /ledger/nav/:cycleId`.
+- Frontend
+  - Characters page: link a character, view wallet balance, unlink.
+  - Admin page: view metrics, purge cache, run backfill.
+
+Note: Use PowerShell-friendly commands and avoid `&&` when chaining [[memory:5091976]].
 
 Strategy hardening
 

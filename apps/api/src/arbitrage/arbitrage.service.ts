@@ -407,6 +407,44 @@ export class ArbitrageService {
       select: { id: true, createdAt: true },
     });
     this.logger.log(`Plan commit saved id=${row.id}`);
+
+    // Extract PlanCommitLine rows from the plan result to enable strict reconciliation later.
+    try {
+      const plan = payload.result as PlanResult;
+      const sourceStationId =
+        (payload.request as { sourceStationId?: number } | undefined)
+          ?.sourceStationId ?? 60003760;
+      const lines = [] as Array<{
+        commitId: string;
+        typeId: number;
+        sourceStationId: number;
+        destinationStationId: number;
+        plannedUnits: number;
+        unitCost: number;
+        unitProfit: number;
+      }>;
+      for (const pkg of plan.packages ?? []) {
+        const dst = pkg.destinationStationId;
+        for (const it of pkg.items ?? []) {
+          lines.push({
+            commitId: row.id,
+            typeId: it.typeId,
+            sourceStationId,
+            destinationStationId: dst,
+            plannedUnits: it.units,
+            unitCost: it.unitCost,
+            unitProfit: it.unitProfit,
+          });
+        }
+      }
+      if (lines.length > 0) {
+        await this.prisma.planCommitLine.createMany({ data: lines });
+      }
+    } catch (e) {
+      this.logger.warn(
+        `Plan commit lines extraction failed id=${row.id}: ${String(e)}`,
+      );
+    }
     return row;
   }
 

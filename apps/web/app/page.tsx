@@ -84,6 +84,7 @@ export default function HomePage() {
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [data, setData] = React.useState<PlanResult | null>(null);
+  const [memo, setMemo] = React.useState("");
 
   const handleSubmit = async () => {
     setError(null);
@@ -258,6 +259,42 @@ export default function HomePage() {
               >
                 {loading ? "Planning..." : "Run planner"}
               </Button>
+              <div className="space-y-1 pt-2">
+                <Label htmlFor="memo">Commit memo (optional)</Label>
+                <Input
+                  id="memo"
+                  value={memo}
+                  onChange={(e) => setMemo(e.target.value)}
+                />
+                <Button
+                  variant="secondary"
+                  disabled={!data}
+                  onClick={async () => {
+                    if (!data) return;
+                    try {
+                      const payload = JSON.parse(json);
+                      const res = await fetch("/api/arbitrage/commit", {
+                        method: "POST",
+                        headers: { "content-type": "application/json" },
+                        body: JSON.stringify({
+                          request: payload,
+                          result: data,
+                          memo: memo || undefined,
+                        }),
+                      });
+                      const body = await res.json();
+                      if (!res.ok)
+                        throw new Error(body?.error || res.statusText);
+                      alert(`Plan committed: ${body.id}`);
+                    } catch (e) {
+                      alert(e instanceof Error ? e.message : String(e));
+                    }
+                  }}
+                  className="w-full"
+                >
+                  Commit plan
+                </Button>
+              </div>
               {error && <p className="text-sm text-destructive">{error}</p>}
             </div>
           </div>

@@ -76,4 +76,159 @@ export class EsiCharactersService {
     });
     return Array.isArray(data) ? data : [];
   }
+
+  async getWalletTransactions(
+    characterId: number,
+    fromId?: number,
+    reqId?: string,
+  ): Promise<
+    Array<{
+      transaction_id: number;
+      date: string;
+      is_buy: boolean;
+      location_id: number;
+      type_id: number;
+      client_id?: number;
+      quantity: number;
+      unit_price: number;
+      journal_ref_id?: number;
+    }>
+  > {
+    const query: Record<string, number> = {};
+    if (fromId) query['from_id'] = fromId;
+    const { data } = await this.esi.fetchJson<
+      Array<{
+        transaction_id: number;
+        date: string;
+        is_buy: boolean;
+        location_id: number;
+        type_id: number;
+        client_id?: number;
+        quantity: number;
+        unit_price: number;
+        journal_ref_id?: number;
+      }>
+    >(`/latest/characters/${characterId}/wallet/transactions/`, {
+      characterId,
+      query,
+      reqId,
+    });
+    return Array.isArray(data) ? data : [];
+  }
+
+  async getWalletJournal(
+    characterId: number,
+    page?: number,
+    reqId?: string,
+  ): Promise<
+    Array<{
+      id: number;
+      date: string;
+      ref_type: string;
+      amount: number;
+      balance?: number;
+      context_id?: number;
+      context_id_type?: string;
+      description?: string;
+      first_party_id?: number;
+      second_party_id?: number;
+      tax?: number;
+      tax_receiver_id?: number;
+    }>
+  > {
+    const query: Record<string, number> = {};
+    if (page) query['page'] = page;
+    try {
+      const { data } = await this.esi.fetchJson<
+        Array<{
+          id: number;
+          date: string;
+          ref_type: string;
+          amount: number;
+          balance?: number;
+          context_id?: number;
+          context_id_type?: string;
+          description?: string;
+          first_party_id?: number;
+          second_party_id?: number;
+          tax?: number;
+          tax_receiver_id?: number;
+        }>
+      >(`/latest/characters/${characterId}/wallet/journal/`, {
+        characterId,
+        query,
+        reqId,
+        preferHeaders: true,
+      });
+      return Array.isArray(data) ? data : [];
+    } catch (err: unknown) {
+      // Treat out-of-range pages as empty (ESI returns 404)
+      const status =
+        typeof err === 'object' && err !== null && 'response' in err
+          ? (err as { response?: { status?: number } }).response?.status
+          : undefined;
+      if (status === 404) return [];
+      throw err;
+    }
+  }
+
+  // Returns one page and optional total pages (from X-Pages header when available)
+  async getWalletJournalPage(
+    characterId: number,
+    page?: number,
+    reqId?: string,
+  ): Promise<{
+    rows: Array<{
+      id: number;
+      date: string;
+      ref_type: string;
+      amount: number;
+      balance?: number;
+      context_id?: number;
+      context_id_type?: string;
+      description?: string;
+      first_party_id?: number;
+      second_party_id?: number;
+      tax?: number;
+      tax_receiver_id?: number;
+    }>;
+    totalPages?: number;
+  }> {
+    const query: Record<string, number> = {};
+    if (page) query['page'] = page;
+    try {
+      const { data, meta } = await this.esi.fetchJson<
+        Array<{
+          id: number;
+          date: string;
+          ref_type: string;
+          amount: number;
+          balance?: number;
+          context_id?: number;
+          context_id_type?: string;
+          description?: string;
+          first_party_id?: number;
+          second_party_id?: number;
+          tax?: number;
+          tax_receiver_id?: number;
+        }>
+      >(`/latest/characters/${characterId}/wallet/journal/`, {
+        characterId,
+        query,
+        reqId,
+        preferHeaders: true,
+      });
+      let totalPages: number | undefined;
+      const xp = meta?.headers?.['x-pages'];
+      if (xp && !Number.isNaN(Number(xp))) totalPages = Number(xp);
+      return { rows: Array.isArray(data) ? data : [], totalPages };
+    } catch (err: unknown) {
+      const status =
+        typeof err === 'object' && err !== null && 'response' in err
+          ? (err as { response?: { status?: number } }).response?.status
+          : undefined;
+      if (status === 404) return { rows: [], totalPages: undefined };
+      throw err;
+    }
+  }
 }

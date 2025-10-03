@@ -5,10 +5,23 @@ const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE ||
   "http://localhost:3000";
 
+export async function GET() {
+  try {
+    const res = await fetch(`${API_BASE}/ledger/cycles`, { cache: "no-store" });
+    const data = await res.json();
+    return NextResponse.json(data, { status: res.status });
+  } catch (err) {
+    return NextResponse.json(
+      { error: "Failed to load cycles", details: `${err}` },
+      { status: 500 }
+    );
+  }
+}
+
 export async function POST(req: NextRequest) {
   try {
     const payload = await req.json();
-    const res = await fetch(`${API_BASE}/arbitrage/plan-packages`, {
+    const res = await fetch(`${API_BASE}/ledger/cycles`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(payload),
@@ -18,15 +31,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(data, { status: res.status });
   } catch (err) {
     return NextResponse.json(
-      { error: "Failed to fetch plan from API", details: `${err}` },
+      { error: "Failed to create cycle", details: `${err}` },
       { status: 500 }
     );
   }
 }
-
-
-
-
-
-
-

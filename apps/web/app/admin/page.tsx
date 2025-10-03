@@ -3,6 +3,7 @@
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useToast } from "@/components/ui/toast";
 
 type Metrics = {
   cacheHitMem: number;
@@ -22,12 +23,15 @@ type Metrics = {
 type Staleness = { missing: string[] };
 
 export default function AdminPage() {
+  const { toast } = useToast();
   const [metrics, setMetrics] = React.useState<Metrics | null>(null);
   const [staleness, setStaleness] = React.useState<Staleness | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(false);
   const [cleanupMsg, setCleanupMsg] = React.useState<string | null>(null);
   const [backfillMsg, setBackfillMsg] = React.useState<string | null>(null);
+  const [reconMsg, setReconMsg] = React.useState<string | null>(null);
+  const [walletMsg, setWalletMsg] = React.useState<string | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -59,10 +63,18 @@ export default function AdminPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || res.statusText);
-      setCleanupMsg(`Deleted ${data?.deleted ?? 0} cache rows`);
+      const msg = `Deleted ${data?.deleted ?? 0} cache rows`;
+      setCleanupMsg(msg);
+      toast({ title: "Cache cleanup", description: msg, variant: "success" });
       await load();
     } catch (e) {
-      setCleanupMsg(e instanceof Error ? e.message : String(e));
+      const msg = e instanceof Error ? e.message : String(e);
+      setCleanupMsg(msg);
+      toast({
+        title: "Cache cleanup failed",
+        description: msg,
+        variant: "error",
+      });
     }
   };
 
@@ -77,9 +89,58 @@ export default function AdminPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || res.statusText);
       setBackfillMsg("Backfill started/completed");
+      toast({
+        title: "Backfill",
+        description: "Backfill started/completed",
+        variant: "success",
+      });
       await load();
     } catch (e) {
-      setBackfillMsg(e instanceof Error ? e.message : String(e));
+      const msg = e instanceof Error ? e.message : String(e);
+      setBackfillMsg(msg);
+      toast({ title: "Backfill failed", description: msg, variant: "error" });
+    }
+  };
+
+  const runReconcile = async () => {
+    setReconMsg(null);
+    try {
+      const res = await fetch("/api/recon/reconcile", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || res.statusText);
+      const msg = `Reconciliation: created ${data?.created ?? 0}${
+        data?.linked !== undefined ? ", linked " + data.linked : ""
+      }`;
+      setReconMsg(msg);
+      toast({
+        title: "Reconcile complete",
+        description: msg,
+        variant: "success",
+      });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setReconMsg(msg);
+      toast({ title: "Reconcile failed", description: msg, variant: "error" });
+    }
+  };
+
+  const runWalletImport = async () => {
+    setWalletMsg(null);
+    try {
+      const res = await fetch("/api/wallet-import/all", { cache: "no-store" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || res.statusText);
+      const msg = `Wallet import for ${data?.count ?? "?"} characters`;
+      setWalletMsg(msg);
+      toast({ title: "Wallet import", description: msg, variant: "success" });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setWalletMsg(msg);
+      toast({
+        title: "Wallet import failed",
+        description: msg,
+        variant: "error",
+      });
     }
   };
 
@@ -104,6 +165,12 @@ export default function AdminPage() {
             <Button onClick={() => void runBackfill()}>
               Backfill missing trades
             </Button>
+            <Button onClick={() => void runWalletImport()}>
+              Import all wallets
+            </Button>
+            <Button onClick={() => void runReconcile()}>
+              Reconcile wallet → ledger
+            </Button>
           </div>
           {cleanupMsg && (
             <div className="text-xs text-muted-foreground">{cleanupMsg}</div>
@@ -112,6 +179,12 @@ export default function AdminPage() {
             <div className="text-xs text-muted-foreground">{backfillMsg}</div>
           )}
           {error && <div className="text-sm text-destructive">{error}</div>}
+          {reconMsg && (
+            <div className="text-xs text-muted-foreground">{reconMsg}</div>
+          )}
+          {walletMsg && (
+            <div className="text-xs text-muted-foreground">{walletMsg}</div>
+          )}
           {staleness && (
             <div className="text-xs text-muted-foreground">
               Missing daily files (last 15 days): {staleness.missing.length}

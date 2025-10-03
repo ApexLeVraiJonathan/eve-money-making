@@ -177,6 +177,7 @@ model PlanCommit {
   createdAt        DateTime           @default(now()) @map("created_at")
   updatedAt        DateTime           @updatedAt @map("updated_at")
   CycleLedgerEntry CycleLedgerEntry[]
+  PlanCommitLine   PlanCommitLine[]
 
   @@map("plan_commits")
 }
@@ -206,11 +207,84 @@ model CycleLedgerEntry {
   memo         String?     @map("memo")
   planCommitId String?     @map("plan_commit_id")
   planCommit   PlanCommit? @relation(fields: [planCommitId], references: [id], onDelete: SetNull)
+  // Provenance for automated reconciliation
+  characterId  Int?        @map("character_id")
+  stationId    Int?        @map("station_id")
+  typeId       Int?        @map("type_id")
+  source       String      @default("manual") @map("source") // wallet_tx | wallet_journal | manual
+  sourceId     String?     @map("source_id")
+  matchStatus  String?     @map("match_status") // linked | unlinked | ambiguous
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
+  @@unique([source, sourceId])
   @@index([cycleId])
   @@index([planCommitId])
+  @@index([characterId])
+  @@index([stationId])
+  @@index([typeId])
   @@map("cycle_ledger")
+}
+
+/// Raw ESI wallet transactions (idempotent store)
+model WalletTransaction {
+  characterId   Int      @map("character_id")
+  transactionId BigInt   @map("transaction_id")
+  date          DateTime @map("date")
+  isBuy         Boolean  @map("is_buy")
+  locationId    Int      @map("location_id")
+  typeId        Int      @map("type_id")
+  clientId      Int?     @map("client_id")
+  quantity      Int      @map("quantity")
+  unitPrice     Decimal  @map("unit_price") @db.Decimal(28, 2)
+  journalRefId  BigInt?  @map("journal_ref_id")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@id([characterId, transactionId])
+  @@index([characterId])
+  @@index([date])
+  @@map("wallet_transactions")
+}
+
+/// Raw ESI wallet journal entries (idempotent store)
+model WalletJournalEntry {
+  characterId   Int      @map("character_id")
+  journalId     BigInt   @map("journal_id")
+  date          DateTime @map("date")
+  refType       String   @map("ref_type")
+  amount        Decimal  @map("amount") @db.Decimal(28, 2)
+  balance       Decimal? @map("balance") @db.Decimal(28, 2)
+  contextId     BigInt?  @map("context_id")
+  contextIdType String?  @map("context_id_type")
+  description   String?  @map("description")
+  firstPartyId  Int?     @map("first_party_id")
+  secondPartyId Int?     @map("second_party_id")
+  tax           Decimal? @map("tax") @db.Decimal(28, 2)
+  taxReceiverId Int?     @map("tax_receiver_id")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@id([characterId, journalId])
+  @@index([characterId])
+  @@index([date])
+  @@map("wallet_journal")
+}
+
+/// Extracted lines from a plan commit for matching reconciliation
+model PlanCommitLine {
+  id                   String     @id @default(uuid()) @map("id")
+  commitId             String     @map("commit_id")
+  commit               PlanCommit @relation(fields: [commitId], references: [id], onDelete: Cascade)
+  typeId               Int        @map("type_id")
+  sourceStationId      Int        @map("source_station_id")
+  destinationStationId Int        @map("destination_station_id")
+  plannedUnits         Int        @map("planned_units")
+  unitCost             Decimal    @map("unit_cost") @db.Decimal(28, 2)
+  unitProfit           Decimal    @map("unit_profit") @db.Decimal(28, 2)
+  createdAt            DateTime   @default(now()) @map("created_at")
+  updatedAt            DateTime   @updatedAt @map("updated_at")
+
+  @@index([commitId])
+  @@index([typeId, destinationStationId])
+  @@map("plan_commit_lines")
 }

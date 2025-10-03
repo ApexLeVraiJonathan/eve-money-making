@@ -14,4 +14,10 @@ export class JobsController {
   async staleness() {
     return this.jobs.backfillMissingTrades(15);
   }
+
+  @Get('wallets/run')
+  async runWallets() {
+    await this.jobs.runWalletImportsAndReconcile();
+    return { ok: true };
+  }
 }

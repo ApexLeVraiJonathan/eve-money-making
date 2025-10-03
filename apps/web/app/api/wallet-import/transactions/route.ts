@@ -5,28 +5,22 @@ const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE ||
   "http://localhost:3000";
 
-export async function POST(req: NextRequest) {
+export async function GET(req: NextRequest) {
   try {
-    const payload = await req.json();
-    const res = await fetch(`${API_BASE}/arbitrage/plan-packages`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(payload),
+    const url = new URL(req.url);
+    const characterId = url.searchParams.get("characterId");
+    const qs = characterId
+      ? `?characterId=${encodeURIComponent(characterId)}`
+      : "";
+    const res = await fetch(`${API_BASE}/wallet-import/transactions${qs}`, {
       cache: "no-store",
     });
     const data = await res.json();
     return NextResponse.json(data, { status: res.status });
   } catch (err) {
     return NextResponse.json(
-      { error: "Failed to fetch plan from API", details: `${err}` },
+      { error: "Failed to fetch transactions", details: `${err}` },
       { status: 500 }
     );
   }
 }
-
-
-
-
-
-
-

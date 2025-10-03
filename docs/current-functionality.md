@@ -46,6 +46,23 @@ Monorepo with NestJS API (`apps/api`) and Next.js UI (`apps/web`). Primary featu
       - optional Authorization injection for authed character calls (via `characterId`).
   - `PrismaModule`
     - `prisma.service.ts` provides Prisma client.
+  - `LedgerModule`
+    - Endpoints in `ledger.controller.ts`:
+      - `POST /ledger/cycles` (create), `GET /ledger/cycles` (list)
+      - `POST /ledger/entries` (append), `GET /ledger/entries?cycleId=` (list)
+      - `GET /ledger/nav/:cycleId` (compute NAV totals)
+    - `ledger.service.ts` implements Cycle CRUD‑lite and NAV aggregation.
+  - `WalletModule`
+    - Endpoints in `wallet.controller.ts`:
+      - `GET /wallet-import/character?characterId=` (import one)
+      - `GET /wallet-import/all` (import for all linked characters)
+    - `wallet.service.ts` ingests ESI wallet transactions and journal with idempotent inserts.
+  - `ReconciliationModule`
+    - Endpoints in `reconciliation.controller.ts`:
+      - `GET /recon/commits`, `GET /recon/commits/:id`, `GET /recon/commits/:id/entries`
+      - `POST /recon/link-entry` (manual link)
+      - `POST /recon/reconcile` (auto‑create ledger entries from wallet and auto‑link to nearby `PlanCommit`s)
+    - `reconciliation.service.ts` implements linking heuristics and cycle selection.
 
 ### Data model (Prisma)
 
@@ -56,6 +73,7 @@ Monorepo with NestJS API (`apps/api`) and Next.js UI (`apps/web`). Primary featu
 - `User`: app users (single‑user today).
 - `EveCharacter`: linked characters (id, name, owner hash) → optional relation to `User`.
 - `CharacterToken`: per‑character token record (access/refresh, expiry, scopes); refresh token encrypted with AES‑GCM.
+- `PlanCommit`, `Cycle`, `CycleLedgerEntry`, `WalletTransaction`, `WalletJournalEntry`, `PlanCommitLine` added.
 
 ## Frontend (Next.js)
 
@@ -92,6 +110,9 @@ Monorepo with NestJS API (`apps/api`) and Next.js UI (`apps/web`). Primary featu
 
 ## Gaps vs roadmap
 
-- SSO and character linking implemented; tokens encrypted and auto‑refreshed. Basic wallet test endpoint added.
-- No Cycle or ledger entities yet; no reconciliation of plan→actual.
+- SSO and character linking implemented; tokens encrypted and auto‑refreshed. Wallet import and reconciliation endpoints added.
+- Cycles and ledger implemented; missing a public `closeCycle` HTTP endpoint (service exists).
+- Auto‑linking uses time/station/type heuristics; accuracy improves once `PlanCommitLine` extraction is populated at commit‑time.
+- ESI ergonomics: split of markets/universe clients still pending.
+- Logging: capture `WWW-Authenticate` on ESI 401s and include `reqId` in Import logs.
 - No investor/read‑only roles; single‑user assumptions.

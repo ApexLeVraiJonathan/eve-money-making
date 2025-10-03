@@ -1,4 +1,10 @@
-import { Module, Logger, MiddlewareConsumer } from '@nestjs/common';
+import {
+  Module,
+  Logger,
+  MiddlewareConsumer,
+  Controller,
+  Get,
+} from '@nestjs/common';
 import { ImportModule } from './import/import.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { DataImportModule } from '@shared/data-import';
@@ -9,6 +15,17 @@ import { EsiModule } from './esi/esi.module';
 import { JobsModule } from './jobs/jobs.module';
 import { RequestIdMiddleware } from './common/request-id.middleware';
 import { AuthModule } from './auth/auth.module';
+import { LedgerModule } from './ledger/ledger.module';
+import { ReconciliationModule } from './reconciliation/reconciliation.module';
+import { WalletModule } from './wallet/wallet.module';
+
+@Controller('health')
+class HealthController {
+  @Get()
+  ping() {
+    return { ok: true };
+  }
+}
 
 @Module({
   imports: [
@@ -21,8 +38,11 @@ import { AuthModule } from './auth/auth.module';
     EsiModule,
     JobsModule,
     AuthModule,
+    LedgerModule,
+    ReconciliationModule,
+    WalletModule,
   ],
-  controllers: [],
+  controllers: [HealthController],
   providers: [Logger],
 })
 export class AppModule {

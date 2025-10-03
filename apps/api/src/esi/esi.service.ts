@@ -508,6 +508,12 @@ export class EsiService {
               const resHeaders = normalizeHeaders(headersRaw);
               this.updateErrorBudget(resHeaders);
               if (status === 401) this.metrics.http401++;
+              if (status === 401) {
+                const www = resHeaders['www-authenticate'];
+                if (www) {
+                  this.logger.warn(`${pfx}ESI 401 WWW-Authenticate: ${www}`);
+                }
+              }
               try {
                 const u = new URL(url);
                 const page = u.searchParams.get('page');
