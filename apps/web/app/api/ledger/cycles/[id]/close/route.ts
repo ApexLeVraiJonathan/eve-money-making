@@ -7,10 +7,11 @@ const API_BASE =
 
 export async function POST(
   _req: Request,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
-    const res = await fetch(`${API_BASE}/ledger/cycles/${params.id}/close`, {
+    const { id } = await context.params;
+    const res = await fetch(`${API_BASE}/ledger/cycles/${id}/close`, {
       method: "POST",
       cache: "no-store",
     });

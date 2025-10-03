@@ -7,10 +7,11 @@ const API_BASE =
 
 export async function DELETE(
   _req: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
-    const res = await fetch(`${API_BASE}/auth/characters/${params.id}`, {
+    const { id } = await context.params;
+    const res = await fetch(`${API_BASE}/auth/characters/${id}`, {
       method: "DELETE",
       cache: "no-store",
     });
