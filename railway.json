@@ -3,9 +3,8 @@
   "services": [
     {
       "name": "api",
-      "rootDirectory": "apps/api",
-      "buildCommand": "pnpm install --frozen-lockfile; pnpm build; pnpm prisma generate",
-      "startCommand": "pnpm start:prod",
+      "buildCommand": "cd apps/api; pnpm install --frozen-lockfile; pnpm prisma generate; pnpm build",
+      "startCommand": "cd apps/api; pnpm prisma migrate deploy; pnpm start:prod",
       "healthcheckPath": "/health",
       "env": {
         "NODE_ENV": "production"
@@ -13,11 +12,11 @@
     },
     {
       "name": "web",
-      "rootDirectory": "apps/web",
-      "buildCommand": "pnpm install --frozen-lockfile; pnpm build",
-      "startCommand": "pnpm next start -p $PORT",
+      "buildCommand": "cd apps/web; pnpm install --frozen-lockfile; pnpm build",
+      "startCommand": "cd apps/web; pnpm next start -p $PORT",
       "env": {
-        "NODE_ENV": "production"
+        "NODE_ENV": "production",
+        "NEXT_PUBLIC_API_BASE": "https://replace-with-api-url"
       }
     }
   ]
