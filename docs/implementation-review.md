@@ -39,7 +39,7 @@ Keep the codebase small, readable, and correct. Favor explicit domain boundaries
   - Consider a small typed `EsiClient` facade for common authed calls (wallet, orders, assets) using `characterId` to reduce path string duplication. (partially done: `EsiCharactersService`)
 - Logging
   - Prefer structured messages (object context) for key steps: station loop timings, item counts, cache hits/misses; include correlation IDs per request. (in progress)
-  - Log `WWW-Authenticate` header details on 401 from ESI to surface missing scope hints. (pending)
+  - Log `WWW-Authenticate` header details on 401 from ESI to surface missing scope hints. (in progress)
   - Expose basic metrics endpoint (`GET /esi/metrics`) and on-demand cleanup (`GET /jobs/esi-cache/cleanup`) for ops visibility. (done)
 - Indexes
   - Confirm DB indexes for `MarketOrderTradeDaily(scanDate, locationId, typeId, isBuyOrder)` support current read patterns; add composite indexes if slow.
@@ -54,6 +54,7 @@ Keep the codebase small, readable, and correct. Favor explicit domain boundaries
 - `EsiService`
   - Add per‑endpoint keys for cache namespaces; expose simple typed methods for well‑known routes used by arbitrage and authed character calls. (partially done)
   - Move header normalization util to shared space (done: `src/common/http.ts`).
+  - Split into `EsiMarketsService` and `EsiUniverseService` for readability. (pending)
 
 ## Future foundation for “Cycle”
 
@@ -63,13 +64,14 @@ Keep the codebase small, readable, and correct. Favor explicit domain boundaries
   - `PlanCommit` snapshot with request/response at execution time. (done)
 - Services
   - `LedgerService` to append immutable events; derived state calculators (NAV, realized/unrealized PnL; capital/inventory split). (done)
-  - `ReconciliationService` to map wallet/orders/contracts to plan commits; manual exception workflow. (scaffolded + wallet auto‑link implemented)
+  - `ReconciliationService` to map wallet/orders/contracts to plan commits; manual exception workflow. (wallet auto‑link implemented with strict match‑first policy; orders/contracts later)
   - Reuse existing `TokenService` + `EsiService` character auth for fetching wallet/transactions/orders during reconciliation. (done)
 
 ## Docs/process
 
 - Add ADRs for key decisions (fee model, cost basis policy, caching policy). (pending)
 - Keep `docs/current-functionality.md` updated after feature changes. (in progress)
+  - Update with Cycle close endpoint/UI, Transactions/Ledger pages, and Commit status view. (done)
 
 ## Definition of Done (DoD)
 

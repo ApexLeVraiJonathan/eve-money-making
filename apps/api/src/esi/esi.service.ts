@@ -140,6 +140,16 @@ export class EsiService {
     return await this.tokens.getValidAccessToken(characterId);
   }
 
+  private async forceRotateAccessToken(
+    characterId: number,
+  ): Promise<string | null> {
+    try {
+      return await this.tokens.forceRotateAccessToken(characterId);
+    } catch {
+      return null;
+    }
+  }
+
   private async acquire(): Promise<void> {
     if (this.active < this.effectiveMaxConcurrency) {
       this.active++;
@@ -508,10 +518,102 @@ export class EsiService {
               const resHeaders = normalizeHeaders(headersRaw);
               this.updateErrorBudget(resHeaders);
               if (status === 401) this.metrics.http401++;
-              if (status === 401) {
+              if (status === 401 && opts.characterId) {
                 const www = resHeaders['www-authenticate'];
                 if (www) {
                   this.logger.warn(`${pfx}ESI 401 WWW-Authenticate: ${www}`);
+                }
+                // Attempt a one-time refresh and retry the same request with new token
+                const newToken = await this.forceRotateAccessToken(
+                  opts.characterId,
+                );
+                if (newToken) {
+                  const retryHeaders = {
+                    ...headers,
+                    Authorization: `Bearer ${newToken}`,
+                  } as Record<string, string>;
+                  const retryRes = await axios.request({
+                    ...config,
+                    headers: retryHeaders,
+                  });
+                  const retryResHeaders = normalizeHeaders(retryRes.headers);
+                  this.updateErrorBudget(retryResHeaders);
+                  if (
+                    retryRes.status === 304 &&
+                    cached &&
+                    cached.data !== undefined
+                  ) {
+                    this.metrics.http304++;
+                    const newExpires =
+                      this.parseExpires(retryResHeaders) ?? cached.expiresAt;
+                    cached.expiresAt = newExpires;
+                    this.cache.set(key, cached);
+                    if (newExpires) {
+                      await this.prisma.esiCacheEntry
+                        .update({
+                          where: { key },
+                          data: { expiresAt: new Date(newExpires) },
+                        })
+                        .catch(() => undefined);
+                    }
+                    return {
+                      data: cached.data as T,
+                      status: cached.status ?? 200,
+                      meta: {
+                        fromCache: true,
+                        etag: cached.etag,
+                        expiresAt: cached.expiresAt,
+                        headers: retryResHeaders,
+                      },
+                    };
+                  }
+                  const etag = retryResHeaders['etag'];
+                  const lastModified = retryResHeaders['last-modified'];
+                  const expiresAt = this.parseExpires(retryResHeaders);
+                  const entry: CacheEntry = {
+                    etag: etag ?? cached?.etag,
+                    lastModified: lastModified ?? cached?.lastModified,
+                    expiresAt: expiresAt ?? cached?.expiresAt,
+                    data: retryRes.data as T,
+                    status: retryRes.status,
+                  };
+                  this.cache.set(key, entry);
+                  await this.prisma.esiCacheEntry
+                    .upsert({
+                      where: { key },
+                      create: {
+                        key,
+                        etag: entry.etag ?? null,
+                        lastModified: entry.lastModified ?? null,
+                        expiresAt: entry.expiresAt
+                          ? new Date(entry.expiresAt)
+                          : null,
+                        status: entry.status ?? null,
+                        body: entry.data as object,
+                      },
+                      update: {
+                        etag: entry.etag ?? null,
+                        lastModified: entry.lastModified ?? null,
+                        expiresAt: entry.expiresAt
+                          ? new Date(entry.expiresAt)
+                          : null,
+                        status: entry.status ?? null,
+                        body: entry.data as object,
+                      },
+                    })
+                    .catch(() => undefined);
+                  if (retryRes.status >= 200 && retryRes.status < 300)
+                    this.metrics.http200++;
+                  return {
+                    data: retryRes.data as T,
+                    status: retryRes.status,
+                    meta: {
+                      fromCache: false,
+                      etag: entry.etag,
+                      expiresAt: entry.expiresAt,
+                      headers: retryResHeaders,
+                    },
+                  };
                 }
               }
               try {

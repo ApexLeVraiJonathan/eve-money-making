@@ -49,6 +49,7 @@ Monorepo with NestJS API (`apps/api`) and Next.js UI (`apps/web`). Primary featu
   - `LedgerModule`
     - Endpoints in `ledger.controller.ts`:
       - `POST /ledger/cycles` (create), `GET /ledger/cycles` (list)
+      - `POST /ledger/cycles/:id/close` (close)
       - `POST /ledger/entries` (append), `GET /ledger/entries?cycleId=` (list)
       - `GET /ledger/nav/:cycleId` (compute NAV totals)
     - `ledger.service.ts` implements Cycle CRUD‑lite and NAV aggregation.
@@ -56,13 +57,15 @@ Monorepo with NestJS API (`apps/api`) and Next.js UI (`apps/web`). Primary featu
     - Endpoints in `wallet.controller.ts`:
       - `GET /wallet-import/character?characterId=` (import one)
       - `GET /wallet-import/all` (import for all linked characters)
-    - `wallet.service.ts` ingests ESI wallet transactions and journal with idempotent inserts.
+      - `GET /wallet-import/transactions` (list enriched wallet transactions)
+      - `GET /wallet-import/journal` (list enriched wallet journal entries)
+    - `wallet.service.ts` ingests ESI wallet transactions and journal with idempotent inserts and BigInt/Decimal serialization for API responses.
   - `ReconciliationModule`
     - Endpoints in `reconciliation.controller.ts`:
-      - `GET /recon/commits`, `GET /recon/commits/:id`, `GET /recon/commits/:id/entries`
+      - `GET /recon/commits`, `GET /recon/commits/:id/status`
       - `POST /recon/link-entry` (manual link)
-      - `POST /recon/reconcile` (auto‑create ledger entries from wallet and auto‑link to nearby `PlanCommit`s)
-    - `reconciliation.service.ts` implements linking heuristics and cycle selection.
+      - `POST /recon/reconcile` (strict match‑first then write; requires `cycleId`; links to `PlanCommit` when applicable)
+    - `reconciliation.service.ts` implements matching by type/station/time window, cycle selection, and idempotent upserts via `(source, sourceId)`.
 
 ### Data model (Prisma)
 
@@ -89,7 +92,15 @@ Monorepo with NestJS API (`apps/api`) and Next.js UI (`apps/web`). Primary featu
   - Metrics & admin:
     - API `GET /esi/metrics` → in-memory counters and error budget snapshot; `GET /jobs/esi-cache/cleanup` → purge expired cache now.
     - Web proxies `apps/web/app/api/metrics/route.ts` and `apps/web/app/api/jobs/esi-cache/cleanup/route.ts`.
-    - Admin page `apps/web/app/admin/page.tsx` shows metrics and exposes cleanup.
+    - Admin page `apps/web/app/admin/page.tsx` shows metrics and staleness and provides buttons: purge cache, backfill trades, import all wallets, and reconcile wallet → ledger.
+  - Commit status:
+    - `apps/web/app/admin/commits/page.tsx` shows per‑commit totals and per‑line progress (planned vs bought/sold) with currency formatting and colors.
+  - Transactions and ledger:
+    - `apps/web/app/transactions/page.tsx` lists wallet transactions with character/type/station names; currency formatting.
+    - `apps/web/app/ledger/page.tsx` lists ledger entries for a selected cycle with a dropdown populated newest→oldest.
+    - `apps/web/app/api/ledger/entries/route.ts`, `apps/web/app/api/wallet-import/transactions/route.ts` proxy API reads.
+  - Cycles UI:
+    - `apps/web/app/cycles/page.tsx` creates and closes cycles; includes a copy‑ID button for each cycle row.
 
 ## End‑to‑end flow
 
@@ -99,7 +110,9 @@ Monorepo with NestJS API (`apps/api`) and Next.js UI (`apps/web`). Primary featu
 4. Liquidity analysis pulls recent daily trade aggregates per tracked station.
 5. Arbitrage check fetches live prices via ESI and computes opportunities with margin validation against liquidity highs, applying sell‑side fees.
 6. Planner builds destination packages within capacity and budget constraints, including shipping cost impacts and exposure caps.
-7. Web UI triggers the planner and presents grouped results with copyable shopping lists.
+7. Web UI triggers the planner and presents grouped results with copyable shopping lists; you can commit a plan snapshot.
+8. Background jobs (disabled in development) can import wallets hourly and reconcile; Admin lets you run them on‑demand.
+9. Ledger and transactions pages provide visibility; Commit status tracks planned vs executed per line.
 
 ## Notable behaviors and defaults
 
@@ -107,12 +120,13 @@ Monorepo with NestJS API (`apps/api`) and Next.js UI (`apps/web`). Primary featu
 - Fees default: sales tax ≈ 3.37%, broker fee ≈ 1.5% (applied on sell only).
 - Arbitrage quantity = recent daily volume × multiplier (default 5), bounded by source order book depth.
 - ESI concurrency adapts to error budget; conditional requests used to access `X-Pages` even on cached content.
+- Scheduled jobs perform hourly ESI cache cleanup, daily market backfill checks, and hourly wallet import + reconciliation; jobs are disabled in development.
 
 ## Gaps vs roadmap
 
 - SSO and character linking implemented; tokens encrypted and auto‑refreshed. Wallet import and reconciliation endpoints added.
-- Cycles and ledger implemented; missing a public `closeCycle` HTTP endpoint (service exists).
-- Auto‑linking uses time/station/type heuristics; accuracy improves once `PlanCommitLine` extraction is populated at commit‑time.
+- Cycles and ledger implemented with `POST /ledger/cycles/:id/close` and UI.
+- Auto‑linking uses time/station/type heuristics with a strict match‑first policy; commit enrichment continues to improve matching quality.
 - ESI ergonomics: split of markets/universe clients still pending.
-- Logging: capture `WWW-Authenticate` on ESI 401s and include `reqId` in Import logs.
+- Logging: include `reqId` across Import logs and surface 401 scope hints (in progress).
 - No investor/read‑only roles; single‑user assumptions.
