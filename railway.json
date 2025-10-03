@@ -1,0 +1,24 @@
+{
+  "$schema": "https://railway.app/railway.schema.json",
+  "services": [
+    {
+      "name": "api",
+      "rootDirectory": "apps/api",
+      "buildCommand": "pnpm install --frozen-lockfile; pnpm build; pnpm prisma generate",
+      "startCommand": "pnpm start:prod",
+      "healthcheckPath": "/health",
+      "env": {
+        "NODE_ENV": "production"
+      }
+    },
+    {
+      "name": "web",
+      "rootDirectory": "apps/web",
+      "buildCommand": "pnpm install --frozen-lockfile; pnpm build",
+      "startCommand": "pnpm next start -p $PORT",
+      "env": {
+        "NODE_ENV": "production"
+      }
+    }
+  ]
+}
