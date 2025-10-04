@@ -162,7 +162,9 @@ export class PricingService {
   }): Promise<
     Array<{
       characterId: number;
+      characterName: string;
       stationId: number;
+      stationName: string;
       updates: Array<{
         orderId: number;
         itemName: string;
@@ -174,12 +176,18 @@ export class PricingService {
     }>
   > {
     // Determine characters to check
-    const characters: Array<{ id: number }> = params.characterIds?.length
+    const characters: Array<{ id: number; name: string }> = params.characterIds
+      ?.length
       ? await this.prisma.eveCharacter.findMany({
           where: { id: { in: params.characterIds } },
-          select: { id: true },
+          select: { id: true, name: true },
         })
-      : await this.prisma.eveCharacter.findMany({ select: { id: true } });
+      : await this.prisma.eveCharacter.findMany({
+          select: { id: true, name: true },
+        });
+
+    const characterNameById = new Map<number, string>();
+    for (const c of characters) characterNameById.set(c.id, c.name);
 
     // Stations default to tracked stations
     const stationIds: number[] = params.stationIds?.length
@@ -193,7 +201,7 @@ export class PricingService {
     // Preload region per station
     const stationRows = await this.prisma.stationId.findMany({
       where: { id: { in: stationIds } },
-      select: { id: true, solarSystemId: true },
+      select: { id: true, solarSystemId: true, name: true },
     });
     const systemIds = Array.from(
       new Set(stationRows.map((s) => s.solarSystemId)),
@@ -207,6 +215,9 @@ export class PricingService {
     const regionByStation = new Map<number, number>();
     for (const s of stationRows)
       regionByStation.set(s.id, regionBySystem.get(s.solarSystemId)!);
+
+    const stationNameById = new Map<number, string>();
+    for (const s of stationRows) stationNameById.set(s.id, s.name);
 
     // Collect our own active sell orders per station and per type
     const ourOrders: Array<{
@@ -245,7 +256,9 @@ export class PricingService {
     // Get lowest competitor sells per station/type via regional feed filtered to station
     const results: Array<{
       characterId: number;
+      characterName: string;
       stationId: number;
+      stationName: string;
       updates: Array<{
         orderId: number;
         itemName: string;
@@ -333,7 +346,16 @@ export class PricingService {
       const characterId = Number(charIdStr);
       const stationId = Number(stationIdStr);
       updates.sort((a, b) => a.itemName.localeCompare(b.itemName));
-      results.push({ characterId, stationId, updates });
+      const characterName =
+        characterNameById.get(characterId) ?? String(characterId);
+      const stationName = stationNameById.get(stationId) ?? String(stationId);
+      results.push({
+        characterId,
+        characterName,
+        stationId,
+        stationName,
+        updates,
+      });
     }
 
     // Stable order by character then station

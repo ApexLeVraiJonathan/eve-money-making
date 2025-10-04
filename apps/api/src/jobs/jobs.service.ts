@@ -36,7 +36,7 @@ export class JobsService {
     );
   }
 
-  @Cron(CronExpression.EVERY_DAY_AT_2AM)
+  @Cron(CronExpression.EVERY_DAY_AT_10AM)
   async runDailyImports(): Promise<void> {
     if (!this.jobsEnabled()) {
       this.logger.debug('Skipping daily imports (jobs disabled)');

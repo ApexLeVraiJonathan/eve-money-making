@@ -6,7 +6,9 @@ import { formatIsk } from "@/lib/utils";
 
 type Group = {
   characterId: number;
+  characterName: string;
   stationId: number;
+  stationName: string;
   updates: Array<{
     orderId: number;
     itemName: string;
@@ -102,7 +104,8 @@ export default function UndercutCheckerPage() {
           {result.map((group, gi) => (
             <div key={gi} className="border rounded p-3">
               <div className="font-medium mb-2">
-                Character {group.characterId} — Station {group.stationId}
+                Character {group.characterName ?? group.characterId} — Station{" "}
+                {group.stationName ?? group.stationId}
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
