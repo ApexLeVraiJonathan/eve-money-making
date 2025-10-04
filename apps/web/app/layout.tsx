@@ -73,6 +73,18 @@ export default function RootLayout({
                   Cycles
                 </Link>
                 <Link
+                  href="/sell-appraiser"
+                  className="text-muted-foreground hover:text-foreground"
+                >
+                  Sell Appraiser
+                </Link>
+                <Link
+                  href="/undercut-checker"
+                  className="text-muted-foreground hover:text-foreground"
+                >
+                  Undercut Checker
+                </Link>
+                <Link
                   href="/admin/commits"
                   className="text-muted-foreground hover:text-foreground"
                 >

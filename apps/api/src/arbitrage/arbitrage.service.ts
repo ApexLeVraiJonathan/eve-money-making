@@ -114,7 +114,7 @@ export class ArbitrageService {
     reqId?: string,
   ): Promise<Record<string, DestinationGroup>> {
     const sourceStationId = params?.sourceStationId ?? 60003760; // Jita IV-4
-    const arbitrageMultiplier = params?.arbitrageMultiplier ?? 5;
+    const arbitrageMultiplier = params?.arbitrageMultiplier ?? 3;
     const marginValidateThreshold = params?.marginValidateThreshold ?? 50; // percent
     const minTotalProfitISK = params?.minTotalProfitISK ?? 1_000_000;
     const stationConcurrency = Math.max(1, params?.stationConcurrency ?? 4);

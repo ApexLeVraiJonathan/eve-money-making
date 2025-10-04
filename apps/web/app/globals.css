@@ -168,4 +168,10 @@
   body {
     @apply bg-background text-foreground;
   }
+  /* Ensure native select dropdowns and options match theme background */
+  select,
+  option {
+    background-color: var(--background);
+    color: var(--foreground);
+  }
 }
