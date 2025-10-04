@@ -53,7 +53,8 @@ Monorepo with NestJS API (`apps/api`) and Next.js UI (`apps/web`). Primary featu
       - `POST /ledger/cycles/:id/close` (close)
       - `POST /ledger/entries` (append), `GET /ledger/entries?cycleId=` (list)
       - `GET /ledger/nav/:cycleId` (compute NAV totals)
-    - `ledger.service.ts` implements Cycle CRUD‑lite and NAV aggregation.
+      - `GET /ledger/capital/:cycleId` (compute capital split; supports `?force=true` to bypass 1‑hour cache)
+    - `ledger.service.ts` implements Cycle CRUD‑lite, NAV aggregation, and capital computation with weighted‑average cost basis and Jita fallback; creates an Opening Balance commit on new cycles to roll over leftovers.
   - `WalletModule`
     - Endpoints in `wallet.controller.ts`:
       - `GET /wallet-import/character?characterId=` (import one)
@@ -85,6 +86,7 @@ Monorepo with NestJS API (`apps/api`) and Next.js UI (`apps/web`). Primary featu
 - `EveCharacter`: linked characters (id, name, owner hash) → optional relation to `User`.
 - `CharacterToken`: per‑character token record (access/refresh, expiry, scopes); refresh token encrypted with AES‑GCM.
 - `PlanCommit`, `Cycle`, `CycleLedgerEntry`, `WalletTransaction`, `WalletJournalEntry`, `PlanCommitLine` added.
+- `Cycle.initial_injection_isk`, `Cycle.initial_capital_isk` optional fields for initial setup; `cycle_capital_cache` stores hourly snapshots.
 
 ## Frontend (Next.js)
 
@@ -108,6 +110,7 @@ Monorepo with NestJS API (`apps/api`) and Next.js UI (`apps/web`). Primary featu
     - `apps/web/app/ledger/page.tsx` lists ledger entries for a selected cycle with a dropdown populated newest→oldest.
     - `apps/web/app/api/ledger/entries/route.ts`, `apps/web/app/api/wallet-import/transactions/route.ts` proxy API reads.
   - Cycles UI:
+    - `apps/web/app/cycles/page.tsx` supports initial injection at cycle creation and shows capital totals with per‑station breakdown; includes a Recompute button.
   - Pricing tools:
     - `apps/web/app/sell-appraiser/page.tsx` lets you paste lines and choose a destination tracked station; shows reversed input order with lowest and suggested ticked prices (currency formatted).
     - `apps/web/app/undercut-checker/page.tsx` groups non‑lowest orders by character and station and shows suggested ticked prices; station filters available.
@@ -135,7 +138,7 @@ Monorepo with NestJS API (`apps/api`) and Next.js UI (`apps/web`). Primary featu
 - Fees default: sales tax ≈ 3.37%, broker fee ≈ 1.5% (applied on sell only).
 - Arbitrage quantity = recent daily volume × multiplier (default 5), bounded by source order book depth.
 - ESI concurrency adapts to error budget; conditional requests used to access `X-Pages` even on cached content.
-- Scheduled jobs perform hourly ESI cache cleanup, daily market backfill checks, and hourly wallet import + reconciliation; jobs are disabled in development.
+- Scheduled jobs perform hourly ESI cache cleanup, daily market backfill checks, hourly wallet import + reconciliation, and hourly capital recompute for open cycles; jobs are disabled in development.
 
 ## Gaps vs roadmap
 

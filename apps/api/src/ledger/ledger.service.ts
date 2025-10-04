@@ -97,7 +97,7 @@ export class LedgerService {
     // Assets (items on market are not in assets)
     for (const cid of this.trackedCharacterIds) {
       try {
-        const assets = await this.esiChars.getAssets(cid);
+        const assets = await this.esiChars.getAssetsAll(cid);
         for (const a of assets) {
           const k2 = key(a.location_id, a.type_id);
           qtyByTypeStation.set(
@@ -112,7 +112,7 @@ export class LedgerService {
     // Active sell orders (on market)
     for (const cid of this.trackedCharacterIds) {
       try {
-        const orders = await this.esiChars.getOrders(cid);
+        const orders = await this.esiChars.getOrdersAll(cid);
         for (const o of orders) {
           if (!o.is_buy_order) {
             const k2 = key(o.location_id, o.type_id);
@@ -184,7 +184,7 @@ export class LedgerService {
       ? Number(input.initialInjectionIsk)
       : 0;
     const initialCapital = nowCap.cash + nowCap.inventory + inj;
-    return await this.prisma.cycle.create({
+    const cycle = await this.prisma.cycle.create({
       data: {
         name: input.name ?? null,
         startedAt: input.startedAt,
@@ -193,7 +193,157 @@ export class LedgerService {
           : null,
         initialCapitalIsk: initialCapital.toFixed(2),
       },
+      select: { id: true },
     });
+
+    // Build weighted-average cost positions by station/type from wallet transactions
+    type Position = { quantity: number; totalCost: number };
+    const byTypeStation = new Map<string, Position>();
+    const txs = await this.prisma.walletTransaction.findMany({
+      select: {
+        isBuy: true,
+        locationId: true,
+        typeId: true,
+        quantity: true,
+        unitPrice: true,
+      },
+      orderBy: { date: 'asc' },
+    });
+    const key = (stationId: number, typeId: number) => `${stationId}:${typeId}`;
+    for (const t of txs) {
+      const k = key(t.locationId, t.typeId);
+      const pos = byTypeStation.get(k) ?? { quantity: 0, totalCost: 0 };
+      if (t.isBuy) {
+        pos.quantity += t.quantity;
+        pos.totalCost += Number(t.unitPrice) * t.quantity;
+      } else {
+        const sellQty = Math.min(pos.quantity, t.quantity);
+        if (sellQty > 0 && pos.quantity > 0) {
+          const avg = pos.totalCost / pos.quantity;
+          pos.quantity -= sellQty;
+          pos.totalCost -= avg * sellQty;
+        }
+      }
+      byTypeStation.set(k, pos);
+    }
+
+    // Quantities from assets + active sell orders
+    const qtyByTypeStation = new Map<string, number>();
+    for (const cid of this.trackedCharacterIds) {
+      try {
+        const assets = await this.esiChars.getAssets(cid);
+        for (const a of assets) {
+          const k2 = key(a.location_id, a.type_id);
+          qtyByTypeStation.set(
+            k2,
+            (qtyByTypeStation.get(k2) ?? 0) + a.quantity,
+          );
+        }
+      } catch (e) {
+        this.logger.warn(`Assets fetch failed for ${cid}: ${String(e)}`);
+      }
+    }
+    for (const cid of this.trackedCharacterIds) {
+      try {
+        const orders = await this.esiChars.getOrders(cid);
+        for (const o of orders) {
+          if (!o.is_buy_order) {
+            const k2 = key(o.location_id, o.type_id);
+            qtyByTypeStation.set(
+              k2,
+              (qtyByTypeStation.get(k2) ?? 0) + o.volume_remain,
+            );
+          }
+        }
+      } catch (e) {
+        this.logger.warn(`Orders fetch failed for ${cid}: ${String(e)}`);
+      }
+    }
+
+    // Jita region for fallback pricing
+    let jitaRegionId: number | null = null;
+    const jitaStation = await this.prisma.stationId.findUnique({
+      where: { id: this.jitaStationId },
+      select: { solarSystemId: true },
+    });
+    if (jitaStation) {
+      const sys = await this.prisma.solarSystemId.findUnique({
+        where: { id: jitaStation.solarSystemId },
+        select: { regionId: true },
+      });
+      if (sys) jitaRegionId = sys.regionId;
+    }
+    const getJitaLowest = async (typeId: number): Promise<number | null> => {
+      if (!jitaRegionId) return null;
+      try {
+        const orders = await fetchStationOrders(this.esi, {
+          regionId: jitaRegionId,
+          typeId,
+          stationId: this.jitaStationId,
+          side: 'sell',
+        });
+        orders.sort((a, b) => a.price - b.price);
+        return orders.length ? orders[0].price : null;
+      } catch {
+        return null;
+      }
+    };
+
+    // Create Opening Balance commit with carryover items so sells can be tracked
+    const lines: Array<{
+      typeId: number;
+      sourceStationId: number;
+      destinationStationId: number;
+      plannedUnits: number;
+      unitCost: number;
+    }> = [];
+    for (const [k2, qty] of qtyByTypeStation) {
+      const [sidStr, tidStr] = k2.split(':');
+      const stationId = Number(sidStr);
+      const typeId = Number(tidStr);
+      if (!Number.isFinite(qty) || qty <= 0) continue;
+      const pos = byTypeStation.get(k2);
+      let unitCost: number | null = null;
+      if (pos && pos.quantity > 0) unitCost = pos.totalCost / pos.quantity;
+      else unitCost = await getJitaLowest(typeId);
+      if (!unitCost) continue;
+      lines.push({
+        typeId,
+        sourceStationId: stationId,
+        destinationStationId: stationId,
+        plannedUnits: Math.floor(qty),
+        unitCost: Number(unitCost.toFixed(2)),
+      });
+      if (lines.length >= 1000) break; // avoid overly large commit
+    }
+    if (lines.length) {
+      const commit = await this.prisma.planCommit.create({
+        data: {
+          request: { type: 'opening_balance', cycleId: cycle.id },
+          result: {
+            lines: lines.length,
+            generatedAt: new Date().toISOString(),
+          },
+          memo: this.rolloverOpeningCommitMemo,
+        },
+        select: { id: true },
+      });
+      await this.prisma.planCommitLine.createMany({
+        data: lines.map((l) => ({
+          commitId: commit.id,
+          typeId: l.typeId,
+          sourceStationId: l.sourceStationId,
+          destinationStationId: l.destinationStationId,
+          plannedUnits: l.plannedUnits,
+          unitCost: l.unitCost,
+          unitProfit: 0,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        })),
+      });
+    }
+
+    return cycle;
   }
 
   async listCycles() {
@@ -498,12 +648,12 @@ export class LedgerService {
       qtyByTypeStation.set(k2, (qtyByTypeStation.get(k2) ?? 0) + o.remaining);
     }
 
-    // Station name lookup
+    // Station name lookup (filter out structures/non-NPC ids > INT4 to avoid Prisma int overflow)
     const stationIds = Array.from(
       new Set(
-        Array.from(qtyByTypeStation.keys()).map((k2) =>
-          Number(k2.split(':')[0]),
-        ),
+        Array.from(qtyByTypeStation.keys())
+          .map((k2) => Number(k2.split(':')[0]))
+          .filter((id) => Number.isFinite(id) && id > 0 && id <= 2147483647),
       ),
     );
     const stations = await this.prisma.stationId.findMany({

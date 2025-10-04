@@ -6,13 +6,19 @@ const API_BASE =
   "http://localhost:3000";
 
 export async function GET(
-  _req: NextRequest,
-  { params }: { params: { id: string } }
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const res = await fetch(`${API_BASE}/ledger/capital/${params.id}`, {
-      cache: "no-store",
-    });
+    const { id } = await params;
+    const url = new URL(req.url);
+    const force = url.searchParams.get("force") === "true";
+    const res = await fetch(
+      `${API_BASE}/ledger/capital/${id}${force ? `?force=true` : ""}`,
+      {
+        cache: "no-store",
+      }
+    );
     const data = await res.json();
     return NextResponse.json(data, { status: res.status });
   } catch (err) {
@@ -25,13 +31,14 @@ export async function GET(
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const url = new URL(req.url);
     const force = url.searchParams.get("force") === "true";
+    const { id } = await params;
     const res = await fetch(
-      `${API_BASE}/ledger/capital/${params.id}${force ? `?force=true` : ""}`,
+      `${API_BASE}/ledger/capital/${id}${force ? `?force=true` : ""}`,
       { cache: "no-store" }
     );
     const data = await res.json();

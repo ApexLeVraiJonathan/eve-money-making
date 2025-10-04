@@ -4,10 +4,7 @@ A prioritized list of not‑done work. Completed items live in `docs/current-fun
 
 ### To Do
 
-- Cycle analytics (NAV and splits)
-
-  - Outcome: Compute NAV and capital/inventory/cash split; expose via API and surface in UI.
-  - Acceptance: API returns NAV with components; UI renders values for a selected cycle.
+// Testing reminder: Verify new cycle creation auto-creates Opening Balance and initial capital snapshot once ready to test.
 
 - Reconciliation breadth
 
@@ -17,6 +14,7 @@ A prioritized list of not‑done work. Completed items live in `docs/current-fun
 // Removed completed items (now listed in current-functionality.md):
 // - Sell Appraiser
 // - Undercut checker
+// - Cycle analytics (NAV and splits)
 
 ### Backlog
 

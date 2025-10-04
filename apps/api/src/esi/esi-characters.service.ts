@@ -48,6 +48,81 @@ export class EsiCharactersService {
     return Array.isArray(data) ? data : [];
   }
 
+  async getOrdersAll(
+    characterId: number,
+    reqId?: string,
+  ): Promise<
+    Array<{
+      order_id: number;
+      type_id: number;
+      is_buy_order: boolean;
+      price: number;
+      volume_remain: number;
+      location_id: number;
+      issued?: string;
+      state?: string;
+      region_id?: number;
+    }>
+  > {
+    const all: Array<{
+      order_id: number;
+      type_id: number;
+      is_buy_order: boolean;
+      price: number;
+      volume_remain: number;
+      location_id: number;
+      issued?: string;
+      state?: string;
+      region_id?: number;
+    }> = [];
+    // First page, prefer headers to get X-Pages
+    const first = await this.esi.fetchJson<
+      Array<{
+        order_id: number;
+        type_id: number;
+        is_buy_order: boolean;
+        price: number;
+        volume_remain: number;
+        location_id: number;
+        issued?: string;
+        state?: string;
+        region_id?: number;
+      }>
+    >(`/latest/characters/${characterId}/orders/`, {
+      characterId,
+      reqId,
+      preferHeaders: true,
+    });
+    if (Array.isArray(first.data)) all.push(...first.data);
+    const totalPagesStr = first.meta.headers?.['x-pages'];
+    const totalPages = totalPagesStr ? Number(totalPagesStr) : 1;
+    for (
+      let page = 2;
+      page <= (Number.isFinite(totalPages) ? totalPages : 1);
+      page++
+    ) {
+      const { data } = await this.esi.fetchJson<
+        Array<{
+          order_id: number;
+          type_id: number;
+          is_buy_order: boolean;
+          price: number;
+          volume_remain: number;
+          location_id: number;
+          issued?: string;
+          state?: string;
+          region_id?: number;
+        }>
+      >(`/latest/characters/${characterId}/orders/`, {
+        characterId,
+        reqId,
+        query: { page },
+      });
+      if (Array.isArray(data)) all.push(...data);
+    }
+    return all;
+  }
+
   async getAssets(
     characterId: number,
     reqId?: string,
@@ -75,6 +150,68 @@ export class EsiCharactersService {
       reqId,
     });
     return Array.isArray(data) ? data : [];
+  }
+
+  async getAssetsAll(
+    characterId: number,
+    reqId?: string,
+  ): Promise<
+    Array<{
+      item_id: number;
+      type_id: number;
+      location_id: number;
+      location_flag: string;
+      quantity: number;
+      is_singleton?: boolean;
+    }>
+  > {
+    const all: Array<{
+      item_id: number;
+      type_id: number;
+      location_id: number;
+      location_flag: string;
+      quantity: number;
+      is_singleton?: boolean;
+    }> = [];
+    const first = await this.esi.fetchJson<
+      Array<{
+        item_id: number;
+        type_id: number;
+        location_id: number;
+        location_flag: string;
+        quantity: number;
+        is_singleton?: boolean;
+      }>
+    >(`/latest/characters/${characterId}/assets/`, {
+      characterId,
+      reqId,
+      preferHeaders: true,
+    });
+    if (Array.isArray(first.data)) all.push(...first.data);
+    const totalPagesStr = first.meta.headers?.['x-pages'];
+    const totalPages = totalPagesStr ? Number(totalPagesStr) : 1;
+    for (
+      let page = 2;
+      page <= (Number.isFinite(totalPages) ? totalPages : 1);
+      page++
+    ) {
+      const { data } = await this.esi.fetchJson<
+        Array<{
+          item_id: number;
+          type_id: number;
+          location_id: number;
+          location_flag: string;
+          quantity: number;
+          is_singleton?: boolean;
+        }>
+      >(`/latest/characters/${characterId}/assets/`, {
+        characterId,
+        reqId,
+        query: { page },
+      });
+      if (Array.isArray(data)) all.push(...data);
+    }
+    return all;
   }
 
   async getWalletTransactions(
