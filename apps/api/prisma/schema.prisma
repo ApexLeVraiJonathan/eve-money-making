@@ -191,9 +191,28 @@ model Cycle {
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
 
-  ledgerEntries CycleLedgerEntry[]
+  /// Optional: amount of new ISK injected at cycle start (user-provided)
+  initialInjectionIsk Decimal? @map("initial_injection_isk") @db.Decimal(28, 2)
+  /// Optional: total starting capital at cycle start (injection + carryover cash/inventory)
+  initialCapitalIsk   Decimal? @map("initial_capital_isk") @db.Decimal(28, 2)
+
+  ledgerEntries     CycleLedgerEntry[]
+  CycleCapitalCache CycleCapitalCache[]
 
   @@map("cycles")
+}
+
+/// Cached capital/NAV snapshot per cycle
+model CycleCapitalCache {
+  cycleId   String   @id @map("cycle_id")
+  asOf      DateTime @map("as_of")
+  snapshot  Json     @map("snapshot")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  cycle Cycle @relation(fields: [cycleId], references: [id], onDelete: Cascade)
+
+  @@map("cycle_capital_cache")
 }
 
 /// Ledger entries (deposits, withdrawals, executions, fees) for a cycle

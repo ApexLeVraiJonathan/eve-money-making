@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ImportService } from '../import/import.service';
 import { WalletService } from '../wallet/wallet.service';
 import { ReconciliationService } from '../reconciliation/reconciliation.service';
+import { LedgerService } from '../ledger/ledger.service';
 
 @Injectable()
 export class JobsService {
@@ -13,6 +14,7 @@ export class JobsService {
     private readonly imports: ImportService,
     private readonly wallets: WalletService,
     private readonly recon: ReconciliationService,
+    private readonly ledger: LedgerService,
   ) {}
 
   private jobsEnabled(): boolean {
@@ -67,6 +69,30 @@ export class JobsService {
     } catch (e) {
       this.logger.warn(
         `Hourly wallets/reconcile failed: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
+  }
+
+  @Cron(CronExpression.EVERY_HOUR)
+  async recomputeCapitalForOpenCycles(): Promise<void> {
+    if (!this.jobsEnabled()) {
+      this.logger.debug('Skipping capital recompute (jobs disabled)');
+      return;
+    }
+    try {
+      const openCycles = await this.prisma.cycle.findMany({
+        where: { closedAt: null },
+        select: { id: true },
+      });
+      for (const c of openCycles) {
+        await this.ledger.computeCapital(c.id, { force: true });
+      }
+      this.logger.log(
+        `Capital recompute completed for ${openCycles.length} open cycles`,
+      );
+    } catch (e) {
+      this.logger.warn(
+        `Capital recompute failed: ${e instanceof Error ? e.message : String(e)}`,
       );
     }
   }

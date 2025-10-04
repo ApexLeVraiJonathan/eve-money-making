@@ -14,6 +14,11 @@ import { z } from 'zod';
 const CreateCycleSchema = z.object({
   name: z.string().min(1).optional(),
   startedAt: z.coerce.date(),
+  // Optional in DB for back-compat; clients should provide going forward
+  initialInjectionIsk: z
+    .string()
+    .regex(/^\d+\.\d{2}$/)
+    .optional(),
 });
 type CreateCycleRequest = z.infer<typeof CreateCycleSchema>;
 
@@ -61,5 +66,14 @@ export class LedgerController {
   @Get('nav/:cycleId')
   async nav(@Param('cycleId') cycleId: string) {
     return await this.ledger.computeNav(cycleId);
+  }
+
+  @Get('capital/:cycleId')
+  async capital(
+    @Param('cycleId') cycleId: string,
+    @Query('force') force?: string,
+  ) {
+    const shouldForce = force === 'true' || force === '1' || force === 'yes';
+    return await this.ledger.computeCapital(cycleId, { force: shouldForce });
   }
 }

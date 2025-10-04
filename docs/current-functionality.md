@@ -30,14 +30,15 @@ Monorepo with NestJS API (`apps/api`) and Next.js UI (`apps/web`). Primary featu
       - `POST /liquidity/check` computes sell‑side liquidity per tracked station with window coverage and ISK value thresholds.
       - `POST /liquidity/item-stats` returns per‑day buy/sell stats and window averages for a given item/station set.
     - `liquidity.service.ts` aggregates `MarketOrderTradeDaily` rows, enforces coverage thresholds, and returns `LiquidityItemDto[]` per station.
-  - `ArbitrageModule`
-    - Endpoints in `arbitrage.controller.ts`:
-      - `POST /arbitrage/check` discovers opportunities using liquidity, live ESI price checks, and fee‑adjusted margins.
-      - `POST /arbitrage/plan-packages` transforms opportunities into capacity‑bounded packages across destinations.
-    - `arbitrage.service.ts`:
-      - Fetches best sell prices at source and destination via `EsiService` with paging and caching.
-      - Computes arbitrage quantities (recent daily volume × multiplier, limited by available depth) and fee‑adjusted margins.
-      - Plans packages using `libs/arbitrage-packager` with m3 capacities, shipping costs, risk caps, and allocation options.
+- `ArbitrageModule`
+
+  - Endpoints in `arbitrage.controller.ts`:
+    - `POST /arbitrage/check` discovers opportunities using liquidity, live ESI price checks, and fee‑adjusted margins.
+    - `POST /arbitrage/plan-packages` transforms opportunities into capacity‑bounded packages across destinations.
+  - `arbitrage.service.ts`:
+    - Fetches best sell prices at source and destination via `EsiService` with paging and caching.
+    - Computes arbitrage quantities (recent daily volume × multiplier, limited by available depth) and fee‑adjusted margins.
+    - Plans packages using `libs/arbitrage-packager` with m3 capacities, shipping costs, risk caps, and allocation options.
   - `EsiModule`
     - `esi.service.ts` wraps axios with:
       - ETag/Expires caching backed by `EsiCacheEntry` table,
@@ -61,6 +62,13 @@ Monorepo with NestJS API (`apps/api`) and Next.js UI (`apps/web`). Primary featu
       - `GET /wallet-import/journal` (list enriched wallet journal entries)
     - `wallet.service.ts` ingests ESI wallet transactions and journal with idempotent inserts and BigInt/Decimal serialization for API responses.
   - `ReconciliationModule`
+  - `PricingModule`
+
+    - Endpoints in `pricing.controller.ts`:
+
+      - `POST /pricing/sell-appraise` parses pasted lines in the form "itemName qty", resolves item types, fetches the lowest current sell at the destination station or falls back to the latest `market_order_trades_daily.high`, and returns a tick‑correct suggested sell price strictly below the reference price per the 4 significant‑digit rule.
+      - `POST /pricing/undercut-check` fetches our characters' active sell orders, finds the station‑local lowest competitor price (excluding our own orders), and returns per‑character/per‑station updates sorted by item name with tick‑correct suggested prices one step below the competitor.
+
     - Endpoints in `reconciliation.controller.ts`:
       - `GET /recon/commits`, `GET /recon/commits/:id/status`
       - `POST /recon/link-entry` (manual link)
@@ -100,6 +108,13 @@ Monorepo with NestJS API (`apps/api`) and Next.js UI (`apps/web`). Primary featu
     - `apps/web/app/ledger/page.tsx` lists ledger entries for a selected cycle with a dropdown populated newest→oldest.
     - `apps/web/app/api/ledger/entries/route.ts`, `apps/web/app/api/wallet-import/transactions/route.ts` proxy API reads.
   - Cycles UI:
+  - Pricing tools:
+    - `apps/web/app/sell-appraiser/page.tsx` lets you paste lines and choose a destination tracked station; shows reversed input order with lowest and suggested ticked prices (currency formatted).
+    - `apps/web/app/undercut-checker/page.tsx` groups non‑lowest orders by character and station and shows suggested ticked prices; station filters available.
+  - Proxy routes:
+    - `apps/web/app/api/pricing/sell-appraise/route.ts` → `POST /pricing/sell-appraise` (uses `API_BASE_URL || NEXT_PUBLIC_API_BASE || http://localhost:3000`).
+    - `apps/web/app/api/pricing/undercut-check/route.ts` → `POST /pricing/undercut-check`.
+    - `apps/web/app/api/tracked-stations/route.ts` → `GET /tracked-stations`.
     - `apps/web/app/cycles/page.tsx` creates and closes cycles; includes a copy‑ID button for each cycle row.
 
 ## End‑to‑end flow

@@ -15,8 +15,26 @@ type Cycle = {
 export default function CyclesPage() {
   const [cycles, setCycles] = React.useState<Cycle[]>([]);
   const [name, setName] = React.useState("");
+  const [initialInjection, setInitialInjection] = React.useState<string>("");
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [capital, setCapital] = React.useState<null | {
+    cycleId: string;
+    asOf: string;
+    capital: {
+      total: string;
+      cash: string;
+      inventory: string;
+      percentSplit: { cash: number; inventory: number };
+    };
+    initialInvestment: string | null;
+    inventoryBreakdown: Array<{
+      stationId: number;
+      stationName: string;
+      value: string;
+    }>;
+    notes: string[];
+  }>(null);
 
   const load = async () => {
     setError(null);
@@ -34,6 +52,20 @@ export default function CyclesPage() {
     void load();
   }, []);
 
+  const loadCapital = async (cycleId: string, force?: boolean) => {
+    try {
+      const res = await fetch(
+        `/api/ledger/cycles/${cycleId}/capital${force ? `?force=true` : ""}`,
+        { cache: "no-store" }
+      );
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || res.statusText);
+      setCapital(data);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
   const startCycle = async () => {
     setLoading(true);
     setError(null);
@@ -44,11 +76,16 @@ export default function CyclesPage() {
         body: JSON.stringify({
           name: name || undefined,
           startedAt: new Date().toISOString(),
+          initialInjectionIsk:
+            initialInjection && !Number.isNaN(Number(initialInjection))
+              ? Number(initialInjection).toFixed(2)
+              : undefined,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || res.statusText);
       setName("");
+      setInitialInjection("");
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -86,6 +123,11 @@ export default function CyclesPage() {
               placeholder="Optional name (e.g. Cycle 6)"
               value={name}
               onChange={(e) => setName(e.target.value)}
+            />
+            <Input
+              placeholder="Initial injection ISK (required)"
+              value={initialInjection}
+              onChange={(e) => setInitialInjection(e.target.value)}
             />
             <Button onClick={() => void startCycle()} disabled={loading}>
               Start
@@ -130,6 +172,13 @@ export default function CyclesPage() {
                         Close
                       </Button>
                     )}
+                    <Button
+                      variant="secondary"
+                      onClick={() => void loadCapital(c.id)}
+                      disabled={loading}
+                    >
+                      View Capital
+                    </Button>
                     <button
                       className="px-2 py-1 text-xs rounded border"
                       onClick={() => navigator.clipboard.writeText(c.id)}
@@ -144,6 +193,53 @@ export default function CyclesPage() {
           )}
         </CardContent>
       </Card>
+
+      {capital && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Capital</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            <div className="flex items-center gap-4">
+              <div>
+                Total: {Number(capital.capital.total).toLocaleString()} ISK
+              </div>
+              <div>
+                Cash: {Number(capital.capital.cash).toLocaleString()} ISK
+              </div>
+              <div>
+                Inventory: {Number(capital.capital.inventory).toLocaleString()}{" "}
+                ISK
+              </div>
+              <Button
+                variant="secondary"
+                onClick={() => void loadCapital(capital.cycleId, true)}
+              >
+                Recompute
+              </Button>
+            </div>
+            <div className="text-xs text-muted-foreground">
+              As of {new Date(capital.asOf).toLocaleString()} • Split: Cash{" "}
+              {capital.capital.percentSplit.cash}% / Inventory{" "}
+              {capital.capital.percentSplit.inventory}% • Initial Investment:{" "}
+              {capital.initialInvestment ?? "—"}
+            </div>
+            <div className="mt-2">
+              <div className="font-medium">Inventory by station</div>
+              <div className="grid grid-cols-1 gap-1">
+                {capital.inventoryBreakdown.map((b) => (
+                  <div key={b.stationId} className="flex justify-between">
+                    <span>
+                      {b.stationName} (#{b.stationId})
+                    </span>
+                    <span>{Number(b.value).toLocaleString()} ISK</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
