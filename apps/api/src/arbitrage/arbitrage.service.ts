@@ -16,8 +16,9 @@ import type {
 } from './dto/opportunity.dto';
 import type { PlanPackagesRequest } from './dto/plan-packages-request.dto';
 import type { ArbitrageCheckRequest } from './dto/check-request.dto';
-import { applySellFees, computeUnitNetProfit } from './fees';
+import { getEffectiveSell, computeUnitNetProfit } from './fees';
 import { round2 } from '../common/money';
+import { AppConfig } from '../common/config';
 
 @Injectable()
 export class ArbitrageService {
@@ -113,14 +114,26 @@ export class ArbitrageService {
     params?: ArbitrageCheckRequest,
     reqId?: string,
   ): Promise<Record<string, DestinationGroup>> {
-    const sourceStationId = params?.sourceStationId ?? 60003760; // Jita IV-4
-    const arbitrageMultiplier = params?.arbitrageMultiplier ?? 3;
-    const marginValidateThreshold = params?.marginValidateThreshold ?? 50; // percent
-    const minTotalProfitISK = params?.minTotalProfitISK ?? 1_000_000;
-    const stationConcurrency = Math.max(1, params?.stationConcurrency ?? 4);
-    const itemConcurrency = Math.max(1, params?.itemConcurrency ?? 20);
-    const salesTaxPercent = params?.salesTaxPercent ?? 3.37;
-    const brokerFeePercent = params?.brokerFeePercent ?? 1.5;
+    const defaults = AppConfig.arbitrage();
+    const sourceStationId = params?.sourceStationId ?? defaults.sourceStationId; // Jita IV-4
+    const arbitrageMultiplier =
+      params?.arbitrageMultiplier ?? defaults.multiplier;
+    const marginValidateThreshold =
+      params?.marginValidateThreshold ?? defaults.marginValidateThreshold; // percent
+    const minTotalProfitISK =
+      params?.minTotalProfitISK ?? defaults.minTotalProfitISK;
+    const stationConcurrency = Math.max(
+      1,
+      params?.stationConcurrency ?? defaults.stationConcurrency,
+    );
+    const itemConcurrency = Math.max(
+      1,
+      params?.itemConcurrency ?? defaults.itemConcurrency,
+    );
+    const salesTaxPercent =
+      params?.salesTaxPercent ?? defaults.fees.salesTaxPercent;
+    const brokerFeePercent =
+      params?.brokerFeePercent ?? defaults.fees.brokerFeePercent;
     const feeInputs = { salesTaxPercent, brokerFeePercent };
 
     // Get liquidity for all tracked stations with defaults
@@ -235,7 +248,7 @@ export class ArbitrageService {
               // Apply sell-side fees to destination price only
               const effectiveDestPrice =
                 destinationPrice !== null
-                  ? applySellFees(destinationPrice, feeInputs)
+                  ? getEffectiveSell(destinationPrice, feeInputs)
                   : null;
 
               const netProfitISK =

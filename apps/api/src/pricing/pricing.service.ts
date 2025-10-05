@@ -4,6 +4,7 @@ import { EsiService } from '../esi/esi.service';
 import { EsiCharactersService } from '../esi/esi-characters.service';
 import { fetchStationOrders } from '../esi/market-helpers';
 import { nextCheaperTick } from '../common/money';
+import { getEffectiveSell } from '../arbitrage/fees';
 
 @Injectable()
 export class PricingService {
@@ -142,7 +143,15 @@ export class PricingService {
         if (latest?.high) lowest = Number(latest.high);
       }
 
-      const suggested = lowest !== null ? nextCheaperTick(lowest) : null;
+      const suggested =
+        lowest !== null
+          ? nextCheaperTick(
+              getEffectiveSell(lowest, {
+                salesTaxPercent: 0,
+                brokerFeePercent: 0,
+              }),
+            )
+          : null;
 
       results.push({
         itemName: p.name,

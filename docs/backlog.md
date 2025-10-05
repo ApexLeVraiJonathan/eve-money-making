@@ -6,16 +6,6 @@ A prioritized list of not‑done work. Completed items live in `docs/current-fun
 
 // Testing reminder: Verify new cycle creation auto-creates Opening Balance and initial capital snapshot once ready to test.
 
-- Reconciliation breadth
-
-  - Outcome: Extend reconciliation to match orders/fills and contracts to plan lines with tolerances.
-  - Acceptance: Links created/updated with `matchStatus`; ambiguous cases flagged for manual review.
-
-// Removed completed items (now listed in current-functionality.md):
-// - Sell Appraiser
-// - Undercut checker
-// - Cycle analytics (NAV and splits)
-
 ### Backlog
 
 - Cycle lifecycle and state

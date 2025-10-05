@@ -22,13 +22,18 @@ export class ReconciliationController {
   constructor(private readonly svc: ReconciliationService) {}
 
   @Get('commits')
-  async listCommits(
-    @Query('limit') limit?: string,
-    @Query('offset') offset?: string,
-  ) {
-    const l = limit ? Number(limit) : 25;
-    const o = offset ? Number(offset) : 0;
-    return await this.svc.listCommits(l, o);
+  @UsePipes(
+    new ZodValidationPipe(
+      z
+        .object({
+          limit: z.coerce.number().int().min(1).max(200).optional(),
+          offset: z.coerce.number().int().min(0).optional(),
+        })
+        .strict(),
+    ),
+  )
+  async listCommits(@Query() query: { limit?: number; offset?: number }) {
+    return await this.svc.listCommits(query.limit ?? 25, query.offset ?? 0);
   }
 
   @Get('commits/:id')
@@ -37,8 +42,21 @@ export class ReconciliationController {
   }
 
   @Get('commits/:id/entries')
-  async listLinked(@Param('id') id: string) {
-    return await this.svc.listLinkedEntries(id);
+  @UsePipes(
+    new ZodValidationPipe(
+      z
+        .object({
+          limit: z.coerce.number().int().min(1).max(1000).optional(),
+          offset: z.coerce.number().int().min(0).optional(),
+        })
+        .strict(),
+    ),
+  )
+  async listLinked(
+    @Param('id') id: string,
+    @Query() query: { limit?: number; offset?: number },
+  ) {
+    return await this.svc.listLinkedEntries(id, query.limit, query.offset);
   }
 
   @Post('link-entry')

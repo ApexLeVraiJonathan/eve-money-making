@@ -25,9 +25,15 @@ export class JobsService {
     return process.env.NODE_ENV === 'production';
   }
 
+  private jobFlag(key: string, fallback: boolean): boolean {
+    const v = process.env[key];
+    if (v === undefined) return fallback;
+    return v === 'true' || v === '1' || v === 'yes';
+  }
+
   @Cron(CronExpression.EVERY_HOUR)
   async runEsiCacheCleanup(): Promise<void> {
-    if (!this.jobsEnabled()) {
+    if (!this.jobsEnabled() || !this.jobFlag('JOB_CLEANUP_ENABLED', true)) {
       this.logger.debug('Skipping ESI cache cleanup (jobs disabled)');
       return;
     }
@@ -40,7 +46,10 @@ export class JobsService {
 
   @Cron(CronExpression.EVERY_DAY_AT_10AM)
   async runDailyImports(): Promise<void> {
-    if (!this.jobsEnabled()) {
+    if (
+      !this.jobsEnabled() ||
+      !this.jobFlag('JOB_DAILY_IMPORTS_ENABLED', true)
+    ) {
       this.logger.debug('Skipping daily imports (jobs disabled)');
       return;
     }
@@ -58,7 +67,7 @@ export class JobsService {
 
   @Cron(CronExpression.EVERY_HOUR)
   async runWalletImportsAndReconcile(): Promise<void> {
-    if (!this.jobsEnabled()) {
+    if (!this.jobsEnabled() || !this.jobFlag('JOB_WALLETS_ENABLED', true)) {
       this.logger.debug('Skipping wallets import/reconcile (jobs disabled)');
       return;
     }
@@ -75,7 +84,7 @@ export class JobsService {
 
   @Cron(CronExpression.EVERY_HOUR)
   async recomputeCapitalForOpenCycles(): Promise<void> {
-    if (!this.jobsEnabled()) {
+    if (!this.jobsEnabled() || !this.jobFlag('JOB_CAPITAL_ENABLED', true)) {
       this.logger.debug('Skipping capital recompute (jobs disabled)');
       return;
     }

@@ -1,3 +1,14 @@
+### Contents
+
+- Overview
+- Backend (NestJS)
+- Frontend (Next.js)
+- Data model (Prisma)
+- End‑to‑end flow
+- Notable behaviors and defaults
+- Rules and conventions
+- Gaps vs roadmap
+
 ## Overview
 
 Monorepo with NestJS API (`apps/api`) and Next.js UI (`apps/web`). Primary features: market data imports, liquidity analysis, arbitrage opportunity discovery, and multi‑destination package planning.
@@ -136,9 +147,46 @@ Monorepo with NestJS API (`apps/api`) and Next.js UI (`apps/web`). Primary featu
 
 - Source station default: 60003760 (Jita 4‑4); configurable in requests.
 - Fees default: sales tax ≈ 3.37%, broker fee ≈ 1.5% (applied on sell only).
-- Arbitrage quantity = recent daily volume × multiplier (default 5), bounded by source order book depth.
+- Arbitrage quantity = recent daily volume × multiplier (default 3), bounded by source order book depth.
 - ESI concurrency adapts to error budget; conditional requests used to access `X-Pages` even on cached content.
 - Scheduled jobs perform hourly ESI cache cleanup, daily market backfill checks, hourly wallet import + reconciliation, and hourly capital recompute for open cycles; jobs are disabled in development.
+
+### Newly added behaviors (P1)
+
+- ESI paged helper
+  - `EsiService.fetchPaged` exposes `X-Pages` as `totalPages` and normalizes headers; `market-helpers.fetchStationOrders` now uses it.
+- Wallet list pagination
+  - `GET /wallet-import/transactions` and `GET /wallet-import/journal` support `sinceDays`, `limit` (max 1000), and `offset`, with Zod validation.
+- Error envelope
+  - Global exception filter returns `{ error, message, reqId }` for server errors and appends `reqId` to validation responses.
+- Ledger/Reconciliation pagination
+  - `GET /ledger/entries?cycleId=&limit=&offset=` returns paginated enriched ledger rows.
+  - `GET /recon/commits?limit=&offset=` uses Zod validation; `GET /recon/commits/:id/entries?limit=&offset=` is paginated.
+- Fee helper usage
+  - `getEffectiveSell` is used in arbitrage for net‑of‑fees calculations and in pricing before tick snapping (fees currently set to 0 there).
+- Background jobs toggles
+  - Global `ENABLE_JOBS` controls whether any cron runs (default: true in production). Per-job flags: `JOB_CLEANUP_ENABLED`, `JOB_DAILY_IMPORTS_ENABLED`, `JOB_WALLETS_ENABLED`, `JOB_CAPITAL_ENABLED`.
+- Observability breadcrumbs
+  - ESI requests log debug breadcrumbs with `reqId` on success and retry; logging interceptor provides request-level timing lines.
+
+## Rules and conventions (keep consistent going forward)
+
+- Request correlation
+  - Web proxies must forward or generate `x-request-id`; API echoes it back and logs it. Keep this in any new routes.
+- Configuration defaults
+  - Use `apps/api/src/common/config.ts` for defaults (source station, multipliers, thresholds, fees). Prefer config over literals.
+- Validation
+  - Use `ZodValidationPipe` for all request bodies and query params (especially lists/pagination). Return `{ error: 'ValidationError', issues }` shape on bad input.
+- Logging
+  - Keep the global logging interceptor enabled. Log as single lines: `[reqId=] METHOD PATH -> STATUS ms`.
+- ESI cache controls
+  - Respect `ESI_MEM_CACHE_MAX` and `ESI_MEM_CACHE_SWEEP_MS`. Avoid adding parallel in-memory caches elsewhere.
+- Decimal/BigInt serialization
+  - Continue returning Prisma `Decimal`/`BigInt` as strings in API responses; keep UI expecting strings for monetary/ID values.
+- Code quality & DX
+  - API `tsconfig.json` has `noImplicitAny: true`; Web ESLint extends Prettier recommended.
+- Security
+  - `ENCRYPTION_KEY` is required for token encryption (AES‑GCM). Do not log secrets; keep secrets in env.
 
 ## Gaps vs roadmap
 

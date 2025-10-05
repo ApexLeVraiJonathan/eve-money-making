@@ -384,7 +384,11 @@ export class LedgerService {
     });
   }
 
-  async listEntriesEnriched(cycleId: string): Promise<
+  async listEntriesEnriched(
+    cycleId: string,
+    limit?: number,
+    offset?: number,
+  ): Promise<
     Array<{
       id: string;
       occurredAt: Date;
@@ -402,6 +406,8 @@ export class LedgerService {
     const rows = await this.prisma.cycleLedgerEntry.findMany({
       where: { cycleId },
       orderBy: { occurredAt: 'desc' },
+      take: Math.min(Math.max(limit ?? 500, 1), 1000),
+      skip: Math.max(offset ?? 0, 0),
       select: {
         id: true,
         occurredAt: true,

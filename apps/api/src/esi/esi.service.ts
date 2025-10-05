@@ -57,6 +57,7 @@ export class EsiService {
   );
 
   private readonly cache = new Map<string, CacheEntry>();
+  private readonly memCacheMax = Number(process.env.ESI_MEM_CACHE_MAX ?? 5000);
   private readonly inflight = new Map<string, Promise<unknown>>();
   private readonly metrics = {
     cacheHitMem: 0,
@@ -102,7 +103,12 @@ export class EsiService {
     private readonly logger: Logger,
     private readonly prisma: PrismaService,
     private readonly tokens: TokenService,
-  ) {}
+  ) {
+    const intervalMs = Number(process.env.ESI_MEM_CACHE_SWEEP_MS ?? 300_000);
+    if (intervalMs > 0) {
+      setInterval(() => this.sweepExpiredFromMemCache(), intervalMs).unref?.();
+    }
+  }
 
   getMetricsSnapshot(): {
     cacheHitMem: number;
@@ -157,6 +163,48 @@ export class EsiService {
     }
     await new Promise<void>((resolve) => this.waiters.push(resolve));
     this.active++;
+  }
+
+  /**
+   * Fetch a single page and expose total pages via X-Pages header when present.
+   */
+  async fetchPaged<T>(
+    path: string,
+    opts: FetchOptions & { page: number },
+  ): Promise<{ data: T; totalPages: number | null; meta: FetchMeta }> {
+    const { data, meta } = await this.fetchJson<T>(path, {
+      ...opts,
+      query: { ...(opts.query ?? {}), page: opts.page },
+      preferHeaders: true,
+    });
+    let totalPages: number | null = null;
+    const xp = meta.headers?.['x-pages'];
+    if (typeof xp === 'string') {
+      const n = Number(xp);
+      if (!Number.isNaN(n) && n > 0) totalPages = n;
+    }
+    return { data, totalPages, meta };
+  }
+
+  private pruneMemCacheIfNeeded(): void {
+    const overBy = this.cache.size - this.memCacheMax;
+    if (overBy <= 0) return;
+    // Drop oldest entries by insertion order (Map preserves insertion order)
+    let toDrop = overBy;
+    for (const k of this.cache.keys()) {
+      this.cache.delete(k);
+      toDrop--;
+      if (toDrop <= 0) break;
+    }
+  }
+
+  private sweepExpiredFromMemCache(): void {
+    const now = Date.now();
+    for (const [k, v] of this.cache.entries()) {
+      if (typeof v.expiresAt === 'number' && v.expiresAt <= now) {
+        this.cache.delete(k);
+      }
+    }
   }
 
   private release(): void {
@@ -386,33 +434,162 @@ export class EsiService {
         while (true) {
           try {
             const res = await axios.request(config);
+            if (opts.reqId) {
+              this.logger.debug(
+                `[reqId=${opts.reqId}] ESI ${config.method?.toString().toUpperCase()} ${url} -> ${res.status}`,
+              );
+            }
             const resHeaders = normalizeHeaders(res.headers);
 
             this.updateErrorBudget(resHeaders);
 
-            // 304: use cache, but still use headers for metadata (including Expires/X-Pages)
-            if (res.status === 304 && cached && cached.data !== undefined) {
+            // 304: no body returned. Use cached body from memory or DB; update headers/expiry.
+            if (res.status === 304) {
               this.metrics.http304++;
+              const dbBody = dbEntry?.body as unknown | undefined;
+              const bodyFromCache =
+                cached?.data !== undefined ? cached.data : dbBody;
+              const currentStatus = (cached?.status ??
+                dbEntry?.status ??
+                200) as number;
+              const etag =
+                resHeaders['etag'] ??
+                cached?.etag ??
+                dbEntry?.etag ??
+                undefined;
+              const lastModified =
+                resHeaders['last-modified'] ??
+                cached?.lastModified ??
+                dbEntry?.lastModified ??
+                undefined;
               const newExpires =
-                this.parseExpires(resHeaders) ?? cached.expiresAt;
-              cached.expiresAt = newExpires;
-              this.cache.set(key, cached);
-              // Persist extended expiry
+                this.parseExpires(resHeaders) ??
+                cached?.expiresAt ??
+                (dbEntry?.expiresAt ? dbEntry.expiresAt.getTime() : undefined);
+
+              // If we have no body anywhere, do a one-off unconditional fetch to populate body
+              if (bodyFromCache === undefined) {
+                const unconditionalHeaders: Record<string, string> = {
+                  'User-Agent': this.userAgent,
+                  ...(opts.headers ?? {}),
+                };
+                if (
+                  opts.characterId &&
+                  !unconditionalHeaders['Authorization']
+                ) {
+                  const bearer = await this.getValidAccessToken(
+                    opts.characterId,
+                  );
+                  if (bearer)
+                    unconditionalHeaders['Authorization'] = `Bearer ${bearer}`;
+                }
+                const unconditionalRes = await axios.request({
+                  ...config,
+                  headers: unconditionalHeaders, // no If-None-Match
+                });
+                const unconditionalResHeaders = normalizeHeaders(
+                  unconditionalRes.headers,
+                );
+                this.updateErrorBudget(unconditionalResHeaders);
+                const unconditionalEtag =
+                  unconditionalResHeaders['etag'] ?? etag;
+                const unconditionalLastModified =
+                  unconditionalResHeaders['last-modified'] ?? lastModified;
+                const unconditionalExpires =
+                  this.parseExpires(unconditionalResHeaders) ?? newExpires;
+                const entry: CacheEntry = {
+                  etag: unconditionalEtag,
+                  lastModified: unconditionalLastModified,
+                  expiresAt: unconditionalExpires,
+                  data: unconditionalRes.data as T,
+                  status: unconditionalRes.status,
+                };
+                this.cache.set(key, entry);
+                this.pruneMemCacheIfNeeded();
+                await this.prisma.esiCacheEntry
+                  .upsert({
+                    where: { key },
+                    create: {
+                      key,
+                      etag: entry.etag ?? null,
+                      lastModified: entry.lastModified ?? null,
+                      expiresAt: entry.expiresAt
+                        ? new Date(entry.expiresAt)
+                        : null,
+                      status: entry.status ?? null,
+                      body: entry.data as object,
+                    },
+                    update: {
+                      etag: entry.etag ?? null,
+                      lastModified: entry.lastModified ?? null,
+                      expiresAt: entry.expiresAt
+                        ? new Date(entry.expiresAt)
+                        : null,
+                      status: entry.status ?? null,
+                      body: entry.data as object,
+                    },
+                  })
+                  .catch(() => undefined);
+                if (
+                  unconditionalRes.status >= 200 &&
+                  unconditionalRes.status < 300
+                )
+                  this.metrics.http200++;
+                return {
+                  data: unconditionalRes.data as T,
+                  status: unconditionalRes.status,
+                  meta: {
+                    fromCache: false,
+                    etag: entry.etag,
+                    expiresAt: entry.expiresAt,
+                    headers: unconditionalResHeaders,
+                  },
+                };
+              }
+
+              // We do have a body from mem or DB; refresh mem cache and extend DB expiry
+              const entry: CacheEntry = {
+                etag,
+                lastModified,
+                expiresAt: newExpires,
+                data: bodyFromCache,
+                status: currentStatus,
+              };
+              this.cache.set(key, entry);
+              this.pruneMemCacheIfNeeded();
               if (newExpires) {
                 await this.prisma.esiCacheEntry
-                  .update({
+                  .upsert({
                     where: { key },
-                    data: { expiresAt: new Date(newExpires) },
+                    create: {
+                      key,
+                      etag: entry.etag ?? null,
+                      lastModified: entry.lastModified ?? null,
+                      expiresAt: entry.expiresAt
+                        ? new Date(entry.expiresAt)
+                        : null,
+                      status: entry.status ?? null,
+                      body: entry.data as object,
+                    },
+                    update: {
+                      etag: entry.etag ?? null,
+                      lastModified: entry.lastModified ?? null,
+                      expiresAt: entry.expiresAt
+                        ? new Date(entry.expiresAt)
+                        : null,
+                      status: entry.status ?? null,
+                      body: entry.data as object,
+                    },
                   })
                   .catch(() => undefined);
               }
               return {
-                data: cached.data as T,
-                status: cached.status ?? 200,
+                data: entry.data as T,
+                status: entry.status ?? 200,
                 meta: {
                   fromCache: true,
-                  etag: cached.etag,
-                  expiresAt: cached.expiresAt,
+                  etag: entry.etag,
+                  expiresAt: entry.expiresAt,
                   headers: resHeaders,
                 },
               };
@@ -430,6 +607,7 @@ export class EsiService {
               status: res.status,
             };
             this.cache.set(key, entry);
+            this.pruneMemCacheIfNeeded();
 
             // Persist in DB
             await this.prisma.esiCacheEntry
@@ -536,33 +714,147 @@ export class EsiService {
                     ...config,
                     headers: retryHeaders,
                   });
+                  if (opts.reqId) {
+                    this.logger.debug(
+                      `[reqId=${opts.reqId}] ESI RETRY ${config.method?.toString().toUpperCase()} ${url} -> ${retryRes.status}`,
+                    );
+                  }
                   const retryResHeaders = normalizeHeaders(retryRes.headers);
                   this.updateErrorBudget(retryResHeaders);
-                  if (
-                    retryRes.status === 304 &&
-                    cached &&
-                    cached.data !== undefined
-                  ) {
+                  if (retryRes.status === 304) {
                     this.metrics.http304++;
+                    const dbBody = dbEntry?.body as unknown | undefined;
+                    const bodyFromCache =
+                      cached?.data !== undefined ? cached.data : dbBody;
+                    const currentStatus = (cached?.status ??
+                      dbEntry?.status ??
+                      200) as number;
+                    const etag =
+                      retryResHeaders['etag'] ??
+                      cached?.etag ??
+                      dbEntry?.etag ??
+                      undefined;
+                    const lastModified =
+                      retryResHeaders['last-modified'] ??
+                      cached?.lastModified ??
+                      dbEntry?.lastModified ??
+                      undefined;
                     const newExpires =
-                      this.parseExpires(retryResHeaders) ?? cached.expiresAt;
-                    cached.expiresAt = newExpires;
-                    this.cache.set(key, cached);
+                      this.parseExpires(retryResHeaders) ??
+                      cached?.expiresAt ??
+                      (dbEntry?.expiresAt
+                        ? dbEntry.expiresAt.getTime()
+                        : undefined);
+
+                    if (bodyFromCache === undefined) {
+                      const unconditionalHeaders: Record<string, string> = {
+                        'User-Agent': this.userAgent,
+                        ...(opts.headers ?? {}),
+                      };
+                      const unconditionalRes = await axios.request({
+                        ...config,
+                        headers: unconditionalHeaders, // no If-None-Match
+                      });
+                      const unconditionalResHeaders = normalizeHeaders(
+                        unconditionalRes.headers,
+                      );
+                      this.updateErrorBudget(unconditionalResHeaders);
+                      const entry: CacheEntry = {
+                        etag: unconditionalResHeaders['etag'] ?? etag,
+                        lastModified:
+                          unconditionalResHeaders['last-modified'] ??
+                          lastModified,
+                        expiresAt:
+                          this.parseExpires(unconditionalResHeaders) ??
+                          newExpires,
+                        data: unconditionalRes.data as T,
+                        status: unconditionalRes.status,
+                      };
+                      this.cache.set(key, entry);
+                      this.pruneMemCacheIfNeeded();
+                      await this.prisma.esiCacheEntry
+                        .upsert({
+                          where: { key },
+                          create: {
+                            key,
+                            etag: entry.etag ?? null,
+                            lastModified: entry.lastModified ?? null,
+                            expiresAt: entry.expiresAt
+                              ? new Date(entry.expiresAt)
+                              : null,
+                            status: entry.status ?? null,
+                            body: entry.data as object,
+                          },
+                          update: {
+                            etag: entry.etag ?? null,
+                            lastModified: entry.lastModified ?? null,
+                            expiresAt: entry.expiresAt
+                              ? new Date(entry.expiresAt)
+                              : null,
+                            status: entry.status ?? null,
+                            body: entry.data as object,
+                          },
+                        })
+                        .catch(() => undefined);
+                      if (
+                        unconditionalRes.status >= 200 &&
+                        unconditionalRes.status < 300
+                      )
+                        this.metrics.http200++;
+                      return {
+                        data: unconditionalRes.data as T,
+                        status: unconditionalRes.status,
+                        meta: {
+                          fromCache: false,
+                          etag: entry.etag,
+                          expiresAt: entry.expiresAt,
+                          headers: unconditionalResHeaders,
+                        },
+                      };
+                    }
+
+                    const entry: CacheEntry = {
+                      etag,
+                      lastModified,
+                      expiresAt: newExpires,
+                      data: bodyFromCache,
+                      status: currentStatus,
+                    };
+                    this.cache.set(key, entry);
+                    this.pruneMemCacheIfNeeded();
                     if (newExpires) {
                       await this.prisma.esiCacheEntry
-                        .update({
+                        .upsert({
                           where: { key },
-                          data: { expiresAt: new Date(newExpires) },
+                          create: {
+                            key,
+                            etag: entry.etag ?? null,
+                            lastModified: entry.lastModified ?? null,
+                            expiresAt: entry.expiresAt
+                              ? new Date(entry.expiresAt)
+                              : null,
+                            status: entry.status ?? null,
+                            body: entry.data as object,
+                          },
+                          update: {
+                            etag: entry.etag ?? null,
+                            lastModified: entry.lastModified ?? null,
+                            expiresAt: entry.expiresAt
+                              ? new Date(entry.expiresAt)
+                              : null,
+                            status: entry.status ?? null,
+                            body: entry.data as object,
+                          },
                         })
                         .catch(() => undefined);
                     }
                     return {
-                      data: cached.data as T,
-                      status: cached.status ?? 200,
+                      data: entry.data as T,
+                      status: entry.status ?? 200,
                       meta: {
                         fromCache: true,
-                        etag: cached.etag,
-                        expiresAt: cached.expiresAt,
+                        etag: entry.etag,
+                        expiresAt: entry.expiresAt,
                         headers: retryResHeaders,
                       },
                     };
@@ -578,6 +870,7 @@ export class EsiService {
                     status: retryRes.status,
                   };
                   this.cache.set(key, entry);
+                  this.pruneMemCacheIfNeeded();
                   await this.prisma.esiCacheEntry
                     .upsert({
                       where: { key },

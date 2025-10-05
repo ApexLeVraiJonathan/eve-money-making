@@ -30,3 +30,13 @@ export function computeUnitNetProfit(
   const sellNet = applySellFees(unitSellGross, fees);
   return sellNet - unitBuyCost;
 }
+
+/**
+ * Returns the effective sell price after applying fee defaults; helper to keep rules consistent
+ */
+export function getEffectiveSell(
+  grossSellPrice: number,
+  fees: FeeInputs,
+): number {
+  return applySellFees(grossSellPrice, fees);
+}

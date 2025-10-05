@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import crypto from "node:crypto";
 
 const API_BASE =
   process.env.API_BASE_URL ||
@@ -8,14 +9,18 @@ const API_BASE =
 export async function POST(req: NextRequest) {
   try {
     const payload = await req.json();
+    const reqId = req.headers.get("x-request-id") || crypto.randomUUID();
     const res = await fetch(`${API_BASE}/arbitrage/commit`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", "x-request-id": reqId },
       body: JSON.stringify(payload),
       cache: "no-store",
     });
     const data = await res.json();
-    return NextResponse.json(data, { status: res.status });
+    return NextResponse.json(data, {
+      status: res.status,
+      headers: { "x-request-id": reqId },
+    });
   } catch (err) {
     return NextResponse.json(
       { error: "Failed to commit plan", details: `${err}` },

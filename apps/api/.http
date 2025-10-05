@@ -77,10 +77,10 @@ POST http://localhost:3000/liquidity/item-stats HTTP/1.1
 content-type: application/json
 
 {
-  "itemName": "IFFA Compact Damage Control",
+  "itemName": "Minmatar Drone Specialization",
   //"itemId": 40520,
   //"stationName": "Rens VI - Moon 8 - Brutor Tribe Treasury",
-  "stationId": 60005686,
+  "stationId": 60011866,
   //"isBuyOrder": true,
   "windowDays": 7
 }

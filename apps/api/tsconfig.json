@@ -18,22 +18,14 @@
     "skipLibCheck": true,
     "strictNullChecks": true,
     "forceConsistentCasingInFileNames": true,
-    "noImplicitAny": false,
+    "noImplicitAny": true,
     "strictBindCallApply": false,
     "noFallthroughCasesInSwitch": false,
     "paths": {
-      "@app/arbitrage-packager": [
-        "libs/arbitrage-packager/src"
-      ],
-      "@app/arbitrage-packager/*": [
-        "libs/arbitrage-packager/src/*"
-      ],
-      "@shared/data-import": [
-        "libs/data-import/src"
-      ],
-      "@shared/data-import/*": [
-        "libs/data-import/src/*"
-      ]
+      "@app/arbitrage-packager": ["libs/arbitrage-packager/src"],
+      "@app/arbitrage-packager/*": ["libs/arbitrage-packager/src/*"],
+      "@shared/data-import": ["libs/data-import/src"],
+      "@shared/data-import/*": ["libs/data-import/src/*"]
     }
   }
 }

@@ -59,8 +59,30 @@ export class LedgerController {
   }
 
   @Get('entries')
-  async list(@Query('cycleId') cycleId: string) {
-    return await this.ledger.listEntriesEnriched(cycleId);
+  @UsePipes(
+    new ZodValidationPipe(
+      z
+        .object({
+          cycleId: z.string().uuid(),
+          limit: z.coerce.number().int().min(1).max(1000).optional(),
+          offset: z.coerce.number().int().min(0).optional(),
+        })
+        .strict(),
+    ),
+  )
+  async list(
+    @Query()
+    query: {
+      cycleId: string;
+      limit?: number;
+      offset?: number;
+    },
+  ) {
+    return await this.ledger.listEntriesEnriched(
+      query.cycleId,
+      query.limit,
+      query.offset,
+    );
   }
 
   @Get('nav/:cycleId')

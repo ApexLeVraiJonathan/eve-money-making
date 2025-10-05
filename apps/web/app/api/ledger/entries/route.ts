@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import crypto from "node:crypto";
 
 const API_BASE =
   process.env.API_BASE_URL ||
@@ -15,6 +16,10 @@ export async function GET(req: NextRequest) {
       `${API_BASE}/ledger/entries?cycleId=${encodeURIComponent(cycleId)}`,
       {
         cache: "no-store",
+        headers: {
+          "x-request-id":
+            req.headers.get("x-request-id") || crypto.randomUUID(),
+        },
       }
     );
     const data = await res.json();

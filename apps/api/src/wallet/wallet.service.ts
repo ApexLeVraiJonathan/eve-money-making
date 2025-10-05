@@ -108,6 +108,8 @@ export class WalletService {
   async listTransactions(
     characterId?: number,
     since?: Date,
+    limit?: number,
+    offset?: number,
   ): Promise<
     Array<{
       characterId: number;
@@ -129,7 +131,8 @@ export class WalletService {
         ...(since ? { date: { gte: since } } : {}),
       },
       orderBy: { date: 'desc' },
-      take: 500,
+      take: Math.min(Math.max(limit ?? 500, 1), 1000),
+      skip: Math.max(offset ?? 0, 0),
       select: {
         characterId: true,
         transactionId: true,
@@ -200,6 +203,8 @@ export class WalletService {
   async listJournal(
     characterId?: number,
     since?: Date,
+    limit?: number,
+    offset?: number,
   ): Promise<
     Array<{
       characterId: number;
@@ -218,7 +223,8 @@ export class WalletService {
         ...(since ? { date: { gte: since } } : {}),
       },
       orderBy: { date: 'desc' },
-      take: 500,
+      take: Math.min(Math.max(limit ?? 500, 1), 1000),
+      skip: Math.max(offset ?? 0, 0),
       select: {
         characterId: true,
         journalId: true,

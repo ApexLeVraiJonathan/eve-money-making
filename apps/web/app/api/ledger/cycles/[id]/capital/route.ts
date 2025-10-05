@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import crypto from "node:crypto";
 
 const API_BASE =
   process.env.API_BASE_URL ||
@@ -13,14 +14,19 @@ export async function GET(
     const { id } = await params;
     const url = new URL(req.url);
     const force = url.searchParams.get("force") === "true";
+    const reqId = req.headers.get("x-request-id") || crypto.randomUUID();
     const res = await fetch(
       `${API_BASE}/ledger/capital/${id}${force ? `?force=true` : ""}`,
       {
         cache: "no-store",
+        headers: { "x-request-id": reqId },
       }
     );
     const data = await res.json();
-    return NextResponse.json(data, { status: res.status });
+    return NextResponse.json(data, {
+      status: res.status,
+      headers: { "x-request-id": reqId },
+    });
   } catch (err) {
     return NextResponse.json(
       { error: "Failed to fetch capital", details: `${err}` },
@@ -37,12 +43,16 @@ export async function POST(
     const url = new URL(req.url);
     const force = url.searchParams.get("force") === "true";
     const { id } = await params;
+    const reqId = req.headers.get("x-request-id") || crypto.randomUUID();
     const res = await fetch(
       `${API_BASE}/ledger/capital/${id}${force ? `?force=true` : ""}`,
-      { cache: "no-store" }
+      { cache: "no-store", headers: { "x-request-id": reqId } }
     );
     const data = await res.json();
-    return NextResponse.json(data, { status: res.status });
+    return NextResponse.json(data, {
+      status: res.status,
+      headers: { "x-request-id": reqId },
+    });
   } catch (err) {
     return NextResponse.json(
       { error: "Failed to recompute capital", details: `${err}` },

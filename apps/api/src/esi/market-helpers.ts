@@ -22,7 +22,7 @@ export async function fetchStationOrders(
   let totalPages: number | null = null;
   const out: Array<{ price: number; volume: number }> = [];
   for (;;) {
-    const { data, meta } = await esi.fetchJson<
+    const { data, totalPages: tp } = await esi.fetchPaged<
       Array<{
         order_id: number;
         type_id: number;
@@ -32,14 +32,11 @@ export async function fetchStationOrders(
         location_id: number;
       }>
     >(`/latest/markets/${params.regionId}/orders/`, {
-      query: { order_type: params.side, type_id: params.typeId, page },
-      preferHeaders: true,
+      page,
+      query: { order_type: params.side, type_id: params.typeId },
       reqId: params.reqId,
     });
-    if (meta?.headers && typeof meta.headers['x-pages'] === 'string') {
-      const xp = Number(meta.headers['x-pages']);
-      if (!Number.isNaN(xp) && xp > 0) totalPages = xp;
-    }
+    if (tp !== null && totalPages === null) totalPages = tp;
     if (!Array.isArray(data) || data.length === 0) break;
     for (const o of data) {
       const isSell = !o.is_buy_order;

@@ -37,3 +37,18 @@ Notes:
 
 - ESI best practices: include a real contact in your User-Agent to help CCP identify and reach you if needed.
   - `AppName/semver (contact; +source-url)` is a good pattern.
+
+### Security
+
+- ENCRYPTION_KEY: Secret used to derive the AES-GCM key for token encryption.
+  - Example:
+    - `ENCRYPTION_KEY=please-use-a-long-random-secret`
+
+### Jobs (optional toggles)
+
+- ENABLE_JOBS: Enable all cron jobs (default true in production). `true|false|1|0|yes|no`.
+  - `ENABLE_JOBS=true`
+- JOB_CLEANUP_ENABLED: Enable hourly ESI cache cleanup (default true).
+- JOB_DAILY_IMPORTS_ENABLED: Enable daily market backfill check (default true).
+- JOB_WALLETS_ENABLED: Enable hourly wallet import + reconciliation (default true).
+- JOB_CAPITAL_ENABLED: Enable hourly capital recompute for open cycles (default true).

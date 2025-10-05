@@ -8,6 +8,7 @@ import {
   Query,
 } from '@nestjs/common';
 import type { Request } from 'express';
+import { z } from 'zod';
 import type { PlanResult } from '../../libs/arbitrage-packager/src/interfaces/packager.interfaces';
 import { ArbitrageService } from './arbitrage.service';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
@@ -59,12 +60,20 @@ export class ArbitrageController {
   }
 
   @Get('commits')
-  async commits(
-    @Query('limit') limit?: string,
-    @Query('offset') offset?: string,
-  ) {
-    const l = limit ? Number(limit) : undefined;
-    const o = offset ? Number(offset) : undefined;
-    return this.arbitrageService.listCommits({ limit: l, offset: o });
+  @UsePipes(
+    new ZodValidationPipe(
+      z
+        .object({
+          limit: z.coerce.number().int().min(1).max(200).optional(),
+          offset: z.coerce.number().int().min(0).optional(),
+        })
+        .strict(),
+    ),
+  )
+  async commits(@Query() query: { limit?: number; offset?: number }) {
+    return this.arbitrageService.listCommits({
+      limit: query.limit,
+      offset: query.offset,
+    });
   }
 }

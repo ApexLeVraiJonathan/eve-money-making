@@ -1,10 +1,13 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import type { Prisma } from '@prisma/client';
 
 @Injectable()
 export class ReconciliationService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly logger: Logger,
+  ) {}
 
   async listCommits(limit = 25, offset = 0) {
     return await this.prisma.planCommit.findMany({
@@ -201,10 +204,12 @@ export class ReconciliationService {
     return commit;
   }
 
-  async listLinkedEntries(commitId: string) {
+  async listLinkedEntries(commitId: string, limit?: number, offset?: number) {
     return await this.prisma.cycleLedgerEntry.findMany({
       where: { planCommitId: commitId },
       orderBy: { occurredAt: 'asc' },
+      take: Math.min(Math.max(limit ?? 200, 1), 1000),
+      skip: Math.max(offset ?? 0, 0),
     });
   }
 
@@ -218,10 +223,12 @@ export class ReconciliationService {
       where: { id: entryId },
     });
     if (!entry) throw new NotFoundException('Entry not found');
-    return await this.prisma.cycleLedgerEntry.update({
+    const updated = await this.prisma.cycleLedgerEntry.update({
       where: { id: entryId },
       data: { planCommitId: commitId },
     });
+    this.logger.debug(`Linked entry ${entryId} to commit ${commitId}`);
+    return updated;
   }
 
   private async getOpenCycleIdFor(date: Date): Promise<string> {
