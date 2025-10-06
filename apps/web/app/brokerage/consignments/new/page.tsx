@@ -374,8 +374,18 @@ export default function NewConsignmentPage() {
             {items.length > 0 && (
               <TableFooter>
                 <TableRow>
-                  <TableCell colSpan={5} className="text-right font-medium">
+                  <TableCell colSpan={4} className="text-right font-medium">
                     Total
+                  </TableCell>
+                  <TableCell className="text-right font-medium text-yellow-500">
+                    {items
+                      .reduce(
+                        (sum, it) =>
+                          sum + (it.unitPrice > 0 ? feeAmount(it) : 0),
+                        0
+                      )
+                      .toLocaleString()}{" "}
+                    ISK
                   </TableCell>
                   <TableCell className="text-right font-medium text-emerald-500">
                     {items
