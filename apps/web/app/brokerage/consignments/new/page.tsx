@@ -6,13 +6,23 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { ClipboardCopy } from "lucide-react";
+import { toast } from "sonner";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { consignmentsQueryKey, createConsignment } from "../../_mock/store";
+import {
+  formatISK,
+  type Consignment,
+  type ConsignmentItem,
+} from "../../_mock/data";
 import {
   Table,
   TableBody,
@@ -117,6 +127,46 @@ export default function NewConsignmentPage() {
   const [importText, setImportText] = useState("");
   const [submitOpen, setSubmitOpen] = useState(false);
   const [submitCode, setSubmitCode] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+
+  const createMutation = useMutation({
+    mutationFn: async () => {
+      const newId = `C-${Math.floor(1000 + Math.random() * 9000)}`;
+      const mappedItems: ConsignmentItem[] = items.map((it) => ({
+        type_name: it.name,
+        units: it.units,
+        unitprice: it.unitPrice,
+        listing_strategy: it.strategyCode,
+        unitsSold: 0,
+        paidOutISK: 0,
+      }));
+      const consignment: Consignment = {
+        id: newId,
+        title: title || `Consignment ${newId}`,
+        createdAt: new Date().toISOString(),
+        hub,
+        items: mappedItems,
+        status: "awaiting-contract",
+      };
+      return createConsignment(consignment);
+    },
+    onSuccess: async (created: Consignment) => {
+      await queryClient.invalidateQueries({ queryKey: consignmentsQueryKey });
+      const estimate = created.items.reduce(
+        (sum, it) => sum + it.units * it.unitprice,
+        0
+      );
+      toast.success("Consignment created", {
+        description: `${created.title} • ${created.hub} • Estimated ${formatISK(
+          estimate
+        )}`,
+      });
+      setSubmitOpen(false);
+    },
+    onError: () => {
+      toast.error("Failed to create consignment");
+    },
+  });
 
   return (
     <div className="p-6 space-y-6">
@@ -129,8 +179,8 @@ export default function NewConsignmentPage() {
         </Link>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-3">
-        <div className="grid gap-4 md:col-span-1">
+      <div className="grid gap-6 md:grid-cols-3 items-start">
+        <div className="grid gap-4 md:col-span-1 self-start">
           <div className="grid gap-1 text-sm">
             <Label className="text-muted-foreground">Title</Label>
             <Input
@@ -155,32 +205,37 @@ export default function NewConsignmentPage() {
             </select>
           </div>
 
-          <div className="grid gap-1 text-sm">
+          <div className="grid gap-2 text-sm">
             <Label className="text-muted-foreground">Listing strategy</Label>
-            <select
-              className="border rounded-md px-3 h-9 bg-transparent"
-              value={strategy.label}
-              onChange={(e) =>
-                setStrategy(
-                  STRATEGIES.find((s) => s.label === e.target.value) ??
-                    STRATEGIES[0]
-                )
-              }
-            >
-              {STRATEGIES.map((s) => (
-                <option key={s.label} value={s.label}>
-                  {s.label} — Fee {s.fee}% (Code {s.code})
-                </option>
-              ))}
-            </select>
-            <span className="text-xs text-muted-foreground">
-              {strategy.help}
-            </span>
+            <ul className="grid gap-2">
+              {STRATEGIES.map((s) => {
+                const checked = strategy.code === s.code;
+                return (
+                  <li key={s.code} className="flex items-start gap-3">
+                    <Checkbox
+                      checked={checked}
+                      onCheckedChange={() => setStrategy(s)}
+                      aria-label={`Select strategy ${s.label}`}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setStrategy(s)}
+                      className="flex flex-col items-start text-left"
+                    >
+                      <span className="text-foreground/90 font-medium">
+                        {s.label} — Fee {s.fee}% (Code {s.code})
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        {s.help}
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
           </div>
 
-          <div className="text-sm text-muted-foreground">
-            Estimated fee for this consignment: <b>{strategy.fee}%</b>
-          </div>
+          {/* Removed per UX feedback: overall consignment fee label was not useful */}
 
           <div className="flex gap-2">
             <Button
@@ -190,14 +245,14 @@ export default function NewConsignmentPage() {
             >
               Import Item List
             </Button>
-            <Sheet open={importOpen} onOpenChange={setImportOpen}>
-              <SheetContent side="right">
-                <SheetHeader>
-                  <SheetTitle>Import items from EVE inventory</SheetTitle>
-                  <SheetDescription>
+            <Dialog open={importOpen} onOpenChange={setImportOpen}>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Import items from EVE inventory</DialogTitle>
+                  <DialogDescription>
                     Paste lines like: "Item Name&lt;SPACE&gt;Quantity"
-                  </SheetDescription>
-                </SheetHeader>
+                  </DialogDescription>
+                </DialogHeader>
                 <Textarea
                   className="mt-3 h-48"
                   placeholder={
@@ -253,8 +308,8 @@ export default function NewConsignmentPage() {
                     Add to table
                   </Button>
                 </div>
-              </SheetContent>
-            </Sheet>
+              </DialogContent>
+            </Dialog>
             <Button
               variant="outline"
               size="sm"
@@ -265,25 +320,10 @@ export default function NewConsignmentPage() {
             </Button>
           </div>
 
-          <div className="mt-2 rounded-md border p-3 text-xs text-muted-foreground">
-            <div className="font-medium text-foreground mb-2">
-              Listing strategy legend
-            </div>
-            <ul className="grid gap-2">
-              {STRATEGIES.map((s) => (
-                <li key={s.code} className="flex items-center">
-                  <span className="inline-flex w-6 h-6 items-center justify-center rounded-md border mr-2 text-foreground text-xs">
-                    {s.code}
-                  </span>
-                  <span className="text-foreground/90">{s.label}</span>
-                  <span className="ml-1">— Fee {s.fee}%</span>
-                </li>
-              ))}
-            </ul>
-          </div>
+          {/* Legend removed; information is integrated with the checkbox list above */}
         </div>
 
-        <div className="overflow-x-auto md:col-span-2">
+        <div className="overflow-x-auto md:col-span-2 min-w-0">
           <Table>
             <TableHeader>
               <TableRow>
@@ -404,31 +444,36 @@ export default function NewConsignmentPage() {
         </div>
       </div>
 
-      <div className="flex items-center gap-3">
-        <Button
-          size="sm"
-          onClick={() => {
-            setSubmitCode(generateCode());
-            setSubmitOpen(true);
-          }}
-          disabled={!title || items.length === 0}
-        >
-          Submit Consignment
-        </Button>
-        <span className="text-xs text-muted-foreground">
-          Make sure title and items are filled before submitting.
-        </span>
+      <div className="sticky bottom-0 z-10 -mx-6 border-t bg-background/80 px-6 py-3 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+        <div className="flex items-center gap-3">
+          <Button
+            size="sm"
+            onClick={() => {
+              setSubmitCode(generateCode());
+              setSubmitOpen(true);
+            }}
+            disabled={!title || items.length === 0}
+          >
+            Submit Consignment
+          </Button>
+          <span className="text-xs text-muted-foreground">
+            Make sure title and items are filled before submitting.
+          </span>
+        </div>
       </div>
 
-      <Sheet open={submitOpen} onOpenChange={setSubmitOpen}>
-        <SheetContent side="bottom">
-          <SheetHeader>
-            <SheetTitle>Finalize consignment</SheetTitle>
-            <SheetDescription>
-              Please ensure the items are delivered to <b>{hub}</b>. Send an
-              Item Exchange contract to <b>{mapHubToRecipient(hub)}</b>.
-            </SheetDescription>
-          </SheetHeader>
+      <Dialog open={submitOpen} onOpenChange={setSubmitOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Finalize consignment</DialogTitle>
+            <DialogDescription>
+              <span className="text-foreground font-medium">
+                Please ensure the items are delivered to {hub}.
+              </span>{" "}
+              Send an Item Exchange contract to
+              <b> {mapHubToRecipient(hub)}</b>.
+            </DialogDescription>
+          </DialogHeader>
           <div className="text-sm mt-2">
             Include this code in the contract description:
             <div className="mt-2 flex items-center gap-2">
@@ -436,18 +481,31 @@ export default function NewConsignmentPage() {
                 {submitCode}
               </code>
               <Button
-                variant="outline"
-                size="sm"
-                onClick={() =>
-                  submitCode && navigator.clipboard.writeText(submitCode || "")
+                aria-label="Copy code"
+                variant="ghost"
+                size="icon"
+                onClick={async () => {
+                  if (!submitCode) return;
+                  await navigator.clipboard.writeText(submitCode);
+                  toast.success("Code copied");
+                }}
+              >
+                <ClipboardCopy />
+              </Button>
+            </div>
+            <div className="mt-4 flex justify-end">
+              <Button
+                onClick={() => createMutation.mutate()}
+                disabled={
+                  !title || items.length === 0 || createMutation.isPending
                 }
               >
-                Copy
+                {createMutation.isPending ? "Creating…" : "Confirm"}
               </Button>
             </div>
           </div>
-        </SheetContent>
-      </Sheet>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

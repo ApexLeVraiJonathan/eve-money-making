@@ -9,7 +9,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { useToast } from "@/components/ui/toast";
+import { toast } from "sonner";
 
 type Metrics = {
   cacheHitMem: number;
@@ -49,7 +49,6 @@ type CapitalSnapshot = {
 type WalletBalance = { characterId: number; name: string; balanceISK: number };
 
 export default function AdminPage() {
-  const { toast } = useToast();
   const [metrics, setMetrics] = React.useState<Metrics | null>(null);
   const [staleness, setStaleness] = React.useState<Staleness | null>(null);
   const [error, setError] = React.useState<string | null>(null);

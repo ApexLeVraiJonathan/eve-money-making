@@ -49,8 +49,8 @@ export const APPS: AppConfig[] = [
         url: "/brokerage/consignments",
         icon: Handshake,
         items: [
-          { title: "All", url: "/brokerage/consignments" },
           { title: "New", url: "/brokerage/consignments/new" },
+          { title: "Details", url: "/brokerage/consignments/details" },
         ],
       },
       {

@@ -1,29 +1,107 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
-import { MOCK_CONSIGNMENTS, formatISK } from "../_mock/data";
+import { useMemo } from "react";
+import { formatISK, type Consignment } from "../_mock/data";
+import { useQuery } from "@tanstack/react-query";
+import { consignmentsQueryKey, listConsignments } from "../_mock/store";
+import { Separator } from "@/components/ui/separator";
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyTitle,
+} from "@/components/ui/empty";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 
-const HUBS = ["All", "Jita 4-4", "C-N"] as const;
-const STRATEGIES = [
-  "All",
-  "Client fixed price",
-  "Cheapest (no repricing)",
-  "Cheapest + daily",
-  "Cheapest + 2x daily",
-  "Cheapest + 3x daily",
-] as const;
+// Hubs are displayed in dedicated sections; no filter needed
 
 export default function ConsignmentsListPage() {
-  const [hub, setHub] = useState<(typeof HUBS)[number]>("All");
-  const [strategy, setStrategy] = useState<(typeof STRATEGIES)[number]>("All");
-  const consignments = useMemo(() => {
-    return MOCK_CONSIGNMENTS.filter(
-      (c) =>
-        (hub === "All" || c.hub === hub) &&
-        (strategy === "All" || c.strategy === strategy)
+  const { data: allConsignments = [], isLoading } = useQuery<Consignment[]>({
+    queryKey: consignmentsQueryKey,
+    queryFn: listConsignments,
+  });
+
+  const groups = useMemo(() => {
+    const by: Record<string, Consignment[]> = { "Jita 4-4": [], "C-N": [] };
+    allConsignments.forEach((c) => by[c.hub]?.push(c));
+    return by;
+  }, [allConsignments]);
+
+  const renderGroup = (groupHub: "Jita 4-4" | "C-N") => {
+    const list = groups[groupHub] ?? [];
+    return (
+      <section className="space-y-3">
+        <h2 className="text-sm font-semibold tracking-tight text-muted-foreground">
+          {groupHub}
+        </h2>
+        {list.length === 0 ? (
+          <Empty>
+            <EmptyHeader>
+              <EmptyTitle>No consignments</EmptyTitle>
+              <EmptyDescription>
+                Start by creating a new consignment for {groupHub}.
+              </EmptyDescription>
+            </EmptyHeader>
+            <EmptyContent>
+              <Link href="/brokerage/consignments/new" className="underline">
+                Create Consignment
+              </Link>
+            </EmptyContent>
+          </Empty>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {list.map((c) => {
+              const est = c.items.reduce(
+                (s, it) => s + it.units * it.unitprice,
+                0
+              );
+              return (
+                <Link
+                  key={c.id}
+                  href={`/brokerage/consignments/details?id=${encodeURIComponent(
+                    c.id
+                  )}`}
+                  className="block hover:no-underline"
+                >
+                  <Card className="h-full hover:bg-muted/40 transition-colors">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-base font-semibold">
+                        {c.title}
+                      </CardTitle>
+                      <CardDescription>
+                        {new Date(c.createdAt).toLocaleDateString()} •{" "}
+                        <span className="text-yellow-500">{c.status}</span>
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="text-sm text-muted-foreground">
+                      <div className="flex items-center justify-between">
+                        <span>Items {c.items.length}</span>
+                        <span>
+                          Estimated{" "}
+                          <span className="text-emerald-500">
+                            {formatISK(est)}
+                          </span>
+                        </span>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </Link>
+              );
+            })}
+          </div>
+        )}
+      </section>
     );
-  }, [hub, strategy]);
+  };
+
   return (
     <div className="p-6 space-y-4">
       <div className="flex items-center justify-between">
@@ -35,61 +113,17 @@ export default function ConsignmentsListPage() {
           New consignment
         </Link>
       </div>
-      <div className="flex flex-wrap gap-3 text-sm">
-        <label className="grid gap-1">
-          <span className="text-muted-foreground">Hub</span>
-          <select
-            className="border rounded-md px-3 h-9 bg-transparent"
-            value={hub}
-            onChange={(e) => setHub(e.target.value as (typeof HUBS)[number])}
-          >
-            {HUBS.map((h) => (
-              <option key={h} value={h}>
-                {h}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="grid gap-1">
-          <span className="text-muted-foreground">Strategy</span>
-          <select
-            className="border rounded-md px-3 h-9 bg-transparent"
-            value={strategy}
-            onChange={(e) =>
-              setStrategy(e.target.value as (typeof STRATEGIES)[number])
-            }
-          >
-            {STRATEGIES.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-      <div className="grid gap-3">
-        {consignments.map((c) => (
-          <Link
-            key={c.id}
-            href={`/brokerage/consignments/${c.id}`}
-            className="rounded-md border p-4 hover:bg-muted/40"
-          >
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="font-medium">{c.title}</div>
-                <div className="text-xs text-muted-foreground">
-                  {c.hub} • {c.strategy} • Fee {c.feePercent}%
-                </div>
-              </div>
-              <div className="text-right text-sm text-muted-foreground">
-                <div>Estimated {formatISK(c.estimatedValue)}</div>
-                <div>Realized {formatISK(c.realizedValue)}</div>
-                <div>Left {formatISK(c.leftToSell)}</div>
-              </div>
-            </div>
-          </Link>
-        ))}
-      </div>
+      {/* Hub filter removed; sections below show each hub separately */}
+
+      {isLoading && (
+        <div className="text-sm text-muted-foreground">Loading…</div>
+      )}
+
+      {renderGroup("Jita 4-4")}
+
+      <Separator className="my-2" />
+
+      {renderGroup("C-N")}
     </div>
   );
 }
