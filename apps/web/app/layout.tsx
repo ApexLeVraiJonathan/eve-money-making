@@ -3,7 +3,13 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import { ToastProvider } from "@/components/ui/toast";
-import Link from "next/link";
+import { AppSidebar } from "@/components/sidebar/app-sidebar";
+import {
+  SidebarInset,
+  SidebarProvider,
+  SidebarTrigger,
+} from "@/components/ui/sidebar";
+import { ActiveAppName } from "@/components/active-app-name";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -37,62 +43,18 @@ export default function RootLayout({
           disableTransitionOnChange
         >
           <ToastProvider>
-            <header className="border-b">
-              <nav className="container mx-auto max-w-6xl p-4 flex items-center gap-4 text-sm">
-                <Link href="/" className="font-medium">
-                  Planner
-                </Link>
-                <Link
-                  href="/characters"
-                  className="text-muted-foreground hover:text-foreground"
-                >
-                  Characters
-                </Link>
-                <Link
-                  href="/admin"
-                  className="text-muted-foreground hover:text-foreground"
-                >
-                  Admin
-                </Link>
-                <Link
-                  href="/transactions"
-                  className="text-muted-foreground hover:text-foreground"
-                >
-                  Transactions
-                </Link>
-                <Link
-                  href="/ledger"
-                  className="text-muted-foreground hover:text-foreground"
-                >
-                  Ledger
-                </Link>
-                <Link
-                  href="/cycles"
-                  className="text-muted-foreground hover:text-foreground"
-                >
-                  Cycles
-                </Link>
-                <Link
-                  href="/sell-appraiser"
-                  className="text-muted-foreground hover:text-foreground"
-                >
-                  Sell Appraiser
-                </Link>
-                <Link
-                  href="/undercut-checker"
-                  className="text-muted-foreground hover:text-foreground"
-                >
-                  Undercut Checker
-                </Link>
-                <Link
-                  href="/admin/commits"
-                  className="text-muted-foreground hover:text-foreground"
-                >
-                  Commit Status
-                </Link>
-              </nav>
-            </header>
-            <main>{children}</main>
+            <SidebarProvider>
+              <AppSidebar />
+              <SidebarInset>
+                <header className="border-b">
+                  <div className="mx-auto max-w-8xl p-4 flex items-center gap-3">
+                    <SidebarTrigger />
+                    <ActiveAppName />
+                  </div>
+                </header>
+                {children}
+              </SidebarInset>
+            </SidebarProvider>
           </ToastProvider>
         </ThemeProvider>
       </body>

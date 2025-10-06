@@ -62,7 +62,7 @@ export default function UndercutCheckerPage() {
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-4">
+    <div className="max-w-4xl mx-auto space-y-4 pt-4">
       <h1 className="text-2xl font-semibold">Undercut Checker</h1>
       <div className="space-y-2">
         <Label>Stations</Label>

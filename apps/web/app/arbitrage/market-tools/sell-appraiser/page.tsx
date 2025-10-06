@@ -64,7 +64,7 @@ export default function SellAppraiserPage() {
   };
 
   return (
-    <div className="max-w-3xl mx-auto space-y-4">
+    <div className="max-w-4xl min-w-4xl mx-auto space-y-4 pt-4">
       <h1 className="text-2xl font-semibold">Sell Appraiser</h1>
       <div className="space-y-2">
         <Label>Destination</Label>
