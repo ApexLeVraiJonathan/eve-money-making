@@ -7,7 +7,12 @@ export type ConsignmentItem = {
   paidOutISK?: number; // money paid out so far
 };
 
-export type ConsignmentStatus = "awaiting-contract" | "active" | "closed";
+export type ConsignmentStatus =
+  | "Awaiting-Contract"
+  | "Awaiting-Validation"
+  | "Selling"
+  | "Closed"
+  | "Cancelled";
 
 export type Consignment = {
   id: string;
@@ -24,7 +29,7 @@ export const MOCK_CONSIGNMENTS: Consignment[] = [
     title: "Starter Modules Batch",
     createdAt: new Date().toISOString(),
     hub: "Jita 4-4",
-    status: "active",
+    status: "Selling",
     items: [
       {
         type_name: "Caldari Navy Ballistic Control System",
@@ -41,7 +46,7 @@ export const MOCK_CONSIGNMENTS: Consignment[] = [
     title: "Blueprint Copies",
     createdAt: new Date().toISOString(),
     hub: "C-N",
-    status: "awaiting-contract",
+    status: "Awaiting-Contract",
     items: [
       {
         type_name: "Heavy Missile Launcher II",
@@ -58,7 +63,7 @@ export const MOCK_CONSIGNMENTS: Consignment[] = [
     title: "Rigs and Subsystems",
     createdAt: new Date().toISOString(),
     hub: "Jita 4-4",
-    status: "active",
+    status: "Selling",
     items: [
       {
         type_name: "Medium Core Defense Field Extender I",
@@ -83,7 +88,7 @@ export const MOCK_CONSIGNMENTS: Consignment[] = [
     title: "Salvage Lot",
     createdAt: new Date().toISOString(),
     hub: "C-N",
-    status: "closed",
+    status: "Closed",
     items: [
       {
         type_name: "Tripped Power Circuit",
@@ -100,6 +105,36 @@ export const MOCK_CONSIGNMENTS: Consignment[] = [
         listing_strategy: "B",
         unitsSold: 60,
         paidOutISK: 7_200_000,
+      },
+    ],
+  },
+  {
+    id: "C-1005",
+    title: "Ammo Lot",
+    createdAt: new Date().toISOString(),
+    hub: "Jita 4-4",
+    status: "Awaiting-Validation",
+    items: [
+      {
+        type_name: "Scourge Heavy Missile",
+        units: 5000,
+        unitprice: 110,
+        listing_strategy: "A",
+      },
+    ],
+  },
+  {
+    id: "C-1006",
+    title: "Failed Contract",
+    createdAt: new Date().toISOString(),
+    hub: "C-N",
+    status: "Cancelled",
+    items: [
+      {
+        type_name: "Nanite Repair Paste",
+        units: 200,
+        unitprice: 9_800,
+        listing_strategy: "C",
       },
     ],
   },

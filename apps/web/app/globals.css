@@ -169,6 +169,14 @@
   body {
     @apply bg-background text-foreground;
   }
+  /* Subtle layered surfaces for card-like sections */
+  .surface-1 {
+    background-color: color-mix(in oklab, var(--card) 96%, black 4%);
+  }
+  .surface-2 {
+    /* Lighter than surface-1 to create layered-light effect */
+    background-color: color-mix(in oklab, var(--card) 98%, black 2%);
+  }
   /* Ensure native select dropdowns and options match theme background */
   select,
   option {

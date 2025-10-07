@@ -146,7 +146,7 @@ export default function NewConsignmentPage() {
         createdAt: new Date().toISOString(),
         hub,
         items: mappedItems,
-        status: "awaiting-contract",
+        status: "Awaiting-Contract",
       };
       return createConsignment(consignment);
     },
@@ -180,9 +180,9 @@ export default function NewConsignmentPage() {
       </div>
 
       <div className="grid gap-6 md:grid-cols-3 items-start">
-        <div className="grid gap-4 md:col-span-1 self-start">
+        <div className="grid gap-4 md:col-span-1 self-start surface-1 rounded-md border p-4">
           <div className="grid gap-1 text-sm">
-            <Label className="text-muted-foreground">Title</Label>
+            <Label>Title</Label>
             <Input
               value={title}
               onChange={(e) => setTitle(e.target.value)}
@@ -191,7 +191,7 @@ export default function NewConsignmentPage() {
           </div>
 
           <div className="grid gap-1 text-sm">
-            <Label className="text-muted-foreground">Hub</Label>
+            <Label>Hub</Label>
             <select
               className="border rounded-md px-3 h-9 bg-transparent"
               value={hub}
@@ -206,29 +206,34 @@ export default function NewConsignmentPage() {
           </div>
 
           <div className="grid gap-2 text-sm">
-            <Label className="text-muted-foreground">Listing strategy</Label>
+            <Label>Listing strategy</Label>
             <ul className="grid gap-2">
               {STRATEGIES.map((s) => {
                 const checked = strategy.code === s.code;
                 return (
-                  <li key={s.code} className="flex items-start gap-3">
-                    <Checkbox
-                      checked={checked}
-                      onCheckedChange={() => setStrategy(s)}
-                      aria-label={`Select strategy ${s.label}`}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setStrategy(s)}
-                      className="flex flex-col items-start text-left"
-                    >
-                      <span className="text-foreground/90 font-medium">
-                        {s.label} — Fee {s.fee}% (Code {s.code})
+                  <li
+                    key={s.code}
+                    className={`rounded-md border p-2 ${
+                      checked ? "ring-2 ring-primary" : ""
+                    }`}
+                  >
+                    <label className="flex items-start gap-3 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="strategy"
+                        checked={checked}
+                        onChange={() => setStrategy(s)}
+                        className="mt-1 accent-yellow-500"
+                      />
+                      <span className="flex flex-col text-left">
+                        <span className="text-foreground/90 font-medium">
+                          {s.label} — Fee {s.fee}% (Code {s.code})
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          {s.help}
+                        </span>
                       </span>
-                      <span className="text-xs text-muted-foreground">
-                        {s.help}
-                      </span>
-                    </button>
+                    </label>
                   </li>
                 );
               })}
@@ -323,7 +328,7 @@ export default function NewConsignmentPage() {
           {/* Legend removed; information is integrated with the checkbox list above */}
         </div>
 
-        <div className="overflow-x-auto md:col-span-2 min-w-0">
+        <div className="overflow-x-auto md:col-span-2 min-w-0 surface-1 rounded-md border p-4">
           <Table>
             <TableHeader>
               <TableRow>

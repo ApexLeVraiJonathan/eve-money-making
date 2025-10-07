@@ -66,17 +66,32 @@ export default function ConsignmentDetailsPage() {
           <div className="text-sm text-muted-foreground">
             Select a consignment to view details.
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 2xl:grid-cols-6 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-5 gap-3">
             {consignments.map((c) => (
               <button
                 key={c.id}
                 onClick={() => setSelectedId(c.id)}
-                className="rounded-md border p-3 text-left hover:bg-muted/40"
+                className="rounded-md border p-3 text-left surface-1 hover:bg-white/7"
               >
                 <div className="font-medium">{c.title}</div>
-                <div className="text-xs text-muted-foreground">
-                  {new Date(c.createdAt).toLocaleDateString()} • {c.status} •{" "}
-                  {c.hub}
+                <div className="text-xs flex items-center gap-2">
+                  {new Date(c.createdAt).toLocaleDateString()} •
+                  <span
+                    className={`inline-flex items-center rounded-full border px-2 py-0.5 ${
+                      c.status === "Selling"
+                        ? "border-emerald-700/50 bg-emerald-950/30 text-emerald-400"
+                        : c.status === "Awaiting-Contract"
+                        ? "border-sky-700/50 bg-sky-950/30 text-sky-400"
+                        : c.status === "Awaiting-Validation"
+                        ? "border-indigo-700/50 bg-indigo-950/30 text-indigo-400"
+                        : c.status === "Closed"
+                        ? "border-slate-700/50 bg-slate-950/30 text-slate-300"
+                        : "border-rose-700/50 bg-rose-950/30 text-rose-400"
+                    }`}
+                  >
+                    {c.status}
+                  </span>
+                  • {c.hub}
                 </div>
               </button>
             ))}
@@ -87,12 +102,12 @@ export default function ConsignmentDetailsPage() {
       {selected && (
         <div className="space-y-2">
           <div className="text-lg font-semibold">{selected.title}</div>
-          <div className="text-sm text-muted-foreground">
+          <div className="text-sm">
             {new Date(selected.createdAt).toLocaleDateString()} •{" "}
             {selected.status} • {selected.hub}
           </div>
 
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto rounded-md border surface-1 p-3">
             <Table>
               <TableHeader>
                 <TableRow>

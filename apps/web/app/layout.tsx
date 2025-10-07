@@ -11,6 +11,7 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { ActiveAppName } from "@/components/active-app-name";
+import { DynamicBreadcrumbs } from "@/components/dynamic-breadcrumbs";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -51,6 +52,7 @@ export default function RootLayout({
                   <div className="mx-auto max-w-8xl p-4 flex items-center gap-3">
                     <SidebarTrigger />
                     <ActiveAppName />
+                    <DynamicBreadcrumbs />
                   </div>
                 </header>
                 {children}

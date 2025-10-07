@@ -5,6 +5,8 @@ import {
   TableOfContents,
   PieChart,
   Map,
+  Package,
+  Home,
 } from "lucide-react";
 
 export type NavItem = {
@@ -40,14 +42,14 @@ export const APPS: AppConfig[] = [
     icon: Handshake,
     navMain: [
       {
-        title: "Dashboard",
+        title: "Overview",
         url: "/brokerage",
-        icon: Handshake,
+        icon: Home,
       },
       {
         title: "Consignments",
         url: "/brokerage/consignments",
-        icon: Handshake,
+        icon: Package,
         items: [
           { title: "New", url: "/brokerage/consignments/new" },
           { title: "Details", url: "/brokerage/consignments/details" },

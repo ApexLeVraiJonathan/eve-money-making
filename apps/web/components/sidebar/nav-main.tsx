@@ -1,5 +1,6 @@
 "use client";
 
+import * as React from "react";
 import { ChevronRight, type LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -36,6 +37,24 @@ export function NavMain({
   }[];
 }) {
   const pathname = usePathname();
+
+  // Track which parent item is expanded; keep it in sync with the route
+  const [openKey, setOpenKey] = React.useState<string | null>(null);
+
+  // Sync expansion with route changes only, so the arrow remains usable.
+  React.useEffect(() => {
+    const activeParent = items
+      .filter((it) => it.items?.length)
+      .find(
+        (it) =>
+          pathname === it.url ||
+          pathname.startsWith(`${it.url}/`) ||
+          it.items?.some(
+            (s) => pathname === s.url || pathname.startsWith(`${s.url}/`)
+          )
+      );
+    setOpenKey(activeParent ? activeParent.url : null);
+  }, [pathname, items]);
   return (
     <SidebarGroup>
       <SidebarGroupLabel>Home</SidebarGroupLabel>
@@ -44,13 +63,8 @@ export function NavMain({
           <Collapsible
             key={item.title}
             asChild
-            defaultOpen={
-              pathname === item.url ||
-              pathname.startsWith(`${item.url}/`) ||
-              item.items?.some(
-                (s) => pathname === s.url || pathname.startsWith(`${s.url}/`)
-              )
-            }
+            open={item.items?.length ? openKey === item.url : false}
+            onOpenChange={(open) => setOpenKey(open ? item.url : null)}
           >
             <SidebarMenuItem>
               <SidebarMenuButton
@@ -58,7 +72,10 @@ export function NavMain({
                 tooltip={item.title}
                 isActive={pathname === item.url}
               >
-                <Link href={item.url}>
+                <Link
+                  href={item.url}
+                  onClick={() => item.items?.length && setOpenKey(item.url)}
+                >
                   <item.icon />
                   <span>{item.title}</span>
                 </Link>
