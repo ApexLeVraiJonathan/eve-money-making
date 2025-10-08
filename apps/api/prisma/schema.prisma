@@ -13,6 +13,29 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+/// Character platform role (authorization)
+enum CharacterRole {
+  USER
+  ADMIN
+  LOGISTICS
+}
+
+/// Character function for trading workflows
+enum CharacterFunction {
+  SELLER
+  BUYER
+}
+
+/// Home market/location for convenience filtering
+enum CharacterLocation {
+  JITA
+  DODIXIE
+  AMARR
+  HEK
+  RENS
+  CN
+}
+
 model TypeId {
   id        Int      @id @map("type_id")
   published Boolean
@@ -143,6 +166,9 @@ model EveCharacter {
   ownerHash String   @map("owner_hash")
   userId    String?  @map("user_id")
   user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  role      CharacterRole      @default(USER) @map("role")
+  function  CharacterFunction? @map("function")
+  location  CharacterLocation? @map("location")
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 

@@ -42,11 +42,6 @@ import {
 import { getApps, getActiveAppByPathname } from "@/app/apps.config";
 
 const data = {
-  user: {
-    name: "shadcn",
-    email: "m@example.com",
-    avatar: "/avatars/shadcn.jpg",
-  },
   navSecondary: [
     {
       title: "Support",
@@ -65,6 +60,26 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const pathname = usePathname();
   const apps = getApps();
   const activeApp = getActiveAppByPathname(pathname ?? "/");
+  const [isAdmin, setIsAdmin] = React.useState<boolean>(false);
+
+  React.useEffect(() => {
+    let cancel = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/auth/characters", { cache: "no-store" });
+        const body = (await res.json()) as {
+          characters?: Array<{ role?: string }>;
+        };
+        const admin = (body.characters ?? []).some((c) => c.role === "ADMIN");
+        if (!cancel) setIsAdmin(admin);
+      } catch {
+        if (!cancel) setIsAdmin(false);
+      }
+    })();
+    return () => {
+      cancel = true;
+    };
+  }, []);
 
   return (
     <Sidebar variant="inset" {...props}>
@@ -85,8 +100,13 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                   size="sm"
                   className="h-8 gap-2 w-28 justify-start"
                 >
-                  <activeApp.icon className="h-4 w-4 shrink-0" />
-                  <span className="text-sm truncate">{activeApp.label}</span>
+                  {(() => {
+                    const Icon = (activeApp?.icon ?? TableOfContents) as any;
+                    return <Icon className="h-4 w-4 shrink-0" />;
+                  })()}
+                  <span className="text-sm truncate">
+                    {activeApp?.label ?? "Choose app"}
+                  </span>
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" side="right" className="w-64">
@@ -109,12 +129,14 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         </div>
       </SidebarHeader>
       <SidebarContent>
-        <NavMain items={activeApp.navMain} />
-        {activeApp.admin ? <NavAdmin items={activeApp.admin} /> : null}
+        {activeApp ? <NavMain items={activeApp.navMain} /> : null}
+        {activeApp?.admin && isAdmin ? (
+          <NavAdmin items={activeApp.admin} />
+        ) : null}
         <NavSecondary items={data.navSecondary} className="mt-auto" />
       </SidebarContent>
       <SidebarFooter>
-        <NavUser user={data.user} />
+        <NavUser />
       </SidebarFooter>
     </Sidebar>
   );

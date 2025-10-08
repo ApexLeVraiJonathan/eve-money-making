@@ -43,6 +43,7 @@ function prettify(segment: string): string {
 export function DynamicBreadcrumbs() {
   const pathname = usePathname() ?? "/";
   const app = getActiveAppByPathname(pathname);
+  if (!app) return null;
   const titleLookup = buildTitleLookup();
 
   // Remove query/hash and app base path

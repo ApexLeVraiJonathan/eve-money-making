@@ -1,20 +1,15 @@
 "use client";
 
-import {
-  Folder,
-  MoreHorizontal,
-  Share,
-  Trash2,
-  type LucideIcon,
-} from "lucide-react";
+import * as React from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { ChevronRight, type LucideIcon } from "lucide-react";
 
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import {
   SidebarGroup,
   SidebarGroupLabel,
@@ -22,7 +17,9 @@ import {
   SidebarMenuAction,
   SidebarMenuButton,
   SidebarMenuItem,
-  useSidebar,
+  SidebarMenuSub,
+  SidebarMenuSubButton,
+  SidebarMenuSubItem,
 } from "@/components/ui/sidebar";
 
 export function NavAdmin({
@@ -32,57 +29,82 @@ export function NavAdmin({
     name: string;
     url: string;
     icon: LucideIcon;
+    items?: { name: string; url: string; icon?: LucideIcon }[];
   }[];
 }) {
-  const { isMobile } = useSidebar();
+  const pathname = usePathname();
+  const [openKey, setOpenKey] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    const activeParent = items
+      .filter((it) => it.items?.length)
+      .find(
+        (it) =>
+          pathname === it.url ||
+          pathname.startsWith(`${it.url}/`) ||
+          it.items?.some(
+            (s) => pathname === s.url || pathname.startsWith(`${s.url}/`)
+          )
+      );
+    setOpenKey(activeParent ? activeParent.url : null);
+  }, [pathname, items]);
 
   return (
     <SidebarGroup className="group-data-[collapsible=icon]:hidden">
       <SidebarGroupLabel>Admin</SidebarGroupLabel>
       <SidebarMenu>
         {items.map((item) => (
-          <SidebarMenuItem key={item.name}>
-            <SidebarMenuButton asChild>
-              <a href={item.url}>
-                <item.icon />
-                <span>{item.name}</span>
-              </a>
-            </SidebarMenuButton>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <SidebarMenuAction showOnHover>
-                  <MoreHorizontal />
-                  <span className="sr-only">More</span>
-                </SidebarMenuAction>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent
-                className="w-48"
-                side={isMobile ? "bottom" : "right"}
-                align={isMobile ? "end" : "start"}
+          <Collapsible
+            key={item.name}
+            asChild
+            open={item.items?.length ? openKey === item.url : false}
+            onOpenChange={(open) => setOpenKey(open ? item.url : null)}
+          >
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                asChild
+                tooltip={item.name}
+                isActive={pathname === item.url}
               >
-                <DropdownMenuItem>
-                  <Folder className="text-muted-foreground" />
-                  <span>Open</span>
-                </DropdownMenuItem>
-                <DropdownMenuItem>
-                  <Share className="text-muted-foreground" />
-                  <span>Share</span>
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem>
-                  <Trash2 className="text-muted-foreground" />
-                  <span>Remove</span>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </SidebarMenuItem>
+                <Link
+                  href={item.url}
+                  onClick={() => item.items?.length && setOpenKey(item.url)}
+                >
+                  <item.icon />
+                  <span>{item.name}</span>
+                </Link>
+              </SidebarMenuButton>
+              {item.items?.length ? (
+                <>
+                  <CollapsibleTrigger asChild>
+                    <SidebarMenuAction className="data-[state=open]:rotate-90">
+                      <ChevronRight />
+                      <span className="sr-only">Toggle</span>
+                    </SidebarMenuAction>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
+                    <SidebarMenuSub>
+                      {item.items?.map((sub) => {
+                        const subActive =
+                          pathname === sub.url ||
+                          pathname.startsWith(`${sub.url}/`);
+                        return (
+                          <SidebarMenuSubItem key={sub.name}>
+                            <SidebarMenuSubButton asChild isActive={subActive}>
+                              <Link href={sub.url}>
+                                <span>{sub.name}</span>
+                              </Link>
+                            </SidebarMenuSubButton>
+                          </SidebarMenuSubItem>
+                        );
+                      })}
+                    </SidebarMenuSub>
+                  </CollapsibleContent>
+                </>
+              ) : null}
+            </SidebarMenuItem>
+          </Collapsible>
         ))}
-        <SidebarMenuItem>
-          <SidebarMenuButton>
-            <MoreHorizontal />
-            <span>More</span>
-          </SidebarMenuButton>
-        </SidebarMenuItem>
       </SidebarMenu>
     </SidebarGroup>
   );

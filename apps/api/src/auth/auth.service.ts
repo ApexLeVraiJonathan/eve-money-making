@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access */
 import axios from 'axios';
 import { PrismaService } from '../prisma/prisma.service';
 import { CryptoUtil } from '../common/crypto.util';
@@ -150,6 +150,9 @@ export class AuthService {
       ownerHash: string;
       accessTokenExpiresAt: string | null;
       scopes: string | null;
+      role: string;
+      function: string | null;
+      location: string | null;
     }>
   > {
     const rows = await this.prisma.eveCharacter.findMany({
@@ -176,6 +179,9 @@ export class AuthService {
       accessTokenExpiresAt:
         r.token?.accessTokenExpiresAt?.toISOString() ?? null,
       scopes: r.token?.scopes ?? null,
+      role: (r as any).role ?? 'USER',
+      function: (r as any).function ?? null,
+      location: (r as any).location ?? null,
     }));
   }
 

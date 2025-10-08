@@ -7,6 +7,10 @@ import {
   Map,
   Package,
   Home,
+  Recycle,
+  UserCheck,
+  BadgeDollarSign,
+  NotebookPen,
 } from "lucide-react";
 
 export type NavItem = {
@@ -16,10 +20,17 @@ export type NavItem = {
   items?: { title: string; url: string }[];
 };
 
+export type AdminSubItem = {
+  name: string;
+  url: string;
+  icon?: LucideIcon;
+};
+
 export type AdminItem = {
   name: string;
   url: string;
   icon: LucideIcon;
+  items?: AdminSubItem[];
 };
 
 export type AppConfig = {
@@ -75,25 +86,43 @@ export const APPS: AppConfig[] = [
     icon: CircleDollarSign,
     navMain: [
       {
-        title: "Market Tools",
-        url: "/arbitrage/market-tools",
+        title: "Overview",
+        url: "/arbitrage",
         icon: CircleDollarSign,
-        items: [
-          {
-            title: "Sell Appraiser",
-            url: "/arbitrage/market-tools/sell-appraiser",
-          },
-          {
-            title: "Undercut Checker",
-            url: "/arbitrage/market-tools/undercut-checker",
-          },
-        ],
       },
     ],
     admin: [
-      { name: "Overview", url: "/admin", icon: TableOfContents },
-      { name: "Commits", url: "/admin/commits", icon: PieChart },
-      { name: "Settings", url: "/admin/settings", icon: Map },
+      { name: "Overview", url: "/arbitrage/admin", icon: Home },
+      {
+        name: "Cycles",
+        url: "/arbitrage/admin/cycles",
+        icon: Recycle,
+        items: [
+          { name: "Planner", url: "/arbitrage/admin/planner", icon: Recycle },
+          { name: "Commits", url: "/arbitrage/admin/commits", icon: Recycle },
+          {
+            name: "Undercut Checker",
+            url: "/arbitrage/admin/undercut-checker",
+            icon: Recycle,
+          },
+          {
+            name: "Sell Appraiser",
+            url: "/arbitrage/admin/sell-appraiser",
+            icon: Recycle,
+          },
+        ],
+      },
+      {
+        name: "Characters",
+        url: "/arbitrage/admin/characters",
+        icon: UserCheck,
+      },
+      {
+        name: "Transactions",
+        url: "/arbitrage/admin/transactions",
+        icon: BadgeDollarSign,
+      },
+      { name: "Ledger", url: "/arbitrage/admin/ledger", icon: NotebookPen },
     ],
   },
 ];
@@ -102,9 +131,9 @@ export function getApps(): AppConfig[] {
   return APPS;
 }
 
-export function getActiveAppByPathname(pathname: string): AppConfig {
+export function getActiveAppByPathname(pathname: string): AppConfig | null {
   const match = APPS.find((app) =>
     app.pathPrefixes.some((p) => pathname === p || pathname.startsWith(`${p}/`))
   );
-  return match ?? APPS[0];
+  return match ?? null;
 }
