@@ -48,13 +48,27 @@ export class AuthController {
     });
     if (returnUrl) {
       // Whitelist return URL origins via env (comma-separated), fallback to local dev
-      const allow = (
+      const allowFromEnv = (
         process.env.ESI_SSO_RETURN_URL_ALLOWLIST ||
         'http://localhost:3001,http://127.0.0.1:3001'
       )
         .split(',')
         .map((s) => s.trim())
         .filter(Boolean);
+      const extraOrigins: string[] = [];
+      for (const v of [
+        process.env.WEB_BASE_URL,
+        process.env.NEXT_PUBLIC_WEB_BASE_URL,
+      ]) {
+        if (!v) continue;
+        try {
+          const u = new URL(v);
+          extraOrigins.push(u.origin);
+        } catch {
+          // ignore
+        }
+      }
+      const allow = Array.from(new Set([...allowFromEnv, ...extraOrigins]));
       try {
         const u = new URL(returnUrl);
         if (allow.includes(u.origin)) {
@@ -133,6 +147,49 @@ export class AuthController {
     if (redirectTo) {
       res.clearCookie('sso_return');
       res.redirect(redirectTo);
+      return;
+    }
+    // Fallback: redirect to a default URL if configured, or first allowed origin
+    const allowFromEnv = (
+      process.env.ESI_SSO_RETURN_URL_ALLOWLIST ||
+      'http://localhost:3001,http://127.0.0.1:3001'
+    )
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const extraOrigins: string[] = [];
+    for (const v of [
+      process.env.WEB_BASE_URL,
+      process.env.NEXT_PUBLIC_WEB_BASE_URL,
+    ]) {
+      if (!v) continue;
+      try {
+        const u = new URL(v);
+        extraOrigins.push(u.origin);
+      } catch {
+        // ignore
+      }
+    }
+    const allow = Array.from(new Set([...allowFromEnv, ...extraOrigins]));
+    let defaultReturn: string | null = null;
+    if (process.env.ESI_SSO_DEFAULT_RETURN_URL) {
+      try {
+        defaultReturn = new URL(
+          process.env.ESI_SSO_DEFAULT_RETURN_URL,
+        ).toString();
+      } catch {
+        defaultReturn = null;
+      }
+    }
+    if (!defaultReturn && allow.length > 0) {
+      try {
+        defaultReturn = new URL('/', allow[0]).toString();
+      } catch {
+        // ignore
+      }
+    }
+    if (defaultReturn) {
+      res.redirect(defaultReturn);
       return;
     }
     res.status(200).json({ linked });

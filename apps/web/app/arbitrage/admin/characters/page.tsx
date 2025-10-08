@@ -72,7 +72,15 @@ export default function CharactersPage() {
     }
   };
 
-  const linkUrl = "/auth/login"; // call API directly; local-only app
+  const [linkUrl, setLinkUrl] = React.useState("/auth/login");
+  React.useEffect(() => {
+    try {
+      const href = window.location.href;
+      setLinkUrl(`/auth/login?returnUrl=${encodeURIComponent(href)}`);
+    } catch {
+      // ignore
+    }
+  }, []);
 
   return (
     <div className="container mx-auto max-w-3xl p-6 space-y-6">
