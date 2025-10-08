@@ -73,9 +73,9 @@ export const APPS: AppConfig[] = [
       },
     ],
     admin: [
-      { name: "Overview", url: "/admin", icon: TableOfContents },
-      { name: "Commits", url: "/admin/commits", icon: PieChart },
-      { name: "Settings", url: "/admin/settings", icon: Map },
+      { name: "Overview", url: "/brokerage/admin", icon: TableOfContents },
+      { name: "Commits", url: "/brokerage/admin/commits", icon: PieChart },
+      { name: "Settings", url: "/brokerage/admin/settings", icon: Map },
     ],
   },
   {
@@ -133,9 +133,7 @@ export function getApps(): AppConfig[] {
 
 export function getActiveAppByPathname(pathname: string): AppConfig | null {
   const match = APPS.find((app) =>
-    app.pathPrefixes.some(
-      (p) => pathname === p || pathname.startsWith(`${p}/`),
-    ),
+    app.pathPrefixes.some((p) => pathname === p || pathname.startsWith(`${p}/`))
   );
   return match ?? null;
 }
