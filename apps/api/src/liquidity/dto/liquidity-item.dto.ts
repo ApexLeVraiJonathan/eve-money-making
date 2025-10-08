@@ -5,4 +5,5 @@ export type LiquidityItemDto = {
   latest: { high: string; low: string; avg: string } | null;
   avgDailyIskValue: number;
   coverageDays: number;
+  avgDailyTrades: number;
 };

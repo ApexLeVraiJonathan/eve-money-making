@@ -17,6 +17,7 @@ export class LiquidityService {
       windowDays?: number;
       minCoverageRatio?: number; // 0..1
       minLiquidityThresholdISK?: number; // average daily isk_value
+      minWindowTrades?: number; // average trades per day over window
     },
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     _reqId?: string,
@@ -30,6 +31,7 @@ export class LiquidityService {
     const windowDays = params?.windowDays ?? 7;
     const minCoverageRatio = params?.minCoverageRatio ?? 0.57;
     const minISK = params?.minLiquidityThresholdISK ?? 1_000_000; // 1M
+    const minTradesPerDay = params?.minWindowTrades ?? 3; // average trades/day
 
     // Determine stations to analyze and station names
     let stationIds: number[] = [];
@@ -76,6 +78,7 @@ export class LiquidityService {
           dates,
           minCoverageRatio,
           minISK,
+          minTradesPerDay,
         );
         entries.push([sId, items]);
       }
@@ -99,6 +102,7 @@ export class LiquidityService {
     dates: string[],
     minCoverageRatio: number,
     minISK: number,
+    minTradesPerDay: number,
   ): Promise<LiquidityItemDto[]> {
     const rows = (await this.prisma.marketOrderTradeDaily.findMany({
       where: {
@@ -115,6 +119,7 @@ export class LiquidityService {
       high: Prisma.Decimal;
       low: Prisma.Decimal;
       avg: Prisma.Decimal;
+      orderNum: number;
       type: { name: string } | null;
     }>;
 
@@ -128,6 +133,7 @@ export class LiquidityService {
         high: Prisma.Decimal;
         low: Prisma.Decimal;
         avg: Prisma.Decimal;
+        orderNum: number;
         type: { name: string } | null;
       }>
     >();
@@ -150,6 +156,11 @@ export class LiquidityService {
       const avgDailyIskValue = Math.round(totalIsk / dates.length);
       if (avgDailyIskValue < minISK) continue;
 
+      // Average trades per day over the window, from orderNum
+      const totalTrades = list.reduce((sum, r) => sum + (r.orderNum ?? 0), 0);
+      const avgDailyTrades = Math.round(totalTrades / dates.length);
+      if (avgDailyTrades < minTradesPerDay) continue;
+
       let latest = null as { high: string; low: string; avg: string } | null;
       let latestDateMs = -1;
       for (const r of list) {
@@ -171,6 +182,7 @@ export class LiquidityService {
         latest,
         avgDailyIskValue,
         coverageDays: uniqueDays.size,
+        avgDailyTrades,
       });
     }
 

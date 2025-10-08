@@ -9,6 +9,9 @@ export const LiquidityCheckRequestSchema = z
     windowDays: z.coerce.number().int().min(1).max(30).optional(),
     minCoverageRatio: z.coerce.number().min(0).max(1).optional(),
     minLiquidityThresholdISK: z.coerce.number().min(0).optional(),
+    // Minimum average number of trades per day over the window
+    // Derived from market_order_trades_daily.orderNum
+    minWindowTrades: z.coerce.number().int().min(0).optional(),
   })
   .strict();
 
