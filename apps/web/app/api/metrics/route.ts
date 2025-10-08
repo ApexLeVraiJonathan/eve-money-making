@@ -21,7 +21,7 @@ export async function GET(req: NextRequest) {
   } catch (err) {
     return NextResponse.json(
       { error: "Failed to fetch metrics", details: `${err}` },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

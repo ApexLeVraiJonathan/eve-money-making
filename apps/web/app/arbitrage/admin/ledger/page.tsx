@@ -36,7 +36,7 @@ export default function LedgerPage() {
         `/api/ledger/entries?cycleId=${encodeURIComponent(cycleId)}`,
         {
           cache: "no-store",
-        }
+        },
       );
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || res.statusText);

@@ -8,7 +8,7 @@ const API_BASE =
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
     const { id } = await params;
@@ -20,7 +20,7 @@ export async function GET(
       {
         cache: "no-store",
         headers: { "x-request-id": reqId },
-      }
+      },
     );
     const data = await res.json();
     return NextResponse.json(data, {
@@ -30,14 +30,14 @@ export async function GET(
   } catch (err) {
     return NextResponse.json(
       { error: "Failed to fetch capital", details: `${err}` },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
     const url = new URL(req.url);
@@ -46,7 +46,7 @@ export async function POST(
     const reqId = req.headers.get("x-request-id") || crypto.randomUUID();
     const res = await fetch(
       `${API_BASE}/ledger/capital/${id}${force ? `?force=true` : ""}`,
-      { cache: "no-store", headers: { "x-request-id": reqId } }
+      { cache: "no-store", headers: { "x-request-id": reqId } },
     );
     const data = await res.json();
     return NextResponse.json(data, {
@@ -56,7 +56,7 @@ export async function POST(
   } catch (err) {
     return NextResponse.json(
       { error: "Failed to recompute capital", details: `${err}` },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

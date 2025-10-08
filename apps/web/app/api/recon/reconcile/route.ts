@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     return NextResponse.json(
       { error: "Failed to run reconciliation", details: `${err}` },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

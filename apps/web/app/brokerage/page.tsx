@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Handshake } from "lucide-react";
 
 export default function BrokerageHome() {
@@ -17,23 +18,26 @@ export default function BrokerageHome() {
           list, sell, and remit proceeds minus a brokerage fee.
         </p>
         <div className="mt-4 flex gap-3 text-sm items-center">
-          <a
+          <Link
             href="/brokerage/consignments/new"
             className="inline-flex h-9 items-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground shadow hover:opacity-90"
           >
             Get started
-          </a>
+          </Link>
           <span className="text-muted-foreground">•</span>
-          <a
+          <Link
             href="/brokerage/consignments"
             className="underline underline-offset-4"
           >
             Browse your consignments
-          </a>
+          </Link>
           <span className="text-muted-foreground">•</span>
-          <a href="/brokerage/reports" className="underline underline-offset-4">
+          <Link
+            href="/brokerage/reports"
+            className="underline underline-offset-4"
+          >
             View reports
-          </a>
+          </Link>
         </div>
       </section>
 
@@ -60,12 +64,12 @@ export default function BrokerageHome() {
           <p className="text-sm mt-2">
             See the working document for scope, workflow, and open questions.
           </p>
-          <a
+          <Link
             className="text-sm underline underline-offset-4 mt-2 inline-block"
             href="/docs/brokerage"
           >
             View Brokerage project doc
-          </a>
+          </Link>
         </div>
       </section>
     </div>

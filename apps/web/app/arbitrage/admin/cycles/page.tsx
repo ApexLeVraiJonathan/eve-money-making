@@ -56,7 +56,7 @@ export default function CyclesPage() {
     try {
       const res = await fetch(
         `/api/ledger/cycles/${cycleId}/capital${force ? `?force=true` : ""}`,
-        { cache: "no-store" }
+        { cache: "no-store" },
       );
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || res.statusText);

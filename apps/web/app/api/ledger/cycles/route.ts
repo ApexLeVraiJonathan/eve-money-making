@@ -21,7 +21,7 @@ export async function GET(req: NextRequest) {
   } catch (err) {
     return NextResponse.json(
       { error: "Failed to load cycles", details: `${err}` },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     return NextResponse.json(
       { error: "Failed to create cycle", details: `${err}` },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

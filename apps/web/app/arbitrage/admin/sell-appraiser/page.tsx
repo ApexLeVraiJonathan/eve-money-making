@@ -33,7 +33,7 @@ export default function SellAppraiserPage() {
         setStations(data ?? []);
         if (data?.length) {
           setDestinationId((prev) =>
-            prev === null ? data[0].stationId : prev
+            prev === null ? data[0].stationId : prev,
           );
         }
       })

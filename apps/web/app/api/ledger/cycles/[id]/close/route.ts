@@ -8,7 +8,7 @@ const API_BASE =
 
 export async function POST(
   _req: NextRequest,
-  context: { params: Promise<{ id: string }> }
+  context: { params: Promise<{ id: string }> },
 ) {
   try {
     const { id } = await context.params;
@@ -26,7 +26,7 @@ export async function POST(
   } catch (err) {
     return NextResponse.json(
       { error: "Failed to close cycle", details: `${err}` },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

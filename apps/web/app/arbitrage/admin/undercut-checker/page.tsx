@@ -81,7 +81,7 @@ export default function UndercutCheckerPage() {
                     setSelectedStations((prev) =>
                       e.target.checked
                         ? [...prev, s.stationId]
-                        : prev.filter((id) => id !== s.stationId)
+                        : prev.filter((id) => id !== s.stationId),
                     );
                   }}
                 />

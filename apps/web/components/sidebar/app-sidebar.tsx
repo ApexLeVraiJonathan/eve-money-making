@@ -1,20 +1,9 @@
 "use client";
 
 import * as React from "react";
-import {
-  BookOpen,
-  Bot,
-  Frame,
-  LifeBuoy,
-  Map,
-  PieChart,
-  Send,
-  Settings2,
-  SquareTerminal,
-  TableOfContents,
-  CircleDollarSign,
-} from "lucide-react";
+import { LifeBuoy, Send, TableOfContents, type LucideIcon } from "lucide-react";
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 
 import { NavMain } from "@/components/sidebar/nav-main";
@@ -26,9 +15,6 @@ import {
   SidebarContent,
   SidebarFooter,
   SidebarHeader,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import {
@@ -87,10 +73,13 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         <div className="p-2">
           <div className="flex items-center justify-between gap-2">
             <Link href="/" className="inline-flex items-center">
-              <img
+              <Image
                 src="/Full%20logo%20Dark.svg"
                 alt="EVE Money Making"
+                width={120}
+                height={32}
                 className="h-8 w-auto"
+                priority
               />
             </Link>
             <DropdownMenu>
@@ -101,7 +90,8 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                   className="h-8 gap-2 w-28 justify-start"
                 >
                   {(() => {
-                    const Icon = (activeApp?.icon ?? TableOfContents) as any;
+                    const Icon: LucideIcon = (activeApp?.icon ??
+                      TableOfContents) as LucideIcon;
                     return <Icon className="h-4 w-4 shrink-0" />;
                   })()}
                   <span className="text-sm truncate">

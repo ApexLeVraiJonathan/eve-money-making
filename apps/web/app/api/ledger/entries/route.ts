@@ -20,14 +20,14 @@ export async function GET(req: NextRequest) {
           "x-request-id":
             req.headers.get("x-request-id") || crypto.randomUUID(),
         },
-      }
+      },
     );
     const data = await res.json();
     return NextResponse.json(data, { status: res.status });
   } catch (err) {
     return NextResponse.json(
       { error: "Failed to fetch ledger entries", details: `${err}` },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

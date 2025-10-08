@@ -1,7 +1,6 @@
 "use client";
 
 import * as React from "react";
-import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -9,7 +8,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { toast } from "sonner";
 
 type Metrics = {
   cacheHitMem: number;
@@ -59,7 +57,8 @@ export default function AdminPage() {
   const [wallets, setWallets] = React.useState<WalletBalance[] | null>(null);
 
   const formatISK = (value: number | string | null | undefined) => {
-    const n = typeof value === "string" ? Number.parseFloat(value) : value ?? 0;
+    const n =
+      typeof value === "string" ? Number.parseFloat(value) : (value ?? 0);
     return new Intl.NumberFormat("en-US", {
       style: "currency",
       currency: "ISK",
@@ -121,7 +120,7 @@ export default function AdminPage() {
           } catch {
             return { characterId: id, name, balanceISK: 0 } as WalletBalance;
           }
-        })
+        }),
       );
       setWallets(walletResults);
     } catch (e) {
@@ -137,6 +136,7 @@ export default function AdminPage() {
 
   return (
     <div className="container mx-auto max-w-6xl p-4 space-y-4">
+      {error && <div className="text-sm text-destructive">Error: {error}</div>}
       {/* Top summary cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card className="py-4 gap-0">
@@ -154,7 +154,19 @@ export default function AdminPage() {
             </div>
           </CardContent>
         </Card>
-        {/* Add more small cards here as needed */}
+        <Card className="py-4 gap-0">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-xl font-bold">HTTP 200</CardTitle>
+            <CardDescription className="text-muted-foreground">
+              Requests
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex py-4">
+            <div className="text-xl font-bold tabular-nums">
+              {metrics ? metrics.http200 : loading ? "…" : 0}
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Latest Cycle Overview */}
@@ -168,7 +180,7 @@ export default function AdminPage() {
               started {new Date(latestCycle.startedAt).toLocaleDateString()}
               {latestCycle.closedAt
                 ? ` • closed ${new Date(
-                    latestCycle.closedAt
+                    latestCycle.closedAt,
                   ).toLocaleDateString()}`
                 : ""}
             </div>
@@ -189,8 +201,8 @@ export default function AdminPage() {
                 {capital
                   ? formatISK(capital.capital.cash)
                   : loading
-                  ? "…"
-                  : formatISK(0)}
+                    ? "…"
+                    : formatISK(0)}
               </div>
             </CardContent>
           </Card>
@@ -208,8 +220,8 @@ export default function AdminPage() {
                 {capital
                   ? formatISK(capital.capital.inventory)
                   : loading
-                  ? "…"
-                  : formatISK(0)}
+                    ? "…"
+                    : formatISK(0)}
               </div>
             </CardContent>
           </Card>

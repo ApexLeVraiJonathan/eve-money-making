@@ -32,7 +32,7 @@ export default function BrokerageReportsPage() {
     if (!include) return sum;
     const itemsTotal = c.items.reduce(
       (s, it) => s + it.units * it.unitprice,
-      0
+      0,
     );
     return sum + itemsTotal;
   }, 0);
@@ -45,7 +45,7 @@ export default function BrokerageReportsPage() {
 
   // Weekly totals from daily mock
   const byWeek = groupByWeek(
-    MOCK_DAILY_PAYOUTS.map((d) => ({ date: d.date, amount: d.amount }))
+    MOCK_DAILY_PAYOUTS.map((d) => ({ date: d.date, amount: d.amount })),
   );
 
   return (
@@ -96,7 +96,7 @@ export default function BrokerageReportsPage() {
             <span
               key={s}
               className={`inline-flex items-center rounded-full border px-3 py-1 ${statusPillStyle(
-                s
+                s,
               )}`}
             >
               <span className="mr-2 opacity-80">{s}</span>
@@ -159,18 +159,18 @@ export default function BrokerageReportsPage() {
             {consignments.map((c) => {
               const listed = c.items.reduce(
                 (s, it) => s + it.units * it.unitprice,
-                0
+                0,
               );
               const realized = c.items.reduce(
                 (s, it) => s + (it.paidOutISK ?? 0),
-                0
+                0,
               );
               return (
                 <TableRow key={c.id}>
                   <TableCell>
                     <Link
                       href={`/brokerage/consignments/details?id=${encodeURIComponent(
-                        c.id
+                        c.id,
                       )}`}
                       className="underline"
                     >
@@ -238,7 +238,7 @@ function isoWeekKey(d: Date) {
   date.setUTCDate(date.getUTCDate() + 4 - dayNum);
   const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
   const weekNo = Math.ceil(
-    ((date.getTime() - yearStart.getTime()) / 86400000 + 1) / 7
+    ((date.getTime() - yearStart.getTime()) / 86400000 + 1) / 7,
   );
   const year = date.getUTCFullYear();
   return `${year}-W${String(weekNo).padStart(2, "0")}`;

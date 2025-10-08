@@ -28,7 +28,7 @@ type LinkedCharacter = {
 export function NavUser() {
   const { isMobile } = useSidebar();
   const [characters, setCharacters] = React.useState<LinkedCharacter[] | null>(
-    null
+    null,
   );
   const [loading, setLoading] = React.useState(false);
 

@@ -43,8 +43,8 @@ export function NavAdmin({
           pathname === it.url ||
           pathname.startsWith(`${it.url}/`) ||
           it.items?.some(
-            (s) => pathname === s.url || pathname.startsWith(`${s.url}/`)
-          )
+            (s) => pathname === s.url || pathname.startsWith(`${s.url}/`),
+          ),
       );
     setOpenKey(activeParent ? activeParent.url : null);
   }, [pathname, items]);

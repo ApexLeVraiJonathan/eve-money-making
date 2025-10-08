@@ -21,7 +21,7 @@ export async function GET(req: NextRequest) {
   } catch (err) {
     return NextResponse.json(
       { error: "Failed to run cleanup", details: `${err}` },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

@@ -14,7 +14,7 @@ type ToastContextValue = {
 };
 
 const ToastContext = React.createContext<ToastContextValue | undefined>(
-  undefined
+  undefined,
 );
 
 export function useToast(): ToastContextValue {
@@ -56,8 +56,8 @@ function Toaster({ toasts }: { toasts: Toast[] }) {
             (t.variant === "success"
               ? "border-green-600"
               : t.variant === "error"
-              ? "border-red-600"
-              : "border-muted")
+                ? "border-red-600"
+                : "border-muted")
           }
         >
           <div className="font-medium">{t.title}</div>

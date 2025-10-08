@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     return NextResponse.json(
       { error: "Failed to commit plan", details: `${err}` },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

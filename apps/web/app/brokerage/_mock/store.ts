@@ -11,7 +11,7 @@ export async function listConsignments(): Promise<Consignment[]> {
 }
 
 export async function createConsignment(
-  newC: Consignment
+  newC: Consignment,
 ): Promise<Consignment> {
   await new Promise((r) => setTimeout(r, 250));
   CONSIGNMENTS = [newC, ...CONSIGNMENTS];

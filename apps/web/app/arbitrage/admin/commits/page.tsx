@@ -125,7 +125,7 @@ export default function CommitsStatusPage() {
                     <td
                       className={`tabular-nums ${progressCls(
                         l.buyUnits ?? 0,
-                        l.plannedUnits
+                        l.plannedUnits,
                       )}`}
                     >
                       {l.buyUnits ?? 0}/{l.plannedUnits}
@@ -133,7 +133,7 @@ export default function CommitsStatusPage() {
                     <td
                       className={`tabular-nums ${progressCls(
                         l.sellUnits ?? 0,
-                        l.plannedUnits
+                        l.plannedUnits,
                       )}`}
                     >
                       {l.sellUnits ?? 0}/{l.plannedUnits}

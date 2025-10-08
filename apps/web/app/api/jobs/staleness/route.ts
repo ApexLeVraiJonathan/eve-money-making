@@ -15,7 +15,7 @@ export async function GET() {
   } catch (err) {
     return NextResponse.json(
       { error: "Failed to fetch staleness", details: `${err}` },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

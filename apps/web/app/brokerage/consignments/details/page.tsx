@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Suspense, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
@@ -16,7 +16,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
-export default function ConsignmentDetailsPage() {
+function DetailsInner() {
   const params = useSearchParams();
   const initialId = params.get("id");
   const { data: consignments = [] } = useQuery<Consignment[]>({
@@ -33,17 +33,14 @@ export default function ConsignmentDetailsPage() {
   const totals = useMemo(() => {
     if (!selected) return { paid: 0, left: 0 };
     const paid = selected.items.reduce((s, it) => s + (it.paidOutISK ?? 0), 0);
-    const soldUnits = selected.items.reduce(
-      (s, it) => s + (it.unitsSold ?? 0),
-      0
-    );
+    // soldUnits computed but not used; keep totals minimal
     const totalEst = selected.items.reduce(
       (s, it) => s + it.units * it.unitprice,
-      0
+      0,
     );
     const estimatedSold = selected.items.reduce(
       (s, it) => s + (it.unitsSold ?? 0) * it.unitprice,
-      0
+      0,
     );
     const left = Math.max(0, totalEst - estimatedSold);
     return { paid, left };
@@ -81,12 +78,12 @@ export default function ConsignmentDetailsPage() {
                       c.status === "Selling"
                         ? "border-emerald-700/50 bg-emerald-950/30 text-emerald-400"
                         : c.status === "Awaiting-Contract"
-                        ? "border-sky-700/50 bg-sky-950/30 text-sky-400"
-                        : c.status === "Awaiting-Validation"
-                        ? "border-indigo-700/50 bg-indigo-950/30 text-indigo-400"
-                        : c.status === "Closed"
-                        ? "border-slate-700/50 bg-slate-950/30 text-slate-300"
-                        : "border-rose-700/50 bg-rose-950/30 text-rose-400"
+                          ? "border-sky-700/50 bg-sky-950/30 text-sky-400"
+                          : c.status === "Awaiting-Validation"
+                            ? "border-indigo-700/50 bg-indigo-950/30 text-indigo-400"
+                            : c.status === "Closed"
+                              ? "border-slate-700/50 bg-slate-950/30 text-slate-300"
+                              : "border-rose-700/50 bg-rose-950/30 text-rose-400"
                     }`}
                   >
                     {c.status}
@@ -169,5 +166,17 @@ export default function ConsignmentDetailsPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function ConsignmentDetailsPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="p-6 text-sm text-muted-foreground">Loading…</div>
+      }
+    >
+      <DetailsInner />
+    </Suspense>
   );
 }

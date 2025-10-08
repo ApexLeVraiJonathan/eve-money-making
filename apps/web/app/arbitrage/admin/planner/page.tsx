@@ -79,7 +79,7 @@ function formatISK(n: number) {
 
 export default function HomePage() {
   const [json, setJson] = React.useState(
-    JSON.stringify(defaultPayload, null, 2)
+    JSON.stringify(defaultPayload, null, 2),
   );
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -139,7 +139,7 @@ export default function HomePage() {
         }
       }
       out[dest] = Array.from(map.values()).sort((a, b) =>
-        a.name.localeCompare(b.name)
+        a.name.localeCompare(b.name),
       );
     }
     return out;
@@ -244,7 +244,7 @@ export default function HomePage() {
                       try {
                         const j = JSON.parse(json);
                         j.perDestinationMaxBudgetSharePerItem = Number(
-                          e.target.value
+                          e.target.value,
                         );
                         setJson(JSON.stringify(j, null, 2));
                       } catch {}
@@ -374,7 +374,7 @@ export default function HomePage() {
                         </span>{" "}
                         <span className="font-medium">
                           {formatISK(
-                            pkgs.reduce((s, p) => s + p.netProfitISK, 0)
+                            pkgs.reduce((s, p) => s + p.netProfitISK, 0),
                           )}
                         </span>
                       </div>

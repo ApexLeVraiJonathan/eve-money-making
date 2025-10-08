@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Checkbox } from "@/components/ui/checkbox";
+// Checkbox not currently used
 import {
   Dialog,
   DialogContent,
@@ -26,7 +26,6 @@ import {
 import {
   Table,
   TableBody,
-  TableCaption,
   TableCell,
   TableHead,
   TableHeader,
@@ -154,11 +153,11 @@ export default function NewConsignmentPage() {
       await queryClient.invalidateQueries({ queryKey: consignmentsQueryKey });
       const estimate = created.items.reduce(
         (sum, it) => sum + it.units * it.unitprice,
-        0
+        0,
       );
       toast.success("Consignment created", {
         description: `${created.title} • ${created.hub} • Estimated ${formatISK(
-          estimate
+          estimate,
         )}`,
       });
       setSubmitOpen(false);
@@ -255,7 +254,7 @@ export default function NewConsignmentPage() {
                 <DialogHeader>
                   <DialogTitle>Import items from EVE inventory</DialogTitle>
                   <DialogDescription>
-                    Paste lines like: "Item Name&lt;SPACE&gt;Quantity"
+                    Paste lines like: &quot;Item Name&lt;SPACE&gt;Quantity&quot;
                   </DialogDescription>
                 </DialogHeader>
                 <Textarea
@@ -288,7 +287,7 @@ export default function NewConsignmentPage() {
                             .filter(Boolean);
                           if (parts.length >= 2) {
                             const qty = Number(
-                              parts[parts.length - 1].replace(/[,]/g, "")
+                              parts[parts.length - 1].replace(/[,]/g, ""),
                             );
                             const name = parts
                               .slice(0, parts.length - 1)
@@ -402,7 +401,7 @@ export default function NewConsignmentPage() {
                     <TableCell className="text-right text-yellow-500">
                       {it.unitPrice > 0
                         ? `${feeAmount(it).toLocaleString()} (${totalFeePercent(
-                            it
+                            it,
                           ).toFixed(2)}%)`
                         : "—"}
                     </TableCell>
@@ -427,7 +426,7 @@ export default function NewConsignmentPage() {
                       .reduce(
                         (sum, it) =>
                           sum + (it.unitPrice > 0 ? feeAmount(it) : 0),
-                        0
+                        0,
                       )
                       .toLocaleString()}{" "}
                     ISK
@@ -437,7 +436,7 @@ export default function NewConsignmentPage() {
                       .reduce(
                         (sum, it) =>
                           sum + (it.unitPrice > 0 ? estimateNetForItem(it) : 0),
-                        0
+                        0,
                       )
                       .toLocaleString()}{" "}
                     ISK

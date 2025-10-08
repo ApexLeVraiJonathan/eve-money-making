@@ -14,13 +14,7 @@ import {
   EmptyHeader,
   EmptyTitle,
 } from "@/components/ui/empty";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 // Hubs are displayed in dedicated sections; no filter needed
 
@@ -62,13 +56,13 @@ export default function ConsignmentsListPage() {
             {list.map((c) => {
               const est = c.items.reduce(
                 (s, it) => s + it.units * it.unitprice,
-                0
+                0,
               );
               return (
                 <Link
                   key={c.id}
                   href={`/brokerage/consignments/details?id=${encodeURIComponent(
-                    c.id
+                    c.id,
                   )}`}
                   className="block hover:no-underline"
                 >
@@ -85,12 +79,12 @@ export default function ConsignmentsListPage() {
                             c.status === "Selling"
                               ? "border-emerald-700/50 bg-emerald-950/30 text-emerald-400"
                               : c.status === "Awaiting-Contract"
-                              ? "border-sky-700/50 bg-sky-950/30 text-sky-400"
-                              : c.status === "Awaiting-Validation"
-                              ? "border-indigo-700/50 bg-indigo-950/30 text-indigo-400"
-                              : c.status === "Closed"
-                              ? "border-slate-700/50 bg-slate-950/30 text-slate-300"
-                              : "border-rose-700/50 bg-rose-950/30 text-rose-400"
+                                ? "border-sky-700/50 bg-sky-950/30 text-sky-400"
+                                : c.status === "Awaiting-Validation"
+                                  ? "border-indigo-700/50 bg-indigo-950/30 text-indigo-400"
+                                  : c.status === "Closed"
+                                    ? "border-slate-700/50 bg-slate-950/30 text-slate-300"
+                                    : "border-rose-700/50 bg-rose-950/30 text-rose-400"
                           }`}
                         >
                           {c.status}

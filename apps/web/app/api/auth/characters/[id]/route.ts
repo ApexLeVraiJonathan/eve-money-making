@@ -8,7 +8,7 @@ const API_BASE =
 
 export async function DELETE(
   _req: NextRequest,
-  context: { params: Promise<{ id: string }> }
+  context: { params: Promise<{ id: string }> },
 ) {
   try {
     const { id } = await context.params;
@@ -26,7 +26,7 @@ export async function DELETE(
   } catch (err) {
     return NextResponse.json(
       { error: "Failed to unlink character", details: `${err}` },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

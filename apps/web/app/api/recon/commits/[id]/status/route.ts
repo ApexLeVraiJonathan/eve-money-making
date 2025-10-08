@@ -8,7 +8,7 @@ const API_BASE =
 
 export async function GET(
   _req: NextRequest,
-  context: { params: Promise<{ id: string }> }
+  context: { params: Promise<{ id: string }> },
 ) {
   try {
     const { id } = await context.params;
@@ -25,7 +25,7 @@ export async function GET(
   } catch (err) {
     return NextResponse.json(
       { error: "Failed to fetch commit status", details: `${err}` },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
