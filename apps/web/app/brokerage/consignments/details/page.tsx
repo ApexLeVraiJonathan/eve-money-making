@@ -36,11 +36,11 @@ function DetailsInner() {
     // soldUnits computed but not used; keep totals minimal
     const totalEst = selected.items.reduce(
       (s, it) => s + it.units * it.unitprice,
-      0
+      0,
     );
     const estimatedSold = selected.items.reduce(
       (s, it) => s + (it.unitsSold ?? 0) * it.unitprice,
-      0
+      0,
     );
     const left = Math.max(0, totalEst - estimatedSold);
     return { paid, left };

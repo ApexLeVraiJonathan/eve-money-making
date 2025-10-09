@@ -18,7 +18,7 @@ export default async function CyclesOverviewPage() {
     const diffMs = Math.max(0, endMs - nowMs);
     const days = Math.floor(diffMs / (24 * 60 * 60 * 1000));
     const hours = Math.floor(
-      (diffMs % (24 * 60 * 60 * 1000)) / (60 * 60 * 1000)
+      (diffMs % (24 * 60 * 60 * 1000)) / (60 * 60 * 1000),
     );
     if (days > 0) return `${days}d ${hours}h left`;
     const mins = Math.floor((diffMs % (60 * 60 * 1000)) / (60 * 1000));
@@ -81,6 +81,12 @@ export default async function CyclesOverviewPage() {
                 <span className="text-muted-foreground">Inventory:</span>{" "}
                 <span className="text-foreground">
                   {formatISK(current.capital.inventoryISK)}
+                </span>
+              </div>
+              <div>
+                <span className="text-muted-foreground">Orig. Invested:</span>{" "}
+                <span className="text-foreground">
+                  {formatISK(current.capital.originalInvestmentISK)}
                 </span>
               </div>
             </div>
@@ -148,6 +154,12 @@ export default async function CyclesOverviewPage() {
                 <span className="text-muted-foreground">Est. Sell:</span>{" "}
                 <span className="text-yellow-500">
                   {formatISK(openCommit.totals.estSellISK)}
+                </span>
+              </div>
+              <div>
+                <span className="text-muted-foreground">Est. Fees:</span>{" "}
+                <span className="text-foreground">
+                  {formatISK(openCommit.totals.estFeesISK)}
                 </span>
               </div>
             </div>

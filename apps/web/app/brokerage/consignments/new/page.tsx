@@ -157,11 +157,11 @@ export default function NewConsignmentPage() {
       await queryClient.invalidateQueries({ queryKey: consignmentsQueryKey });
       const estimate = created.items.reduce(
         (sum, it) => sum + it.units * it.unitprice,
-        0
+        0,
       );
       toast.success("Consignment created", {
         description: `${created.title} • ${created.hub} • Estimated ${formatISK(
-          estimate
+          estimate,
         )}`,
       });
       setSubmitOpen(false);
@@ -270,7 +270,7 @@ export default function NewConsignmentPage() {
                 <DialogHeader>
                   <DialogTitle>Import items from EVE inventory</DialogTitle>
                   <DialogDescription>
-                    Paste either of the two formats. We'll extract Name and
+                    Paste either of the two formats. We&apos;ll extract Name and
                     Quantity.
                   </DialogDescription>
                 </DialogHeader>
@@ -320,7 +320,7 @@ export default function NewConsignmentPage() {
                           const parts = line.split(/\s{2,}/).filter(Boolean);
                           if (parts.length >= 2) {
                             const qty = Number(
-                              parts[parts.length - 1].replace(/[,]/g, "")
+                              parts[parts.length - 1].replace(/[,]/g, ""),
                             );
                             const name = parts
                               .slice(0, parts.length - 1)
@@ -425,9 +425,7 @@ export default function NewConsignmentPage() {
                     </TableCell>
                     <TableCell className="text-right text-yellow-500">
                       {it.unitPrice > 0
-                        ? `${feeAmount(it).toLocaleString()} (${totalFeePercent(
-                            it
-                          ).toFixed(2)}%)`
+                        ? `${feeAmount(it).toLocaleString()} (${totalFeePercent(it).toFixed(2)}%)`
                         : "—"}
                     </TableCell>
                     <TableCell className="text-right text-emerald-500">
@@ -451,7 +449,7 @@ export default function NewConsignmentPage() {
                       .reduce(
                         (sum, it) =>
                           sum + (it.unitPrice > 0 ? feeAmount(it) : 0),
-                        0
+                        0,
                       )
                       .toLocaleString()}{" "}
                     ISK
@@ -461,7 +459,7 @@ export default function NewConsignmentPage() {
                       .reduce(
                         (sum, it) =>
                           sum + (it.unitPrice > 0 ? estimateNetForItem(it) : 0),
-                        0
+                        0,
                       )
                       .toLocaleString()}{" "}
                     ISK

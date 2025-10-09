@@ -70,10 +70,10 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   return (
     <Sidebar variant="inset" {...props}>
       <SidebarHeader>
-        <div className="p-2">
-          <div className="flex items-center justify-between gap-2">
+        <div className="px-2 py-2">
+          <div className="flex flex-col items-start gap-2 overflow-hidden">
             <Link href="/" className="inline-flex items-center">
-              <div className="relative" style={{ width: 120, height: 32 }}>
+              <div className="relative h-8 w-[120px]">
                 <Image
                   src="/Full%20logo%20Dark.svg"
                   alt="EVE Money Making"
@@ -89,14 +89,14 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                 <Button
                   variant="outline"
                   size="sm"
-                  className="h-8 gap-2 w-28 justify-start"
+                  className="h-8 gap-2 w-full justify-start"
                 >
                   {(() => {
                     const Icon: LucideIcon = (activeApp?.icon ??
                       TableOfContents) as LucideIcon;
                     return <Icon className="h-4 w-4 shrink-0" />;
                   })()}
-                  <span className="text-sm truncate">
+                  <span className="text-sm">
                     {activeApp?.label ?? "Choose app"}
                   </span>
                 </Button>

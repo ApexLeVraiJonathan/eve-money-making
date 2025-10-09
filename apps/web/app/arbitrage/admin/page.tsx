@@ -121,7 +121,7 @@ export default function AdminPage() {
           } catch {
             return { characterId: id, name, balanceISK: 0 } as WalletBalance;
           }
-        })
+        }),
       );
       setWallets(walletResults);
     } catch (e) {
@@ -193,7 +193,7 @@ export default function AdminPage() {
               started {new Date(latestCycle.startedAt).toLocaleDateString()}
               {latestCycle.closedAt
                 ? ` • closed ${new Date(
-                    latestCycle.closedAt
+                    latestCycle.closedAt,
                   ).toLocaleDateString()}`
                 : ""}
             </div>
