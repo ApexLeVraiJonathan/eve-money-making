@@ -90,6 +90,21 @@ export const APPS: AppConfig[] = [
         url: "/arbitrage",
         icon: CircleDollarSign,
       },
+      {
+        title: "Cycles",
+        url: "/arbitrage/cycles",
+        icon: Recycle,
+        items: [
+          { title: "Opt-in", url: "/arbitrage/cycles/opt-in" },
+          { title: "Details", url: "/arbitrage/cycles/details" },
+          { title: "History", url: "/arbitrage/cycles/history" },
+        ],
+      },
+      {
+        title: "Reports",
+        url: "/arbitrage/reports",
+        icon: PieChart,
+      },
     ],
     admin: [
       { name: "Overview", url: "/arbitrage/admin", icon: Home },
@@ -133,9 +148,7 @@ export function getApps(): AppConfig[] {
 
 export function getActiveAppByPathname(pathname: string): AppConfig | null {
   const match = APPS.find((app) =>
-    app.pathPrefixes.some(
-      (p) => pathname === p || pathname.startsWith(`${p}/`),
-    ),
+    app.pathPrefixes.some((p) => pathname === p || pathname.startsWith(`${p}/`))
   );
   return match ?? null;
 }
