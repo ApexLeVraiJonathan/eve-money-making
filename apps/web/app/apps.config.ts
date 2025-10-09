@@ -95,7 +95,6 @@ export const APPS: AppConfig[] = [
         url: "/arbitrage/cycles",
         icon: Recycle,
         items: [
-          { title: "Opt-in", url: "/arbitrage/cycles/opt-in" },
           { title: "Details", url: "/arbitrage/cycles/details" },
           { title: "History", url: "/arbitrage/cycles/history" },
         ],
@@ -148,9 +147,7 @@ export function getApps(): AppConfig[] {
 
 export function getActiveAppByPathname(pathname: string): AppConfig | null {
   const match = APPS.find((app) =>
-    app.pathPrefixes.some(
-      (p) => pathname === p || pathname.startsWith(`${p}/`),
-    ),
+    app.pathPrefixes.some((p) => pathname === p || pathname.startsWith(`${p}/`))
   );
   return match ?? null;
 }

@@ -74,23 +74,25 @@ export default async function ArbitrageReportsPage() {
             <thead className="text-left">
               <tr>
                 <th className="p-2">Cycle</th>
-                <th className="p-2">Investment</th>
-                <th className="p-2">Profit</th>
-                <th className="p-2">Margin</th>
+                <th className="p-2 text-right">Investment</th>
+                <th className="p-2 text-right">Profit</th>
+                <th className="p-2 text-right">Margin</th>
               </tr>
             </thead>
             <tbody>
               {history.map((h) => (
-                <tr key={h.id} className="border-t">
+                <tr key={h.id} className="border-t hover:bg-muted/50">
                   <td className="p-2">{h.name}</td>
-                  <td className="p-2">{formatISK(h.invested)}</td>
+                  <td className="p-2 text-right tabular-nums">
+                    {formatISK(h.invested)}
+                  </td>
                   <td
-                    className={`p-2 ${h.profit < 0 ? "text-red-400" : h.profit > 0 ? "text-emerald-500" : ""}`}
+                    className={`p-2 text-right tabular-nums ${h.profit < 0 ? "text-red-400" : h.profit > 0 ? "text-emerald-500" : ""}`}
                   >
                     {formatISK(h.profit)}
                   </td>
                   <td
-                    className={`p-2 ${h.marginPct < 0 ? "text-red-400" : h.marginPct > 0 ? "text-emerald-500" : ""}`}
+                    className={`p-2 text-right tabular-nums ${h.marginPct < 0 ? "text-red-400" : h.marginPct > 0 ? "text-emerald-500" : ""}`}
                   >
                     {(h.marginPct * 100).toFixed(1)}%
                   </td>

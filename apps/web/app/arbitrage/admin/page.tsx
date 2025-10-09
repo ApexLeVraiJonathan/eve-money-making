@@ -8,6 +8,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 
 type Metrics = {
   cacheHitMem: number;
@@ -120,7 +121,7 @@ export default function AdminPage() {
           } catch {
             return { characterId: id, name, balanceISK: 0 } as WalletBalance;
           }
-        }),
+        })
       );
       setWallets(walletResults);
     } catch (e) {
@@ -136,7 +137,11 @@ export default function AdminPage() {
 
   return (
     <div className="container mx-auto max-w-6xl p-4 space-y-4">
-      {error && <div className="text-sm text-destructive">Error: {error}</div>}
+      {error && (
+        <div className="rounded-md border border-destructive/40 bg-destructive/10 text-destructive text-sm px-3 py-2">
+          Error: {error}
+        </div>
+      )}
       {/* Top summary cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card className="py-4 gap-0">
@@ -149,9 +154,13 @@ export default function AdminPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="flex py-4">
-            <div className="text-xl font-bold tabular-nums">
-              {staleness ? staleness.missing.length : loading ? "…" : 0} Days
-            </div>
+            {loading ? (
+              <Skeleton className="h-6 w-20" />
+            ) : (
+              <div className="text-xl font-bold tabular-nums">
+                {staleness ? staleness.missing.length : 0} Days
+              </div>
+            )}
           </CardContent>
         </Card>
         <Card className="py-4 gap-0">
@@ -162,9 +171,13 @@ export default function AdminPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="flex py-4">
-            <div className="text-xl font-bold tabular-nums">
-              {metrics ? metrics.http200 : loading ? "…" : 0}
-            </div>
+            {loading ? (
+              <Skeleton className="h-6 w-16" />
+            ) : (
+              <div className="text-xl font-bold tabular-nums">
+                {metrics ? metrics.http200 : 0}
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -180,7 +193,7 @@ export default function AdminPage() {
               started {new Date(latestCycle.startedAt).toLocaleDateString()}
               {latestCycle.closedAt
                 ? ` • closed ${new Date(
-                    latestCycle.closedAt,
+                    latestCycle.closedAt
                   ).toLocaleDateString()}`
                 : ""}
             </div>
@@ -190,39 +203,41 @@ export default function AdminPage() {
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-xl font-bold">Cash</CardTitle>
-              {capital && (
+              {capital ? (
                 <CardDescription>
                   {capital.capital.percentSplit.cash}%
                 </CardDescription>
-              )}
+              ) : null}
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold tabular-nums">
-                {capital
-                  ? formatISK(capital.capital.cash)
-                  : loading
-                    ? "…"
-                    : formatISK(0)}
-              </div>
+              {loading ? (
+                <Skeleton className="h-8 w-32" />
+              ) : (
+                <div className="text-3xl font-bold tabular-nums">
+                  {capital ? formatISK(capital.capital.cash) : formatISK(0)}
+                </div>
+              )}
             </CardContent>
           </Card>
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-xl font-bold">Inventory</CardTitle>
-              {capital && (
+              {capital ? (
                 <CardDescription>
                   {capital.capital.percentSplit.inventory}%
                 </CardDescription>
-              )}
+              ) : null}
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold tabular-nums">
-                {capital
-                  ? formatISK(capital.capital.inventory)
-                  : loading
-                    ? "…"
+              {loading ? (
+                <Skeleton className="h-8 w-32" />
+              ) : (
+                <div className="text-3xl font-bold tabular-nums">
+                  {capital
+                    ? formatISK(capital.capital.inventory)
                     : formatISK(0)}
-              </div>
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>
@@ -263,7 +278,11 @@ export default function AdminPage() {
               </CardHeader>
               <CardContent>
                 <div className="text-lg font-bold tabular-nums">
-                  {loading && !wallets ? "…" : formatISK(w.balanceISK)}
+                  {loading && !wallets ? (
+                    <Skeleton className="h-5 w-24" />
+                  ) : (
+                    formatISK(w.balanceISK)
+                  )}
                 </div>
               </CardContent>
             </Card>

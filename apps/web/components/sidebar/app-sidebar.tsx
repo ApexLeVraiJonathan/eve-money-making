@@ -73,14 +73,16 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         <div className="p-2">
           <div className="flex items-center justify-between gap-2">
             <Link href="/" className="inline-flex items-center">
-              <Image
-                src="/Full%20logo%20Dark.svg"
-                alt="EVE Money Making"
-                width={120}
-                height={32}
-                className="h-8 w-auto"
-                priority
-              />
+              <div className="relative" style={{ width: 120, height: 32 }}>
+                <Image
+                  src="/Full%20logo%20Dark.svg"
+                  alt="EVE Money Making"
+                  fill
+                  sizes="120px"
+                  className="object-contain"
+                  priority
+                />
+              </div>
             </Link>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
