@@ -29,7 +29,7 @@ export async function getMyParticipation(): Promise<InvestorParticipation | null
 
 export async function submitOptIn(
   amountISK: number,
-  character: string
+  character: string,
 ): Promise<InvestorParticipation> {
   await new Promise((r) => setTimeout(r, 250));
   return {

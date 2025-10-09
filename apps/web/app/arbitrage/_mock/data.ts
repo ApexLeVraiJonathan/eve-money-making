@@ -123,7 +123,7 @@ export const MOCK_PARTICIPATION_SELF: InvestorParticipation = {
 export function estimatePayout(
   totalProfitISK: number,
   yourContributionISK: number,
-  totalInvestedISK: number
+  totalInvestedISK: number,
 ): number {
   if (totalInvestedISK <= 0) return 0;
   const pool = totalProfitISK * 0.5;

@@ -1,6 +1,5 @@
 "use client";
 import * as React from "react";
-import { useRouter } from "next/navigation";
 import { submitOptIn, getNextCycle } from "../../_mock/store";
 import { formatISK } from "../../../brokerage/_mock/data";
 import { Button } from "@/components/ui/button";
@@ -15,7 +14,6 @@ import { ClipboardCopy } from "lucide-react";
 import { toast } from "sonner";
 
 export default function OptInPage() {
-  const router = useRouter();
   const [amount, setAmount] = React.useState<string>("1000000000");
   const [character, setCharacter] = React.useState<string>("YourName");
   const [submitting, setSubmitting] = React.useState(false);
