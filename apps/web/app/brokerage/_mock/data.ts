@@ -5,6 +5,7 @@ export type ConsignmentItem = {
   listing_strategy: string; // e.g., A/B/C/D/E for now
   unitsSold?: number; // sold units
   paidOutISK?: number; // money paid out so far
+  lastUpdatedAt?: string; // ISO timestamp of last price update
 };
 
 export type ConsignmentStatus =

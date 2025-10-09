@@ -78,15 +78,19 @@ type ImportedItem = {
 };
 
 function mapHubToRecipient(hub: Hub): string {
-  return hub === "Jita 4-4" ? "LevraiTrader" : "LeVraiMindTrader05";
+  return hub === "Jita 4-4" ? "LeVraiTrader" : "LeVraiMindTrader05";
 }
 
 function generateCode(): string {
-  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  let out = "";
-  for (let i = 0; i < 6; i++)
-    out += alphabet[Math.floor(Math.random() * alphabet.length)];
-  return out;
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
+  // Fallback simple UUID v4-like generator
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === "x" ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
 }
 
 function randomUnitPrice(): number {
@@ -153,11 +157,11 @@ export default function NewConsignmentPage() {
       await queryClient.invalidateQueries({ queryKey: consignmentsQueryKey });
       const estimate = created.items.reduce(
         (sum, it) => sum + it.units * it.unitprice,
-        0,
+        0
       );
       toast.success("Consignment created", {
         description: `${created.title} • ${created.hub} • Estimated ${formatISK(
-          estimate,
+          estimate
         )}`,
       });
       setSubmitOpen(false);
@@ -180,8 +184,27 @@ export default function NewConsignmentPage() {
 
       <div className="grid gap-6 md:grid-cols-3 items-start">
         <div className="grid gap-4 md:col-span-1 self-start surface-1 rounded-md border p-4">
-          <div className="grid gap-1 text-sm">
-            <Label>Title</Label>
+          <div className="grid gap-2 text-sm">
+            <div className="flex items-center justify-between gap-2">
+              <Label className="mb-0">Title</Label>
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setImportOpen(true)}
+                >
+                  Import Item List
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setItems([])}
+                  disabled={items.length === 0}
+                >
+                  Clear items
+                </Button>
+              </div>
+            </div>
             <Input
               value={title}
               onChange={(e) => setTitle(e.target.value)}
@@ -242,25 +265,19 @@ export default function NewConsignmentPage() {
           {/* Removed per UX feedback: overall consignment fee label was not useful */}
 
           <div className="flex gap-2">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => setImportOpen(true)}
-            >
-              Import Item List
-            </Button>
             <Dialog open={importOpen} onOpenChange={setImportOpen}>
               <DialogContent>
                 <DialogHeader>
                   <DialogTitle>Import items from EVE inventory</DialogTitle>
                   <DialogDescription>
-                    Paste lines like: &quot;Item Name&lt;SPACE&gt;Quantity&quot;
+                    Paste either of the two formats. We'll extract Name and
+                    Quantity.
                   </DialogDescription>
                 </DialogHeader>
                 <Textarea
                   className="mt-3 h-48"
                   placeholder={
-                    "Caldari Navy Ballistic Control System\t4\nPithum A-Type Medium Shield Booster\t1"
+                    "Caldari Navy Ballistic Control System\t4\nPithum A-Type Medium Shield Booster\t1\n\nCompact Electronics\t31\tNamed Components\t\t\t0.03 m3\t126,852.93 ISK"
                   }
                   value={importText}
                   onChange={(e) => setImportText(e.target.value)}
@@ -282,17 +299,33 @@ export default function NewConsignmentPage() {
                         .map((l) => l.trim())
                         .filter(Boolean)
                         .forEach((line) => {
-                          const parts = line
-                            .split(/\t+|\s{2,}/)
-                            .filter(Boolean);
+                          // Two supported formats:
+                          // 1) "Name\tQty" or "Name  <spaces>  Qty"
+                          // 2) "Name\tQty\t...other cols..."
+                          const cols = line.split(/\t+/);
+                          if (cols.length >= 2) {
+                            const name = cols[0].trim();
+                            const qty = Number(cols[1].replace(/[,]/g, ""));
+                            if (name && Number.isFinite(qty)) {
+                              parsed.push({
+                                name,
+                                units: Math.max(0, Math.floor(qty)),
+                                unitPrice: randomUnitPrice(),
+                                strategyCode: strategy.code,
+                              });
+                              return;
+                            }
+                          }
+                          // Fallback: split on 2+ spaces and take last token as qty
+                          const parts = line.split(/\s{2,}/).filter(Boolean);
                           if (parts.length >= 2) {
                             const qty = Number(
-                              parts[parts.length - 1].replace(/[,]/g, ""),
+                              parts[parts.length - 1].replace(/[,]/g, "")
                             );
                             const name = parts
                               .slice(0, parts.length - 1)
                               .join(" ");
-                            if (Number.isFinite(qty) && name) {
+                            if (name && Number.isFinite(qty)) {
                               parsed.push({
                                 name,
                                 units: Math.max(0, Math.floor(qty)),
@@ -314,14 +347,6 @@ export default function NewConsignmentPage() {
                 </div>
               </DialogContent>
             </Dialog>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setItems([])}
-              disabled={items.length === 0}
-            >
-              Clear items
-            </Button>
           </div>
 
           {/* Legend removed; information is integrated with the checkbox list above */}
@@ -401,7 +426,7 @@ export default function NewConsignmentPage() {
                     <TableCell className="text-right text-yellow-500">
                       {it.unitPrice > 0
                         ? `${feeAmount(it).toLocaleString()} (${totalFeePercent(
-                            it,
+                            it
                           ).toFixed(2)}%)`
                         : "—"}
                     </TableCell>
@@ -426,7 +451,7 @@ export default function NewConsignmentPage() {
                       .reduce(
                         (sum, it) =>
                           sum + (it.unitPrice > 0 ? feeAmount(it) : 0),
-                        0,
+                        0
                       )
                       .toLocaleString()}{" "}
                     ISK
@@ -436,7 +461,7 @@ export default function NewConsignmentPage() {
                       .reduce(
                         (sum, it) =>
                           sum + (it.unitPrice > 0 ? estimateNetForItem(it) : 0),
-                        0,
+                        0
                       )
                       .toLocaleString()}{" "}
                     ISK
@@ -469,35 +494,60 @@ export default function NewConsignmentPage() {
       <Dialog open={submitOpen} onOpenChange={setSubmitOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Finalize consignment</DialogTitle>
+            <DialogTitle>Contract Settings</DialogTitle>
             <DialogDescription>
-              <span className="text-foreground font-medium">
-                Please ensure the items are delivered to {hub}.
-              </span>{" "}
-              Send an Item Exchange contract to
-              <b> {mapHubToRecipient(hub)}</b>.
+              Create an Item Exchange contract with the following fields.
             </DialogDescription>
           </DialogHeader>
-          <div className="text-sm mt-2">
-            Include this code in the contract description:
-            <div className="mt-2 flex items-center gap-2">
-              <code className="rounded bg-muted px-2 py-1 text-sm">
-                {submitCode}
-              </code>
-              <Button
-                aria-label="Copy code"
-                variant="ghost"
-                size="icon"
-                onClick={async () => {
-                  if (!submitCode) return;
-                  await navigator.clipboard.writeText(submitCode);
-                  toast.success("Code copied");
-                }}
-              >
-                <ClipboardCopy />
-              </Button>
+          <div className="space-y-3 text-sm">
+            <div className="rounded-md border surface-2 p-3">
+              <div className="text-xs text-muted-foreground">
+                Contract type:
+              </div>
+              <div className="mt-1">Item Exchange</div>
             </div>
-            <div className="mt-4 flex justify-end">
+            <div className="rounded-md border surface-2 p-3">
+              <div className="text-xs text-muted-foreground">Availability:</div>
+              <div className="mt-1 flex items-center gap-2">
+                <span>{mapHubToRecipient(hub)}</span>
+                <Button
+                  aria-label="Copy availability"
+                  variant="ghost"
+                  size="icon"
+                  onClick={async () => {
+                    await navigator.clipboard.writeText(mapHubToRecipient(hub));
+                    toast.success("Availability copied");
+                  }}
+                >
+                  <ClipboardCopy />
+                </Button>
+              </div>
+            </div>
+            <div className="rounded-md border surface-2 p-3">
+              <div className="text-xs text-muted-foreground">Expiration:</div>
+              <div className="mt-1">2 Weeks</div>
+            </div>
+            <div className="rounded-md border surface-2 p-3">
+              <div className="text-xs text-muted-foreground">Description:</div>
+              <div className="mt-1 flex items-center gap-2">
+                <code className="rounded bg-muted px-2 py-1 text-sm">
+                  {submitCode}
+                </code>
+                <Button
+                  aria-label="Copy description"
+                  variant="ghost"
+                  size="icon"
+                  onClick={async () => {
+                    if (!submitCode) return;
+                    await navigator.clipboard.writeText(String(submitCode));
+                    toast.success("Description copied");
+                  }}
+                >
+                  <ClipboardCopy />
+                </Button>
+              </div>
+            </div>
+            <div className="flex justify-end">
               <Button
                 onClick={() => createMutation.mutate()}
                 disabled={

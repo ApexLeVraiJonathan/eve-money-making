@@ -36,11 +36,11 @@ function DetailsInner() {
     // soldUnits computed but not used; keep totals minimal
     const totalEst = selected.items.reduce(
       (s, it) => s + it.units * it.unitprice,
-      0,
+      0
     );
     const estimatedSold = selected.items.reduce(
       (s, it) => s + (it.unitsSold ?? 0) * it.unitprice,
-      0,
+      0
     );
     const left = Math.max(0, totalEst - estimatedSold);
     return { paid, left };
@@ -111,6 +111,7 @@ function DetailsInner() {
                   <TableHead>Item</TableHead>
                   <TableHead className="text-right">Units sold</TableHead>
                   <TableHead className="text-right">Units to sell</TableHead>
+                  <TableHead className="text-right">Last Updated</TableHead>
                   <TableHead className="text-right">Paid out (ISK)</TableHead>
                   <TableHead className="text-right">
                     Est. left to sell (ISK)
@@ -134,6 +135,11 @@ function DetailsInner() {
                       <TableCell className="text-right">
                         {unitsLeft.toLocaleString()}
                       </TableCell>
+                      <TableCell className="text-right text-muted-foreground tabular-nums">
+                        {it.lastUpdatedAt
+                          ? new Date(it.lastUpdatedAt).toLocaleString()
+                          : "—"}
+                      </TableCell>
                       <TableCell className="text-right text-emerald-500">
                         {formatISK(paid)}
                       </TableCell>
@@ -149,7 +155,7 @@ function DetailsInner() {
               </TableBody>
               <TableFooter>
                 <TableRow>
-                  <TableCell colSpan={3} className="text-right font-medium">
+                  <TableCell colSpan={4} className="text-right font-medium">
                     Totals
                   </TableCell>
                   <TableCell className="text-right font-medium text-emerald-500">
