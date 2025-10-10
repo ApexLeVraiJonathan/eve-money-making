@@ -5,6 +5,7 @@ import { EsiCharactersService } from '../esi/esi-characters.service';
 import { fetchStationOrders } from '../esi/market-helpers';
 import { nextCheaperTick } from '../common/money';
 import { getEffectiveSell } from '../arbitrage/fees';
+import { AppConfig } from '../common/config';
 
 @Injectable()
 export class PricingService {
@@ -168,6 +169,7 @@ export class PricingService {
   async undercutCheck(params: {
     characterIds?: number[];
     stationIds?: number[];
+    planCommitId?: string;
   }): Promise<
     Array<{
       characterId: number;
@@ -236,6 +238,7 @@ export class PricingService {
       price: number;
       volume_remain: number;
       location_id: number;
+      issued?: string;
     }> = [];
     for (const c of characters) {
       const orders = await this.esiChars.getOrders(c.id);
@@ -248,7 +251,34 @@ export class PricingService {
             price: o.price,
             volume_remain: o.volume_remain,
             location_id: o.location_id,
+            issued: o.issued,
           });
+        }
+      }
+    }
+
+    // Optional: filter orders to those belonging to a specific commit scope
+    if (params.planCommitId) {
+      const commit = await this.prisma.planCommit.findUnique({
+        where: { id: params.planCommitId },
+        select: { id: true, createdAt: true },
+      });
+      if (commit) {
+        // Limit to orders for lines in the commit and issued after commit time
+        const lines = await this.prisma.planCommitLine.findMany({
+          where: { commitId: params.planCommitId },
+          select: { typeId: true, destinationStationId: true },
+        });
+        const allowed = new Set(
+          lines.map((l) => `${l.destinationStationId}:${l.typeId}`),
+        );
+        const issuedAfter = new Date(commit.createdAt);
+        for (let i = ourOrders.length - 1; i >= 0; i--) {
+          const o = ourOrders[i];
+          const key = `${o.location_id}:${o.type_id}`;
+          const okKey = allowed.has(key);
+          const okIssued = !o.issued || new Date(o.issued) >= issuedAfter;
+          if (!okKey || !okIssued) ourOrders.splice(i, 1);
         }
       }
     }
@@ -336,6 +366,7 @@ export class PricingService {
         const itemName = typeNameById.get(o.type_id) ?? String(o.type_id);
         const entry = {
           orderId: o.order_id,
+          typeId: o.type_id,
           itemName,
           remaining: o.volume_remain,
           currentPrice: o.price,
@@ -374,5 +405,229 @@ export class PricingService {
         : a.stationId - b.stationId,
     );
     return results;
+  }
+
+  async sellAppraiseByCommit(params: { planCommitId: string }): Promise<
+    Array<{
+      itemName: string;
+      typeId: number;
+      quantityRemaining: number;
+      destinationStationId: number;
+      lowestSell: number | null;
+      suggestedSellPriceTicked: number | null;
+    }>
+  > {
+    // Compute remaining units per line
+    const lines = await this.prisma.planCommitLine.findMany({
+      where: { commitId: params.planCommitId },
+      select: {
+        typeId: true,
+        destinationStationId: true,
+        plannedUnits: true,
+        unitCost: true,
+      },
+    });
+
+    // Estimate remaining via reconciliation helper if available by comparing buys/sells
+    // Fallback: plannedUnits (UI can further restrict)
+    const remainingMap = new Map<string, number>();
+    for (const l of lines) {
+      const k = `${l.destinationStationId}:${l.typeId}`;
+      remainingMap.set(k, (remainingMap.get(k) ?? 0) + l.plannedUnits);
+    }
+
+    const typeIds = Array.from(new Set(lines.map((l) => l.typeId)));
+    const typeRows = typeIds.length
+      ? await this.prisma.typeId.findMany({
+          where: { id: { in: typeIds } },
+          select: { id: true, name: true },
+        })
+      : [];
+    const typeNameById = new Map<number, string>();
+    for (const t of typeRows) typeNameById.set(t.id, t.name);
+
+    const feeDefaults = AppConfig.arbitrage().fees;
+
+    const out: Array<{
+      itemName: string;
+      typeId: number;
+      quantityRemaining: number;
+      destinationStationId: number;
+      lowestSell: number | null;
+      suggestedSellPriceTicked: number | null;
+    }> = [];
+
+    // Resolve regionIds for all destination stations
+    const stationIds = Array.from(
+      new Set(lines.map((l) => l.destinationStationId)),
+    );
+    const stations = await this.prisma.stationId.findMany({
+      where: { id: { in: stationIds } },
+      select: { id: true, solarSystemId: true },
+    });
+    const systems = await this.prisma.solarSystemId.findMany({
+      where: {
+        id: { in: Array.from(new Set(stations.map((s) => s.solarSystemId))) },
+      },
+      select: { id: true, regionId: true },
+    });
+    const regionBySystem = new Map<number, number>();
+    for (const sys of systems) regionBySystem.set(sys.id, sys.regionId);
+    const regionByStation = new Map<number, number>();
+    for (const s of stations)
+      regionByStation.set(s.id, regionBySystem.get(s.solarSystemId)!);
+
+    for (const l of lines) {
+      const key = `${l.destinationStationId}:${l.typeId}`;
+      const qty = remainingMap.get(key) ?? 0;
+      if (qty <= 0) continue;
+      const regionId = regionByStation.get(l.destinationStationId);
+      let lowest: number | null = null;
+      if (regionId) {
+        try {
+          const orders = await fetchStationOrders(this.esi, {
+            regionId,
+            typeId: l.typeId,
+            stationId: l.destinationStationId,
+            side: 'sell',
+          });
+          orders.sort((a, b) => a.price - b.price);
+          lowest = orders.length ? orders[0].price : null;
+        } catch {
+          lowest = null;
+        }
+      }
+      const suggested =
+        lowest !== null
+          ? nextCheaperTick(
+              getEffectiveSell(lowest, {
+                salesTaxPercent: feeDefaults.salesTaxPercent,
+                brokerFeePercent: 0,
+              }),
+            )
+          : null;
+      out.push({
+        itemName: typeNameById.get(l.typeId) ?? String(l.typeId),
+        typeId: l.typeId,
+        quantityRemaining: qty,
+        destinationStationId: l.destinationStationId,
+        lowestSell: lowest,
+        suggestedSellPriceTicked: suggested,
+      });
+    }
+
+    return out;
+  }
+
+  async confirmListing(params: {
+    planCommitId: string;
+    characterId: number;
+    stationId: number;
+    items: Array<{ typeId: number; quantity: number; unitPrice: number }>;
+  }) {
+    // Compute 1.5% broker fee on total value
+    const feePct = AppConfig.arbitrage().fees.brokerFeePercent; // default 1.5
+    const total = params.items.reduce(
+      (s, it) => s + it.quantity * it.unitPrice,
+      0,
+    );
+    const amount = (total * (feePct / 100)).toFixed(2);
+    await this.prisma.cycleLedgerEntry.create({
+      data: {
+        cycleId: await this.getOpenCycleIdFor(new Date()),
+        occurredAt: new Date(),
+        entryType: 'fee',
+        amount,
+        memo: 'broker_fee_listing',
+        planCommitId: params.planCommitId,
+        characterId: params.characterId,
+        stationId: params.stationId,
+        typeId: null,
+        source: 'computed',
+        sourceId: null,
+        matchStatus: 'linked',
+      },
+    });
+    return { ok: true, feeAmountISK: amount };
+  }
+
+  async confirmReprice(params: {
+    planCommitId: string;
+    characterId: number;
+    stationId: number;
+    updates: Array<{
+      orderId: number;
+      typeId: number;
+      remaining: number;
+      newUnitPrice: number;
+    }>;
+  }) {
+    // Compute 0.3% broker fee on remaining * newUnitPrice
+    const feePct = Number(process.env.DEFAULT_BROKER_RELIST_PCT ?? 0.3);
+    const total = params.updates.reduce(
+      (s, it) => s + it.remaining * it.newUnitPrice,
+      0,
+    );
+    const amount = (total * (feePct / 100)).toFixed(2);
+    await this.prisma.cycleLedgerEntry.create({
+      data: {
+        cycleId: await this.getOpenCycleIdFor(new Date()),
+        occurredAt: new Date(),
+        entryType: 'fee',
+        amount,
+        memo: 'broker_fee_relist',
+        planCommitId: params.planCommitId,
+        characterId: params.characterId,
+        stationId: params.stationId,
+        typeId: null,
+        source: 'computed',
+        sourceId: null,
+        matchStatus: 'linked',
+      },
+    });
+    return { ok: true, feeAmountISK: amount };
+  }
+
+  private async getOpenCycleIdFor(date: Date): Promise<string> {
+    const cycle = await this.prisma.cycle.findFirst({
+      where: {
+        startedAt: { lte: date },
+        OR: [{ closedAt: null }, { closedAt: { gte: date } }],
+      },
+      orderBy: { startedAt: 'desc' },
+      select: { id: true },
+    });
+    if (!cycle) {
+      const latest = await this.prisma.cycle.findFirst({
+        orderBy: { startedAt: 'desc' },
+        select: { id: true },
+      });
+      if (!latest) throw new Error('No cycle found. Create a Cycle first.');
+      return latest.id;
+    }
+    return cycle.id;
+  }
+
+  async getRemainingLines(commitId: string) {
+    // Lightweight remaining-by-planned approximation for UI; detailed version in reconciliation service
+    const lines = await this.prisma.planCommitLine.findMany({
+      where: { commitId },
+      select: {
+        id: true,
+        typeId: true,
+        sourceStationId: true,
+        destinationStationId: true,
+        plannedUnits: true,
+        unitCost: true,
+      },
+    });
+    return lines.map((l) => ({
+      lineId: l.id,
+      typeId: l.typeId,
+      sourceStationId: l.sourceStationId,
+      destinationStationId: l.destinationStationId,
+      remainingUnits: l.plannedUnits,
+      unitCost: Number(l.unitCost),
+    }));
   }
 }

@@ -1,4 +1,4 @@
-import { Body, Controller, Post, UsePipes } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, UsePipes } from '@nestjs/common';
 import { PricingService } from './pricing.service';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { z } from 'zod';
@@ -14,8 +14,50 @@ export const UndercutCheckSchema = z.object({
   characterIds: z.array(z.number().int().positive()).optional(),
   // If provided, limit to these station IDs; otherwise use tracked stations
   stationIds: z.array(z.number().int().positive()).optional(),
+  // Optional commit filter
+  planCommitId: z.string().uuid().optional(),
 });
 export type UndercutCheckRequest = z.infer<typeof UndercutCheckSchema>;
+
+export const ConfirmListingSchema = z.object({
+  planCommitId: z.string().uuid(),
+  characterId: z.number().int().positive(),
+  stationId: z.number().int().positive(),
+  items: z
+    .array(
+      z.object({
+        typeId: z.number().int().positive(),
+        quantity: z.number().int().min(1),
+        unitPrice: z.number().positive(),
+      }),
+    )
+    .min(1),
+});
+export type ConfirmListingRequest = z.infer<typeof ConfirmListingSchema>;
+
+export const ConfirmRepriceSchema = z.object({
+  planCommitId: z.string().uuid(),
+  characterId: z.number().int().positive(),
+  stationId: z.number().int().positive(),
+  updates: z
+    .array(
+      z.object({
+        orderId: z.number().int().positive(),
+        typeId: z.number().int().positive(),
+        remaining: z.number().int().min(0),
+        newUnitPrice: z.number().positive(),
+      }),
+    )
+    .min(1),
+});
+export type ConfirmRepriceRequest = z.infer<typeof ConfirmRepriceSchema>;
+
+export const SellAppraiseByCommitSchema = z.object({
+  planCommitId: z.string().uuid(),
+});
+export type SellAppraiseByCommitRequest = z.infer<
+  typeof SellAppraiseByCommitSchema
+>;
 
 @Controller('pricing')
 export class PricingController {
@@ -31,5 +73,28 @@ export class PricingController {
   @UsePipes(new ZodValidationPipe(UndercutCheckSchema))
   async undercutCheck(@Body() body: UndercutCheckRequest) {
     return this.pricing.undercutCheck(body);
+  }
+
+  @Post('confirm-listing')
+  @UsePipes(new ZodValidationPipe(ConfirmListingSchema))
+  async confirmListing(@Body() body: ConfirmListingRequest) {
+    return this.pricing.confirmListing(body);
+  }
+
+  @Post('confirm-reprice')
+  @UsePipes(new ZodValidationPipe(ConfirmRepriceSchema))
+  async confirmReprice(@Body() body: ConfirmRepriceRequest) {
+    return this.pricing.confirmReprice(body);
+  }
+
+  @Post('sell-appraise-by-commit')
+  @UsePipes(new ZodValidationPipe(SellAppraiseByCommitSchema))
+  async sellAppraiseByCommit(@Body() body: SellAppraiseByCommitRequest) {
+    return this.pricing.sellAppraiseByCommit(body);
+  }
+
+  @Get('commit/:id/remaining-lines')
+  async getRemainingLines(@Param('id') id: string) {
+    return this.pricing.getRemainingLines(id);
   }
 }

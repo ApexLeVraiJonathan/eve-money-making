@@ -446,12 +446,10 @@ export class EsiService {
             // 304: no body returned. Use cached body from memory or DB; update headers/expiry.
             if (res.status === 304) {
               this.metrics.http304++;
-              const dbBody = dbEntry?.body as unknown | undefined;
+              const dbBody = dbEntry?.body as object | undefined;
               const bodyFromCache =
                 cached?.data !== undefined ? cached.data : dbBody;
-              const currentStatus = (cached?.status ??
-                dbEntry?.status ??
-                200) as number;
+              const currentStatus = cached?.status ?? dbEntry?.status ?? 200;
               const etag =
                 resHeaders['etag'] ??
                 cached?.etag ??
@@ -642,13 +640,13 @@ export class EsiService {
                 headers: resHeaders,
               },
             };
-          } catch (err: unknown) {
+          } catch (err) {
             const status =
               typeof err === 'object' && err !== null && 'response' in err
                 ? (err as { response?: { status?: number; headers?: any } })
                     .response?.status
                 : undefined;
-            const headersRaw: unknown =
+            const headersRaw =
               typeof err === 'object' && err !== null && 'response' in err
                 ? (err as { response?: { headers?: unknown } }).response
                     ?.headers
@@ -723,12 +721,11 @@ export class EsiService {
                   this.updateErrorBudget(retryResHeaders);
                   if (retryRes.status === 304) {
                     this.metrics.http304++;
-                    const dbBody = dbEntry?.body as unknown | undefined;
+                    const dbBody = dbEntry?.body as object | undefined;
                     const bodyFromCache =
                       cached?.data !== undefined ? cached.data : dbBody;
-                    const currentStatus = (cached?.status ??
-                      dbEntry?.status ??
-                      200) as number;
+                    const currentStatus =
+                      cached?.status ?? dbEntry?.status ?? 200;
                     const etag =
                       retryResHeaders['etag'] ??
                       cached?.etag ??

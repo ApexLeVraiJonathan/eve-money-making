@@ -200,6 +200,7 @@ model PlanCommit {
   request          Json               @map("request")
   result           Json               @map("result")
   memo             String?            @map("memo")
+  closedAt         DateTime?          @map("closed_at")
   createdAt        DateTime           @default(now()) @map("created_at")
   updatedAt        DateTime           @updatedAt @map("updated_at")
   CycleLedgerEntry CycleLedgerEntry[]

@@ -50,8 +50,10 @@ export class ImportController {
 
   @Post('all')
   @UsePipes(new ZodValidationPipe(BatchSchema))
-  async importAll(@Body() body?: { batchSize?: number }, @Req() req?: Request) {
-    const reqId = (req as (Request & { reqId?: string }) | undefined)?.reqId;
+  async importAll(
+    @Body() body?: { batchSize?: number },
+    @Req() _req?: Request,
+  ) {
     return this.importService.importAll(body?.batchSize);
   }
 
@@ -64,9 +66,8 @@ export class ImportController {
   @UsePipes(new ZodValidationPipe(DaySchema))
   async importMarketTradesByDay(
     @Body() body: { date: string; batchSize?: number },
-    @Req() req?: Request,
+    @Req() _req?: Request,
   ) {
-    const reqId = (req as (Request & { reqId?: string }) | undefined)?.reqId;
     return this.importService.importMarketOrderTradesByDate(
       body.date,
       body.batchSize,
@@ -77,9 +78,8 @@ export class ImportController {
   @UsePipes(new ZodValidationPipe(MissingSchema))
   async importMarketTradesMissing(
     @Body() body?: { daysBack?: number; batchSize?: number },
-    @Req() req?: Request,
+    @Req() _req?: Request,
   ) {
-    const reqId = (req as (Request & { reqId?: string }) | undefined)?.reqId;
     return this.importService.importMissingMarketOrderTrades(
       body?.daysBack,
       body?.batchSize,

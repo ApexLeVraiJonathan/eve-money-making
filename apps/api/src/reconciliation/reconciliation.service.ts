@@ -367,6 +367,36 @@ export class ReconciliationService {
         created++;
         await this.linkBestCommitForExecution(entry);
         linked++;
+
+        // If this is a sell execution (positive amount), create computed sales tax fee (3.37%) linked to same commit
+        const amtNum = Number(entry.amount);
+        if (amtNum > 0) {
+          // Find linked commit
+          const updated = await this.prisma.cycleLedgerEntry.findUnique({
+            where: { id: entry.id },
+            select: { planCommitId: true },
+          });
+          const planCommitId = updated?.planCommitId ?? null;
+          const taxPct = Number(process.env.DEFAULT_SALES_TAX_PCT ?? 3.37);
+          const taxAmount = (amtNum * (taxPct / 100)).toFixed(2);
+          await this.prisma.cycleLedgerEntry.create({
+            data: {
+              cycleId,
+              occurredAt: new Date(t.date),
+              entryType: 'fee',
+              amount: taxAmount,
+              memo: 'sell_tax_computed',
+              planCommitId,
+              characterId: t.characterId,
+              stationId: t.locationId,
+              typeId: t.typeId,
+              source: 'computed',
+              sourceId: `${sourceId}:tax`,
+              matchStatus: planCommitId ? 'linked' : 'unlinked',
+            },
+          });
+          created++;
+        }
       } catch {
         // existing -> try linking if missing
         const existing = await this.prisma.cycleLedgerEntry.findUnique({
@@ -388,9 +418,8 @@ export class ReconciliationService {
     }
 
     // Journal -> fee entries (selected types)
+    // Stop ingesting transaction_tax and brokers_fee; keep contract_* entries
     const feeRefs = new Set([
-      'transaction_tax',
-      'brokers_fee',
       'contract_broker_fee',
       'contract_reward',
       'contract_deposit',
@@ -626,8 +655,6 @@ export class ReconciliationService {
       },
     });
     const feeRefs = new Set([
-      'transaction_tax',
-      'brokers_fee',
       'contract_broker_fee',
       'contract_reward',
       'contract_deposit',
@@ -679,5 +706,104 @@ export class ReconciliationService {
     }
 
     return { created };
+  }
+
+  /**
+   * Compute remaining units per commit line using wallet transactions.
+   * Matches buys within ±60m of commit time at source, and sells at destination after commit time.
+   */
+  async computeRemainingUnitsByLine(commitId: string): Promise<
+    Array<{
+      lineId: string;
+      typeId: number;
+      sourceStationId: number;
+      destinationStationId: number;
+      plannedUnits: number;
+      boughtUnits: number;
+      soldUnits: number;
+      remainingUnits: number;
+      unitCost: number;
+    }>
+  > {
+    const commit = await this.prisma.planCommit.findUnique({
+      where: { id: commitId },
+      select: { id: true, createdAt: true },
+    });
+    if (!commit) throw new NotFoundException('Commit not found');
+
+    const lines = await this.prisma.planCommitLine.findMany({
+      where: { commitId },
+      select: {
+        id: true,
+        typeId: true,
+        sourceStationId: true,
+        destinationStationId: true,
+        plannedUnits: true,
+        unitCost: true,
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+    const typeIds = Array.from(new Set(lines.map((l) => l.typeId)));
+    const txs = await this.prisma.walletTransaction.findMany({
+      where: { typeId: { in: typeIds } },
+      orderBy: { date: 'asc' },
+      select: {
+        date: true,
+        isBuy: true,
+        locationId: true,
+        typeId: true,
+        quantity: true,
+      },
+    });
+
+    const boughtByLine = new Map<string, number>();
+    const soldByLine = new Map<string, number>();
+    const buyWindowMs = 60 * 60 * 1000;
+    for (const l of lines) {
+      let bought = 0;
+      let sold = 0;
+      const buyStart = new Date(commit.createdAt.getTime() - buyWindowMs);
+      const buyEnd = new Date(commit.createdAt.getTime() + buyWindowMs);
+      for (const t of txs) {
+        if (t.typeId !== l.typeId) continue;
+        if (t.isBuy) {
+          if (
+            t.locationId === l.sourceStationId &&
+            t.date >= buyStart &&
+            t.date <= buyEnd
+          ) {
+            const canAdd = Math.max(0, l.plannedUnits - bought);
+            if (canAdd > 0) bought += Math.min(canAdd, t.quantity);
+          }
+        } else {
+          if (
+            t.locationId === l.destinationStationId &&
+            t.date >= commit.createdAt
+          ) {
+            const canAdd = Math.max(0, bought - sold);
+            if (canAdd > 0) sold += Math.min(canAdd, t.quantity);
+          }
+        }
+      }
+      boughtByLine.set(l.id, bought);
+      soldByLine.set(l.id, sold);
+    }
+
+    return lines.map((l) => {
+      const bought = boughtByLine.get(l.id) ?? 0;
+      const sold = soldByLine.get(l.id) ?? 0;
+      const remaining = Math.max(0, Math.min(l.plannedUnits, bought) - sold);
+      return {
+        lineId: l.id,
+        typeId: l.typeId,
+        sourceStationId: l.sourceStationId,
+        destinationStationId: l.destinationStationId,
+        plannedUnits: l.plannedUnits,
+        boughtUnits: bought,
+        soldUnits: sold,
+        remainingUnits: remaining,
+        unitCost: Number(l.unitCost),
+      };
+    });
   }
 }

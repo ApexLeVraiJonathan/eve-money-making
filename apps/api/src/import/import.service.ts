@@ -491,11 +491,50 @@ export class ImportService {
       }>({
         size: batchSize,
         flush: async (items) => {
-          const { count } = await this.prisma.marketOrderTradeDaily.createMany({
-            data: items,
-            skipDuplicates: true,
-          });
-          inserted += count;
+          try {
+            const { count } =
+              await this.prisma.marketOrderTradeDaily.createMany({
+                data: items,
+                skipDuplicates: true,
+              });
+            inserted += count;
+          } catch (error) {
+            const code = (error as { code?: string })?.code;
+            // Prisma P2003: Foreign key constraint failed
+            if (code === 'P2003') {
+              // Diagnose missing type_ids for a clearer error message
+              try {
+                const uniqueTypeIds = Array.from(
+                  new Set(items.map((i) => i.typeId)),
+                );
+                const existing = await this.prisma.typeId.findMany({
+                  where: { id: { in: uniqueTypeIds } },
+                  select: { id: true },
+                });
+                const existingSet = new Set(existing.map((e) => e.id));
+                const missing = uniqueTypeIds.filter(
+                  (id) => !existingSet.has(id),
+                );
+                if (missing.length > 0) {
+                  const sample = missing.slice(0, 10).join(', ');
+                  const message =
+                    `Foreign key violation: ${missing.length} missing type_ids (e.g., ${sample}). ` +
+                    'Import reference data first (POST /import/type-ids or /import/all), then retry the market trades import.';
+                  this.logger.error(message, undefined, ImportService.name);
+                  throw new Error(message);
+                }
+              } catch (error) {
+                // If diagnostics fail for any reason, rethrow original error
+                this.logger.error(
+                  `Failed to diagnose missing type_ids: ${String(error)}`,
+                  undefined,
+                  ImportService.name,
+                );
+                throw error;
+              }
+            }
+            throw error;
+          }
         },
       });
 

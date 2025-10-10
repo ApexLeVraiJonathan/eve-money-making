@@ -411,6 +411,19 @@ export class ArbitrageService {
     result: unknown;
     memo?: string;
   }) {
+    // If there is an existing open commit (no closedAt) in the current open cycle, we'll roll over its remaining units and then mark it closed.
+    await this.prisma.cycle.findFirst({
+      where: { OR: [{ closedAt: null }, { closedAt: { gte: new Date() } }] },
+      orderBy: { startedAt: 'desc' },
+      select: { id: true },
+    });
+
+    const previousOpen = await this.prisma.planCommit.findFirst({
+      where: { closedAt: null },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true, createdAt: true },
+    });
+
     const row = await this.prisma.planCommit.create({
       data: {
         request: payload.request as object,
@@ -457,6 +470,54 @@ export class ArbitrageService {
       this.logger.warn(
         `Plan commit lines extraction failed id=${row.id}: ${String(e)}`,
       );
+    }
+
+    // Rollover remaining units from previous open commit (approximation using planned units)
+    try {
+      if (previousOpen?.id && previousOpen.id !== row.id) {
+        const prevLines = await this.prisma.planCommitLine.findMany({
+          where: { commitId: previousOpen.id },
+          select: {
+            typeId: true,
+            sourceStationId: true,
+            destinationStationId: true,
+            plannedUnits: true,
+            unitCost: true,
+          },
+        });
+        const rollover: Array<{
+          commitId: string;
+          typeId: number;
+          sourceStationId: number;
+          destinationStationId: number;
+          plannedUnits: number;
+          unitCost: number;
+          unitProfit: number;
+        }> = [];
+        for (const l of prevLines) {
+          if (l.plannedUnits > 0) {
+            rollover.push({
+              commitId: row.id,
+              typeId: l.typeId,
+              sourceStationId: l.sourceStationId,
+              destinationStationId: l.destinationStationId,
+              plannedUnits: l.plannedUnits,
+              unitCost: Number(l.unitCost),
+              unitProfit: 0,
+            });
+          }
+        }
+        if (rollover.length) {
+          await this.prisma.planCommitLine.createMany({ data: rollover });
+        }
+        // Close previous open commit to ensure only one open at a time
+        await this.prisma.planCommit.update({
+          where: { id: previousOpen.id },
+          data: { closedAt: new Date() },
+        });
+      }
+    } catch (e) {
+      this.logger.warn(`Rollover from previous commit failed: ${String(e)}`);
     }
     return row;
   }
