@@ -424,11 +424,17 @@ export class ArbitrageService {
       select: { id: true, createdAt: true },
     });
 
+    // Attempt to link to the current open cycle when present
+    const currentOpen = await this.prisma.cycle.findFirst({
+      where: { startedAt: { lte: new Date() }, closedAt: null },
+      select: { id: true },
+    });
     const row = await this.prisma.planCommit.create({
       data: {
         request: payload.request as object,
         result: payload.result as object,
         memo: payload.memo ?? null,
+        cycleId: currentOpen?.id ?? null,
       },
       select: { id: true, createdAt: true },
     });

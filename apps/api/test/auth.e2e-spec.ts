@@ -26,7 +26,7 @@ describe('Auth flows (e2e)', () => {
     auth = app.get(AuthService);
 
     // Spy token exchange to avoid real network
-    jest.spyOn(auth as AuthService, 'exchangeCodeForToken').mockResolvedValue({
+    jest.spyOn(auth, 'exchangeCodeForToken').mockResolvedValue({
       access_token: 'test_access',
       token_type: 'Bearer',
       expires_in: 3600,
@@ -34,7 +34,7 @@ describe('Auth flows (e2e)', () => {
     } as any);
 
     // Mock global fetch used by callback verify call
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     (global as any).fetch = jest.fn(async () => ({
       json: async () => ({
         CharacterID: 90000001,
@@ -76,7 +76,7 @@ describe('Auth flows (e2e)', () => {
     agent.jar.setCookie(`sso_kind=admin`);
 
     // Change mock verify identity for admin flow
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     (global as any).fetch = jest.fn(async () => ({
       json: async () => ({
         CharacterID: 90000002,

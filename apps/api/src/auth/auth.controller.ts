@@ -192,7 +192,10 @@ export class AuthController {
     @Req() req: Request,
     @Res() res: Response,
   ) {
-    const cookies = (req.cookies ?? {}) as Record<string, string>;
+    const cookies: Record<string, string> = (req.cookies ?? {}) as Record<
+      string,
+      string
+    >;
     const expectedState = cookies['sso_state'];
     const codeVerifier = cookies['sso_verifier'];
     if (!expectedState || !codeVerifier || state !== expectedState) {
@@ -225,7 +228,14 @@ export class AuthController {
       owner: verify.CharacterOwnerHash,
     };
     const fakeJwt = `${Buffer.from('x').toString('base64')}.${Buffer.from(JSON.stringify(idTokenLike)).toString('base64')}.x`;
-    const scopes = (process.env.ESI_SSO_SCOPES ?? '')
+    const kindCookie: string | undefined = cookies['sso_kind'];
+    const scopesEnv =
+      kindCookie === 'admin'
+        ? (process.env.ESI_SSO_SCOPES_ADMIN ?? process.env.ESI_SSO_SCOPES ?? '')
+        : kindCookie === 'user'
+          ? (process.env.ESI_SSO_SCOPES_USER ?? '')
+          : (process.env.ESI_SSO_SCOPES ?? '');
+    const scopes = scopesEnv
       .split(',')
       .map((s) => s.trim())
       .filter(Boolean);
@@ -386,7 +396,7 @@ export class AuthController {
     }
     try {
       if (role === 'ADMIN' || role === 'USER' || role === 'LOGISTICS') {
-        await this.auth.setCharacterRole(id, role as any);
+        await this.auth.setCharacterRole(id, role);
       }
       await this.auth.setCharacterProfile(id, func || null, loc || null);
       res.json({ updated: true, characterId: id });

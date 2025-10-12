@@ -1,5 +1,4 @@
-import { Controller, Post, Body, UsePipes, Req } from '@nestjs/common';
-import type { Request } from 'express';
+import { Controller, Post, Body, UsePipes } from '@nestjs/common';
 import { ImportService } from './import.service';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { z } from 'zod';
@@ -50,10 +49,7 @@ export class ImportController {
 
   @Post('all')
   @UsePipes(new ZodValidationPipe(BatchSchema))
-  async importAll(
-    @Body() body?: { batchSize?: number },
-    @Req() _req?: Request,
-  ) {
+  async importAll(@Body() body?: { batchSize?: number }) {
     return this.importService.importAll(body?.batchSize);
   }
 
@@ -66,7 +62,6 @@ export class ImportController {
   @UsePipes(new ZodValidationPipe(DaySchema))
   async importMarketTradesByDay(
     @Body() body: { date: string; batchSize?: number },
-    @Req() _req?: Request,
   ) {
     return this.importService.importMarketOrderTradesByDate(
       body.date,
@@ -78,7 +73,6 @@ export class ImportController {
   @UsePipes(new ZodValidationPipe(MissingSchema))
   async importMarketTradesMissing(
     @Body() body?: { daysBack?: number; batchSize?: number },
-    @Req() _req?: Request,
   ) {
     return this.importService.importMissingMarketOrderTrades(
       body?.daysBack,

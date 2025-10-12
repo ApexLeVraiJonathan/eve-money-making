@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import type { ParticipationStatus, Prisma } from '@prisma/client';
 import { EsiCharactersService } from '../esi/esi-characters.service';
 import { EsiService } from '../esi/esi.service';
 import { fetchStationOrders } from '../esi/market-helpers';
@@ -34,9 +35,19 @@ type CapitalResponse = {
 export class LedgerService {
   private readonly rolloverOpeningCommitMemo = 'Opening Balance (carryover)';
   private readonly jitaStationId = 60003760;
-  private readonly trackedCharacterIds = [
-    2122406821, 2122406910, 2122406955, 2122471041,
-  ];
+
+  private async getTrackedCharacterIds(): Promise<number[]> {
+    // Only SELLERs stationed in any of the specified hubs, and that have a token
+    const rows = await this.prisma.eveCharacter.findMany({
+      where: {
+        function: 'SELLER',
+        location: { in: ['DODIXIE', 'HEK', 'RENS', 'AMARR'] },
+        token: { isNot: null },
+      },
+      select: { id: true },
+    });
+    return rows.map((r) => r.id);
+  }
   constructor(
     private readonly prisma: PrismaService,
     private readonly esiChars: EsiCharactersService,
@@ -117,7 +128,8 @@ export class LedgerService {
 
     // Quantities from assets + active sell orders
     const qtyByTypeStation = new Map<string, number>();
-    for (const cid of this.trackedCharacterIds) {
+    const tracked = await this.getTrackedCharacterIds();
+    for (const cid of tracked) {
       try {
         const assets = await this.esiChars.getAssets(cid);
         for (const a of assets) {
@@ -131,7 +143,7 @@ export class LedgerService {
         this.logger.warn(`Assets fetch failed for ${cid}: ${String(e)}`);
       }
     }
-    for (const cid of this.trackedCharacterIds) {
+    for (const cid of tracked) {
       try {
         const orders = await this.esiChars.getOrders(cid);
         for (const o of orders) {
@@ -252,6 +264,7 @@ export class LedgerService {
             generatedAt: new Date().toISOString(),
           },
           memo: this.rolloverOpeningCommitMemo,
+          cycleId: cycle.id,
         },
         select: { id: true },
       });
@@ -262,7 +275,7 @@ export class LedgerService {
           sourceStationId: l.stationId,
           destinationStationId: l.stationId,
           plannedUnits: l.qty,
-          unitCost: l.unitCost,
+          unitCost: String(Number(l.unitCost ?? '0').toFixed(2)),
           unitProfit: 0,
           createdAt: new Date(),
           updatedAt: new Date(),
@@ -278,7 +291,8 @@ export class LedgerService {
   }> {
     // Cash from tracked characters minus base reserve
     let cashSum = 0;
-    for (const cid of this.trackedCharacterIds) {
+    const tracked = await this.getTrackedCharacterIds();
+    for (const cid of tracked) {
       try {
         const bal = await this.esiChars.getWallet(cid);
         cashSum += bal;
@@ -286,7 +300,7 @@ export class LedgerService {
         this.logger.warn(`Wallet fetch failed for ${cid}: ${String(e)}`);
       }
     }
-    const reserve = 100_000_000 * this.trackedCharacterIds.length;
+    const reserve = 100_000_000 * tracked.length;
     const cash = Math.max(0, cashSum - reserve);
 
     // Build weighted-average cost positions by station/type from wallet transactions
@@ -323,7 +337,7 @@ export class LedgerService {
     // Merge quantities from our active sell orders and assets
     const qtyByTypeStation = new Map<string, number>();
     // Assets (items on market are not in assets)
-    for (const cid of this.trackedCharacterIds) {
+    for (const cid of tracked) {
       try {
         const assets = await this.esiChars.getAssetsAll(cid);
         for (const a of assets) {
@@ -338,7 +352,7 @@ export class LedgerService {
       }
     }
     // Active sell orders (on market)
-    for (const cid of this.trackedCharacterIds) {
+    for (const cid of tracked) {
       try {
         const orders = await this.esiChars.getOrdersAll(cid);
         for (const o of orders) {
@@ -457,7 +471,8 @@ export class LedgerService {
 
     // Quantities from assets + active sell orders
     const qtyByTypeStation = new Map<string, number>();
-    for (const cid of this.trackedCharacterIds) {
+    const tracked = await this.getTrackedCharacterIds();
+    for (const cid of tracked) {
       try {
         const assets = await this.esiChars.getAssets(cid);
         for (const a of assets) {
@@ -471,7 +486,7 @@ export class LedgerService {
         this.logger.warn(`Assets fetch failed for ${cid}: ${String(e)}`);
       }
     }
-    for (const cid of this.trackedCharacterIds) {
+    for (const cid of tracked) {
       try {
         const orders = await this.esiChars.getOrders(cid);
         for (const o of orders) {
@@ -553,6 +568,7 @@ export class LedgerService {
             generatedAt: new Date().toISOString(),
           },
           memo: this.rolloverOpeningCommitMemo,
+          cycleId: cycle.id,
         },
         select: { id: true },
       });
@@ -563,7 +579,7 @@ export class LedgerService {
           sourceStationId: l.sourceStationId,
           destinationStationId: l.destinationStationId,
           plannedUnits: l.plannedUnits,
-          unitCost: l.unitCost,
+          unitCost: String(Number(l.unitCost ?? '0').toFixed(2)),
           unitProfit: 0,
           createdAt: new Date(),
           updatedAt: new Date(),
@@ -629,11 +645,11 @@ export class LedgerService {
     }
     const memo = `ARB ${cycle.id} ${input.characterName}`;
     // Return existing if same memo exists
-    const existing = await (this.prisma as any).cycleParticipation.findUnique({
+    const existing = await this.prisma.cycleParticipation.findUnique({
       where: { memo },
     });
     if (existing) return existing;
-    return await (this.prisma as any).cycleParticipation.create({
+    return await this.prisma.cycleParticipation.create({
       data: {
         cycleId: input.cycleId,
         characterName: input.characterName,
@@ -645,14 +661,28 @@ export class LedgerService {
   }
 
   async listParticipations(cycleId: string, status?: string) {
-    return await (this.prisma as any).cycleParticipation.findMany({
-      where: { cycleId, ...(status ? { status } : {}) },
+    const validStatuses: ParticipationStatus[] = [
+      'AWAITING_INVESTMENT',
+      'AWAITING_VALIDATION',
+      'OPTED_IN',
+      'OPTED_OUT',
+      'COMPLETED',
+      'REFUNDED',
+    ];
+    const where: Prisma.CycleParticipationWhereInput = {
+      cycleId,
+      ...(status && validStatuses.includes(status as ParticipationStatus)
+        ? { status: status as ParticipationStatus }
+        : {}),
+    };
+    return await this.prisma.cycleParticipation.findMany({
+      where,
       orderBy: { createdAt: 'asc' },
     });
   }
 
   async optOutParticipation(participationId: string) {
-    const p = await (this.prisma as any).cycleParticipation.findUnique({
+    const p = await this.prisma.cycleParticipation.findUnique({
       where: { id: participationId },
       include: { cycle: true },
     });
@@ -664,7 +694,7 @@ export class LedgerService {
     if (p.validatedAt || p.status === 'OPTED_IN') {
       throw new Error('Already validated; admin refund required');
     }
-    return await (this.prisma as any).cycleParticipation.update({
+    return await this.prisma.cycleParticipation.update({
       where: { id: participationId },
       data: { status: 'OPTED_OUT', optedOutAt: new Date() },
     });
@@ -674,12 +704,12 @@ export class LedgerService {
     participationId: string;
     walletJournal?: { characterId: number; journalId: bigint } | null;
   }) {
-    const p = await (this.prisma as any).cycleParticipation.findUnique({
+    const p = await this.prisma.cycleParticipation.findUnique({
       where: { id: input.participationId },
     });
     if (!p) throw new Error('Participation not found');
     if (p.status === 'OPTED_IN' && p.validatedAt) return p;
-    const updated = await (this.prisma as any).cycleParticipation.update({
+    const updated = await this.prisma.cycleParticipation.update({
       where: { id: input.participationId },
       data: {
         status: 'OPTED_IN',
@@ -700,11 +730,11 @@ export class LedgerService {
   }
 
   async adminMarkRefund(input: { participationId: string; amountIsk: string }) {
-    const p = await (this.prisma as any).cycleParticipation.findUnique({
+    const p = await this.prisma.cycleParticipation.findUnique({
       where: { id: input.participationId },
     });
     if (!p) throw new Error('Participation not found');
-    const updated = await (this.prisma as any).cycleParticipation.update({
+    const updated = await this.prisma.cycleParticipation.update({
       where: { id: input.participationId },
       data: {
         refundAmountIsk: input.amountIsk,
@@ -735,9 +765,7 @@ export class LedgerService {
       : 0;
     const profit = Math.max(0, total - initial);
     const pool = profit * profitSharePct;
-    const parts: Array<any> = await (
-      this.prisma as any
-    ).cycleParticipation.findMany({
+    const parts = await this.prisma.cycleParticipation.findMany({
       where: { cycleId, status: 'OPTED_IN' },
       orderBy: { createdAt: 'asc' },
     });
@@ -746,7 +774,7 @@ export class LedgerService {
     for (const p of parts) {
       const amt = Number(p.amountIsk) - Number(p.refundAmountIsk ?? 0);
       if (amt > 0) {
-        netById.set(p.id as string, amt);
+        netById.set(p.id, amt);
         investedTotal += amt;
       }
     }
@@ -759,7 +787,7 @@ export class LedgerService {
     const payouts = parts
       .filter((p) => netById.has(p.id))
       .map((p) => {
-        const share = (netById.get(p.id as string) ?? 0) / investedTotal;
+        const share = (netById.get(p.id) ?? 0) / investedTotal;
         const payout = pool * share;
         return {
           participationId: p.id,
@@ -773,9 +801,22 @@ export class LedgerService {
 
   async finalizePayouts(cycleId: string, profitSharePct = 0.5) {
     const rec = await this.computePayouts(cycleId, profitSharePct);
-    for (const p of rec.payouts) {
-      const current = await (this.prisma as any).cycleParticipation.findUnique({
+    type Payout = {
+      participationId: string;
+      characterName: string;
+      amountIsk: string;
+      payoutIsk: string;
+    };
+    const payouts: Payout[] = rec.payouts as unknown as Payout[];
+    for (const p of payouts) {
+      const current = await this.prisma.cycleParticipation.findUnique({
         where: { id: p.participationId },
+        select: {
+          id: true,
+          characterName: true,
+          status: true,
+          payoutAmountIsk: true,
+        },
       });
       if (!current) continue;
       if (current.status === 'COMPLETED' && current.payoutAmountIsk) continue;
@@ -788,7 +829,7 @@ export class LedgerService {
         participationId: current.id,
         planCommitId: null,
       });
-      await (this.prisma as any).cycleParticipation.update({
+      await this.prisma.cycleParticipation.update({
         where: { id: current.id },
         data: {
           payoutAmountIsk: p.payoutIsk,
@@ -797,7 +838,7 @@ export class LedgerService {
         },
       });
     }
-    return rec;
+    return { ...rec, payouts };
   }
 
   async listEntriesEnriched(
@@ -905,6 +946,337 @@ export class LedgerService {
     }));
   }
 
+  async getCycleOverview(): Promise<{
+    current: null | {
+      id: string;
+      name: string | null;
+      startedAt: string;
+      endsAt: string | null;
+      status: 'Open' | 'Closed' | 'Planned';
+      capital: {
+        cashISK: number;
+        inventoryISK: number;
+        originalInvestmentISK: number;
+      };
+      performance: { marginPct: number; profitISK: number };
+    };
+    next: null | {
+      id: string;
+      name: string | null;
+      startedAt: string;
+      status: 'Planned';
+    };
+  }> {
+    const now = new Date();
+    const [current, next] = await Promise.all([
+      this.prisma.cycle.findFirst({
+        where: { startedAt: { lte: now }, closedAt: null },
+        orderBy: { startedAt: 'desc' },
+      }),
+      this.getNextPlannedCycle(),
+    ]);
+
+    let currentOut: null | {
+      id: string;
+      name: string | null;
+      startedAt: string;
+      endsAt: string | null;
+      status: 'Open' | 'Closed' | 'Planned';
+      capital: {
+        cashISK: number;
+        inventoryISK: number;
+        originalInvestmentISK: number;
+      };
+      performance: { marginPct: number; profitISK: number };
+    } = null;
+
+    if (current) {
+      const cap = await this.computeCapital(current.id);
+      const total = Number(cap.capital.total);
+      const initial = current.initialCapitalIsk
+        ? Number(current.initialCapitalIsk)
+        : 0;
+      const profit = total - initial;
+      const marginPct = initial > 0 ? profit / initial : 0;
+      const endsAt = next
+        ? next.startedAt.toISOString()
+        : new Date(
+            current.startedAt.getTime() + 14 * 24 * 60 * 60 * 1000,
+          ).toISOString();
+      currentOut = {
+        id: current.id,
+        name: current.name ?? null,
+        startedAt: current.startedAt.toISOString(),
+        endsAt,
+        status: 'Open',
+        capital: {
+          cashISK: Number(cap.capital.cash),
+          inventoryISK: Number(cap.capital.inventory),
+          originalInvestmentISK: initial,
+        },
+        performance: { marginPct, profitISK: profit },
+      };
+    }
+
+    const nextOut = next
+      ? {
+          id: next.id,
+          name: next.name ?? null,
+          startedAt: next.startedAt.toISOString(),
+          status: 'Planned' as const,
+        }
+      : null;
+
+    return { current: currentOut, next: nextOut };
+  }
+
+  async getCommitSummaries(cycleId: string): Promise<
+    Array<{
+      id: string;
+      name: string;
+      openedAt: string;
+      closedAt: string | null;
+      totals: {
+        investedISK: number;
+        soldISK: number;
+        estSellISK: number;
+        estFeesISK: number;
+        estProfitISK: number;
+        estReturnPct: number;
+      };
+    }>
+  > {
+    const commits = await this.prisma.planCommit.findMany({
+      where: { cycleId },
+      orderBy: { createdAt: 'asc' },
+      select: { id: true, createdAt: true, closedAt: true, memo: true },
+    });
+    if (!commits.length) return [];
+
+    // Preload lines per commit
+    const commitIds = commits.map((c) => c.id);
+    const lines = await this.prisma.planCommitLine.findMany({
+      where: { commitId: { in: commitIds } },
+      select: {
+        commitId: true,
+        typeId: true,
+        destinationStationId: true,
+        plannedUnits: true,
+        unitCost: true,
+      },
+    });
+    const linesByCommit = new Map<string, typeof lines>();
+    for (const l of lines) {
+      const arr = linesByCommit.get(l.commitId) ?? [];
+      arr.push(l);
+      linesByCommit.set(l.commitId, arr);
+    }
+
+    // Preload ledger entries per commit
+    const ledger = await this.prisma.cycleLedgerEntry.findMany({
+      where: { planCommitId: { in: commitIds } },
+      select: { planCommitId: true, entryType: true, amount: true },
+    });
+    const ledgerByCommit = new Map<string, typeof ledger>();
+    for (const e of ledger) {
+      const arr = ledgerByCommit.get(e.planCommitId ?? '') ?? [];
+      arr.push(e);
+      if (e.planCommitId) ledgerByCommit.set(e.planCommitId, arr);
+    }
+
+    // Helper to get lowest sell at station
+    const stationRegionCache = new Map<number, number | null>();
+    const getRegionForStation = async (
+      stationId: number,
+    ): Promise<number | null> => {
+      if (stationRegionCache.has(stationId))
+        return stationRegionCache.get(stationId)!;
+      const st = await this.prisma.stationId.findUnique({
+        where: { id: stationId },
+        select: { solarSystemId: true },
+      });
+      if (!st) {
+        stationRegionCache.set(stationId, null);
+        return null;
+      }
+      const sys = await this.prisma.solarSystemId.findUnique({
+        where: { id: st.solarSystemId },
+        select: { regionId: true },
+      });
+      const rid = sys?.regionId ?? null;
+      stationRegionCache.set(stationId, rid);
+      return rid;
+    };
+    const getLowestSell = async (
+      stationId: number,
+      typeId: number,
+    ): Promise<number | null> => {
+      const regionId = await getRegionForStation(stationId);
+      if (!regionId) return null;
+      try {
+        const orders = await fetchStationOrders(this.esi, {
+          regionId,
+          typeId,
+          stationId,
+          side: 'sell',
+        });
+        orders.sort((a, b) => a.price - b.price);
+        return orders.length ? orders[0].price : null;
+      } catch {
+        return null;
+      }
+    };
+
+    const out = [] as Array<{
+      id: string;
+      name: string;
+      openedAt: string;
+      closedAt: string | null;
+      totals: {
+        investedISK: number;
+        soldISK: number;
+        estSellISK: number;
+        estFeesISK: number;
+        estProfitISK: number;
+        estReturnPct: number;
+      };
+    }>;
+
+    for (const c of commits) {
+      const lns = linesByCommit.get(c.id) ?? [];
+      const invested = lns.reduce(
+        (s: number, l) =>
+          s +
+          Number((l as { unitCost: unknown }).unitCost) *
+            (l as { plannedUnits: number }).plannedUnits,
+        0,
+      );
+      const led = ledgerByCommit.get(c.id) ?? [];
+      const sold = led
+        .filter((e) => e.entryType === 'execution')
+        .reduce((s, e) => s + Number(e.amount), 0);
+      const fees = led
+        .filter((e) => e.entryType === 'fee')
+        .reduce((s, e) => s + Number(e.amount), 0);
+      // Estimate sell value for remaining items (approx: all planned units)
+      let estSell = 0;
+      for (const l of lns) {
+        const px = await getLowestSell(l.destinationStationId, l.typeId);
+        if (px && px > 0) estSell += px * l.plannedUnits;
+      }
+      const investedNum = Number(invested);
+      const feesNum = Number(fees);
+      const estProfit =
+        Number(sold) + Number(estSell) - (investedNum + feesNum);
+      const estReturn = investedNum > 0 ? estProfit / investedNum : 0;
+      out.push({
+        id: c.id,
+        name: c.memo ?? `Commit ${c.createdAt.toISOString().slice(0, 10)}`,
+        openedAt: c.createdAt.toISOString(),
+        closedAt: c.closedAt ? c.closedAt.toISOString() : null,
+        totals: {
+          investedISK: Number(investedNum.toFixed(2)),
+          soldISK: Number(sold.toFixed(2)),
+          estSellISK: Number(estSell.toFixed(2)),
+          estFeesISK: Number(fees.toFixed(2)),
+          estProfitISK: Number(estProfit.toFixed(2)),
+          estReturnPct: Number(estReturn.toFixed(6)),
+        },
+      });
+    }
+
+    return out;
+  }
+
+  async getMyParticipation(
+    cycleId: string,
+    userId: string,
+  ): Promise<{
+    id: string;
+    cycleId: string;
+    userId: string | null;
+    characterName: string;
+    amountIsk: string;
+    memo: string;
+    status: string;
+    walletJournalId: bigint | null;
+    validatedAt: Date | null;
+    optedOutAt: Date | null;
+    refundAmountIsk: string | null;
+    refundedAt: Date | null;
+    payoutAmountIsk: string | null;
+    payoutPaidAt: Date | null;
+    createdAt: Date;
+    updatedAt: Date;
+    estimatedPayoutIsk?: string;
+  } | null> {
+    const row = await this.prisma.cycleParticipation.findFirst({
+      where: { cycleId, userId },
+      select: {
+        id: true,
+        cycleId: true,
+        userId: true,
+        characterName: true,
+        amountIsk: true,
+        memo: true,
+        status: true,
+        walletJournalId: true,
+        validatedAt: true,
+        optedOutAt: true,
+        refundAmountIsk: true,
+        refundedAt: true,
+        payoutAmountIsk: true,
+        payoutPaidAt: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+    if (!row) return null;
+    // Compute estimated payout using current pool suggestion
+    try {
+      const rec = await this.computePayouts(cycleId, 0.5);
+      type P = { participationId: string; payoutIsk: string };
+      const payout = (rec.payouts as unknown as P[]).find(
+        (x) => String(x.participationId) === String(row.id),
+      );
+      if (payout?.payoutIsk)
+        (row as unknown as { estimatedPayoutIsk?: string }).estimatedPayoutIsk =
+          String(payout.payoutIsk);
+    } catch {
+      // ignore errors in estimate
+    }
+    // Map Decimal fields to strings to match DTO signature
+    const mapped = row
+      ? {
+          ...row,
+          amountIsk: String(row.amountIsk),
+          refundAmountIsk:
+            row.refundAmountIsk !== null ? String(row.refundAmountIsk) : null,
+          payoutAmountIsk:
+            row.payoutAmountIsk !== null ? String(row.payoutAmountIsk) : null,
+        }
+      : null;
+    return mapped as unknown as {
+      id: string;
+      cycleId: string;
+      userId: string | null;
+      characterName: string;
+      amountIsk: string;
+      memo: string;
+      status: string;
+      walletJournalId: bigint | null;
+      validatedAt: Date | null;
+      optedOutAt: Date | null;
+      refundAmountIsk: string | null;
+      refundedAt: Date | null;
+      payoutAmountIsk: string | null;
+      payoutPaidAt: Date | null;
+      createdAt: Date;
+      updatedAt: Date;
+      estimatedPayoutIsk?: string;
+    } | null;
+  }
+
   async computeNav(cycleId: string): Promise<NavTotals> {
     const entries = await this.prisma.cycleLedgerEntry.findMany({
       where: { cycleId },
@@ -976,7 +1348,8 @@ export class LedgerService {
 
     // 1) Cash: sum wallets for configured characters minus 400M reserve
     let cashSum = 0;
-    for (const cid of this.trackedCharacterIds) {
+    const tracked = await this.getTrackedCharacterIds();
+    for (const cid of tracked) {
       try {
         const bal = await this.esiChars.getWallet(cid);
         cashSum += bal;
@@ -984,7 +1357,7 @@ export class LedgerService {
         this.logger.warn(`Wallet fetch failed for ${cid}: ${String(e)}`);
       }
     }
-    const reserve = 100_000_000 * this.trackedCharacterIds.length;
+    const reserve = 100_000_000 * tracked.length;
     const cash = Math.max(0, cashSum - reserve);
 
     // 2) Inventory valuation: cost basis preferred, fallback to Jita lowest sell
@@ -1026,7 +1399,7 @@ export class LedgerService {
       stationId: number;
       remaining: number;
     }> = [];
-    const chars = this.trackedCharacterIds;
+    const chars = await this.getTrackedCharacterIds();
     for (const cid of chars) {
       try {
         const orders = await this.esiChars.getOrders(cid);

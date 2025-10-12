@@ -62,7 +62,7 @@ export class LedgerController {
 
   @Post('cycles/plan')
   @UsePipes(new ZodValidationPipe(PlanCycleSchema))
-  async planCycle(@Body() body: PlanCycleRequest) {
+  async planCycle(@Body() body: PlanCycleRequest): Promise<unknown> {
     return await this.ledger.planCycle(body);
   }
 
@@ -71,14 +71,22 @@ export class LedgerController {
     return await this.ledger.listCycles();
   }
 
+  @Get('cycles/overview')
+  async cyclesOverview(): Promise<unknown> {
+    return (await this.ledger.getCycleOverview()) as unknown;
+  }
+
   @Post('cycles/:id/close')
-  async closeCycle(@Param('id') id: string) {
+  async closeCycle(@Param('id') id: string): Promise<unknown> {
     return await this.ledger.closeCycle(id, new Date());
   }
 
   @Post('cycles/:id/open')
   @UsePipes(new ZodValidationPipe(OpenCycleSchema))
-  async openCycle(@Param('id') id: string, @Body() body: OpenCycleRequest) {
+  async openCycle(
+    @Param('id') id: string,
+    @Body() body: OpenCycleRequest,
+  ): Promise<unknown> {
     return await this.ledger.openPlannedCycle({
       cycleId: id,
       startedAt: body.startedAt,
@@ -87,7 +95,7 @@ export class LedgerController {
 
   @Post('entries')
   @UsePipes(new ZodValidationPipe(AppendEntrySchema))
-  async append(@Body() body: AppendEntryRequest) {
+  async append(@Body() body: AppendEntryRequest): Promise<unknown> {
     return await this.ledger.appendEntry(body);
   }
 
@@ -110,7 +118,7 @@ export class LedgerController {
       limit?: number;
       offset?: number;
     },
-  ) {
+  ): Promise<unknown> {
     return await this.ledger.listEntriesEnriched(
       query.cycleId,
       query.limit,
@@ -119,7 +127,7 @@ export class LedgerController {
   }
 
   @Get('nav/:cycleId')
-  async nav(@Param('cycleId') cycleId: string) {
+  async nav(@Param('cycleId') cycleId: string): Promise<unknown> {
     return await this.ledger.computeNav(cycleId);
   }
 
@@ -127,7 +135,7 @@ export class LedgerController {
   async capital(
     @Param('cycleId') cycleId: string,
     @Query('force') force?: string,
-  ) {
+  ): Promise<unknown> {
     const shouldForce = force === 'true' || force === '1' || force === 'yes';
     return await this.ledger.computeCapital(cycleId, { force: shouldForce });
   }
@@ -147,7 +155,7 @@ export class LedgerController {
   async createParticipation(
     @Param('cycleId') cycleId: string,
     @Body() body: { characterName: string; amountIsk: string },
-  ) {
+  ): Promise<unknown> {
     return await this.ledger.createParticipation({
       cycleId,
       characterName: body.characterName,
@@ -156,15 +164,27 @@ export class LedgerController {
   }
 
   @Get('cycles/:cycleId/participations')
+  @Roles('ADMIN')
+  @UseGuards(RolesGuard)
   async listParticipations(
     @Param('cycleId') cycleId: string,
     @Query('status') status?: string,
-  ) {
+  ): Promise<unknown> {
     return await this.ledger.listParticipations(cycleId, status);
   }
 
+  @Get('cycles/:cycleId/participations/me')
+  async myParticipation(
+    @Param('cycleId') cycleId: string,
+    @Query('userId') userId?: string,
+  ): Promise<unknown> {
+    // Temporary: accept userId via query until full auth middleware attaches it
+    if (!userId) return null;
+    return (await this.ledger.getMyParticipation(cycleId, userId)) as unknown;
+  }
+
   @Post('participations/:id/opt-out')
-  async optOut(@Param('id') id: string) {
+  async optOut(@Param('id') id: string): Promise<unknown> {
     return await this.ledger.optOutParticipation(id);
   }
 
@@ -189,7 +209,7 @@ export class LedgerController {
     @Param('id') id: string,
     @Body()
     body: { walletJournal?: { characterId: number; journalId: bigint } },
-  ) {
+  ): Promise<unknown> {
     return await this.ledger.adminValidatePayment({
       participationId: id,
       walletJournal: body.walletJournal ?? null,
@@ -204,7 +224,10 @@ export class LedgerController {
       z.object({ amountIsk: z.string().regex(/^\d+\.\d{2}$/) }).strict(),
     ),
   )
-  async refund(@Param('id') id: string, @Body() body: { amountIsk: string }) {
+  async refund(
+    @Param('id') id: string,
+    @Body() body: { amountIsk: string },
+  ): Promise<unknown> {
     return await this.ledger.adminMarkRefund({
       participationId: id,
       amountIsk: body.amountIsk,
@@ -216,9 +239,17 @@ export class LedgerController {
   async suggestPayouts(
     @Param('cycleId') cycleId: string,
     @Query('profitSharePct') pct?: string,
-  ) {
+  ): Promise<unknown> {
     const p = pct ? Math.max(0, Math.min(1, Number(pct))) : 0.5;
     return await this.ledger.computePayouts(cycleId, p);
+  }
+
+  @Get('commits/summary')
+  @UsePipes(
+    new ZodValidationPipe(z.object({ cycleId: z.string().uuid() }).strict()),
+  )
+  async commitSummaries(@Query('cycleId') cycleId: string): Promise<unknown> {
+    return (await this.ledger.getCommitSummaries(cycleId)) as unknown;
   }
 
   @Post('cycles/:cycleId/payouts/finalize')
@@ -232,7 +263,7 @@ export class LedgerController {
   async finalizePayouts(
     @Param('cycleId') cycleId: string,
     @Body() body: { profitSharePct?: number },
-  ) {
+  ): Promise<unknown> {
     return await this.ledger.finalizePayouts(
       cycleId,
       body.profitSharePct ?? 0.5,

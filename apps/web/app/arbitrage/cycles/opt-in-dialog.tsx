@@ -1,6 +1,6 @@
 "use client";
 import * as React from "react";
-import { formatISK } from "../../brokerage/_mock/data";
+import { formatIsk } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -117,7 +117,7 @@ export default function OptInDialog(props: OptInDialogProps) {
                   id="optin-amount-hint"
                   className="text-xs text-muted-foreground"
                 >
-                  {formatISK(Number(amount || 0))}
+                  {formatIsk(Number(amount || 0))}
                 </div>
               </div>
               <div className="space-y-1">

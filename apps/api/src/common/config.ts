@@ -30,7 +30,7 @@ export const AppConfig = {
    * Database URL selected by APP_ENV.
    */
   databaseUrl(): string | undefined {
-    const env = this.env();
+    const env = AppConfig.env();
     if (env === 'dev')
       return process.env.DATABASE_URL_DEV ?? process.env.DATABASE_URL;
     if (env === 'test')
@@ -47,7 +47,7 @@ export const AppConfig = {
    * Note: Do not expose secrets to client code.
    */
   esiSso() {
-    const env = this.env();
+    const env = AppConfig.env();
     if (env === 'dev' || env === 'test') {
       return {
         clientId:

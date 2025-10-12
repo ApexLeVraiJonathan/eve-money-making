@@ -6,17 +6,12 @@ const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE ||
   "http://localhost:3000";
 
-export async function POST(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
+export async function GET(req: NextRequest) {
   try {
-    const { id } = await params;
     const reqId = req.headers.get("x-request-id") || crypto.randomUUID();
-    const res = await fetch(`${API_BASE}/ledger/participations/${id}/opt-out`, {
-      method: "POST",
-      headers: { "x-request-id": reqId },
+    const res = await fetch(`${API_BASE}/ledger/cycles/overview`, {
       cache: "no-store",
+      headers: { "x-request-id": reqId },
     });
     const data = await res.json();
     return NextResponse.json(data, {
@@ -25,7 +20,7 @@ export async function POST(
     });
   } catch (err) {
     return NextResponse.json(
-      { error: "Failed to opt-out", details: `${err}` },
+      { error: "Failed to load cycles overview", details: `${err}` },
       { status: 500 },
     );
   }

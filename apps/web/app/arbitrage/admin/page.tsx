@@ -49,6 +49,14 @@ type CapitalSnapshot = {
 
 type WalletBalance = { characterId: number; name: string; balanceISK: number };
 
+type Participation = {
+  id: string;
+  characterName: string;
+  amountIsk: string;
+  status: string;
+  memo: string;
+};
+
 export default function AdminPage() {
   const [metrics, setMetrics] = React.useState<Metrics | null>(null);
   const [staleness, setStaleness] = React.useState<Staleness | null>(null);
@@ -156,8 +164,8 @@ export default function AdminPage() {
             `/api/ledger/cycles/${next.id}/participations`,
             { cache: "no-store" },
           );
-          const partsData = await partsRes.json();
-          if (partsRes.ok) setParticipations(partsData as any[]);
+          const partsData = (await partsRes.json()) as Participation[];
+          if (partsRes.ok) setParticipations(partsData);
         } else {
           setParticipations([]);
         }
