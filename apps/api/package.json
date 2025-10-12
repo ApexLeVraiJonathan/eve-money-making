@@ -21,6 +21,7 @@
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate dev",
+    "prisma:migrate:deploy": "prisma migrate deploy",
     "db:studio": "prisma studio",
     "db:seed": "prisma db seed",
     "db:reset": "prisma migrate reset"
@@ -83,9 +84,13 @@
     ],
     "coverageDirectory": "./coverage",
     "testEnvironment": "node",
+    "setupFiles": [
+      "<rootDir>/test/setup-jest.ts"
+    ],
     "roots": [
       "<rootDir>/src/",
-      "<rootDir>/libs/"
+      "<rootDir>/libs/",
+      "<rootDir>/test/"
     ],
     "moduleNameMapper": {
       "^@app/arbitrage-packager(|/.*)$": "<rootDir>/libs/arbitrage-packager/src/$1",

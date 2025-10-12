@@ -14,6 +14,65 @@ export type ArbitrageDefaults = {
 };
 
 export const AppConfig = {
+  /**
+   * Resolve application environment. Accepts APP_ENV (dev|test|prod) or falls back to NODE_ENV.
+   */
+  env(): 'dev' | 'test' | 'prod' {
+    const appEnv = (process.env.APP_ENV ?? process.env.NODE_ENV ?? 'prod')
+      .toString()
+      .toLowerCase();
+    if (appEnv.startsWith('dev')) return 'dev';
+    if (appEnv.startsWith('test')) return 'test';
+    return 'prod';
+  },
+
+  /**
+   * Database URL selected by APP_ENV.
+   */
+  databaseUrl(): string | undefined {
+    const env = this.env();
+    if (env === 'dev')
+      return process.env.DATABASE_URL_DEV ?? process.env.DATABASE_URL;
+    if (env === 'test')
+      return (
+        process.env.DATABASE_URL_TEST ??
+        process.env.DATABASE_URL_DEV ??
+        process.env.DATABASE_URL
+      );
+    return process.env.DATABASE_URL;
+  },
+
+  /**
+   * ESI SSO credentials selected by APP_ENV.
+   * Note: Do not expose secrets to client code.
+   */
+  esiSso() {
+    const env = this.env();
+    if (env === 'dev' || env === 'test') {
+      return {
+        clientId:
+          process.env.ESI_CLIENT_ID_DEV ?? process.env.ESI_SSO_CLIENT_ID ?? '',
+        clientSecret:
+          process.env.ESI_CLIENT_SECRET_DEV ??
+          process.env.ESI_SSO_CLIENT_SECRET ??
+          '',
+        redirectUri:
+          process.env.ESI_REDIRECT_URI_DEV ??
+          process.env.ESI_SSO_REDIRECT_URI ??
+          '',
+        userAgent:
+          process.env.ESI_USER_AGENT ?? process.env.ESI_SSO_USER_AGENT ?? '',
+      } as const;
+    }
+    return {
+      clientId: process.env.ESI_SSO_CLIENT_ID ?? '',
+      clientSecret: process.env.ESI_SSO_CLIENT_SECRET ?? '',
+      redirectUri: process.env.ESI_SSO_REDIRECT_URI ?? '',
+      userAgent:
+        process.env.ESI_SSO_USER_AGENT ?? process.env.ESI_USER_AGENT ?? '',
+    } as const;
+  },
+
   arbitrage(): ArbitrageDefaults {
     return {
       sourceStationId: Number(

@@ -3,6 +3,23 @@
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Input } from "@/components/ui/input";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 type LinkedCharacter = {
   characterId: number;
@@ -10,6 +27,9 @@ type LinkedCharacter = {
   ownerHash: string;
   accessTokenExpiresAt: string | null;
   scopes: string | null;
+  role?: string;
+  function?: string | null;
+  location?: string | null;
 };
 
 async function fetchCharacters(): Promise<LinkedCharacter[]> {
@@ -22,10 +42,6 @@ export default function CharactersPage() {
   const [items, setItems] = React.useState<LinkedCharacter[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
-  const [balances, setBalances] = React.useState<Record<number, number>>({});
-  const [balanceLoading, setBalanceLoading] = React.useState<
-    Record<number, boolean>
-  >({});
 
   const load = React.useCallback(async () => {
     setLoading(true);
@@ -56,105 +72,110 @@ export default function CharactersPage() {
     }
   };
 
-  const handleBalance = async (id: number) => {
+  const [newCharId, setNewCharId] = React.useState("");
+  const [newFunction, setNewFunction] = React.useState("SELLER");
+  const [newLocation, setNewLocation] = React.useState("JITA");
+  const [selectedId, setSelectedId] = React.useState<number | null>(null);
+
+  const handleSaveProfile = async () => {
+    const id = selectedId ?? Number(newCharId || 0);
+    if (!id) return;
     try {
-      setBalanceLoading((m) => ({ ...m, [id]: true }));
-      const res = await fetch(`/api/auth/wallet?characterId=${id}`, {
-        cache: "no-store",
+      const res = await fetch(`/api/auth/characters/${id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          role: "LOGISTICS",
+          function: newFunction,
+          location: newLocation,
+        }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || "Failed to get wallet");
-      setBalances((m) => ({ ...m, [id]: Number(data?.balanceISK ?? 0) }));
+      if (!res.ok) throw new Error((await res.json())?.error || res.statusText);
+      await load();
+      setNewCharId("");
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBalanceLoading((m) => ({ ...m, [id]: false }));
     }
   };
 
-  const [linkUrl, setLinkUrl] = React.useState("/auth/login");
+  const [loginUserUrl, setLoginUserUrl] = React.useState<string>("");
+  const [loginAdminUrl, setLoginAdminUrl] = React.useState<string>("");
   React.useEffect(() => {
     try {
+      const base =
+        (process.env.NEXT_PUBLIC_API_BASE_URL as string) ||
+        "http://localhost:3000";
       const href = window.location.href;
-      setLinkUrl(`/auth/login?returnUrl=${encodeURIComponent(href)}`);
+      setLoginUserUrl(
+        `${base}/auth/login/user?returnUrl=${encodeURIComponent(href)}`,
+      );
+      setLoginAdminUrl(
+        `${base}/auth/login/admin?returnUrl=${encodeURIComponent(href)}`,
+      );
     } catch {
       // ignore
     }
   }, []);
 
+  const usersAndAdmins = items.filter(
+    (c) =>
+      (c.role === "USER" || c.role === "ADMIN") && !c.function && !c.location,
+  );
+  const profiles = items.filter((c) => c.role === "LOGISTICS");
+
   return (
-    <div className="container mx-auto max-w-3xl p-6 space-y-6">
+    <div className="container mx-auto max-w-4xl p-6 space-y-6">
       <Card>
         <CardHeader>
-          <CardTitle>Linked Characters</CardTitle>
+          <CardTitle>Characters</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center gap-2">
-            <Button asChild>
-              <a href={linkUrl}>Link a character</a>
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => void load()}
-              disabled={loading}
-            >
-              Refresh
-            </Button>
-          </div>
-          {error && <div className="text-sm text-destructive">{error}</div>}
-          {loading ? (
-            <div className="text-sm text-muted-foreground">Loading…</div>
-          ) : items.length === 0 ? (
-            <div className="text-sm text-muted-foreground">
-              No linked characters yet.
-            </div>
-          ) : (
-            <ul className="space-y-2">
-              {items.map((c) => {
-                const exp = c.accessTokenExpiresAt
-                  ? new Date(c.accessTokenExpiresAt).toLocaleString()
-                  : "unknown";
-                return (
-                  <li
-                    key={c.characterId}
-                    className="flex items-center justify-between gap-4 border rounded p-3"
-                  >
-                    <div className="text-sm">
-                      <div className="font-medium">
-                        {c.characterName}{" "}
-                        <span className="text-xs text-muted-foreground">
-                          #{c.characterId}
-                        </span>
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        Token expires: {exp}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="text-xs text-muted-foreground min-w-40 text-right">
-                        {balances[c.characterId] !== undefined ? (
-                          <span>
-                            Balance:{" "}
-                            {new Intl.NumberFormat(undefined, {
-                              style: "currency",
-                              currency: "ISK",
-                              currencyDisplay: "code",
-                              maximumFractionDigits: 2,
-                            })
-                              .format(balances[c.characterId])
-                              .replace("ISK", "ISK")}
+        <CardContent>
+          <Tabs defaultValue="members">
+            <TabsList>
+              <TabsTrigger value="members">Users & Admins</TabsTrigger>
+              <TabsTrigger value="profiles">Admin Profiles</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="members" className="pt-4">
+              <div className="flex items-center gap-2 mb-3">
+                <Button asChild>
+                  <a href={loginUserUrl}>Link user character</a>
+                </Button>
+                <Button asChild variant="outline">
+                  <a href={loginAdminUrl}>Link admin character</a>
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => void load()}
+                  disabled={loading}
+                >
+                  Refresh
+                </Button>
+              </div>
+              {error && <div className="text-sm text-destructive">{error}</div>}
+              {loading ? (
+                <div className="text-sm text-muted-foreground">Loading…</div>
+              ) : usersAndAdmins.length === 0 ? (
+                <div className="text-sm text-muted-foreground">
+                  No users/admins yet.
+                </div>
+              ) : (
+                <ul className="space-y-2">
+                  {usersAndAdmins.map((c) => (
+                    <li
+                      key={c.characterId}
+                      className="flex items-center justify-between gap-4 border rounded p-3"
+                    >
+                      <div className="text-sm">
+                        <div className="font-medium">
+                          {c.characterName}{" "}
+                          <span className="text-xs text-muted-foreground">
+                            #{c.characterId}
                           </span>
-                        ) : (
-                          <Button
-                            variant="outline"
-                            onClick={() => void handleBalance(c.characterId)}
-                            disabled={!!balanceLoading[c.characterId]}
-                          >
-                            {balanceLoading[c.characterId]
-                              ? "Fetching…"
-                              : "Show balance"}
-                          </Button>
-                        )}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          Role: {c.role ?? "USER"}
+                        </div>
                       </div>
                       <Button
                         variant="destructive"
@@ -162,12 +183,118 @@ export default function CharactersPage() {
                       >
                         Remove
                       </Button>
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </TabsContent>
+
+            <TabsContent value="profiles" className="pt-4">
+              <div className="flex flex-col gap-3 mb-4">
+                <div className="flex flex-wrap gap-2 items-center">
+                  <Button asChild>
+                    <a href={loginAdminUrl}>Link admin character</a>
+                  </Button>
+                  <Select value={newFunction} onValueChange={setNewFunction}>
+                    <SelectTrigger className="w-48">
+                      <SelectValue placeholder="Function" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="SELLER">SELLER</SelectItem>
+                      <SelectItem value="BUYER">BUYER</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Select value={newLocation} onValueChange={setNewLocation}>
+                    <SelectTrigger className="w-48">
+                      <SelectValue placeholder="Location" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="JITA">JITA</SelectItem>
+                      <SelectItem value="DODIXIE">DODIXIE</SelectItem>
+                      <SelectItem value="AMARR">AMARR</SelectItem>
+                      <SelectItem value="HEK">HEK</SelectItem>
+                      <SelectItem value="RENS">RENS</SelectItem>
+                      <SelectItem value="CN">CN</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    variant="secondary"
+                    onClick={() => void handleSaveProfile()}
+                  >
+                    Save Profile
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => void load()}
+                    disabled={loading}
+                  >
+                    Refresh
+                  </Button>
+                </div>
+              </div>
+
+              {error && <div className="text-sm text-destructive">{error}</div>}
+              {loading ? (
+                <div className="text-sm text-muted-foreground">Loading…</div>
+              ) : profiles.length === 0 ? (
+                <div className="text-sm text-muted-foreground">
+                  No logistics characters yet.
+                </div>
+              ) : (
+                <div className="rounded-md border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-12"></TableHead>
+                        <TableHead>Name</TableHead>
+                        <TableHead>ID</TableHead>
+                        <TableHead>Function</TableHead>
+                        <TableHead>Location</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {profiles.map((c) => (
+                        <TableRow
+                          key={c.characterId}
+                          data-state={
+                            selectedId === c.characterId
+                              ? "selected"
+                              : undefined
+                          }
+                        >
+                          <TableCell>
+                            <input
+                              type="radio"
+                              name="selectChar"
+                              aria-label="Select character"
+                              checked={selectedId === c.characterId}
+                              onChange={() => setSelectedId(c.characterId)}
+                            />
+                          </TableCell>
+                          <TableCell>{c.characterName}</TableCell>
+                          <TableCell className="tabular-nums">
+                            {c.characterId}
+                          </TableCell>
+                          <TableCell>{c.function ?? "-"}</TableCell>
+                          <TableCell>{c.location ?? "-"}</TableCell>
+                          <TableCell className="text-right">
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              onClick={() => void handleUnlink(c.characterId)}
+                            >
+                              Remove
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </TabsContent>
+          </Tabs>
         </CardContent>
       </Card>
     </div>

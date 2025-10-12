@@ -1,4 +1,9 @@
-import { BadRequestException, Injectable, PipeTransform } from '@nestjs/common';
+import {
+  ArgumentMetadata,
+  BadRequestException,
+  Injectable,
+  PipeTransform,
+} from '@nestjs/common';
 import type { ZodSchema, ZodError } from 'zod';
 
 /**
@@ -12,7 +17,14 @@ import type { ZodSchema, ZodError } from 'zod';
 export class ZodValidationPipe implements PipeTransform {
   constructor(private readonly schema: ZodSchema) {}
 
-  async transform(value: unknown): Promise<unknown> {
+  async transform(
+    value: unknown,
+    metadata: ArgumentMetadata,
+  ): Promise<unknown> {
+    // Only validate request body or query parameters; skip route params and custom injections
+    if (metadata.type !== 'body' && metadata.type !== 'query') {
+      return value;
+    }
     try {
       // parseAsync supports refinements and async transforms
       return await this.schema.parseAsync(value);

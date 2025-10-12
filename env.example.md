@@ -28,6 +28,13 @@ Copy this file to `.env` and fill in the values you need. Only the required ones
   - Example:
     - `DATABASE_URL=postgresql://user:password@localhost:5432/eve_money?schema=public`
 
+#### Dev/Test presets (Docker Compose dev DB)
+
+- DATABASE_URL_DEV: Prisma URL for local dev DB on port 5433.
+  - `DATABASE_URL_DEV=postgresql://postgres:postgres@localhost:5433/eve_money_dev?schema=public`
+- DATABASE_URL_TEST: Prisma URL base for tests. We will append per-worker schemas.
+  - `DATABASE_URL_TEST=postgresql://postgres:postgres@localhost:5433/eve_money_test?schema=public`
+
 ### API server
 
 - PORT: Port for the API application. Default: `3000`
@@ -43,6 +50,18 @@ Notes:
 - ENCRYPTION_KEY: Secret used to derive the AES-GCM key for token encryption.
   - Example:
     - `ENCRYPTION_KEY=please-use-a-long-random-secret`
+
+### ESI (Dev/Test)
+
+- ESI_CLIENT_ID_DEV: Dev ESI client id
+- ESI_CLIENT_SECRET_DEV: Dev ESI client secret
+- ESI_REDIRECT_URI_DEV: Dev redirect URI (e.g., `http://localhost:3000/api/auth/callback`)
+- ESI_SSO_SCOPES_USER: Minimal scopes for end users (often empty)
+- ESI_SSO_SCOPES_ADMIN: Full admin scopes for trading characters
+
+Notes:
+
+- In tests, ESI calls are mocked unless explicitly opted to hit dev credentials.
 
 ### Jobs (optional toggles)
 

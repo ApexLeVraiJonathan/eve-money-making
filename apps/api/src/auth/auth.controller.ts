@@ -92,6 +92,97 @@ export class AuthController {
   }
 
   /**
+   * User login: minimal scopes (identity-only).
+   */
+  @Get('login/user')
+  loginUser(@Res() res: Response, @Query('returnUrl') returnUrl?: string) {
+    const state = crypto.randomUUID();
+    const codeVerifier = crypto.randomBytes(32).toString('base64url');
+    const codeChallenge = crypto
+      .createHash('sha256')
+      .update(codeVerifier)
+      .digest('base64')
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/, '');
+    res.cookie('sso_state', state, {
+      httpOnly: true,
+      sameSite: 'lax',
+      maxAge: 10 * 60 * 1000,
+    });
+    res.cookie('sso_verifier', codeVerifier, {
+      httpOnly: true,
+      sameSite: 'lax',
+      maxAge: 10 * 60 * 1000,
+    });
+    if (returnUrl)
+      res.cookie('sso_return', returnUrl, {
+        httpOnly: true,
+        sameSite: 'lax',
+        maxAge: 10 * 60 * 1000,
+      });
+    // Mark intent so callback can tag role
+    res.cookie('sso_kind', 'user', {
+      httpOnly: true,
+      sameSite: 'lax',
+      maxAge: 10 * 60 * 1000,
+    });
+    const scopes = (process.env.ESI_SSO_SCOPES_USER ?? '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const url = this.auth.getAuthorizeUrl(state, codeChallenge, scopes);
+    res.redirect(url);
+  }
+
+  /**
+   * Admin login: full trading scopes.
+   */
+  @Get('login/admin')
+  loginAdmin(@Res() res: Response, @Query('returnUrl') returnUrl?: string) {
+    const state = crypto.randomUUID();
+    const codeVerifier = crypto.randomBytes(32).toString('base64url');
+    const codeChallenge = crypto
+      .createHash('sha256')
+      .update(codeVerifier)
+      .digest('base64')
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/, '');
+    res.cookie('sso_state', state, {
+      httpOnly: true,
+      sameSite: 'lax',
+      maxAge: 10 * 60 * 1000,
+    });
+    res.cookie('sso_verifier', codeVerifier, {
+      httpOnly: true,
+      sameSite: 'lax',
+      maxAge: 10 * 60 * 1000,
+    });
+    if (returnUrl)
+      res.cookie('sso_return', returnUrl, {
+        httpOnly: true,
+        sameSite: 'lax',
+        maxAge: 10 * 60 * 1000,
+      });
+    res.cookie('sso_kind', 'admin', {
+      httpOnly: true,
+      sameSite: 'lax',
+      maxAge: 10 * 60 * 1000,
+    });
+    const scopes = (
+      process.env.ESI_SSO_SCOPES_ADMIN ??
+      process.env.ESI_SSO_SCOPES ??
+      ''
+    )
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const url = this.auth.getAuthorizeUrl(state, codeChallenge, scopes);
+    res.redirect(url);
+  }
+
+  /**
    * CCP redirects here with authorization code.
    */
   @Get('callback')
@@ -143,6 +234,18 @@ export class AuthController {
       token,
       scopes,
     );
+    // Role tagging based on login kind
+    try {
+      const kind = cookies['sso_kind'];
+      if (kind === 'admin') {
+        await this.auth.setCharacterRole(linked.characterId, 'LOGISTICS');
+      } else if (kind === 'user') {
+        await this.auth.setCharacterRole(linked.characterId, 'USER');
+      }
+    } catch {
+      // non-fatal
+    }
+    res.clearCookie('sso_kind');
     const redirectTo = cookies['sso_return'];
     if (redirectTo) {
       res.clearCookie('sso_return');
@@ -263,5 +366,32 @@ export class AuthController {
     }
     await this.auth.unlinkCharacter(id);
     res.json({ removed: true, characterId: id });
+  }
+
+  /**
+   * Update a linked character's function/location (admin usage).
+   */
+  @Get('set-profile')
+  async setProfile(
+    @Query('characterId') characterId: string,
+    @Query('role') role: string,
+    @Query('function') func: string,
+    @Query('location') loc: string,
+    @Res() res: Response,
+  ) {
+    const id = Number(characterId);
+    if (!Number.isInteger(id) || id <= 0) {
+      res.status(400).json({ error: 'Invalid characterId' });
+      return;
+    }
+    try {
+      if (role === 'ADMIN' || role === 'USER' || role === 'LOGISTICS') {
+        await this.auth.setCharacterRole(id, role as any);
+      }
+      await this.auth.setCharacterProfile(id, func || null, loc || null);
+      res.json({ updated: true, characterId: id });
+    } catch (e) {
+      res.status(400).json({ error: String(e) });
+    }
   }
 }

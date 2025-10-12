@@ -36,6 +36,16 @@ enum CharacterLocation {
   CN
 }
 
+/// Participation status for user opt-ins to cycles
+enum ParticipationStatus {
+  AWAITING_INVESTMENT
+  AWAITING_VALIDATION
+  OPTED_IN
+  OPTED_OUT
+  COMPLETED
+  REFUNDED
+}
+
 model TypeId {
   id        Int      @id @map("type_id")
   published Boolean
@@ -225,6 +235,7 @@ model Cycle {
 
   ledgerEntries     CycleLedgerEntry[]
   CycleCapitalCache CycleCapitalCache[]
+  participations    CycleParticipation[]
 
   @@map("cycles")
 }
@@ -261,6 +272,10 @@ model CycleLedgerEntry {
   sourceId     String?     @map("source_id")
   matchStatus  String?     @map("match_status") // linked | unlinked | ambiguous
 
+  /// Link to user participation when this entry represents a deposit/refund/payout
+  participationId String?             @map("participation_id")
+  participation   CycleParticipation? @relation(fields: [participationId], references: [id], onDelete: SetNull)
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
@@ -270,6 +285,7 @@ model CycleLedgerEntry {
   @@index([characterId])
   @@index([stationId])
   @@index([typeId])
+  @@index([participationId])
   @@map("cycle_ledger")
 }
 
@@ -333,4 +349,30 @@ model PlanCommitLine {
   @@index([commitId])
   @@index([typeId, destinationStationId])
   @@map("plan_commit_lines")
+}
+
+/// User participation (opt-in) for upcoming investment cycles
+model CycleParticipation {
+  id              String               @id @default(uuid()) @map("id")
+  cycleId         String               @map("cycle_id")
+  cycle           Cycle                @relation(fields: [cycleId], references: [id], onDelete: Cascade)
+  userId          String?              @map("user_id")
+  characterName   String               @map("character_name")
+  amountIsk       Decimal              @map("amount_isk") @db.Decimal(28, 2)
+  memo            String               @unique @map("memo")
+  status          ParticipationStatus  @map("status")
+  walletJournalId BigInt?              @map("wallet_journal_id")
+  validatedAt     DateTime?            @map("validated_at")
+  optedOutAt      DateTime?            @map("opted_out_at")
+  refundAmountIsk Decimal?             @map("refund_amount_isk") @db.Decimal(28, 2)
+  refundedAt      DateTime?            @map("refunded_at")
+  payoutAmountIsk Decimal?             @map("payout_amount_isk") @db.Decimal(28, 2)
+  payoutPaidAt    DateTime?            @map("payout_paid_at")
+  createdAt       DateTime             @default(now()) @map("created_at")
+  updatedAt       DateTime             @updatedAt @map("updated_at")
+
+  ledgerEntries CycleLedgerEntry[]
+
+  @@index([cycleId])
+  @@map("cycle_participations")
 }

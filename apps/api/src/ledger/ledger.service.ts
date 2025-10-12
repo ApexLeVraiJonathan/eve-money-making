@@ -44,6 +44,234 @@ export class LedgerService {
     private readonly logger: Logger,
   ) {}
 
+  // Helpers
+  async getCurrentOpenCycle() {
+    return await this.prisma.cycle.findFirst({
+      where: { startedAt: { lte: new Date() }, closedAt: null },
+      orderBy: { startedAt: 'desc' },
+    });
+  }
+
+  async getNextPlannedCycle() {
+    return await this.prisma.cycle.findFirst({
+      where: { startedAt: { gt: new Date() } },
+      orderBy: { startedAt: 'asc' },
+    });
+  }
+
+  async planCycle(input: {
+    name?: string | null;
+    startedAt: Date; // must be future to be a planned cycle
+    initialInjectionIsk?: string;
+  }) {
+    // Do not close existing cycle or create opening commit here
+    return await this.prisma.cycle.create({
+      data: {
+        name: input.name ?? null,
+        startedAt: input.startedAt,
+        initialInjectionIsk: input.initialInjectionIsk
+          ? input.initialInjectionIsk
+          : null,
+      },
+    });
+  }
+
+  private async buildOpeningBalanceLines(): Promise<
+    Array<{
+      stationId: number;
+      typeId: number;
+      qty: number;
+      unitCost: number | null;
+    }>
+  > {
+    // Build weighted-average cost positions by station/type from wallet transactions
+    type Position = { quantity: number; totalCost: number };
+    const byTypeStation = new Map<string, Position>();
+    const txs = await this.prisma.walletTransaction.findMany({
+      select: {
+        isBuy: true,
+        locationId: true,
+        typeId: true,
+        quantity: true,
+        unitPrice: true,
+      },
+      orderBy: { date: 'asc' },
+    });
+    const key = (stationId: number, typeId: number) => `${stationId}:${typeId}`;
+    for (const t of txs) {
+      const k = key(t.locationId, t.typeId);
+      const pos = byTypeStation.get(k) ?? { quantity: 0, totalCost: 0 };
+      if (t.isBuy) {
+        pos.quantity += t.quantity;
+        pos.totalCost += Number(t.unitPrice) * t.quantity;
+      } else {
+        const sellQty = Math.min(pos.quantity, t.quantity);
+        if (sellQty > 0 && pos.quantity > 0) {
+          const avg = pos.totalCost / pos.quantity;
+          pos.quantity -= sellQty;
+          pos.totalCost -= avg * sellQty;
+        }
+      }
+      byTypeStation.set(k, pos);
+    }
+
+    // Quantities from assets + active sell orders
+    const qtyByTypeStation = new Map<string, number>();
+    for (const cid of this.trackedCharacterIds) {
+      try {
+        const assets = await this.esiChars.getAssets(cid);
+        for (const a of assets) {
+          const k2 = key(a.location_id, a.type_id);
+          qtyByTypeStation.set(
+            k2,
+            (qtyByTypeStation.get(k2) ?? 0) + a.quantity,
+          );
+        }
+      } catch (e) {
+        this.logger.warn(`Assets fetch failed for ${cid}: ${String(e)}`);
+      }
+    }
+    for (const cid of this.trackedCharacterIds) {
+      try {
+        const orders = await this.esiChars.getOrders(cid);
+        for (const o of orders) {
+          if (!o.is_buy_order) {
+            const k2 = key(o.location_id, o.type_id);
+            qtyByTypeStation.set(
+              k2,
+              (qtyByTypeStation.get(k2) ?? 0) + o.volume_remain,
+            );
+          }
+        }
+      } catch (e) {
+        this.logger.warn(`Orders fetch failed for ${cid}: ${String(e)}`);
+      }
+    }
+
+    // Jita region for fallback pricing
+    let jitaRegionId: number | null = null;
+    const jitaStation = await this.prisma.stationId.findUnique({
+      where: { id: this.jitaStationId },
+      select: { solarSystemId: true },
+    });
+    if (jitaStation) {
+      const sys = await this.prisma.solarSystemId.findUnique({
+        where: { id: jitaStation.solarSystemId },
+        select: { regionId: true },
+      });
+      if (sys) jitaRegionId = sys.regionId;
+    }
+    const getJitaLowest = async (typeId: number): Promise<number | null> => {
+      if (!jitaRegionId) return null;
+      try {
+        const orders = await fetchStationOrders(this.esi, {
+          regionId: jitaRegionId,
+          typeId,
+          stationId: this.jitaStationId,
+          side: 'sell',
+        });
+        orders.sort((a, b) => a.price - b.price);
+        return orders.length ? orders[0].price : null;
+      } catch {
+        return null;
+      }
+    };
+
+    const lines: Array<{
+      stationId: number;
+      typeId: number;
+      qty: number;
+      unitCost: number | null;
+    }> = [];
+    for (const [k2, qty] of qtyByTypeStation) {
+      const [sidStr, tidStr] = k2.split(':');
+      const stationId = Number(sidStr);
+      const typeId = Number(tidStr);
+      if (!Number.isFinite(qty) || qty <= 0) continue;
+      const pos = byTypeStation.get(k2);
+      let unitCost: number | null = null;
+      if (pos && pos.quantity > 0) unitCost = pos.totalCost / pos.quantity;
+      else unitCost = await getJitaLowest(typeId);
+      if (!unitCost) continue;
+      lines.push({
+        stationId,
+        typeId,
+        qty: Math.floor(qty),
+        unitCost: Number(unitCost.toFixed(2)),
+      });
+      if (lines.length >= 1000) break;
+    }
+    return lines;
+  }
+
+  async openPlannedCycle(input: { cycleId: string; startedAt?: Date }) {
+    const now = new Date();
+    const cycle = await this.prisma.cycle.findUnique({
+      where: { id: input.cycleId },
+    });
+    if (!cycle) throw new Error('Cycle not found');
+
+    // Close any existing open cycle
+    const open = await this.getCurrentOpenCycle();
+    if (open && open.id !== cycle.id) {
+      await this.prisma.cycle.update({
+        where: { id: open.id },
+        data: { closedAt: now },
+      });
+    }
+
+    // Set startedAt if provided or if cycle is still future ensure it's set now
+    const startedAt =
+      input.startedAt ?? (cycle.startedAt > now ? now : cycle.startedAt);
+    if (startedAt.getTime() !== cycle.startedAt.getTime()) {
+      await this.prisma.cycle.update({
+        where: { id: cycle.id },
+        data: { startedAt },
+      });
+    }
+
+    // Compute initial capital snapshot (carryover + optional injection)
+    const nowCap = await this.computeCurrentCapitalNow();
+    const inj = cycle.initialInjectionIsk
+      ? Number(cycle.initialInjectionIsk)
+      : 0;
+    const initialCapital = nowCap.cash + nowCap.inventory + inj;
+    await this.prisma.cycle.update({
+      where: { id: cycle.id },
+      data: { initialCapitalIsk: initialCapital.toFixed(2) },
+    });
+
+    // Create opening balance commit with carryover items
+    const lines = await this.buildOpeningBalanceLines();
+    if (lines.length) {
+      const commit = await this.prisma.planCommit.create({
+        data: {
+          request: { type: 'opening_balance', cycleId: cycle.id },
+          result: {
+            lines: lines.length,
+            generatedAt: new Date().toISOString(),
+          },
+          memo: this.rolloverOpeningCommitMemo,
+        },
+        select: { id: true },
+      });
+      await this.prisma.planCommitLine.createMany({
+        data: lines.map((l) => ({
+          commitId: commit.id,
+          typeId: l.typeId,
+          sourceStationId: l.stationId,
+          destinationStationId: l.stationId,
+          plannedUnits: l.qty,
+          unitCost: l.unitCost,
+          unitProfit: 0,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        })),
+      });
+    }
+
+    return await this.prisma.cycle.findUnique({ where: { id: cycle.id } });
+  }
   private async computeCurrentCapitalNow(): Promise<{
     cash: number;
     inventory: number;
@@ -364,6 +592,7 @@ export class LedgerService {
     occurredAt?: Date;
     memo?: string | null;
     planCommitId?: string | null;
+    participationId?: string | null;
   }) {
     return await this.prisma.cycleLedgerEntry.create({
       data: {
@@ -373,6 +602,7 @@ export class LedgerService {
         occurredAt: input.occurredAt ?? new Date(),
         memo: input.memo ?? null,
         planCommitId: input.planCommitId ?? null,
+        participationId: input.participationId ?? null,
       },
     });
   }
@@ -382,6 +612,192 @@ export class LedgerService {
       where: { cycleId },
       orderBy: { occurredAt: 'asc' },
     });
+  }
+
+  // Participation workflows
+  async createParticipation(input: {
+    cycleId: string;
+    characterName: string;
+    amountIsk: string; // Decimal(28,2) as string
+  }) {
+    const cycle = await this.prisma.cycle.findUnique({
+      where: { id: input.cycleId },
+    });
+    if (!cycle) throw new Error('Cycle not found');
+    if (cycle.startedAt <= new Date()) {
+      throw new Error('Opt-in only allowed for planned cycles');
+    }
+    const memo = `ARB ${cycle.id} ${input.characterName}`;
+    // Return existing if same memo exists
+    const existing = await (this.prisma as any).cycleParticipation.findUnique({
+      where: { memo },
+    });
+    if (existing) return existing;
+    return await (this.prisma as any).cycleParticipation.create({
+      data: {
+        cycleId: input.cycleId,
+        characterName: input.characterName,
+        amountIsk: input.amountIsk,
+        memo,
+        status: 'AWAITING_INVESTMENT',
+      },
+    });
+  }
+
+  async listParticipations(cycleId: string, status?: string) {
+    return await (this.prisma as any).cycleParticipation.findMany({
+      where: { cycleId, ...(status ? { status } : {}) },
+      orderBy: { createdAt: 'asc' },
+    });
+  }
+
+  async optOutParticipation(participationId: string) {
+    const p = await (this.prisma as any).cycleParticipation.findUnique({
+      where: { id: participationId },
+      include: { cycle: true },
+    });
+    if (!p) throw new Error('Participation not found');
+    const cycle = p.cycle as { startedAt: Date };
+    if (cycle.startedAt <= new Date()) {
+      throw new Error('Cannot opt-out after cycle start');
+    }
+    if (p.validatedAt || p.status === 'OPTED_IN') {
+      throw new Error('Already validated; admin refund required');
+    }
+    return await (this.prisma as any).cycleParticipation.update({
+      where: { id: participationId },
+      data: { status: 'OPTED_OUT', optedOutAt: new Date() },
+    });
+  }
+
+  async adminValidatePayment(input: {
+    participationId: string;
+    walletJournal?: { characterId: number; journalId: bigint } | null;
+  }) {
+    const p = await (this.prisma as any).cycleParticipation.findUnique({
+      where: { id: input.participationId },
+    });
+    if (!p) throw new Error('Participation not found');
+    if (p.status === 'OPTED_IN' && p.validatedAt) return p;
+    const updated = await (this.prisma as any).cycleParticipation.update({
+      where: { id: input.participationId },
+      data: {
+        status: 'OPTED_IN',
+        validatedAt: new Date(),
+        walletJournalId: input.walletJournal?.journalId ?? null,
+      },
+    });
+    // Create deposit ledger entry
+    await this.appendEntry({
+      cycleId: updated.cycleId,
+      entryType: 'deposit',
+      amountIsk: String(updated.amountIsk),
+      memo: `Participation deposit ${updated.characterName}`,
+      participationId: updated.id,
+      planCommitId: null,
+    });
+    return updated;
+  }
+
+  async adminMarkRefund(input: { participationId: string; amountIsk: string }) {
+    const p = await (this.prisma as any).cycleParticipation.findUnique({
+      where: { id: input.participationId },
+    });
+    if (!p) throw new Error('Participation not found');
+    const updated = await (this.prisma as any).cycleParticipation.update({
+      where: { id: input.participationId },
+      data: {
+        refundAmountIsk: input.amountIsk,
+        refundedAt: new Date(),
+        status: 'REFUNDED',
+      },
+    });
+    await this.appendEntry({
+      cycleId: updated.cycleId,
+      entryType: 'withdrawal',
+      amountIsk: input.amountIsk,
+      memo: `Participation refund ${updated.characterName}`,
+      participationId: updated.id,
+      planCommitId: null,
+    });
+    return updated;
+  }
+
+  async computePayouts(cycleId: string, profitSharePct = 0.5) {
+    const capital = await this.computeCapital(cycleId);
+    const cycle = await this.prisma.cycle.findUnique({
+      where: { id: cycleId },
+    });
+    if (!cycle) throw new Error('Cycle not found');
+    const total = Number(capital.capital.total);
+    const initial = cycle.initialCapitalIsk
+      ? Number(cycle.initialCapitalIsk)
+      : 0;
+    const profit = Math.max(0, total - initial);
+    const pool = profit * profitSharePct;
+    const parts: Array<any> = await (
+      this.prisma as any
+    ).cycleParticipation.findMany({
+      where: { cycleId, status: 'OPTED_IN' },
+      orderBy: { createdAt: 'asc' },
+    });
+    const netById = new Map<string, number>();
+    let investedTotal = 0;
+    for (const p of parts) {
+      const amt = Number(p.amountIsk) - Number(p.refundAmountIsk ?? 0);
+      if (amt > 0) {
+        netById.set(p.id as string, amt);
+        investedTotal += amt;
+      }
+    }
+    if (investedTotal <= 0 || pool <= 0)
+      return {
+        profit: profit.toFixed(2),
+        pool: pool.toFixed(2),
+        payouts: [] as Array<any>,
+      };
+    const payouts = parts
+      .filter((p) => netById.has(p.id))
+      .map((p) => {
+        const share = (netById.get(p.id as string) ?? 0) / investedTotal;
+        const payout = pool * share;
+        return {
+          participationId: p.id,
+          characterName: p.characterName,
+          amountIsk: String(p.amountIsk),
+          payoutIsk: payout.toFixed(2),
+        };
+      });
+    return { profit: profit.toFixed(2), pool: pool.toFixed(2), payouts };
+  }
+
+  async finalizePayouts(cycleId: string, profitSharePct = 0.5) {
+    const rec = await this.computePayouts(cycleId, profitSharePct);
+    for (const p of rec.payouts) {
+      const current = await (this.prisma as any).cycleParticipation.findUnique({
+        where: { id: p.participationId },
+      });
+      if (!current) continue;
+      if (current.status === 'COMPLETED' && current.payoutAmountIsk) continue;
+      // create withdrawal ledger entry
+      await this.appendEntry({
+        cycleId,
+        entryType: 'withdrawal',
+        amountIsk: p.payoutIsk,
+        memo: `Participation payout ${current.characterName}`,
+        participationId: current.id,
+        planCommitId: null,
+      });
+      await (this.prisma as any).cycleParticipation.update({
+        where: { id: current.id },
+        data: {
+          payoutAmountIsk: p.payoutIsk,
+          payoutPaidAt: new Date(),
+          status: 'COMPLETED',
+        },
+      });
+    }
+    return rec;
   }
 
   async listEntriesEnriched(

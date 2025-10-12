@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access */
 import axios from 'axios';
 import { PrismaService } from '../prisma/prisma.service';
+import { AppConfig } from '../common/config';
 import { CryptoUtil } from '../common/crypto.util';
 
 type TokenResponse = {
@@ -13,10 +14,10 @@ type TokenResponse = {
 
 @Injectable()
 export class AuthService {
-  private readonly clientId = process.env.ESI_SSO_CLIENT_ID ?? '';
-  private readonly clientSecret = process.env.ESI_SSO_CLIENT_SECRET ?? '';
-  private readonly redirectUri = process.env.ESI_SSO_REDIRECT_URI ?? '';
-  private readonly userAgent = process.env.ESI_SSO_USER_AGENT ?? '';
+  private readonly clientId = AppConfig.esiSso().clientId;
+  private readonly clientSecret = AppConfig.esiSso().clientSecret;
+  private readonly redirectUri = AppConfig.esiSso().redirectUri;
+  private readonly userAgent = AppConfig.esiSso().userAgent;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -137,6 +138,27 @@ export class AuthService {
     });
 
     return { characterId, characterName };
+  }
+
+  async setCharacterRole(
+    characterId: number,
+    role: 'ADMIN' | 'USER' | 'LOGISTICS',
+  ): Promise<void> {
+    await this.prisma.eveCharacter.update({
+      where: { id: characterId },
+      data: { role },
+    });
+  }
+
+  async setCharacterProfile(
+    characterId: number,
+    func: string | null,
+    loc: string | null,
+  ): Promise<void> {
+    const data: any = {};
+    if (func) data.function = func;
+    if (loc) data.location = loc;
+    await this.prisma.eveCharacter.update({ where: { id: characterId }, data });
   }
 
   /**

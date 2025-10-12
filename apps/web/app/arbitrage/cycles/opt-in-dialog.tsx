@@ -1,6 +1,5 @@
 "use client";
 import * as React from "react";
-import { submitOptIn } from "../_mock/store";
 import { formatISK } from "../../brokerage/_mock/data";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -42,8 +41,37 @@ export default function OptInDialog(props: OptInDialogProps) {
     setSubmitting(true);
     try {
       const amt = Math.max(0, Number(amount || 0));
-      const res = await submitOptIn(amt, character);
-      setMemo(res.memo);
+      // Resolve next planned cycle from backend
+      const cyclesRes = await fetch(`/api/ledger/cycles`, {
+        cache: "no-store",
+      });
+      const cycles = (await cyclesRes.json()) as Array<{
+        id: string;
+        name?: string | null;
+        startedAt: string;
+        closedAt?: string | null;
+      }>;
+      if (!cyclesRes.ok) throw new Error("Failed to load cycles");
+      const now = Date.now();
+      const next = cycles
+        .filter((c) => new Date(c.startedAt).getTime() > now)
+        .sort(
+          (a, b) =>
+            new Date(a.startedAt).getTime() - new Date(b.startedAt).getTime(),
+        )[0];
+      if (!next) throw new Error("No planned cycle available");
+
+      const res = await fetch(`/api/ledger/cycles/${next.id}/participations`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          characterName: character,
+          amountIsk: String(amt.toFixed(2)),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || res.statusText);
+      setMemo(String(data.memo ?? `ARB ${next.id} ${character}`));
       setStep("confirm");
     } finally {
       setSubmitting(false);

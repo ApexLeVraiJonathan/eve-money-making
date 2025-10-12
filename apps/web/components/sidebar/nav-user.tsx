@@ -52,10 +52,11 @@ export function NavUser() {
   }, []);
 
   const handleLogin = () => {
-    const base = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:3000";
+    const base =
+      process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:3000";
     const returnUrl =
       typeof window !== "undefined" ? window.location.href : "/";
-    const url = `${base}/auth/login?returnUrl=${encodeURIComponent(returnUrl)}`;
+    const url = `${base}/auth/login/user?returnUrl=${encodeURIComponent(returnUrl)}`;
     window.location.href = url;
   };
 

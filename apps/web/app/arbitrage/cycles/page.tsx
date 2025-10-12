@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Recycle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { getCurrentCycle, getNextCycle } from "../_mock/store";
+// TODO: Replace mocks by fetching from backend planned cycles when available
 import { formatISK } from "../../brokerage/_mock/data";
 import OptInDialog from "./opt-in-dialog";
 

@@ -30,3 +30,35 @@ export async function DELETE(
     );
   }
 }
+
+export async function PATCH(
+  req: NextRequest,
+  context: { params: Promise<{ id: string }> },
+) {
+  try {
+    const { id } = await context.params;
+    const body = await req.json();
+    const role = body.role as string | undefined;
+    const func = body.function as string | undefined;
+    const loc = body.location as string | undefined;
+    const reqId = req.headers.get("x-request-id") || crypto.randomUUID();
+    const url = new URL(`${API_BASE}/auth/set-profile`);
+    url.searchParams.set("characterId", id);
+    if (role) url.searchParams.set("role", role);
+    if (func) url.searchParams.set("function", func);
+    if (loc) url.searchParams.set("location", loc);
+    const res = await fetch(url.toString(), {
+      headers: { "x-request-id": reqId },
+    });
+    const data = await res.json();
+    return NextResponse.json(data, {
+      status: res.status,
+      headers: { "x-request-id": reqId },
+    });
+  } catch (err) {
+    return NextResponse.json(
+      { error: "Failed to update character profile", details: `${err}` },
+      { status: 500 },
+    );
+  }
+}

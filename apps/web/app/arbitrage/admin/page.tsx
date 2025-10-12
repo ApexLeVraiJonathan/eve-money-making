@@ -9,6 +9,8 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 type Metrics = {
   cacheHitMem: number;
@@ -56,6 +58,17 @@ export default function AdminPage() {
   const [latestCycle, setLatestCycle] = React.useState<Cycle | null>(null);
   const [capital, setCapital] = React.useState<CapitalSnapshot | null>(null);
   const [wallets, setWallets] = React.useState<WalletBalance[] | null>(null);
+  const [planning, setPlanning] = React.useState(false);
+  const [opening, setOpening] = React.useState<string | null>(null);
+  const [participations, setParticipations] = React.useState<
+    Array<{
+      id: string;
+      characterName: string;
+      amountIsk: string;
+      status: string;
+      memo: string;
+    }>
+  >([]);
 
   const formatISK = (value: number | string | null | undefined) => {
     const n =
@@ -124,6 +137,33 @@ export default function AdminPage() {
         }),
       );
       setWallets(walletResults);
+
+      // Load planned cycle participations (if a planned cycle exists)
+      try {
+        const allCyclesRes = await fetch("/api/ledger/cycles", {
+          cache: "no-store",
+        });
+        const allCycles = (await allCyclesRes.json()) as Cycle[];
+        const now = Date.now();
+        const next = allCycles
+          .filter((c) => new Date(c.startedAt).getTime() > now)
+          .sort(
+            (a, b) =>
+              new Date(a.startedAt).getTime() - new Date(b.startedAt).getTime(),
+          )[0];
+        if (next) {
+          const partsRes = await fetch(
+            `/api/ledger/cycles/${next.id}/participations`,
+            { cache: "no-store" },
+          );
+          const partsData = await partsRes.json();
+          if (partsRes.ok) setParticipations(partsData as any[]);
+        } else {
+          setParticipations([]);
+        }
+      } catch {
+        // ignore
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -134,6 +174,19 @@ export default function AdminPage() {
   React.useEffect(() => {
     void load();
   }, []);
+
+  const handleAdminLogin = () => {
+    const base =
+      process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:3000";
+    const returnUrl =
+      typeof window !== "undefined" ? window.location.href : "/";
+    window.location.href = `${base}/auth/login/admin?returnUrl=${encodeURIComponent(returnUrl)}`;
+  };
+
+  const [charFunction, setCharFunction] = React.useState<string>("SELLER");
+  const [charLocation, setCharLocation] = React.useState<string>("JITA");
+  const [selectedCharacterId, setSelectedCharacterId] =
+    React.useState<string>("");
 
   return (
     <div className="container mx-auto max-w-6xl p-4 space-y-4">
@@ -287,6 +340,219 @@ export default function AdminPage() {
               </CardContent>
             </Card>
           ))}
+        </div>
+      </div>
+
+      {/* Cycle Planning */}
+      <div className="space-y-2">
+        <h2 className="text-lg font-semibold">Cycle Planning</h2>
+        <div className="flex items-center gap-2">
+          <button
+            className="inline-flex h-9 items-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground shadow hover:opacity-90"
+            disabled={planning}
+            onClick={async () => {
+              setPlanning(true);
+              try {
+                const start = new Date(
+                  Date.now() + 10 * 24 * 60 * 60 * 1000,
+                ).toISOString();
+                const res = await fetch(`/api/ledger/cycles/plan`, {
+                  method: "POST",
+                  headers: { "content-type": "application/json" },
+                  body: JSON.stringify({
+                    name: "Planned Cycle",
+                    startedAt: start,
+                  }),
+                });
+                if (!res.ok)
+                  throw new Error((await res.json())?.error || res.statusText);
+                await load();
+              } catch (e) {
+                setError(e instanceof Error ? e.message : String(e));
+              } finally {
+                setPlanning(false);
+              }
+            }}
+          >
+            {planning ? "Planning…" : "Plan Next Cycle"}
+          </button>
+          <button
+            className="inline-flex h-9 items-center rounded-md bg-secondary px-3 text-sm font-medium text-secondary-foreground shadow hover:opacity-90"
+            disabled={opening !== null}
+            onClick={async () => {
+              setOpening("pending");
+              try {
+                // Find earliest planned cycle
+                const cyclesRes = await fetch(`/api/ledger/cycles`, {
+                  cache: "no-store",
+                });
+                const cyclesData = (await cyclesRes.json()) as Cycle[];
+                const now = Date.now();
+                const next = cyclesData
+                  .filter((c) => new Date(c.startedAt).getTime() > now)
+                  .sort(
+                    (a, b) =>
+                      new Date(a.startedAt).getTime() -
+                      new Date(b.startedAt).getTime(),
+                  )[0];
+                if (!next) throw new Error("No planned cycle to open");
+                const res = await fetch(`/api/ledger/cycles/${next.id}/open`, {
+                  method: "POST",
+                });
+                if (!res.ok)
+                  throw new Error((await res.json())?.error || res.statusText);
+                await load();
+              } catch (e) {
+                setError(e instanceof Error ? e.message : String(e));
+              } finally {
+                setOpening(null);
+              }
+            }}
+          >
+            {opening ? "Opening…" : "Open Next Planned"}
+          </button>
+        </div>
+      </div>
+
+      {/* Planned Cycle Participations */}
+      <div className="space-y-2">
+        <h2 className="text-lg font-semibold">Planned Participations</h2>
+        <div className="rounded-md border surface-1">
+          <div className="grid grid-cols-4 gap-2 px-3 py-2 text-xs text-muted-foreground border-b">
+            <div>Character</div>
+            <div>Amount</div>
+            <div>Status</div>
+            <div>Actions</div>
+          </div>
+          {participations.length === 0 ? (
+            <div className="px-3 py-3 text-sm text-muted-foreground">
+              No participations yet.
+            </div>
+          ) : (
+            <div className="divide-y">
+              {participations.map((p) => (
+                <div
+                  key={p.id}
+                  className="grid grid-cols-4 gap-2 px-3 py-2 text-sm items-center"
+                >
+                  <div className="truncate">{p.characterName}</div>
+                  <div className="tabular-nums">{formatISK(p.amountIsk)}</div>
+                  <div>{p.status}</div>
+                  <div className="flex gap-2">
+                    <button
+                      className="h-8 rounded-md border px-2 text-xs"
+                      onClick={async () => {
+                        try {
+                          const res = await fetch(
+                            `/api/ledger/participations/${p.id}/validate`,
+                            { method: "POST" },
+                          );
+                          if (!res.ok)
+                            throw new Error(
+                              (await res.json())?.error || res.statusText,
+                            );
+                          await load();
+                        } catch (e) {
+                          setError(e instanceof Error ? e.message : String(e));
+                        }
+                      }}
+                    >
+                      Validate
+                    </button>
+                    <button
+                      className="h-8 rounded-md border px-2 text-xs"
+                      onClick={async () => {
+                        try {
+                          const res = await fetch(
+                            `/api/ledger/participations/${p.id}/refund`,
+                            {
+                              method: "POST",
+                              headers: { "content-type": "application/json" },
+                              body: JSON.stringify({ amountIsk: p.amountIsk }),
+                            },
+                          );
+                          if (!res.ok)
+                            throw new Error(
+                              (await res.json())?.error || res.statusText,
+                            );
+                          await load();
+                        } catch (e) {
+                          setError(e instanceof Error ? e.message : String(e));
+                        }
+                      }}
+                    >
+                      Refund
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Admin Linking */}
+      <div className="space-y-2">
+        <h2 className="text-lg font-semibold">Admin Linking</h2>
+        <div className="flex flex-col sm:flex-row gap-2 items-start sm:items-center">
+          <div className="flex gap-2 items-center">
+            <span className="text-sm text-muted-foreground">Character</span>
+            <Input
+              className="h-9 w-48"
+              placeholder="Character ID"
+              value={selectedCharacterId}
+              onChange={(e) => setSelectedCharacterId(e.target.value)}
+            />
+          </div>
+          <div className="flex gap-2 items-center">
+            <span className="text-sm text-muted-foreground">Function</span>
+            <Input
+              className="h-9 w-40"
+              placeholder="SELLER or BUYER"
+              value={charFunction}
+              onChange={(e) => setCharFunction(e.target.value.toUpperCase())}
+            />
+          </div>
+          <div className="flex gap-2 items-center">
+            <span className="text-sm text-muted-foreground">Location</span>
+            <Input
+              className="h-9 w-40"
+              placeholder="JITA, DODIXIE, ..."
+              value={charLocation}
+              onChange={(e) => setCharLocation(e.target.value.toUpperCase())}
+            />
+          </div>
+          <Button onClick={handleAdminLogin}>Link Admin Character</Button>
+          <Button
+            variant="secondary"
+            onClick={async () => {
+              if (!selectedCharacterId) return;
+              try {
+                const res = await fetch(
+                  `/api/auth/characters/${selectedCharacterId}`,
+                  {
+                    method: "PATCH",
+                    headers: { "content-type": "application/json" },
+                    body: JSON.stringify({
+                      role: "ADMIN",
+                      function: charFunction,
+                      location: charLocation,
+                    }),
+                  },
+                );
+                if (!res.ok)
+                  throw new Error((await res.json())?.error || res.statusText);
+              } catch (e) {
+                setError(e instanceof Error ? e.message : String(e));
+              }
+            }}
+          >
+            Save Profile
+          </Button>
+        </div>
+        <div className="text-xs text-muted-foreground">
+          After linking, you can enter the character ID and set
+          function/location.
         </div>
       </div>
     </div>
