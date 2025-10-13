@@ -170,14 +170,12 @@ export class LedgerController {
     @CurrentUser() user: RequestUser | null,
   ): Promise<unknown> {
     // Prefer session identity when characterName not provided
-    const characterName =
-      body.characterName ??
-      (user as { characterName?: string | null } | null)?.characterName ??
-      undefined;
+    const characterName = body.characterName ?? user?.name ?? undefined;
     return await this.ledger.createParticipation({
       cycleId,
       characterName,
       amountIsk: body.amountIsk,
+      userId: user?.userId ?? undefined, // Link to user if authenticated
     });
   }
 

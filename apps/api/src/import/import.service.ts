@@ -633,4 +633,21 @@ export class ImportService {
     }
     return { missing, results };
   }
+
+  async getSummary() {
+    const [typeIds, regionIds, solarSystemIds, npcStationIds] =
+      await Promise.all([
+        this.prisma.typeId.count(),
+        this.prisma.regionId.count(),
+        this.prisma.solarSystemId.count(),
+        this.prisma.stationId.count(),
+      ]);
+
+    return {
+      typeIds,
+      regionIds,
+      solarSystemIds,
+      npcStationIds,
+    };
+  }
 }

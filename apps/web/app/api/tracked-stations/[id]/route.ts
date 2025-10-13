@@ -2,9 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 
-const API_BASE = process.env.API_URL || "http://localhost:3000";
-
-export async function POST(
+export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
@@ -16,27 +14,30 @@ export async function POST(
     }
 
     const { id } = await params;
-    const payload = await req.json();
-    const res = await fetch(`${API_BASE}/ledger/cycles/${id}/open`, {
-      method: "POST",
+    const apiUrl = process.env.API_URL || "http://localhost:3000";
+
+    const response = await fetch(`${apiUrl}/tracked-stations/${id}`, {
+      method: "DELETE",
       headers: {
-        "Content-Type": "application/json",
         Authorization: `Bearer ${session.accessToken}`,
       },
-      body: JSON.stringify(payload),
-      cache: "no-store",
     });
 
-    if (!res.ok) {
-      const error = await res.json().catch(() => ({ error: "Unknown error" }));
-      return NextResponse.json(error, { status: res.status });
+    if (!response.ok) {
+      const error = await response
+        .json()
+        .catch(() => ({ error: "Unknown error" }));
+      return NextResponse.json(error, { status: response.status });
     }
 
-    const data = await res.json();
+    const data = await response.json();
     return NextResponse.json(data);
-  } catch (err) {
+  } catch (error) {
+    console.error("Error removing tracked station:", error);
     return NextResponse.json(
-      { error: "Failed to open cycle", details: `${err}` },
+      {
+        error: error instanceof Error ? error.message : "Internal server error",
+      },
       { status: 500 },
     );
   }

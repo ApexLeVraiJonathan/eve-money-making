@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-import { authOptions } from "../../[...nextauth]/route";
+import { authOptions } from "@/lib/auth";
 
 const API_URL = process.env.API_URL || "http://localhost:3000";
 
@@ -9,11 +9,9 @@ export async function GET(req: NextRequest) {
     // Get the current session to ensure user is authenticated
     const session = await getServerSession(authOptions);
 
-    if (!session || !(session as any).accessToken) {
+    if (!session?.accessToken) {
       return NextResponse.redirect(new URL("/", req.url));
     }
-
-    const accessToken = (session as any).accessToken;
     const returnUrl =
       req.nextUrl.searchParams.get("returnUrl") || "/account-settings";
 
@@ -24,7 +22,7 @@ export async function GET(req: NextRequest) {
 
     const response = await fetch(url.toString(), {
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        Authorization: `Bearer ${session.accessToken}`,
       },
       redirect: "manual", // Don't follow redirects automatically
     });

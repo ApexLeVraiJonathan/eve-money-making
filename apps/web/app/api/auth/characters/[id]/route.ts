@@ -1,63 +1,93 @@
 import { NextRequest, NextResponse } from "next/server";
-import crypto from "node:crypto";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
 
-const API_BASE =
-  process.env.API_BASE_URL ||
-  process.env.NEXT_PUBLIC_API_BASE ||
-  "http://localhost:3000";
-
-export async function DELETE(
-  _req: NextRequest,
-  context: { params: Promise<{ id: string }> },
+export async function PATCH(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const { id } = await context.params;
-    const reqId = _req.headers.get("x-request-id") || crypto.randomUUID();
-    const res = await fetch(`${API_BASE}/auth/characters/${id}`, {
-      method: "DELETE",
-      cache: "no-store",
-      headers: { "x-request-id": reqId },
+    const session = await getServerSession(authOptions);
+
+    if (!session?.accessToken) {
+      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+    }
+
+    const body = (await req.json()) as {
+      role?: string;
+      function?: string;
+      location?: string;
+    };
+
+    const { id: characterId } = await params;
+    const apiUrl = process.env.API_URL || "http://localhost:3000";
+
+    // Call the new PATCH /auth/characters/:id endpoint
+    const response = await fetch(`${apiUrl}/auth/characters/${characterId}`, {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${session.accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
     });
-    const data = await res.json();
-    return NextResponse.json(data, {
-      status: res.status,
-      headers: { "x-request-id": reqId },
-    });
-  } catch (err) {
+
+    if (!response.ok) {
+      const error = await response
+        .json()
+        .catch(() => ({ error: "Unknown error" }));
+      return NextResponse.json(error, { status: response.status });
+    }
+
+    const data = await response.json();
+    return NextResponse.json(data);
+  } catch (error) {
+    console.error("Error updating character profile:", error);
     return NextResponse.json(
-      { error: "Failed to unlink character", details: `${err}` },
+      {
+        error: error instanceof Error ? error.message : "Internal server error",
+      },
       { status: 500 },
     );
   }
 }
 
-export async function PATCH(
+export async function DELETE(
   req: NextRequest,
-  context: { params: Promise<{ id: string }> },
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const { id } = await context.params;
-    const body = await req.json();
-    const role = body.role as string | undefined;
-    const func = body.function as string | undefined;
-    const loc = body.location as string | undefined;
-    const reqId = req.headers.get("x-request-id") || crypto.randomUUID();
-    const url = new URL(`${API_BASE}/auth/set-profile`);
-    url.searchParams.set("characterId", id);
-    if (role) url.searchParams.set("role", role);
-    if (func) url.searchParams.set("function", func);
-    if (loc) url.searchParams.set("location", loc);
-    const res = await fetch(url.toString(), {
-      headers: { "x-request-id": reqId },
+    const session = await getServerSession(authOptions);
+
+    if (!session?.accessToken) {
+      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+    }
+
+    const { id: characterId } = await params;
+    const apiUrl = process.env.API_URL || "http://localhost:3000";
+
+    const response = await fetch(`${apiUrl}/auth/characters/${characterId}`, {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${session.accessToken}`,
+      },
     });
-    const data = await res.json();
-    return NextResponse.json(data, {
-      status: res.status,
-      headers: { "x-request-id": reqId },
-    });
-  } catch (err) {
+
+    if (!response.ok) {
+      const error = await response
+        .json()
+        .catch(() => ({ error: "Unknown error" }));
+      return NextResponse.json(error, { status: response.status });
+    }
+
+    const data = await response.json();
+    return NextResponse.json(data);
+  } catch (error) {
+    console.error("Error deleting character:", error);
     return NextResponse.json(
-      { error: "Failed to update character profile", details: `${err}` },
+      {
+        error: error instanceof Error ? error.message : "Internal server error",
+      },
       { status: 500 },
     );
   }

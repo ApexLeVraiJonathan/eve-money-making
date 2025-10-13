@@ -1,23 +1,21 @@
-import { NextRequest, NextResponse } from "next/server";
-import crypto from "node:crypto";
+import { NextResponse } from "next/server";
 
-const API_BASE =
-  process.env.API_BASE_URL ||
-  process.env.NEXT_PUBLIC_API_BASE ||
-  "http://localhost:3000";
+const API_BASE = process.env.API_URL || "http://localhost:3000";
 
-export async function GET(req: NextRequest) {
+export async function GET() {
   try {
-    const reqId = req.headers.get("x-request-id") || crypto.randomUUID();
+    // This endpoint is public - no authentication required
     const res = await fetch(`${API_BASE}/ledger/cycles/overview`, {
       cache: "no-store",
-      headers: { "x-request-id": reqId },
     });
+
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({ error: "Unknown error" }));
+      return NextResponse.json(error, { status: res.status });
+    }
+
     const data = await res.json();
-    return NextResponse.json(data, {
-      status: res.status,
-      headers: { "x-request-id": reqId },
-    });
+    return NextResponse.json(data);
   } catch (err) {
     return NextResponse.json(
       { error: "Failed to load cycles overview", details: `${err}` },

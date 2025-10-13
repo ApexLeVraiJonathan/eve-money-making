@@ -1,4 +1,4 @@
-import { Controller, Post, Body, UsePipes } from '@nestjs/common';
+import { Controller, Post, Body, UsePipes, Get } from '@nestjs/common';
 import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
 import { UseGuards } from '@nestjs/common';
@@ -97,5 +97,10 @@ export class ImportController {
       body?.daysBack,
       body?.batchSize,
     );
+  }
+
+  @Get('summary')
+  getSummary() {
+    return this.importService.getSummary();
   }
 }

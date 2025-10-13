@@ -64,10 +64,24 @@ export class LedgerService {
   }
 
   async getNextPlannedCycle() {
-    return await this.prisma.cycle.findFirst({
-      where: { startedAt: { gt: new Date() } },
+    // First try to find a cycle with future startedAt
+    const futureCycle = await this.prisma.cycle.findFirst({
+      where: { startedAt: { gt: new Date() }, closedAt: null },
       orderBy: { startedAt: 'asc' },
     });
+
+    if (futureCycle) return futureCycle;
+
+    // If no future cycle, find the most recent cycle without ledger entries (not yet opened)
+    const unopenedCycle = await this.prisma.cycle.findFirst({
+      where: {
+        closedAt: null,
+        ledgerEntries: { none: {} }, // No ledger entries = not opened yet
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return unopenedCycle;
   }
 
   async planCycle(input: {
@@ -680,6 +694,7 @@ export class LedgerService {
     cycleId: string;
     characterName?: string;
     amountIsk: string; // Decimal(28,2) as string
+    userId?: string; // Link to user if authenticated
   }) {
     const cycle = await this.prisma.cycle.findUnique({
       where: { id: input.cycleId },
@@ -706,6 +721,7 @@ export class LedgerService {
     return await this.prisma.cycleParticipation.create({
       data: {
         cycleId: input.cycleId,
+        userId: input.userId, // Link to user
         characterName,
         amountIsk: input.amountIsk,
         memo,

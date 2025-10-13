@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CryptoUtil } from '../common/crypto.util';
 import axios from 'axios';
+import * as jwt from 'jsonwebtoken';
 
 @Injectable()
 export class EsiTokenService {
@@ -65,6 +66,26 @@ export class EsiTokenService {
       });
 
       const { access_token, expires_in, refresh_token } = response.data;
+
+      // Decode the new access token to check owner hash (without verification since we already trust EVE's response)
+      const decoded = jwt.decode(access_token) as {
+        owner?: string;
+        sub?: string;
+      } | null;
+
+      if (decoded?.owner) {
+        // Check if owner has changed
+        const ownerValid = await this.checkOwnerHashAndRevoke(
+          characterId,
+          decoded.owner,
+        );
+
+        if (!ownerValid) {
+          throw new Error(
+            `Character ${characterId} owner has changed - token revoked, relink required`,
+          );
+        }
+      }
 
       // Update token in database
       const newRefreshEnc = refresh_token

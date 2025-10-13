@@ -11,6 +11,7 @@ import {
   UserCheck,
   BadgeDollarSign,
   NotebookPen,
+  Zap,
 } from "lucide-react";
 
 export type NavItem = {
@@ -137,6 +138,7 @@ export const APPS: AppConfig[] = [
         icon: BadgeDollarSign,
       },
       { name: "Ledger", url: "/arbitrage/admin/ledger", icon: NotebookPen },
+      { name: "Triggers", url: "/arbitrage/admin/triggers", icon: Zap },
     ],
   },
 ];

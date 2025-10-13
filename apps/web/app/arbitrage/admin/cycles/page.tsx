@@ -181,6 +181,10 @@ export default function CyclesPage() {
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-2 p-3 rounded-md border">
               <div className="font-medium">Plan a Cycle</div>
+              <div className="text-xs text-muted-foreground mb-2">
+                Creates a cycle for future opt-ins (defaults to tomorrow if date
+                not set)
+              </div>
               <div className="flex flex-col sm:flex-row gap-2">
                 <Input
                   placeholder="Optional name (e.g. Cycle 6)"
@@ -189,7 +193,7 @@ export default function CyclesPage() {
                 />
                 <Input
                   type="datetime-local"
-                  placeholder="Start date/time"
+                  placeholder="Future start date/time"
                   value={planStart}
                   onChange={(e) => setPlanStart(e.target.value)}
                 />

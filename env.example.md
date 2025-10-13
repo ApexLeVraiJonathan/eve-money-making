@@ -65,7 +65,7 @@ Notes:
 
 ### NextAuth (Auth.js) & EVE SSO
 
-**Two EVE SSO Applications Required:**
+**Three EVE SSO Applications Required:**
 
 #### App 1: Initial Login (NextAuth)
 
@@ -82,6 +82,17 @@ Notes:
   - Callback URL: `http://localhost:3000/auth/link-character/callback`
 - EVE_CLIENT_SECRET_LINKING: Your SECOND EVE SSO application client secret
   - Example: `EVE_CLIENT_SECRET_LINKING=your-linking-secret-here`
+
+#### App 3: Admin System Characters (NestJS)
+
+- EVE_CLIENT_ID_SYSTEM: Your THIRD EVE SSO application client ID for admin linking of system characters
+  - Example: `EVE_CLIENT_ID_SYSTEM=jkl456mno789`
+  - Callback URL: `http://localhost:3000/auth/admin/system-characters/callback`
+- EVE_CLIENT_SECRET_SYSTEM: Your THIRD EVE SSO application client secret
+  - Example: `EVE_CLIENT_SECRET_SYSTEM=your-system-secret-here`
+- ESI_SSO_SCOPES_SYSTEM: Comma-separated list of ESI scopes for system characters
+  - Example: `ESI_SSO_SCOPES_SYSTEM=esi-wallet.read_character_wallet.v1,esi-assets.read_assets.v1,esi-markets.read_character_orders.v1`
+  - These scopes must be enabled in your App 3 EVE SSO application
 
 #### NextAuth Configuration
 

@@ -7,9 +7,12 @@ import {
   Delete,
   Param,
   Post,
+  Patch,
+  Body,
 } from '@nestjs/common';
 import type { Response, Request } from 'express';
 import crypto from 'node:crypto';
+import * as jwt from 'jsonwebtoken';
 import { AuthService } from './auth.service';
 import { CryptoUtil } from '../common/crypto.util';
 import { EsiService } from '../esi/esi.service';
@@ -627,12 +630,15 @@ export class AuthController {
    */
   @Roles('ADMIN')
   @UseGuards(RolesGuard)
-  @Get('set-profile')
+  @Patch('characters/:id')
   async setProfile(
-    @Query('characterId') characterId: string,
-    @Query('role') role: string,
-    @Query('function') func: string,
-    @Query('location') loc: string,
+    @Param('id') characterId: string,
+    @Body()
+    body: {
+      role?: string;
+      function?: string;
+      location?: string;
+    },
     @Res() res: Response,
   ) {
     const id = Number(characterId);
@@ -641,10 +647,14 @@ export class AuthController {
       return;
     }
     try {
-      if (role === 'USER' || role === 'LOGISTICS') {
-        await this.auth.setCharacterRole(id, role);
+      if (body.role === 'USER' || body.role === 'LOGISTICS') {
+        await this.auth.setCharacterRole(id, body.role);
       }
-      await this.auth.setCharacterProfile(id, func || null, loc || null);
+      await this.auth.setCharacterProfile(
+        id,
+        body.function || null,
+        body.location || null,
+      );
       res.json({ updated: true, characterId: id });
     } catch (e) {
       res.status(400).json({ error: String(e) });
@@ -912,6 +922,256 @@ export class AuthController {
         error: e instanceof Error ? e.message : String(e),
         stack: e instanceof Error ? e.stack : undefined,
       });
+    }
+  }
+
+  /**
+   * Admin: Get all characters (including system characters)
+   */
+  @UseGuards(RolesGuard)
+  @Roles('ADMIN')
+  @Get('admin/characters')
+  async getAllCharacters() {
+    const characters = await this.prisma.eveCharacter.findMany({
+      select: {
+        id: true,
+        name: true,
+        ownerHash: true,
+        userId: true,
+        role: true,
+        function: true,
+        location: true,
+        managedBy: true,
+        notes: true,
+        token: {
+          select: {
+            accessTokenExpiresAt: true,
+            scopes: true,
+          },
+        },
+      },
+      orderBy: [{ managedBy: 'asc' }, { role: 'asc' }, { name: 'asc' }],
+    });
+
+    return characters.map((c) => ({
+      characterId: c.id,
+      characterName: c.name,
+      ownerHash: c.ownerHash,
+      userId: c.userId,
+      role: c.role,
+      function: c.function,
+      location: c.location,
+      managedBy: c.managedBy,
+      notes: c.notes,
+      accessTokenExpiresAt:
+        c.token?.accessTokenExpiresAt?.toISOString() ?? null,
+      scopes: c.token?.scopes ?? null,
+    }));
+  }
+
+  /**
+   * Admin: Start system character linking flow
+   * Returns OAuth URL for linking a system character (managedBy=SYSTEM, userId=null)
+   */
+  @UseGuards(RolesGuard)
+  @Roles('ADMIN')
+  @Get('admin/system-characters/link/url')
+  async getSystemCharacterLinkUrl(
+    @Query('notes') notes?: string,
+    @Query('returnUrl') returnUrl?: string,
+  ): Promise<{ url: string }> {
+    // Read scopes from environment variable
+    const scopes = (process.env.ESI_SSO_SCOPES_SYSTEM ?? '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+
+    // Generate OAuth state
+    const state = crypto.randomUUID();
+    const codeVerifier = crypto.randomBytes(32).toString('base64url');
+    const codeChallenge = crypto
+      .createHash('sha256')
+      .update(codeVerifier)
+      .digest('base64')
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/, '');
+
+    // Store state in database (expires in 10 minutes)
+    // Store both notes and returnUrl as JSON in returnUrl field
+    const stateData = JSON.stringify({
+      notes: notes || null,
+      returnUrl: returnUrl || null,
+    });
+
+    await this.prisma.oAuthState.create({
+      data: {
+        state,
+        codeVerifier,
+        userId: null, // No user for system characters
+        returnUrl: stateData,
+        expiresAt: new Date(Date.now() + 10 * 60 * 1000),
+      },
+    });
+
+    const url = this.auth.getAuthorizeSystemUrl(state, codeChallenge, scopes);
+
+    return { url };
+  }
+
+  /**
+   * Admin: System character OAuth callback
+   * Links character with managedBy=SYSTEM, userId=null
+   */
+  @Public()
+  @Get('admin/system-characters/callback')
+  async systemCharacterCallback(
+    @Query('code') code: string,
+    @Query('state') state: string,
+    @Res() res: Response,
+  ) {
+    try {
+      if (!code || !state) {
+        res.status(400).send('Missing code or state parameter');
+        return;
+      }
+
+      // Retrieve OAuth state from database
+      const oauthState = await this.prisma.oAuthState.findUnique({
+        where: { state },
+      });
+
+      if (!oauthState) {
+        res.status(400).send('Invalid or expired state');
+        return;
+      }
+
+      // Check if state has expired
+      if (oauthState.expiresAt < new Date()) {
+        await this.prisma.oAuthState.delete({ where: { state } });
+        res.status(400).send('State has expired');
+        return;
+      }
+
+      // Exchange code for tokens using App 3 (system) credentials
+      const tokens = await this.auth.exchangeCodeForTokenSystem(
+        code,
+        oauthState.codeVerifier,
+      );
+
+      // Decode access token to get character info and scopes
+      const decoded = jwt.decode(tokens.access_token) as {
+        sub: string;
+        name: string;
+        owner: string;
+        scp?: string | string[];
+      } | null;
+
+      if (!decoded) {
+        res.status(400).send('Invalid access token');
+        return;
+      }
+
+      const characterId = Number(decoded.sub.split(':').pop());
+      const characterName = decoded.name;
+      const ownerHash = decoded.owner;
+
+      // Extract scopes from JWT (can be string or array)
+      const scopes = Array.isArray(decoded.scp)
+        ? decoded.scp.join(' ')
+        : decoded.scp || '';
+
+      // Encrypt refresh token
+      const refreshTokenEnc = await CryptoUtil.encrypt(tokens.refresh_token);
+
+      // Parse state data (contains notes and returnUrl)
+      let notes = 'System character';
+      let storedReturnUrl: string | null = null;
+      try {
+        const stateData = JSON.parse(oauthState.returnUrl || '{}') as {
+          notes?: string | null;
+          returnUrl?: string | null;
+        };
+        notes = stateData.notes || 'System character';
+        storedReturnUrl = stateData.returnUrl || null;
+      } catch {
+        // Fallback for old format (plain string)
+        notes = oauthState.returnUrl || 'System character';
+      }
+
+      // Upsert character and token with managedBy=SYSTEM, userId=null, role=LOGISTICS
+      await this.prisma.$transaction(async (tx) => {
+        await tx.eveCharacter.upsert({
+          where: { id: characterId },
+          update: {
+            name: characterName,
+            ownerHash,
+            managedBy: 'SYSTEM',
+            userId: null,
+            role: 'LOGISTICS',
+            notes,
+          },
+          create: {
+            id: characterId,
+            name: characterName,
+            ownerHash,
+            managedBy: 'SYSTEM',
+            userId: null,
+            role: 'LOGISTICS',
+            notes,
+          },
+        });
+
+        await tx.characterToken.upsert({
+          where: { characterId },
+          update: {
+            tokenType: 'Bearer',
+            accessToken: tokens.access_token,
+            accessTokenExpiresAt: new Date(
+              Date.now() + tokens.expires_in * 1000,
+            ),
+            refreshTokenEnc,
+            scopes,
+            lastRefreshAt: new Date(),
+          },
+          create: {
+            characterId,
+            tokenType: 'Bearer',
+            accessToken: tokens.access_token,
+            accessTokenExpiresAt: new Date(
+              Date.now() + tokens.expires_in * 1000,
+            ),
+            refreshTokenEnc,
+            scopes,
+          },
+        });
+      });
+
+      // Clean up OAuth state
+      await this.prisma.oAuthState.delete({ where: { state } });
+
+      // Redirect to stored returnUrl or default
+      if (storedReturnUrl) {
+        // Add success message to returnUrl
+        const redirectUrl = new URL(storedReturnUrl);
+        redirectUrl.searchParams.set('systemCharLinked', characterName);
+        res.redirect(redirectUrl.toString());
+      } else {
+        // Fallback to default admin page
+        const redirectUrl = new URL(
+          '/arbitrage/admin/characters',
+          process.env.NEXTAUTH_URL || 'http://localhost:3001',
+        );
+        redirectUrl.searchParams.set('systemCharLinked', characterName);
+        res.redirect(redirectUrl.toString());
+      }
+    } catch (e) {
+      console.error('Error linking system character:', e);
+      res
+        .status(500)
+        .send(
+          `Error linking system character: ${e instanceof Error ? e.message : String(e)}`,
+        );
     }
   }
 }

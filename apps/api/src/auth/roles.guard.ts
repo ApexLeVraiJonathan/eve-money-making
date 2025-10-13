@@ -13,7 +13,7 @@ import type { RequestUser } from './current-user.decorator';
 export class RolesGuard implements CanActivate {
   constructor(private readonly reflector: Reflector) {}
 
-  async canActivate(context: ExecutionContext): Promise<boolean> {
+  canActivate(context: ExecutionContext): boolean {
     const required = this.reflector.getAllAndOverride<AppRole[]>(ROLES_KEY, [
       context.getHandler(),
       context.getClass(),

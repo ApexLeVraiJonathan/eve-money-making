@@ -25,6 +25,12 @@ export class AuthService {
     process.env.EVE_CLIENT_SECRET_LINKING ?? '';
   private readonly linkingRedirectUri = `${process.env.API_BASE_URL || 'http://localhost:3000'}/auth/link-character/callback`;
 
+  // App 3: Admin System Character credentials
+  private readonly systemClientId = process.env.EVE_CLIENT_ID_SYSTEM ?? '';
+  private readonly systemClientSecret =
+    process.env.EVE_CLIENT_SECRET_SYSTEM ?? '';
+  private readonly systemRedirectUri = `${process.env.API_BASE_URL || 'http://localhost:3000'}/auth/admin/system-characters/callback`;
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly logger: Logger,
@@ -111,6 +117,56 @@ export class AuthService {
         grant_type: 'authorization_code',
         code,
         redirect_uri: this.linkingRedirectUri,
+        code_verifier: codeVerifier,
+      }),
+      {
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          Authorization: `Basic ${basic}`,
+          'User-Agent': this.userAgent,
+        },
+      },
+    );
+    return res.data;
+  }
+
+  /**
+   * Get OAuth URL for admin system character linking (uses App 3 credentials)
+   */
+  getAuthorizeSystemUrl(
+    state: string,
+    codeChallenge: string,
+    scopes: string[],
+  ): string {
+    const base = 'https://login.eveonline.com/v2/oauth/authorize';
+    const url = new URL(base);
+    url.searchParams.set('response_type', 'code');
+    url.searchParams.set('redirect_uri', this.systemRedirectUri);
+    url.searchParams.set('client_id', this.systemClientId);
+    if (scopes.length) url.searchParams.set('scope', scopes.join(' '));
+    url.searchParams.set('state', state);
+    url.searchParams.set('code_challenge', codeChallenge);
+    url.searchParams.set('code_challenge_method', 'S256');
+    return url.toString();
+  }
+
+  /**
+   * Exchange authorization code for tokens (system characters with App 3)
+   */
+  async exchangeCodeForTokenSystem(
+    code: string,
+    codeVerifier: string,
+  ): Promise<TokenResponse> {
+    const tokenUrl = 'https://login.eveonline.com/v2/oauth/token';
+    const basic = Buffer.from(
+      `${this.systemClientId}:${this.systemClientSecret}`,
+    ).toString('base64');
+    const res = await axios.post<TokenResponse>(
+      tokenUrl,
+      new URLSearchParams({
+        grant_type: 'authorization_code',
+        code,
+        redirect_uri: this.systemRedirectUri,
         code_verifier: codeVerifier,
       }),
       {

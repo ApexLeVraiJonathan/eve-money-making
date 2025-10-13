@@ -22,7 +22,7 @@ export default async function CyclesOverviewPage() {
   const base = `${proto}://${host}`;
   const dataPromise = fetch(`${base}/api/ledger/cycles/overview`, {
     // cache on edge for 30s to smooth bursts while allowing fresh-ish data
-    next: { revalidate: 30 },
+    cache: "no-store", // Disable cache for development
   }).then((r) => r.json());
 
   // Render quickly, hydrate with data when it arrives

@@ -12,8 +12,9 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { ClipboardCopy } from "lucide-react";
+import { ClipboardCopy, Coins, User, ArrowRight, Check } from "lucide-react";
 import { toast } from "sonner";
+import { Badge } from "@/components/ui/badge";
 
 type OptInDialogProps = {
   nextCycleName: string;
@@ -31,12 +32,39 @@ export default function OptInDialog(props: OptInDialogProps) {
   const [open, setOpen] = React.useState(false);
   const [step, setStep] = React.useState<"form" | "confirm">("form");
 
-  const [amount, setAmount] = React.useState<string>("1000000000");
+  const [amount, setAmount] = React.useState<number>(1000000000);
+  const [amountInput, setAmountInput] = React.useState<string>("1,000,000,000");
   const [character, setCharacter] = React.useState<string>("YourName");
   const [submitting, setSubmitting] = React.useState(false);
   const [memo, setMemo] = React.useState<string>("");
   const [charLoading, setCharLoading] = React.useState<boolean>(false);
   const [charAutoError, setCharAutoError] = React.useState<string | null>(null);
+
+  // Format number with commas for display
+  const formatNumberWithCommas = (num: number): string => {
+    return num.toLocaleString("en-US");
+  };
+
+  // Parse formatted input back to number
+  const parseFormattedNumber = (str: string): number => {
+    const cleaned = str.replace(/[^\d]/g, "");
+    return cleaned ? parseInt(cleaned, 10) : 0;
+  };
+
+  // Handle amount input change
+  const handleAmountChange = (value: string) => {
+    const numValue = parseFormattedNumber(value);
+    setAmount(numValue);
+    setAmountInput(numValue > 0 ? formatNumberWithCommas(numValue) : "");
+  };
+
+  // Preset amounts
+  const presetAmounts = [
+    { label: "100M", value: 100_000_000 },
+    { label: "500M", value: 500_000_000 },
+    { label: "1B", value: 1_000_000_000 },
+    { label: "5B", value: 5_000_000_000 },
+  ];
 
   React.useEffect(() => {
     if (open) {
@@ -71,7 +99,7 @@ export default function OptInDialog(props: OptInDialogProps) {
     e.preventDefault();
     setSubmitting(true);
     try {
-      const amt = Math.max(0, Number(amount || 0));
+      const amt = Math.max(0, amount);
       // Resolve next planned cycle from backend
       const cyclesRes = await fetch(`/api/ledger/cycles`, {
         cache: "no-store",
@@ -126,60 +154,112 @@ export default function OptInDialog(props: OptInDialogProps) {
         {step === "form" ? (
           <>
             <DialogHeader>
-              <DialogTitle>Opt-in to the next cycle</DialogTitle>
+              <DialogTitle className="flex items-center gap-2">
+                <span className="flex h-8 w-8 items-center justify-center rounded-md bg-primary/15 text-primary">
+                  <Coins className="h-4 w-4" />
+                </span>
+                Opt-in to the next cycle
+              </DialogTitle>
               <DialogDescription>
                 Next cycle:{" "}
-                <span className="text-foreground">{nextCycleName}</span>
+                <Badge variant="secondary" className="font-mono">
+                  {nextCycleName}
+                </Badge>
               </DialogDescription>
             </DialogHeader>
-            <form onSubmit={onSubmit} className="space-y-4">
-              <div className="space-y-1">
-                <Label htmlFor="optin-amount">Amount (ISK)</Label>
-                <Input
-                  id="optin-amount"
-                  type="number"
-                  aria-describedby="optin-amount-hint"
-                  value={amount}
-                  min={0}
-                  step={1000000}
-                  onChange={(e) => setAmount(e.target.value)}
-                />
-                <div
-                  id="optin-amount-hint"
-                  className="text-xs text-muted-foreground"
-                >
-                  {formatIsk(Number(amount || 0))}
+            <form onSubmit={onSubmit} className="space-y-6">
+              {/* Investment Amount */}
+              <div className="space-y-3">
+                <Label htmlFor="optin-amount" className="text-base font-medium">
+                  Investment Amount
+                </Label>
+                <div className="space-y-2">
+                  <div className="relative">
+                    <Input
+                      id="optin-amount"
+                      type="text"
+                      placeholder="0"
+                      aria-describedby="optin-amount-hint"
+                      value={amountInput}
+                      onChange={(e) => handleAmountChange(e.target.value)}
+                      className="pr-16 text-lg font-mono"
+                    />
+                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3 text-sm text-muted-foreground">
+                      ISK
+                    </div>
+                  </div>
+                  <div
+                    id="optin-amount-hint"
+                    className="text-sm font-medium text-primary"
+                  >
+                    {formatIsk(amount)}
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {presetAmounts.map((preset) => (
+                      <Button
+                        key={preset.value}
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setAmount(preset.value);
+                          setAmountInput(formatNumberWithCommas(preset.value));
+                        }}
+                        className="text-xs"
+                      >
+                        {preset.label}
+                      </Button>
+                    ))}
+                  </div>
                 </div>
               </div>
-              <div className="space-y-1">
-                <Label>Character (sender)</Label>
-                <div className="text-sm">
-                  {charLoading ? (
-                    <span className="text-muted-foreground">
-                      Loading character…
-                    </span>
-                  ) : (
-                    <code className="rounded bg-muted px-2 py-1 text-sm">
-                      {character}
-                    </code>
+
+              {/* Character Info */}
+              <div className="space-y-2">
+                <Label className="text-base font-medium">
+                  Sending Character
+                </Label>
+                <div className="rounded-lg border bg-muted/50 p-3">
+                  <div className="flex items-center gap-2">
+                    <User className="h-4 w-4 text-muted-foreground" />
+                    {charLoading ? (
+                      <span className="text-sm text-muted-foreground">
+                        Loading character…
+                      </span>
+                    ) : (
+                      <span className="font-medium">{character}</span>
+                    )}
+                  </div>
+                  {charAutoError && (
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      Could not auto-detect character. Please ensure you're
+                      logged in.
+                    </p>
                   )}
                 </div>
-                {charAutoError && (
-                  <div className="text-xs text-muted-foreground">
-                    Could not auto-detect character. Using fallback.
-                  </div>
-                )}
               </div>
-              <div className="flex justify-end gap-2">
+
+              {/* Actions */}
+              <div className="flex justify-end gap-2 pt-2">
                 <Button
                   type="button"
-                  variant="ghost"
+                  variant="outline"
                   onClick={() => setOpen(false)}
                 >
                   Cancel
                 </Button>
-                <Button type="submit" disabled={submitting || charLoading}>
-                  {submitting ? "Submitting…" : "Generate memo"}
+                <Button
+                  type="submit"
+                  disabled={submitting || charLoading || amount <= 0}
+                  className="gap-2"
+                >
+                  {submitting ? (
+                    "Processing..."
+                  ) : (
+                    <>
+                      Generate Memo <ArrowRight className="h-4 w-4" />
+                    </>
+                  )}
                 </Button>
               </div>
             </form>
@@ -187,61 +267,185 @@ export default function OptInDialog(props: OptInDialogProps) {
         ) : (
           <>
             <DialogHeader>
-              <DialogTitle>Confirm your opt-in</DialogTitle>
+              <DialogTitle className="flex items-center gap-2">
+                <span className="flex h-8 w-8 items-center justify-center rounded-md bg-green-500/15 text-green-600">
+                  <Check className="h-4 w-4" />
+                </span>
+                Participation Created
+              </DialogTitle>
               <DialogDescription>
-                Follow these steps to ensure your contribution is tracked.
+                Follow these steps to complete your opt-in
               </DialogDescription>
             </DialogHeader>
-            <div className="space-y-3 text-sm">
-              <div className="surface-2 rounded-md border p-3">
-                <div className="text-xs text-muted-foreground">Recipient</div>
-                <div className="flex items-center gap-2 mt-1">
-                  <code className="rounded bg-muted px-2 py-1 text-sm">
-                    LeVraiTrader
-                  </code>
-                  <Button
-                    aria-label="Copy recipient"
-                    variant="ghost"
-                    size="icon"
-                    onClick={async () => {
-                      await navigator.clipboard.writeText("LeVraiTrader");
-                      toast.success("Recipient copied");
-                    }}
-                  >
-                    <ClipboardCopy />
-                  </Button>
+            <div className="space-y-4">
+              {/* Investment Summary */}
+              <div className="rounded-lg border bg-muted/50 p-4">
+                <div className="space-y-1">
+                  <div className="text-sm text-muted-foreground">
+                    Investment Amount
+                  </div>
+                  <div className="text-xl font-bold text-primary">
+                    {formatIsk(amount)}
+                  </div>
                 </div>
               </div>
-              <div className="surface-2 rounded-md border p-3">
-                <div className="text-xs text-muted-foreground">
-                  Donation reason
+
+              {/* Instructions */}
+              <div className="space-y-3">
+                <div className="flex items-start gap-2">
+                  <Badge variant="outline" className="mt-0.5">
+                    1
+                  </Badge>
+                  <div className="flex-1 space-y-2">
+                    <p className="text-sm font-medium">
+                      Send ISK to the following character
+                    </p>
+                    <div className="flex items-center gap-2 rounded-md border bg-background p-2">
+                      <code className="flex-1 text-sm font-mono">
+                        LeVraiTrader
+                      </code>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={async () => {
+                          await navigator.clipboard.writeText("LeVraiTrader");
+                          toast.success("Recipient copied to clipboard");
+                        }}
+                        className="h-8 gap-1.5"
+                      >
+                        <ClipboardCopy className="h-3.5 w-3.5" />
+                        Copy
+                      </Button>
+                    </div>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2 mt-1">
-                  <code className="rounded bg-muted px-2 py-1 text-sm">
-                    {memo}
-                  </code>
-                  <Button
-                    aria-label="Copy memo"
-                    variant="ghost"
-                    size="icon"
-                    onClick={async () => {
-                      await navigator.clipboard.writeText(memo);
-                      toast.success("Memo copied");
-                    }}
-                  >
-                    <ClipboardCopy />
-                  </Button>
+
+                <div className="flex items-start gap-2">
+                  <Badge variant="outline" className="mt-0.5">
+                    2
+                  </Badge>
+                  <div className="flex-1 space-y-2">
+                    <p className="text-sm font-medium">
+                      Use this exact reason for donation
+                    </p>
+                    <div className="flex items-center gap-2 rounded-md border bg-background p-2">
+                      <code className="flex-1 text-sm font-mono break-all">
+                        {memo}
+                      </code>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={async () => {
+                          await navigator.clipboard.writeText(memo);
+                          toast.success("Memo copied to clipboard");
+                        }}
+                        className="h-8 gap-1.5"
+                      >
+                        <ClipboardCopy className="h-3.5 w-3.5" />
+                        Copy
+                      </Button>
+                    </div>
+                  </div>
                 </div>
               </div>
-              <div className="text-xs text-muted-foreground">
-                Statuses: Awaiting Investment → Awaiting Validation → Opted-In →
-                Completed
+
+              {/* How to Send ISK */}
+              <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-4">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-amber-500/15 text-amber-600">
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      strokeWidth={2}
+                      stroke="currentColor"
+                      className="h-4 w-4"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z"
+                      />
+                    </svg>
+                  </div>
+                  <div className="flex-1 space-y-2">
+                    <p className="text-sm font-semibold text-amber-900 dark:text-amber-100">
+                      Important: How to Send ISK with Memo
+                    </p>
+                    <ol className="space-y-1.5 text-sm text-muted-foreground">
+                      <li className="flex items-start gap-2">
+                        <span className="shrink-0 font-medium">1.</span>
+                        <span>
+                          Use the{" "}
+                          <strong className="text-foreground">
+                            "Search for anything"
+                          </strong>{" "}
+                          bar at the top left of your EVE client
+                        </span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <span className="shrink-0 font-medium">2.</span>
+                        <span>
+                          Search for{" "}
+                          <code className="rounded bg-background px-1 py-0.5 text-xs font-mono">
+                            LeVraiTrader
+                          </code>{" "}
+                          and open the character's profile
+                        </span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <span className="shrink-0 font-medium">3.</span>
+                        <span>
+                          Right-click the character and select{" "}
+                          <strong className="text-foreground">
+                            "Give Money"
+                          </strong>
+                        </span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <span className="shrink-0 font-medium">4.</span>
+                        <span>
+                          Paste the donation reason (memo) in the{" "}
+                          <strong className="text-foreground">Reason</strong>{" "}
+                          field
+                        </span>
+                      </li>
+                    </ol>
+                    <p className="text-xs text-amber-700 dark:text-amber-300/80 font-medium">
+                      ⚠️ Don't use the Wallet - it won't let you add a reason!
+                    </p>
+                  </div>
+                </div>
               </div>
-              <div className="flex justify-end gap-2">
-                <Button variant="ghost" onClick={() => setStep("form")}>
+
+              {/* Status Flow */}
+              <div className="rounded-lg border bg-muted/30 p-3">
+                <p className="text-xs font-medium text-muted-foreground mb-2">
+                  Participation Status Flow
+                </p>
+                <div className="flex items-center gap-1 text-xs">
+                  <span className="text-muted-foreground">
+                    Awaiting Investment
+                  </span>
+                  <ArrowRight className="h-3 w-3 text-muted-foreground" />
+                  <span className="text-muted-foreground">
+                    Awaiting Validation
+                  </span>
+                  <ArrowRight className="h-3 w-3 text-muted-foreground" />
+                  <span className="text-muted-foreground">Opted-In</span>
+                  <ArrowRight className="h-3 w-3 text-muted-foreground" />
+                  <span className="text-muted-foreground">Completed</span>
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="flex justify-end gap-2 pt-2">
+                <Button variant="outline" onClick={() => setStep("form")}>
                   Back
                 </Button>
-                <Button onClick={() => setOpen(false)}>Done</Button>
+                <Button onClick={() => setOpen(false)} className="gap-2">
+                  Done <Check className="h-4 w-4" />
+                </Button>
               </div>
             </div>
           </>

@@ -11,7 +11,7 @@ export async function GET() {
     }
 
     const apiUrl = process.env.API_URL || "http://localhost:3000";
-    const response = await fetch(`${apiUrl}/jobs/staleness`, {
+    const response = await fetch(`${apiUrl}/import/summary`, {
       headers: {
         Authorization: `Bearer ${session.accessToken}`,
       },
@@ -27,7 +27,7 @@ export async function GET() {
     const data = await response.json();
     return NextResponse.json(data);
   } catch (error) {
-    console.error("Error fetching market trades staleness:", error);
+    console.error("Error fetching import summary:", error);
     return NextResponse.json(
       {
         error: error instanceof Error ? error.message : "Internal server error",
