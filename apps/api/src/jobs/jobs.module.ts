@@ -7,6 +7,7 @@ import { ImportModule } from '../import/import.module';
 import { WalletModule } from '../wallet/wallet.module';
 import { ReconciliationModule } from '../reconciliation/reconciliation.module';
 import { LedgerModule } from '../ledger/ledger.module';
+import { AuthModule } from '../auth/auth.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { LedgerModule } from '../ledger/ledger.module';
     ReconciliationModule,
     ScheduleModule.forRoot(),
     LedgerModule,
+    AuthModule,
   ],
   providers: [JobsService, Logger],
   controllers: [JobsController],

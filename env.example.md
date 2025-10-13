@@ -63,6 +63,44 @@ Notes:
 
 - In tests, ESI calls are mocked unless explicitly opted to hit dev credentials.
 
+### NextAuth (Auth.js) & EVE SSO
+
+**Two EVE SSO Applications Required:**
+
+#### App 1: Initial Login (NextAuth)
+
+- EVE_CLIENT_ID: Your EVE SSO application client ID for initial login
+  - Example: `EVE_CLIENT_ID=abc123def456`
+  - Callback URL: `http://localhost:3001/api/auth/callback/eveonline`
+- EVE_CLIENT_SECRET: Your EVE SSO application client secret
+  - Example: `EVE_CLIENT_SECRET=your-secret-here`
+
+#### App 2: Character Linking (NestJS)
+
+- EVE_CLIENT_ID_LINKING: Your SECOND EVE SSO application client ID for linking additional characters
+  - Example: `EVE_CLIENT_ID_LINKING=xyz789ghi012`
+  - Callback URL: `http://localhost:3000/auth/link-character/callback`
+- EVE_CLIENT_SECRET_LINKING: Your SECOND EVE SSO application client secret
+  - Example: `EVE_CLIENT_SECRET_LINKING=your-linking-secret-here`
+
+#### NextAuth Configuration
+
+- NEXTAUTH_URL: Public URL of your Next.js application
+  - Dev: `NEXTAUTH_URL=http://localhost:3001`
+  - Prod: `NEXTAUTH_URL=https://yourdomain.com`
+- NEXTAUTH_SECRET: Secret for signing NextAuth session tokens
+  - Generate with: `[Convert]::ToBase64String((1..32 | ForEach-Object { Get-Random -Maximum 256 }))` (PowerShell)
+  - Example: `NEXTAUTH_SECRET=your-random-secret-here`
+
+#### NestJS API Integration
+
+- API_URL: Internal URL where NestJS API is accessible from Next.js
+  - Dev: `API_URL=http://localhost:3000`
+  - Prod: `API_URL=http://api:3000` (or your internal service URL)
+- ESI_SSO_SCOPES_USER: Comma-separated list of ESI scopes for user characters (optional, can be empty for auth-only)
+  - Example: `ESI_SSO_SCOPES_USER=` (empty for authentication only)
+  - With scopes: `ESI_SSO_SCOPES_USER=esi-wallet.read_character_wallet.v1,esi-assets.read_assets.v1`
+
 ### Jobs (optional toggles)
 
 - ENABLE_JOBS: Enable all cron jobs (default true in production). `true|false|1|0|yes|no`.
@@ -71,3 +109,4 @@ Notes:
 - JOB_DAILY_IMPORTS_ENABLED: Enable daily market backfill check (default true).
 - JOB_WALLETS_ENABLED: Enable hourly wallet import + reconciliation (default true).
 - JOB_CAPITAL_ENABLED: Enable hourly capital recompute for open cycles (default true).
+- JOB_SYSTEM_TOKENS_ENABLED: Enable monthly refresh of SYSTEM character tokens (default true).

@@ -9,6 +9,19 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule, { bufferLogs: true });
   const logger = app.get(Logger);
   app.useLogger(logger);
+
+  // Enable CORS for Next.js origin with Authorization header support
+  app.enableCors({
+    origin: [
+      'http://localhost:3000',
+      'http://localhost:3001',
+      process.env.NEXTAUTH_URL || 'http://localhost:3000',
+    ].filter(Boolean),
+    credentials: true,
+    allowedHeaders: ['Authorization', 'Content-Type', 'Cookie', 'x-request-id'],
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  });
+
   app.use(cookieParser());
   app.useGlobalInterceptors(new LoggingInterceptor());
   app.useGlobalFilters(new HttpExceptionFilter());

@@ -1,4 +1,7 @@
 import { Controller, Get, Query, UsePipes } from '@nestjs/common';
+import { Roles } from '../auth/roles.decorator';
+import { RolesGuard } from '../auth/roles.guard';
+import { UseGuards } from '@nestjs/common';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { z } from 'zod';
 import { WalletService } from './wallet.service';
@@ -8,12 +11,16 @@ export class WalletController {
   constructor(private readonly wallet: WalletService) {}
 
   @Get('character')
+  @Roles('ADMIN')
+  @UseGuards(RolesGuard)
   async importCharacter(@Query('characterId') characterId: string) {
     const id = Number(characterId);
     return await this.wallet.importForCharacter(id);
   }
 
   @Get('transactions')
+  @Roles('ADMIN')
+  @UseGuards(RolesGuard)
   @UsePipes(
     new ZodValidationPipe(
       z
@@ -48,6 +55,8 @@ export class WalletController {
   }
 
   @Get('journal')
+  @Roles('ADMIN')
+  @UseGuards(RolesGuard)
   @UsePipes(
     new ZodValidationPipe(
       z
@@ -77,6 +86,8 @@ export class WalletController {
   }
 
   @Get('all')
+  @Roles('ADMIN')
+  @UseGuards(RolesGuard)
   async importAll() {
     return await this.wallet.importAllLinked();
   }

@@ -21,9 +21,13 @@ export class ReconciliationService {
   async getCommitStatus(commitId: string) {
     const commit = await this.prisma.planCommit.findUnique({
       where: { id: commitId },
-      select: { id: true, createdAt: true, memo: true },
+      select: { id: true, createdAt: true, memo: true, request: true },
     });
     if (!commit) throw new NotFoundException('Commit not found');
+    const isOpeningBalance =
+      (commit.request as { type?: string } | null)?.type ===
+        'opening_balance' ||
+      (commit.memo ?? '').toLowerCase().includes('opening balance');
 
     const lines = await this.prisma.planCommitLine.findMany({
       where: { commitId },
@@ -163,6 +167,11 @@ export class ReconciliationService {
             if (canAdd > 0) sellUnits += Math.min(canAdd, t.quantity);
           }
         }
+      }
+
+      // For opening balance commits (carryover), treat all planned units as already bought
+      if (isOpeningBalance) {
+        buyUnits = Math.max(buyUnits, l.plannedUnits);
       }
 
       return {

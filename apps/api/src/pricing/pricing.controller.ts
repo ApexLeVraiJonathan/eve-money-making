@@ -1,4 +1,8 @@
 import { Body, Controller, Get, Param, Post, UsePipes } from '@nestjs/common';
+import { Roles } from '../auth/roles.decorator';
+import { RolesGuard } from '../auth/roles.guard';
+import { UseGuards } from '@nestjs/common';
+import { Public } from '../auth/public.decorator';
 import { PricingService } from './pricing.service';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { z } from 'zod';
@@ -63,12 +67,14 @@ export type SellAppraiseByCommitRequest = z.infer<
 export class PricingController {
   constructor(private readonly pricing: PricingService) {}
 
+  @Public()
   @Post('sell-appraise')
   @UsePipes(new ZodValidationPipe(SellAppraiseSchema))
   async sellAppraise(@Body() body: SellAppraiseRequest) {
     return this.pricing.sellAppraise(body);
   }
 
+  @Public()
   @Post('undercut-check')
   @UsePipes(new ZodValidationPipe(UndercutCheckSchema))
   async undercutCheck(@Body() body: UndercutCheckRequest) {
@@ -76,23 +82,29 @@ export class PricingController {
   }
 
   @Post('confirm-listing')
+  @Roles('ADMIN')
+  @UseGuards(RolesGuard)
   @UsePipes(new ZodValidationPipe(ConfirmListingSchema))
   async confirmListing(@Body() body: ConfirmListingRequest) {
     return this.pricing.confirmListing(body);
   }
 
   @Post('confirm-reprice')
+  @Roles('ADMIN')
+  @UseGuards(RolesGuard)
   @UsePipes(new ZodValidationPipe(ConfirmRepriceSchema))
   async confirmReprice(@Body() body: ConfirmRepriceRequest) {
     return this.pricing.confirmReprice(body);
   }
 
+  @Public()
   @Post('sell-appraise-by-commit')
   @UsePipes(new ZodValidationPipe(SellAppraiseByCommitSchema))
   async sellAppraiseByCommit(@Body() body: SellAppraiseByCommitRequest) {
     return this.pricing.sellAppraiseByCommit(body);
   }
 
+  @Public()
   @Get('commit/:id/remaining-lines')
   async getRemainingLines(@Param('id') id: string) {
     return this.pricing.getRemainingLines(id);

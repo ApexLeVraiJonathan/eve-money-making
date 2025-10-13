@@ -19,6 +19,7 @@ import { LedgerModule } from './ledger/ledger.module';
 import { ReconciliationModule } from './reconciliation/reconciliation.module';
 import { WalletModule } from './wallet/wallet.module';
 import { PricingModule } from './pricing/pricing.module';
+import { UsersModule } from './users/users.module';
 
 @Controller('health')
 class HealthController {
@@ -43,6 +44,7 @@ class HealthController {
     ReconciliationModule,
     WalletModule,
     PricingModule,
+    UsersModule,
   ],
   controllers: [HealthController],
   providers: [Logger],

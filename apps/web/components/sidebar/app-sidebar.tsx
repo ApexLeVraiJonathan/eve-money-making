@@ -1,7 +1,13 @@
 "use client";
 
 import * as React from "react";
-import { LifeBuoy, Send, TableOfContents, type LucideIcon } from "lucide-react";
+import {
+  LifeBuoy,
+  Send,
+  TableOfContents,
+  type LucideIcon,
+  Cog,
+} from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
@@ -30,6 +36,11 @@ import { getApps, getActiveAppByPathname } from "@/app/apps.config";
 const data = {
   navSecondary: [
     {
+      title: "Account Settings",
+      url: "/account-settings",
+      icon: Cog,
+    },
+    {
       title: "Support",
       url: "#",
       icon: LifeBuoy,
@@ -52,12 +63,9 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     let cancel = false;
     (async () => {
       try {
-        const res = await fetch("/api/auth/characters", { cache: "no-store" });
-        const body = (await res.json()) as {
-          characters?: Array<{ role?: string }>;
-        };
-        const admin = (body.characters ?? []).some((c) => c.role === "ADMIN");
-        if (!cancel) setIsAdmin(admin);
+        const res = await fetch("/api/auth/me", { cache: "no-store" });
+        const body = (await res.json()) as { role?: string };
+        if (!cancel) setIsAdmin((body.role ?? "USER") === "ADMIN");
       } catch {
         if (!cancel) setIsAdmin(false);
       }

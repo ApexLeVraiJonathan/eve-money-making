@@ -9,6 +9,9 @@ import {
 } from '@nestjs/common';
 import { z } from 'zod';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
+import { Roles } from '../auth/roles.decorator';
+import { RolesGuard } from '../auth/roles.guard';
+import { UseGuards } from '@nestjs/common';
 import { ReconciliationService } from './reconciliation.service';
 
 const LinkEntrySchema = z.object({
@@ -22,6 +25,8 @@ export class ReconciliationController {
   constructor(private readonly svc: ReconciliationService) {}
 
   @Get('commits')
+  @Roles('ADMIN')
+  @UseGuards(RolesGuard)
   @UsePipes(
     new ZodValidationPipe(
       z
@@ -37,11 +42,15 @@ export class ReconciliationController {
   }
 
   @Get('commits/:id')
+  @Roles('ADMIN')
+  @UseGuards(RolesGuard)
   async getCommit(@Param('id') id: string) {
     return await this.svc.getCommit(id);
   }
 
   @Get('commits/:id/entries')
+  @Roles('ADMIN')
+  @UseGuards(RolesGuard)
   @UsePipes(
     new ZodValidationPipe(
       z
@@ -60,17 +69,23 @@ export class ReconciliationController {
   }
 
   @Post('link-entry')
+  @Roles('ADMIN')
+  @UseGuards(RolesGuard)
   @UsePipes(new ZodValidationPipe(LinkEntrySchema))
   async link(@Body() body: LinkEntryRequest) {
     return await this.svc.linkEntryToCommit(body.entryId, body.commitId);
   }
 
   @Post('reconcile')
+  @Roles('ADMIN')
+  @UseGuards(RolesGuard)
   async reconcile(@Query('cycleId') cycleId?: string) {
     return await this.svc.reconcileFromWalletStrict(cycleId ?? null);
   }
 
   @Get('commits/:id/status')
+  @Roles('ADMIN')
+  @UseGuards(RolesGuard)
   async status(@Param('id') id: string) {
     return await this.svc.getCommitStatus(id);
   }

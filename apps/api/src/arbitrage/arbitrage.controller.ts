@@ -12,6 +12,10 @@ import { z } from 'zod';
 import type { PlanResult } from '../../libs/arbitrage-packager/src/interfaces/packager.interfaces';
 import { ArbitrageService } from './arbitrage.service';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
+import { Roles } from '../auth/roles.decorator';
+import { RolesGuard } from '../auth/roles.guard';
+import { UseGuards } from '@nestjs/common';
+import { Public } from '../auth/public.decorator';
 import {
   ArbitrageCheckRequestSchema,
   type ArbitrageCheckRequest,
@@ -29,6 +33,7 @@ import {
 export class ArbitrageController {
   constructor(private readonly arbitrageService: ArbitrageService) {}
 
+  @Public()
   @Post('check')
   @UsePipes(new ZodValidationPipe(ArbitrageCheckRequestSchema))
   async check(@Body() body: ArbitrageCheckRequest, @Req() req: Request) {
@@ -39,6 +44,7 @@ export class ArbitrageController {
     );
   }
 
+  @Public()
   @Post('plan-packages')
   @UsePipes(new ZodValidationPipe(PlanPackagesRequestSchema))
   async planPackages(
@@ -52,6 +58,8 @@ export class ArbitrageController {
   }
 
   @Post('commit')
+  @Roles('ADMIN')
+  @UseGuards(RolesGuard)
   @UsePipes(new ZodValidationPipe(PlanCommitRequestSchema))
   async commit(
     @Body() body: PlanCommitRequest,
@@ -59,6 +67,7 @@ export class ArbitrageController {
     return await this.arbitrageService.commitPlan(body);
   }
 
+  @Public()
   @Get('commits')
   @UsePipes(
     new ZodValidationPipe(

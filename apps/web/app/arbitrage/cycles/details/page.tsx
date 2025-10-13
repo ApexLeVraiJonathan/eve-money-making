@@ -39,11 +39,13 @@ export default async function CycleDetailsPage() {
     ? await fetch(
         `${base}/api/ledger/commits/summary?cycleId=${encodeURIComponent(current.id)}`,
         {
-          cache: "no-store",
+          // lightly cache to avoid blocking page render when backend is warm
+          next: { revalidate: 30 },
         },
       )
     : null;
-  const commits = (await commitsRes?.json()) as
+  const commitsJson = commitsRes ? await commitsRes.json() : [];
+  const commits = (Array.isArray(commitsJson) ? commitsJson : []) as
     | Array<{
         id: string;
         name: string;

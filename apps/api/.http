@@ -1,6 +1,7 @@
 ### Import type IDs
 POST http://localhost:3000/import/type-ids HTTP/1.1
 content-type: application/json
+x-test-role: ADMIN
 
 {
     "batchSize": 5000
@@ -9,6 +10,7 @@ content-type: application/json
 ### Import region IDs
 POST http://localhost:3000/import/region-ids HTTP/1.1
 content-type: application/json
+x-test-role: ADMIN
 
 {
     "batchSize": 5000
@@ -17,6 +19,7 @@ content-type: application/json
 ### Import solar system IDs
 POST http://localhost:3000/import/solar-system-ids HTTP/1.1
 content-type: application/json
+x-test-role: ADMIN
 
 {
     "batchSize": 5000
@@ -25,6 +28,7 @@ content-type: application/json
 ### Import NPC station IDs
 POST http://localhost:3000/import/npc-station-ids HTTP/1.1
 content-type: application/json
+x-test-role: ADMIN
 
 {
     "batchSize": 5000
@@ -33,6 +37,7 @@ content-type: application/json
 ### Import all (type, region in parallel -> solar -> stations)
 POST http://localhost:3000/import/all HTTP/1.1
 content-type: application/json
+x-test-role: ADMIN
 
 {
     "batchSize": 5000
@@ -41,11 +46,13 @@ content-type: application/json
 ### Import type volumes (from ESI)
 POST http://localhost:3000/import/type-volumes HTTP/1.1
 content-type: application/json
+x-test-role: ADMIN
 
 
 ### Market trades by day
 POST http://localhost:3000/import/market-trades/day HTTP/1.1
 content-type: application/json
+x-test-role: ADMIN
 
 {
   "date": "2025-09-28",
@@ -55,6 +62,7 @@ content-type: application/json
 ### Market trades missing (last 15 days by default)
 POST http://localhost:3000/import/market-trades/missing HTTP/1.1
 content-type: application/json
+x-test-role: ADMIN
 
 {
   "daysBack": 15,
@@ -64,6 +72,7 @@ content-type: application/json
 ### Liquidity check (defaults: all tracked stations, 7d, 57%, 1M ISK)
 POST http://localhost:3000/liquidity/check HTTP/1.1
 content-type: application/json
+x-test-role: ADMIN
 
 {
   //"station_id": 60005686,
@@ -75,6 +84,7 @@ content-type: application/json
 ### Liquidity item stats
 POST http://localhost:3000/liquidity/item-stats HTTP/1.1
 content-type: application/json
+x-test-role: ADMIN
 
 {
   "itemName": "Minmatar Drone Specialization",
@@ -92,6 +102,7 @@ content-type: application/json
 ### Tracked Stations - Create
 POST http://localhost:3000/tracked-stations HTTP/1.1
 content-type: application/json
+x-test-role: ADMIN
 
 {
   "stationId": 60005686
@@ -105,6 +116,7 @@ GET http://localhost:3000/tracked-stations/00000000-0000-0000-0000-000000000000 
 
 ### Tracked Stations - Delete by id
 DELETE http://localhost:3000/tracked-stations/00000000-0000-0000-0000-000000000000 HTTP/1.1
+x-test-role: ADMIN
 
 ### Arbitrage check (defaults: Jita 4-4, multiplier 5, validate >50%)
 POST http://localhost:3000/arbitrage/check HTTP/1.1

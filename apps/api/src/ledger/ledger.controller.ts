@@ -9,10 +9,12 @@ import {
 } from '@nestjs/common';
 import { LedgerService } from './ledger.service';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
+import { CurrentUser, type RequestUser } from '../auth/current-user.decorator';
 import { z } from 'zod';
 import { UseGuards } from '@nestjs/common';
 import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
+import { Public } from '../auth/public.decorator';
 
 const CreateCycleSchema = z.object({
   name: z.string().min(1).optional(),
@@ -56,33 +58,39 @@ export class LedgerController {
 
   @Post('cycles')
   @UsePipes(new ZodValidationPipe(CreateCycleSchema))
+  @Roles('ADMIN')
   async createCycle(@Body() body: CreateCycleRequest) {
     return await this.ledger.createCycle(body);
   }
 
   @Post('cycles/plan')
   @UsePipes(new ZodValidationPipe(PlanCycleSchema))
+  @Roles('ADMIN')
   async planCycle(@Body() body: PlanCycleRequest): Promise<unknown> {
     return await this.ledger.planCycle(body);
   }
 
+  @Public()
   @Get('cycles')
   async listCycles() {
     return await this.ledger.listCycles();
   }
 
+  @Public()
   @Get('cycles/overview')
   async cyclesOverview(): Promise<unknown> {
     return (await this.ledger.getCycleOverview()) as unknown;
   }
 
   @Post('cycles/:id/close')
+  @Roles('ADMIN')
   async closeCycle(@Param('id') id: string): Promise<unknown> {
     return await this.ledger.closeCycle(id, new Date());
   }
 
   @Post('cycles/:id/open')
   @UsePipes(new ZodValidationPipe(OpenCycleSchema))
+  @Roles('ADMIN')
   async openCycle(
     @Param('id') id: string,
     @Body() body: OpenCycleRequest,
@@ -95,10 +103,12 @@ export class LedgerController {
 
   @Post('entries')
   @UsePipes(new ZodValidationPipe(AppendEntrySchema))
+  @Roles('ADMIN')
   async append(@Body() body: AppendEntryRequest): Promise<unknown> {
     return await this.ledger.appendEntry(body);
   }
 
+  @Public()
   @Get('entries')
   @UsePipes(
     new ZodValidationPipe(
@@ -126,11 +136,13 @@ export class LedgerController {
     );
   }
 
+  @Public()
   @Get('nav/:cycleId')
   async nav(@Param('cycleId') cycleId: string): Promise<unknown> {
     return await this.ledger.computeNav(cycleId);
   }
 
+  @Public()
   @Get('capital/:cycleId')
   async capital(
     @Param('cycleId') cycleId: string,
@@ -146,7 +158,7 @@ export class LedgerController {
     new ZodValidationPipe(
       z
         .object({
-          characterName: z.string().min(1),
+          characterName: z.string().min(1).optional(),
           amountIsk: z.string().regex(/^\d+\.\d{2}$/),
         })
         .strict(),
@@ -154,11 +166,17 @@ export class LedgerController {
   )
   async createParticipation(
     @Param('cycleId') cycleId: string,
-    @Body() body: { characterName: string; amountIsk: string },
+    @Body() body: { characterName?: string; amountIsk: string },
+    @CurrentUser() user: RequestUser | null,
   ): Promise<unknown> {
+    // Prefer session identity when characterName not provided
+    const characterName =
+      body.characterName ??
+      (user as { characterName?: string | null } | null)?.characterName ??
+      undefined;
     return await this.ledger.createParticipation({
       cycleId,
-      characterName: body.characterName,
+      characterName,
       amountIsk: body.amountIsk,
     });
   }
@@ -176,11 +194,11 @@ export class LedgerController {
   @Get('cycles/:cycleId/participations/me')
   async myParticipation(
     @Param('cycleId') cycleId: string,
-    @Query('userId') userId?: string,
+    @CurrentUser() user: RequestUser | null,
   ): Promise<unknown> {
-    // Temporary: accept userId via query until full auth middleware attaches it
-    if (!userId) return null;
-    return (await this.ledger.getMyParticipation(cycleId, userId)) as unknown;
+    const uid = user?.userId ?? null;
+    if (!uid) return null;
+    return (await this.ledger.getMyParticipation(cycleId, uid)) as unknown;
   }
 
   @Post('participations/:id/opt-out')
@@ -236,6 +254,8 @@ export class LedgerController {
 
   // Payouts
   @Get('cycles/:cycleId/payouts/suggest')
+  @Roles('ADMIN')
+  @UseGuards(RolesGuard)
   async suggestPayouts(
     @Param('cycleId') cycleId: string,
     @Query('profitSharePct') pct?: string,
@@ -253,6 +273,8 @@ export class LedgerController {
   }
 
   @Post('cycles/:cycleId/payouts/finalize')
+  @Roles('ADMIN')
+  @UseGuards(RolesGuard)
   @UsePipes(
     new ZodValidationPipe(
       z

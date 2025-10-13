@@ -256,6 +256,30 @@ export class LedgerService {
     // Create opening balance commit with carryover items
     const lines = await this.buildOpeningBalanceLines();
     if (lines.length) {
+      // Resolve source station from previous cycle commit lines when possible
+      const prevCycle = await this.prisma.cycle.findFirst({
+        where: { id: { not: cycle.id } },
+        orderBy: { startedAt: 'desc' },
+        select: { id: true },
+      });
+      const prevSourceByTypeDest = new Map<string, number>();
+      if (prevCycle) {
+        const prevLines = await this.prisma.planCommitLine.findMany({
+          where: { commit: { cycleId: prevCycle.id } },
+          select: {
+            typeId: true,
+            destinationStationId: true,
+            sourceStationId: true,
+          },
+        });
+        for (const pl of prevLines) {
+          prevSourceByTypeDest.set(
+            `${pl.typeId}:${pl.destinationStationId}`,
+            pl.sourceStationId,
+          );
+        }
+      }
+
       const commit = await this.prisma.planCommit.create({
         data: {
           request: { type: 'opening_balance', cycleId: cycle.id },
@@ -268,17 +292,38 @@ export class LedgerService {
         },
         select: { id: true },
       });
-      await this.prisma.planCommitLine.createMany({
-        data: lines.map((l) => ({
+      const commitLineRows = lines.map((l) => {
+        const key = `${l.typeId}:${l.stationId}`; // destination == current station
+        const src = prevSourceByTypeDest.get(key) ?? this.jitaStationId;
+        return {
           commitId: commit.id,
           typeId: l.typeId,
-          sourceStationId: l.stationId,
+          sourceStationId: src,
           destinationStationId: l.stationId,
           plannedUnits: l.qty,
           unitCost: String(Number(l.unitCost ?? '0').toFixed(2)),
           unitProfit: 0,
           createdAt: new Date(),
           updatedAt: new Date(),
+        } as const;
+      });
+      await this.prisma.planCommitLine.createMany({ data: commitLineRows });
+
+      // Insert minimal negative execution entries to mark items as "bought" for this commit without double-counting prior cycle cost
+      await this.prisma.cycleLedgerEntry.createMany({
+        data: commitLineRows.map((row, idx) => ({
+          cycleId: cycle.id,
+          occurredAt: new Date(),
+          entryType: 'execution',
+          amount: '-1.00', // sentinel small negative to indicate buy without impacting prior accounting
+          memo: 'Opening balance carryover (synthetic buy marker)',
+          planCommitId: commit.id,
+          characterId: null,
+          stationId: row.sourceStationId,
+          typeId: row.typeId,
+          source: 'manual',
+          sourceId: `opening_balance_buy:${commit.id}:${row.typeId}:${row.destinationStationId}:${idx}`,
+          matchStatus: 'linked',
         })),
       });
     }
@@ -633,7 +678,7 @@ export class LedgerService {
   // Participation workflows
   async createParticipation(input: {
     cycleId: string;
-    characterName: string;
+    characterName?: string;
     amountIsk: string; // Decimal(28,2) as string
   }) {
     const cycle = await this.prisma.cycle.findUnique({
@@ -643,7 +688,16 @@ export class LedgerService {
     if (cycle.startedAt <= new Date()) {
       throw new Error('Opt-in only allowed for planned cycles');
     }
-    const memo = `ARB ${cycle.id} ${input.characterName}`;
+    // If characterName not provided, pick a latest linked character name (fallback)
+    let characterName = input.characterName;
+    if (!characterName) {
+      const anyChar = await this.prisma.eveCharacter.findFirst({
+        orderBy: { updatedAt: 'desc' },
+        select: { name: true },
+      });
+      characterName = anyChar?.name ?? 'Unknown';
+    }
+    const memo = `ARB ${cycle.id} ${characterName}`;
     // Return existing if same memo exists
     const existing = await this.prisma.cycleParticipation.findUnique({
       where: { memo },
@@ -652,7 +706,7 @@ export class LedgerService {
     return await this.prisma.cycleParticipation.create({
       data: {
         cycleId: input.cycleId,
-        characterName: input.characterName,
+        characterName,
         amountIsk: input.amountIsk,
         memo,
         status: 'AWAITING_INVESTMENT',

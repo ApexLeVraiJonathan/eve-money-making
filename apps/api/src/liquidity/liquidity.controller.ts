@@ -1,4 +1,7 @@
 import { Controller, Post, Body, UsePipes, Req } from '@nestjs/common';
+import { Roles } from '../auth/roles.decorator';
+import { RolesGuard } from '../auth/roles.guard';
+import { UseGuards } from '@nestjs/common';
 import type { Request } from 'express';
 import { LiquidityService } from './liquidity.service';
 import type { LiquidityItemDto } from './dto/liquidity-item.dto';
@@ -17,6 +20,8 @@ export class LiquidityController {
   constructor(private readonly liquidityService: LiquidityService) {}
 
   @Post('check')
+  @Roles('ADMIN')
+  @UseGuards(RolesGuard)
   @UsePipes(new ZodValidationPipe(LiquidityCheckRequestSchema))
   async check(
     @Body()
@@ -33,6 +38,8 @@ export class LiquidityController {
   }
 
   @Post('item-stats')
+  @Roles('ADMIN')
+  @UseGuards(RolesGuard)
   @UsePipes(new ZodValidationPipe(LiquidityItemStatsRequestSchema))
   async itemStats(
     @Body() body: LiquidityItemStatsRequest,

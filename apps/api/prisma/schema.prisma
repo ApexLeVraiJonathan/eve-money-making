@@ -16,8 +16,13 @@ datasource db {
 /// Character platform role (authorization)
 enum CharacterRole {
   USER
-  ADMIN
   LOGISTICS
+}
+
+/// Character management type (user-owned vs system-owned)
+enum CharacterManagedBy {
+  USER
+  SYSTEM
 }
 
 /// Character function for trading workflows
@@ -161,10 +166,13 @@ model EsiCacheEntry {
 model User {
   id        String   @id @default(uuid()) @map("id")
   email     String?  @unique @map("email")
+  role      String   @default("USER") @map("role")
+  primaryCharacterId Int?    @unique @map("primary_character_id")
+  primaryCharacter   EveCharacter? @relation("UserPrimaryCharacter", fields: [primaryCharacterId], references: [id], onDelete: SetNull)
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  characters EveCharacter[]
+  characters EveCharacter[] @relation("UserCharacters")
 
   @@map("app_users")
 }
@@ -175,16 +183,20 @@ model EveCharacter {
   name      String   @map("character_name")
   ownerHash String   @map("owner_hash")
   userId    String?  @map("user_id")
-  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  user      User?    @relation("UserCharacters", fields: [userId], references: [id], onDelete: SetNull)
+  userAsPrimaryFor User? @relation("UserPrimaryCharacter")
   role      CharacterRole      @default(USER) @map("role")
   function  CharacterFunction? @map("function")
   location  CharacterLocation? @map("location")
+  managedBy CharacterManagedBy @default(USER) @map("managed_by")
+  notes     String?            @map("notes")
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
   token CharacterToken?
 
   @@index([ownerHash])
+  @@index([userId])
   @@map("eve_characters")
 }
 
@@ -198,6 +210,9 @@ model CharacterToken {
   accessTokenExpiresAt DateTime     @map("access_expires_at")
   refreshTokenEnc      String       @map("refresh_token_enc")
   scopes               String       @map("scopes")
+  lastRefreshAt        DateTime?    @map("last_refresh_at")
+  refreshFailAt        DateTime?    @map("refresh_fail_at")
+  refreshFailMsg       String?      @map("refresh_fail_msg")
   createdAt            DateTime     @default(now()) @map("created_at")
   updatedAt            DateTime     @updatedAt @map("updated_at")
 
@@ -215,7 +230,7 @@ model PlanCommit {
   updatedAt        DateTime           @updatedAt @map("updated_at")
   /// Optional link to the investment cycle this commit belongs to
   cycleId          String?            @map("cycle_id")
-  cycle            Cycle?             @relation(fields: [cycleId], references: [id], onDelete: SetNull)
+  cycle            Cycle?             @relation(fields: [cycleId], references: [id], onDelete: Cascade)
   CycleLedgerEntry CycleLedgerEntry[]
   PlanCommitLine   PlanCommitLine[]
 
@@ -262,7 +277,7 @@ model CycleCapitalCache {
 model CycleLedgerEntry {
   id           String      @id @default(uuid()) @map("id")
   cycleId      String      @map("cycle_id")
-  cycle        Cycle       @relation(fields: [cycleId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  cycle        Cycle       @relation(fields: [cycleId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   occurredAt   DateTime    @default(now()) @map("occurred_at")
   entryType    String      @map("entry_type")
   amount       Decimal     @map("amount_isk") @db.Decimal(28, 2)
@@ -380,4 +395,19 @@ model CycleParticipation {
 
   @@index([cycleId])
   @@map("cycle_participations")
+}
+
+/// Temporary storage for OAuth state during character linking flow
+model OAuthState {
+  id           String    @id @default(uuid())
+  state        String    @unique
+  codeVerifier String    @map("code_verifier")
+  userId       String?   @map("user_id")
+  returnUrl    String?   @map("return_url")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  expiresAt    DateTime  @map("expires_at")
+
+  @@index([state])
+  @@index([expiresAt])
+  @@map("oauth_states")
 }

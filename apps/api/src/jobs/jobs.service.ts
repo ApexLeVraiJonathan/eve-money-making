@@ -5,6 +5,7 @@ import { ImportService } from '../import/import.service';
 import { WalletService } from '../wallet/wallet.service';
 import { ReconciliationService } from '../reconciliation/reconciliation.service';
 import { LedgerService } from '../ledger/ledger.service';
+import { EsiTokenService } from '../auth/esi-token.service';
 
 @Injectable()
 export class JobsService {
@@ -15,6 +16,7 @@ export class JobsService {
     private readonly wallets: WalletService,
     private readonly recon: ReconciliationService,
     private readonly ledger: LedgerService,
+    private readonly esiToken: EsiTokenService,
   ) {}
 
   private jobsEnabled(): boolean {
@@ -106,6 +108,53 @@ export class JobsService {
     }
   }
 
+  /**
+   * Refresh SYSTEM character tokens monthly to keep them alive.
+   * Runs at 2 AM on the 1st of each month.
+   */
+  @Cron('0 2 1 * *')
+  async refreshSystemCharacterTokens(): Promise<void> {
+    if (
+      !this.jobsEnabled() ||
+      !this.jobFlag('JOB_SYSTEM_TOKENS_ENABLED', true)
+    ) {
+      this.logger.debug('Skipping system token refresh (jobs disabled)');
+      return;
+    }
+    try {
+      const systemChars = await this.prisma.eveCharacter.findMany({
+        where: { managedBy: 'SYSTEM' },
+        select: { id: true, name: true },
+      });
+
+      let successCount = 0;
+      let failCount = 0;
+
+      for (const char of systemChars) {
+        try {
+          await this.esiToken.getAccessToken(char.id);
+          successCount++;
+          this.logger.log(
+            `Refreshed token for SYSTEM character ${char.name} (${char.id})`,
+          );
+        } catch (e) {
+          failCount++;
+          this.logger.error(
+            `Failed to refresh token for SYSTEM character ${char.name} (${char.id}): ${e instanceof Error ? e.message : String(e)}`,
+          );
+        }
+      }
+
+      this.logger.log(
+        `System character token refresh completed: ${successCount} success, ${failCount} failures`,
+      );
+    } catch (e) {
+      this.logger.warn(
+        `System token refresh job failed: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
+  }
+
   async cleanupExpiredEsiCache(): Promise<{ deleted: number }> {
     const now = new Date();
     const res = await this.prisma.esiCacheEntry.deleteMany({
@@ -114,6 +163,29 @@ export class JobsService {
     this.logger.log(`ESI cache cleanup: deleted=${res.count}`);
     return { deleted: res.count };
   }
+
+  @Cron(CronExpression.EVERY_HOUR)
+  async runOAuthStateCleanup(): Promise<void> {
+    if (!this.jobsEnabled() || !this.jobFlag('JOB_CLEANUP_ENABLED', true)) {
+      this.logger.debug('Skipping OAuth state cleanup (jobs disabled)');
+      return;
+    }
+    await this.cleanupExpiredOAuthStates().catch((e) =>
+      this.logger.warn(
+        `OAuth state cleanup failed: ${e instanceof Error ? e.message : String(e)}`,
+      ),
+    );
+  }
+
+  async cleanupExpiredOAuthStates(): Promise<{ deleted: number }> {
+    const now = new Date();
+    const res = await this.prisma.oAuthState.deleteMany({
+      where: { expiresAt: { lt: now } },
+    });
+    this.logger.log(`OAuth state cleanup: deleted=${res.count}`);
+    return { deleted: res.count };
+  }
+
   /**
    * Computes staleness (missing daily market files) for last N days.
    */

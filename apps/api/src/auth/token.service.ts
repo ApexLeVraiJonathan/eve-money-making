@@ -1,13 +1,14 @@
 import { Injectable, Logger } from '@nestjs/common';
 import axios from 'axios';
 import { PrismaService } from '../prisma/prisma.service';
+import { AppConfig } from '../common/config';
 import { CryptoUtil } from '../common/crypto.util';
 
 @Injectable()
 export class TokenService {
-  private readonly clientId = process.env.ESI_SSO_CLIENT_ID ?? '';
-  private readonly clientSecret = process.env.ESI_SSO_CLIENT_SECRET ?? '';
-  private readonly userAgent = process.env.ESI_SSO_USER_AGENT ?? '';
+  private readonly clientId = AppConfig.esiSso().clientId;
+  private readonly clientSecret = AppConfig.esiSso().clientSecret;
+  private readonly userAgent = AppConfig.esiSso().userAgent;
 
   constructor(
     private readonly prisma: PrismaService,

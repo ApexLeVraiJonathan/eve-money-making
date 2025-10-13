@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { ChevronsUpDown, LogIn } from "lucide-react";
+import { signIn } from "next-auth/react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -21,8 +22,9 @@ import {
 import { Button } from "@/components/ui/button";
 
 type LinkedCharacter = {
-  characterId: number;
-  characterName: string;
+  id: number;
+  name: string;
+  isPrimary: boolean;
 };
 
 export function NavUser() {
@@ -52,12 +54,10 @@ export function NavUser() {
   }, []);
 
   const handleLogin = () => {
-    const base =
-      process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:3000";
-    const returnUrl =
-      typeof window !== "undefined" ? window.location.href : "/";
-    const url = `${base}/auth/login/user?returnUrl=${encodeURIComponent(returnUrl)}`;
-    window.location.href = url;
+    // Use NextAuth to sign in with EVE Online
+    void signIn("eveonline", {
+      callbackUrl: typeof window !== "undefined" ? window.location.href : "/",
+    });
   };
 
   // Not linked yet → show sign-in button
@@ -87,12 +87,16 @@ export function NavUser() {
     );
   }
 
-  const primary = characters![0];
-  const initials = primary.characterName
+  // Use primary character if available, otherwise first character
+  const primary = characters!.find((c) => c.isPrimary) ?? characters![0];
+  const initials = primary.name
     .split(" ")
     .map((s) => s[0])
     .join("")
     .slice(0, 2);
+
+  // EVE character portrait URL (public ESI Image Server)
+  const portraitUrl = `https://image.eveonline.com/Character/${primary.id}_128.jpg`;
 
   return (
     <SidebarMenu>
@@ -104,17 +108,15 @@ export function NavUser() {
               className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
             >
               <Avatar className="h-8 w-8 rounded-lg">
-                <AvatarImage alt={primary.characterName} />
+                <AvatarImage src={portraitUrl} alt={primary.name} />
                 <AvatarFallback className="rounded-lg">
                   {initials}
                 </AvatarFallback>
               </Avatar>
               <div className="grid flex-1 text-left text-sm leading-tight">
-                <span className="truncate font-medium">
-                  {primary.characterName}
-                </span>
+                <span className="truncate font-medium">{primary.name}</span>
                 <span className="truncate text-xs">
-                  Character #{primary.characterId}
+                  Character #{primary.id}
                 </span>
               </div>
               <ChevronsUpDown className="ml-auto size-4" />
@@ -129,17 +131,15 @@ export function NavUser() {
             <DropdownMenuLabel className="p-0 font-normal">
               <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
                 <Avatar className="h-8 w-8 rounded-lg">
-                  <AvatarImage alt={primary.characterName} />
+                  <AvatarImage src={portraitUrl} alt={primary.name} />
                   <AvatarFallback className="rounded-lg">
                     {initials}
                   </AvatarFallback>
                 </Avatar>
                 <div className="grid flex-1 text-left text-sm leading-tight">
-                  <span className="truncate font-medium">
-                    {primary.characterName}
-                  </span>
+                  <span className="truncate font-medium">{primary.name}</span>
                   <span className="truncate text-xs">
-                    Character #{primary.characterId}
+                    Character #{primary.id}
                   </span>
                 </div>
               </div>

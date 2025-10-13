@@ -4,6 +4,7 @@ import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
 
 type Cycle = {
   id: string;
@@ -16,6 +17,7 @@ export default function CyclesPage() {
   const [cycles, setCycles] = React.useState<Cycle[]>([]);
   const [name, setName] = React.useState("");
   const [initialInjection, setInitialInjection] = React.useState<string>("");
+  const [planStart, setPlanStart] = React.useState<string>("");
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [capital, setCapital] = React.useState<null | {
@@ -94,6 +96,37 @@ export default function CyclesPage() {
     }
   };
 
+  const planCycle = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/ledger/cycles/plan", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          name: name || undefined,
+          startedAt: planStart
+            ? new Date(planStart).toISOString()
+            : new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+          initialInjectionIsk:
+            initialInjection && !Number.isNaN(Number(initialInjection))
+              ? Number(initialInjection).toFixed(2)
+              : undefined,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || res.statusText);
+      setName("");
+      setInitialInjection("");
+      setPlanStart("");
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const closeCycle = async (id: string) => {
     setLoading(true);
     setError(null);
@@ -111,27 +144,83 @@ export default function CyclesPage() {
     }
   };
 
+  const openPlanned = async (id: string) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/ledger/cycles/${id}/open`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || res.statusText);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getStatus = (c: Cycle): "Planned" | "Ongoing" | "Completed" => {
+    const now = Date.now();
+    const start = new Date(c.startedAt).getTime();
+    if (start > now) return "Planned";
+    if (c.closedAt) return "Completed";
+    return "Ongoing";
+  };
+
   return (
-    <div className="container mx-auto max-w-3xl p-6 space-y-6">
+    <div className="container mx-auto max-w-8xl p-6 space-y-6">
       <Card>
         <CardHeader>
-          <CardTitle>Start a Cycle</CardTitle>
+          <CardTitle>Cycles</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="flex gap-2">
-            <Input
-              placeholder="Optional name (e.g. Cycle 6)"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-            />
-            <Input
-              placeholder="Initial injection ISK (required)"
-              value={initialInjection}
-              onChange={(e) => setInitialInjection(e.target.value)}
-            />
-            <Button onClick={() => void startCycle()} disabled={loading}>
-              Start
-            </Button>
+        <CardContent className="space-y-4">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-2 p-3 rounded-md border">
+              <div className="font-medium">Plan a Cycle</div>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <Input
+                  placeholder="Optional name (e.g. Cycle 6)"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                />
+                <Input
+                  type="datetime-local"
+                  placeholder="Start date/time"
+                  value={planStart}
+                  onChange={(e) => setPlanStart(e.target.value)}
+                />
+                <Input
+                  placeholder="Initial injection ISK"
+                  value={initialInjection}
+                  onChange={(e) => setInitialInjection(e.target.value)}
+                />
+                <Button onClick={() => void planCycle()} disabled={loading}>
+                  Plan
+                </Button>
+              </div>
+            </div>
+            <div className="space-y-2 p-3 rounded-md border">
+              <div className="font-medium">Start a Cycle Now</div>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <Input
+                  placeholder="Optional name (e.g. Cycle 6)"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                />
+                <Input
+                  placeholder="Initial injection ISK"
+                  value={initialInjection}
+                  onChange={(e) => setInitialInjection(e.target.value)}
+                />
+                <Button onClick={() => void startCycle()} disabled={loading}>
+                  Start
+                </Button>
+              </div>
+            </div>
           </div>
           {error && <div className="text-sm text-destructive">{error}</div>}
         </CardContent>
@@ -139,7 +228,7 @@ export default function CyclesPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Cycles</CardTitle>
+          <CardTitle>Existing Cycles</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           {cycles.length === 0 ? (
@@ -154,7 +243,24 @@ export default function CyclesPage() {
                   <div>
                     <div className="font-medium">
                       {c.name || c.id.slice(0, 8)}
-                      {c.closedAt ? " (closed)" : " (open)"}
+                      <span className="ml-2">
+                        {(() => {
+                          const status = getStatus(c);
+                          return (
+                            <Badge
+                              variant={
+                                status === "Planned"
+                                  ? "outline"
+                                  : status === "Completed"
+                                    ? "secondary"
+                                    : "default"
+                              }
+                            >
+                              {status}
+                            </Badge>
+                          );
+                        })()}
+                      </span>
                     </div>
                     <div className="text-xs text-muted-foreground">
                       Started {new Date(c.startedAt).toLocaleString()}
@@ -163,7 +269,16 @@ export default function CyclesPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    {!c.closedAt && (
+                    {getStatus(c) === "Planned" && (
+                      <Button
+                        variant="secondary"
+                        onClick={() => void openPlanned(c.id)}
+                        disabled={loading}
+                      >
+                        Open now
+                      </Button>
+                    )}
+                    {getStatus(c) === "Ongoing" && (
                       <Button
                         variant="secondary"
                         onClick={() => void closeCycle(c.id)}

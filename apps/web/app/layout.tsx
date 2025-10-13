@@ -4,6 +4,7 @@ import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
 import { QueryProvider } from "@/components/query-provider";
+import { SessionProvider } from "@/components/session-provider";
 import { AppSidebar } from "@/components/sidebar/app-sidebar";
 import {
   SidebarInset,
@@ -45,21 +46,23 @@ export default function RootLayout({
           enableSystem={false}
           disableTransitionOnChange
         >
-          <QueryProvider>
-            <SidebarProvider>
-              <AppSidebar />
-              <SidebarInset>
-                <header className="border-b">
-                  <div className="mx-auto max-w-8xl p-4 flex items-center gap-3">
-                    <SidebarTrigger />
-                    <ActiveAppName />
-                    <DynamicBreadcrumbs />
-                  </div>
-                </header>
-                {children}
-              </SidebarInset>
-            </SidebarProvider>
-          </QueryProvider>
+          <SessionProvider>
+            <QueryProvider>
+              <SidebarProvider>
+                <AppSidebar />
+                <SidebarInset>
+                  <header className="border-b">
+                    <div className="mx-auto max-w-8xl p-4 flex items-center gap-3">
+                      <SidebarTrigger />
+                      <ActiveAppName />
+                      <DynamicBreadcrumbs />
+                    </div>
+                  </header>
+                  {children}
+                </SidebarInset>
+              </SidebarProvider>
+            </QueryProvider>
+          </SessionProvider>
           <Toaster />
         </ThemeProvider>
       </body>

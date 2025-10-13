@@ -1,6 +1,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { headers } from "next/headers";
+import { Suspense } from "react";
 import { Recycle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { formatIsk } from "@/lib/utils";
@@ -19,10 +20,13 @@ export default async function CyclesOverviewPage() {
   const proto = hdrs.get("x-forwarded-proto") ?? "http";
   const host = hdrs.get("host") ?? "localhost:3000";
   const base = `${proto}://${host}`;
-  const res = await fetch(`${base}/api/ledger/cycles/overview`, {
-    cache: "no-store",
-  });
-  const { current, next } = (await res.json()) as {
+  const dataPromise = fetch(`${base}/api/ledger/cycles/overview`, {
+    // cache on edge for 30s to smooth bursts while allowing fresh-ish data
+    next: { revalidate: 30 },
+  }).then((r) => r.json());
+
+  // Render quickly, hydrate with data when it arrives
+  const { current, next } = (await dataPromise) as {
     current: null | {
       id: string;
       name: string | null;
@@ -179,33 +183,41 @@ export default async function CyclesOverviewPage() {
 
       <section className="rounded-lg border p-4 surface-1">
         <h2 className="text-base font-medium">Next cycle</h2>
-        {next ? (
-          <div className="mt-2 text-sm">
-            <div>
-              <span className="text-muted-foreground">Name:</span>{" "}
-              <span className="text-foreground">{next.name ?? next.id}</span>
+        <Suspense
+          fallback={
+            <div className="mt-2 text-sm text-muted-foreground">
+              Loading next cycle…
             </div>
-            <div>
-              <span className="text-muted-foreground">Starts:</span>{" "}
-              {new Date(next.startedAt).toLocaleString()} •
-              <span className="ml-1 text-muted-foreground">Status:</span>{" "}
-              <span className="text-foreground">{next.status}</span>
+          }
+        >
+          {next ? (
+            <div className="mt-2 text-sm">
+              <div>
+                <span className="text-muted-foreground">Name:</span>{" "}
+                <span className="text-foreground">{next.name ?? next.id}</span>
+              </div>
+              <div>
+                <span className="text-muted-foreground">Starts:</span>{" "}
+                {new Date(next.startedAt).toLocaleString()} •
+                <span className="ml-1 text-muted-foreground">Status:</span>{" "}
+                <span className="text-foreground">{next.status}</span>
+              </div>
             </div>
-          </div>
-        ) : (
-          <Empty className="mt-3">
-            <EmptyHeader>
-              <EmptyMedia variant="icon">
-                <Lock className="size-6" />
-              </EmptyMedia>
-              <EmptyTitle>No planned cycle</EmptyTitle>
-              <EmptyDescription>
-                Planning isn’t open yet. When the next cycle is announced, you
-                can opt in here.
-              </EmptyDescription>
-            </EmptyHeader>
-          </Empty>
-        )}
+          ) : (
+            <Empty className="mt-3">
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <Lock className="size-6" />
+                </EmptyMedia>
+                <EmptyTitle>No planned cycle</EmptyTitle>
+                <EmptyDescription>
+                  Planning isn’t open yet. When the next cycle is announced, you
+                  can opt in here.
+                </EmptyDescription>
+              </EmptyHeader>
+            </Empty>
+          )}
+        </Suspense>
         {next ? (
           <div className="mt-3">
             <OptInDialog

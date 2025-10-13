@@ -35,6 +35,37 @@ export default function OptInDialog(props: OptInDialogProps) {
   const [character, setCharacter] = React.useState<string>("YourName");
   const [submitting, setSubmitting] = React.useState(false);
   const [memo, setMemo] = React.useState<string>("");
+  const [charLoading, setCharLoading] = React.useState<boolean>(false);
+  const [charAutoError, setCharAutoError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (open) {
+      // Try to auto-resolve the current user's character name for participation
+      const load = async () => {
+        setCharLoading(true);
+        setCharAutoError(null);
+        try {
+          // Prefer direct identity endpoint
+          const meRes = await fetch("/api/auth/me", { cache: "no-store" });
+          if (meRes.ok) {
+            const me = await meRes.json();
+            if (
+              me &&
+              typeof me.characterName === "string" &&
+              me.characterName.length > 0
+            ) {
+              setCharacter(me.characterName);
+            }
+          }
+        } catch (e) {
+          setCharAutoError(e instanceof Error ? e.message : String(e));
+        } finally {
+          setCharLoading(false);
+        }
+      };
+      void load();
+    }
+  }, [open]);
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -121,14 +152,23 @@ export default function OptInDialog(props: OptInDialogProps) {
                 </div>
               </div>
               <div className="space-y-1">
-                <Label htmlFor="optin-character">Character (sender)</Label>
-                <Input
-                  id="optin-character"
-                  type="text"
-                  value={character}
-                  onChange={(e) => setCharacter(e.target.value)}
-                  placeholder="Your EVE character name"
-                />
+                <Label>Character (sender)</Label>
+                <div className="text-sm">
+                  {charLoading ? (
+                    <span className="text-muted-foreground">
+                      Loading character…
+                    </span>
+                  ) : (
+                    <code className="rounded bg-muted px-2 py-1 text-sm">
+                      {character}
+                    </code>
+                  )}
+                </div>
+                {charAutoError && (
+                  <div className="text-xs text-muted-foreground">
+                    Could not auto-detect character. Using fallback.
+                  </div>
+                )}
               </div>
               <div className="flex justify-end gap-2">
                 <Button
@@ -138,7 +178,7 @@ export default function OptInDialog(props: OptInDialogProps) {
                 >
                   Cancel
                 </Button>
-                <Button type="submit" disabled={submitting}>
+                <Button type="submit" disabled={submitting || charLoading}>
                   {submitting ? "Submitting…" : "Generate memo"}
                 </Button>
               </div>

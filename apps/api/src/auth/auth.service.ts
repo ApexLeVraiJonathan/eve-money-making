@@ -19,6 +19,12 @@ export class AuthService {
   private readonly redirectUri = AppConfig.esiSso().redirectUri;
   private readonly userAgent = AppConfig.esiSso().userAgent;
 
+  // App 2: Character Linking credentials
+  private readonly linkingClientId = process.env.EVE_CLIENT_ID_LINKING ?? '';
+  private readonly linkingClientSecret =
+    process.env.EVE_CLIENT_SECRET_LINKING ?? '';
+  private readonly linkingRedirectUri = `${process.env.API_BASE_URL || 'http://localhost:3000'}/auth/link-character/callback`;
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly logger: Logger,
@@ -41,6 +47,26 @@ export class AuthService {
     return url.toString();
   }
 
+  /**
+   * Get OAuth URL for character linking (uses App 2 credentials)
+   */
+  getAuthorizeLinkingUrl(
+    state: string,
+    codeChallenge: string,
+    scopes: string[],
+  ): string {
+    const base = 'https://login.eveonline.com/v2/oauth/authorize';
+    const url = new URL(base);
+    url.searchParams.set('response_type', 'code');
+    url.searchParams.set('redirect_uri', this.linkingRedirectUri);
+    url.searchParams.set('client_id', this.linkingClientId);
+    if (scopes.length) url.searchParams.set('scope', scopes.join(' '));
+    url.searchParams.set('state', state);
+    url.searchParams.set('code_challenge', codeChallenge);
+    url.searchParams.set('code_challenge_method', 'S256');
+    return url.toString();
+  }
+
   async exchangeCodeForToken(
     code: string,
     codeVerifier: string,
@@ -55,6 +81,36 @@ export class AuthService {
         grant_type: 'authorization_code',
         code,
         redirect_uri: this.redirectUri,
+        code_verifier: codeVerifier,
+      }),
+      {
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          Authorization: `Basic ${basic}`,
+          'User-Agent': this.userAgent,
+        },
+      },
+    );
+    return res.data;
+  }
+
+  /**
+   * Exchange authorization code for tokens (character linking with App 2)
+   */
+  async exchangeCodeForTokenLinking(
+    code: string,
+    codeVerifier: string,
+  ): Promise<TokenResponse> {
+    const tokenUrl = 'https://login.eveonline.com/v2/oauth/token';
+    const basic = Buffer.from(
+      `${this.linkingClientId}:${this.linkingClientSecret}`,
+    ).toString('base64');
+    const res = await axios.post<TokenResponse>(
+      tokenUrl,
+      new URLSearchParams({
+        grant_type: 'authorization_code',
+        code,
+        redirect_uri: this.linkingRedirectUri,
         code_verifier: codeVerifier,
       }),
       {
@@ -142,7 +198,7 @@ export class AuthService {
 
   async setCharacterRole(
     characterId: number,
-    role: 'ADMIN' | 'USER' | 'LOGISTICS',
+    role: 'USER' | 'LOGISTICS',
   ): Promise<void> {
     await this.prisma.eveCharacter.update({
       where: { id: characterId },
@@ -159,6 +215,43 @@ export class AuthService {
     if (func) data.function = func;
     if (loc) data.location = loc;
     await this.prisma.eveCharacter.update({ where: { id: characterId }, data });
+  }
+
+  /**
+   * Ensure a User exists for the given character. If the character is not linked
+   * to a user, create a new user and link it. Also set primaryCharacterId if the
+   * user has none.
+   */
+  async ensureUserForCharacter(characterId: number): Promise<string> {
+    const ch = await this.prisma.eveCharacter.findUnique({
+      where: { id: characterId },
+      select: { id: true, userId: true },
+    });
+    if (!ch) throw new Error('Character not found');
+    if (ch.userId) {
+      // Ensure primary set
+      const u = await this.prisma.user.findUnique({
+        where: { id: ch.userId },
+        select: { id: true, primaryCharacterId: true },
+      });
+      if (u && !u.primaryCharacterId) {
+        await this.prisma.user.update({
+          where: { id: u.id },
+          data: { primaryCharacterId: characterId },
+        });
+      }
+      return ch.userId;
+    }
+    // Create user and link
+    const user = await this.prisma.user.create({
+      data: { role: 'USER', primaryCharacterId: characterId },
+      select: { id: true },
+    });
+    await this.prisma.eveCharacter.update({
+      where: { id: characterId },
+      data: { userId: user.id },
+    });
+    return user.id;
   }
 
   /**
@@ -248,6 +341,19 @@ export class AuthService {
       accessTokenExpiresAt: expiresAt.toISOString(),
       rotatedRefreshToken,
     };
+  }
+
+  /**
+   * Link an existing character to an existing user.
+   */
+  async linkCharacterToUser(
+    characterId: number,
+    userId: string,
+  ): Promise<void> {
+    await this.prisma.eveCharacter.update({
+      where: { id: characterId },
+      data: { userId },
+    });
   }
 
   /**

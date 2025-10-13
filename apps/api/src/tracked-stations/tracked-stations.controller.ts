@@ -8,6 +8,9 @@ import {
   UsePipes,
 } from '@nestjs/common';
 import { TrackedStationsService } from './tracked-stations.service';
+import { Roles } from '../auth/roles.decorator';
+import { RolesGuard } from '../auth/roles.guard';
+import { UseGuards } from '@nestjs/common';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import {
   TrackedStationCreateSchema,
@@ -21,6 +24,8 @@ export class TrackedStationsController {
   ) {}
 
   @Post()
+  @Roles('ADMIN')
+  @UseGuards(RolesGuard)
   @UsePipes(new ZodValidationPipe(TrackedStationCreateSchema))
   async create(@Body() body: TrackedStationCreate) {
     return this.trackedStationsService.create(body.stationId);
@@ -37,6 +42,8 @@ export class TrackedStationsController {
   }
 
   @Delete(':id')
+  @Roles('ADMIN')
+  @UseGuards(RolesGuard)
   async remove(@Param('id') id: string) {
     return this.trackedStationsService.remove(id);
   }

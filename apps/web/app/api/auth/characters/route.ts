@@ -1,27 +1,20 @@
-import { NextRequest, NextResponse } from "next/server";
-import crypto from "node:crypto";
+import { NextResponse } from "next/server";
+import { fetchWithAuthJson } from "@/lib/api-client";
 
-const API_BASE =
-  process.env.API_BASE_URL ||
-  process.env.NEXT_PUBLIC_API_BASE ||
-  "http://localhost:3000";
-
-export async function GET(req: NextRequest) {
+export async function GET() {
   try {
-    const reqId = req.headers.get("x-request-id") || crypto.randomUUID();
-    const res = await fetch(`${API_BASE}/auth/characters`, {
-      method: "GET",
-      cache: "no-store",
-      headers: { "x-request-id": reqId },
-    });
-    const data = await res.json();
-    return NextResponse.json(data, {
-      status: res.status,
-      headers: { "x-request-id": reqId },
-    });
+    const characters = await fetchWithAuthJson("/users/me/characters");
+    return NextResponse.json({ characters });
   } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (
+      message.includes("Not authenticated") ||
+      message.includes("Unauthorized")
+    ) {
+      return NextResponse.json({ characters: [] }, { status: 200 });
+    }
     return NextResponse.json(
-      { error: "Failed to fetch characters", details: `${err}` },
+      { error: "Failed to fetch characters", details: message },
       { status: 500 },
     );
   }
