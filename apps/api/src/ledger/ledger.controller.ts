@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Logger,
   Param,
   Post,
   Query,
@@ -54,6 +55,8 @@ type AppendEntryRequest = z.infer<typeof AppendEntrySchema>;
 
 @Controller('ledger')
 export class LedgerController {
+  private readonly logger = new Logger(LedgerController.name);
+
   constructor(private readonly ledger: LedgerService) {}
 
   @Post('cycles')
@@ -195,8 +198,18 @@ export class LedgerController {
     @CurrentUser() user: RequestUser | null,
   ): Promise<unknown> {
     const uid = user?.userId ?? null;
-    if (!uid) return null;
-    return (await this.ledger.getMyParticipation(cycleId, uid)) as unknown;
+    this.logger.log(
+      `[GET /participations/me] cycleId=${cycleId}, userId=${uid}, user=${JSON.stringify(user)}`,
+    );
+    if (!uid) {
+      this.logger.warn('[GET /participations/me] No userId, returning null');
+      return null;
+    }
+    const result = await this.ledger.getMyParticipation(cycleId, uid);
+    this.logger.log(
+      `[GET /participations/me] Found participation: ${result ? `id=${result.id}, status=${result.status}` : 'null'}`,
+    );
+    return result as unknown;
   }
 
   @Get('participations/all')

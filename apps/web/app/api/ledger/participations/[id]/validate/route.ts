@@ -1,36 +1,44 @@
 import { NextRequest, NextResponse } from "next/server";
-import crypto from "node:crypto";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
 
-const API_BASE =
-  process.env.API_BASE_URL ||
-  process.env.NEXT_PUBLIC_API_BASE ||
-  "http://localhost:3000";
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
+  context: { params: Promise<{ id: string }> },
 ) {
+  const session = await getServerSession(authOptions);
+  const { id } = await context.params;
+
+  if (!session?.accessToken) {
+    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  }
+
   try {
-    const { id } = await params;
-    const payload = await req.json();
-    const reqId = req.headers.get("x-request-id") || crypto.randomUUID();
-    const res = await fetch(
-      `${API_BASE}/ledger/participations/${id}/validate`,
-      {
-        method: "POST",
-        headers: { "content-type": "application/json", "x-request-id": reqId },
-        body: JSON.stringify(payload),
-        cache: "no-store",
+    const body = await req.json();
+
+    const res = await fetch(`${API_URL}/ledger/participations/${id}/validate`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${session.accessToken}`,
+        "Content-Type": "application/json",
       },
-    );
-    const data = await res.json();
-    return NextResponse.json(data, {
-      status: res.status,
-      headers: { "x-request-id": reqId },
+      body: JSON.stringify(body),
+      cache: "no-store",
     });
-  } catch (err) {
+
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({ error: "Unknown error" }));
+      return NextResponse.json(error, { status: res.status });
+    }
+
+    const data = await res.json();
+    return NextResponse.json(data);
+  } catch (error) {
+    console.error("Failed to validate payment:", error);
     return NextResponse.json(
-      { error: "Failed to validate payment", details: `${err}` },
+      { error: "Internal server error" },
       { status: 500 },
     );
   }

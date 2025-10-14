@@ -81,6 +81,15 @@ export default function ParticipationsPage() {
       if (pRes.ok) {
         const data = await pRes.json();
         setParticipations(data);
+      } else if (pRes.status === 401) {
+        toast.error("Please sign in to access this page");
+        return;
+      } else {
+        const error = await pRes
+          .json()
+          .catch(() => ({ error: "Unknown error" }));
+        console.error("Failed to load participations:", error);
+        toast.error("Failed to load participations");
       }
 
       // Load unmatched donations
@@ -90,7 +99,16 @@ export default function ParticipationsPage() {
       if (dRes.ok) {
         const data = await dRes.json();
         setUnmatchedDonations(data);
+      } else if (dRes.status !== 401) {
+        // Don't show error if already showed auth error above
+        const error = await dRes
+          .json()
+          .catch(() => ({ error: "Unknown error" }));
+        console.error("Failed to load unmatched donations:", error);
       }
+    } catch (error) {
+      console.error("Error loading data:", error);
+      toast.error("Failed to load data");
     } finally {
       setLoading(false);
     }
@@ -117,20 +135,27 @@ export default function ParticipationsPage() {
           body: JSON.stringify({
             walletJournal: {
               characterId: donation.characterId,
-              journalId: BigInt(donation.journalId),
+              journalId: donation.journalId, // Send as string, backend will convert
             },
           }),
         },
       );
 
-      if (!res.ok) throw new Error("Failed to match");
+      if (!res.ok) {
+        const error = await res
+          .json()
+          .catch(() => ({ error: "Unknown error" }));
+        throw new Error(error.error || error.message || "Failed to match");
+      }
 
       toast.success("Payment matched successfully!");
       setSelectedParticipation(null);
       setSelectedDonation(null);
       await loadData();
     } catch (error) {
-      toast.error("Failed to match payment");
+      const msg =
+        error instanceof Error ? error.message : "Failed to match payment";
+      toast.error(msg);
     } finally {
       setMatching(false);
     }
@@ -166,12 +191,8 @@ export default function ParticipationsPage() {
             Cancelled
           </Badge>
         );
-      case "REFUNDED":
-        return (
-          <Badge variant="outline" className="bg-blue-500/10 text-blue-600">
-            Refunded
-          </Badge>
-        );
+      // Note: REFUNDED participations are deleted after refund is sent
+      // so this case won't occur in practice
       default:
         return <Badge variant="outline">{status}</Badge>;
     }
@@ -208,6 +229,89 @@ export default function ParticipationsPage() {
           Manage cycle participations, payments, refunds, and payouts
         </p>
       </div>
+
+      {/* All Participants Overview */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Users className="h-5 w-5" />
+            All Participants ({participations.length})
+          </CardTitle>
+          <CardDescription>
+            Current participation status for all cycles
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {participations.length === 0 ? (
+            <div className="p-8 text-center text-sm text-muted-foreground">
+              No participations found
+            </div>
+          ) : (
+            <div className="rounded-lg border">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b bg-muted/50">
+                      <th className="text-left p-3 font-medium">Character</th>
+                      <th className="text-left p-3 font-medium">Cycle</th>
+                      <th className="text-right p-3 font-medium">Amount</th>
+                      <th className="text-left p-3 font-medium">Status</th>
+                      <th className="text-left p-3 font-medium">Payment</th>
+                      <th className="text-left p-3 font-medium">Created</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {participations.map((p) => (
+                      <tr
+                        key={p.id}
+                        className="hover:bg-muted/50 transition-colors"
+                      >
+                        <td className="p-3 font-medium">{p.characterName}</td>
+                        <td className="p-3">
+                          <div className="text-xs text-muted-foreground">
+                            {p.cycle.name || p.cycleId.substring(0, 8)}
+                          </div>
+                        </td>
+                        <td className="p-3 text-right font-mono text-xs">
+                          {formatIsk(p.amountIsk)} ISK
+                        </td>
+                        <td className="p-3">{getStatusBadge(p.status)}</td>
+                        <td className="p-3">
+                          {p.walletJournalId ? (
+                            <Badge
+                              variant="outline"
+                              className="bg-green-500/10 text-green-600 text-xs"
+                            >
+                              Linked
+                            </Badge>
+                          ) : p.status === "AWAITING_INVESTMENT" ? (
+                            <Badge
+                              variant="outline"
+                              className="bg-amber-500/10 text-amber-600 text-xs"
+                            >
+                              Pending
+                            </Badge>
+                          ) : p.status === "OPTED_OUT" && !p.refundedAt ? (
+                            <Badge
+                              variant="outline"
+                              className="bg-red-500/10 text-red-600 text-xs"
+                            >
+                              Needs Refund
+                            </Badge>
+                          ) : null}
+                        </td>
+                        <td className="p-3 text-xs text-muted-foreground">
+                          {new Date(p.createdAt).toLocaleDateString()}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Manual Matching Section */}
       <Card>
@@ -272,9 +376,9 @@ export default function ParticipationsPage() {
                   </div>
                 ) : (
                   <div className="divide-y">
-                    {unmatchedDonations.map((d) => (
+                    {unmatchedDonations.map((d, idx) => (
                       <div
-                        key={d.journalId}
+                        key={`${d.characterId}-${d.journalId}-${idx}`}
                         onClick={() => setSelectedDonation(d.journalId)}
                         className={`p-3 cursor-pointer transition-colors ${
                           selectedDonation === d.journalId
@@ -378,6 +482,8 @@ export default function ParticipationsPage() {
                             if (!confirmed) return;
 
                             try {
+                              // Ensure amountIsk has exactly 2 decimal places for backend validation
+                              const amount = parseFloat(p.amountIsk).toFixed(2);
                               const res = await fetch(
                                 `/api/ledger/participations/${p.id}/refund`,
                                 {
@@ -386,15 +492,26 @@ export default function ParticipationsPage() {
                                     "Content-Type": "application/json",
                                   },
                                   body: JSON.stringify({
-                                    amountIsk: p.amountIsk,
+                                    amountIsk: amount,
                                   }),
                                 },
                               );
-                              if (!res.ok) throw new Error("Failed");
+                              if (!res.ok) {
+                                const error = await res
+                                  .json()
+                                  .catch(() => ({ error: "Unknown error" }));
+                                throw new Error(
+                                  error.error || error.message || "Failed",
+                                );
+                              }
                               toast.success("Refund marked as sent!");
                               await loadData();
-                            } catch {
-                              toast.error("Failed to mark refund");
+                            } catch (error) {
+                              const msg =
+                                error instanceof Error
+                                  ? error.message
+                                  : "Failed to mark refund";
+                              toast.error(msg);
                             }
                           }}
                         >
@@ -470,11 +587,22 @@ export default function ParticipationsPage() {
                                   method: "POST",
                                 },
                               );
-                              if (!res.ok) throw new Error("Failed");
+                              if (!res.ok) {
+                                const error = await res
+                                  .json()
+                                  .catch(() => ({ error: "Unknown error" }));
+                                throw new Error(
+                                  error.error || error.message || "Failed",
+                                );
+                              }
                               toast.success("Payout marked as sent!");
                               await loadData();
-                            } catch {
-                              toast.error("Failed to mark payout");
+                            } catch (error) {
+                              const msg =
+                                error instanceof Error
+                                  ? error.message
+                                  : "Failed to mark payout";
+                              toast.error(msg);
                             }
                           }}
                         >

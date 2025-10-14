@@ -11,18 +11,38 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
-  const res = await fetch(`${API_URL}/ledger/participations/all`, {
-    headers: {
-      Authorization: `Bearer ${session.accessToken}`,
-    },
-    cache: "no-store",
-  });
+  try {
+    const res = await fetch(`${API_URL}/ledger/participations/all`, {
+      headers: {
+        Authorization: `Bearer ${session.accessToken}`,
+      },
+      cache: "no-store",
+    });
 
-  if (!res.ok) {
-    const error = await res.json().catch(() => ({ error: "Unknown error" }));
-    return NextResponse.json(error, { status: res.status });
+    if (!res.ok) {
+      const errorText = await res.text();
+      console.error(
+        `Backend /ledger/participations/all error (${res.status}):`,
+        errorText,
+      );
+      try {
+        const error = JSON.parse(errorText);
+        return NextResponse.json(error, { status: res.status });
+      } catch {
+        return NextResponse.json(
+          { error: errorText || "Unknown error" },
+          { status: res.status },
+        );
+      }
+    }
+
+    const data = await res.json();
+    return NextResponse.json(data);
+  } catch (error) {
+    console.error("Failed to fetch participations:", error);
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 },
+    );
   }
-
-  const data = await res.json();
-  return NextResponse.json(data);
 }

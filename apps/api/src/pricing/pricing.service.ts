@@ -186,16 +186,17 @@ export class PricingService {
       }>;
     }>
   > {
-    // Determine characters to check
-    const characters: Array<{ id: number; name: string }> = params.characterIds
-      ?.length
-      ? await this.prisma.eveCharacter.findMany({
-          where: { id: { in: params.characterIds } },
-          select: { id: true, name: true },
-        })
-      : await this.prisma.eveCharacter.findMany({
-          select: { id: true, name: true },
-        });
+    // Determine characters to check - default to logistics sellers
+    const characters = await this.prisma.eveCharacter.findMany({
+      where: params.characterIds?.length
+        ? {
+            id: { in: params.characterIds },
+            role: 'LOGISTICS',
+            function: 'SELLER',
+          }
+        : { role: 'LOGISTICS', function: 'SELLER' },
+      select: { id: true, name: true },
+    });
 
     const characterNameById = new Map<number, string>();
     for (const c of characters) characterNameById.set(c.id, c.name);
@@ -243,42 +244,39 @@ export class PricingService {
     for (const c of characters) {
       const orders = await this.esiChars.getOrders(c.id);
       for (const o of orders) {
-        if (!o.is_buy_order && stationIds.includes(o.location_id)) {
-          ourOrders.push({
-            characterId: c.id,
-            order_id: o.order_id,
-            type_id: o.type_id,
-            price: o.price,
-            volume_remain: o.volume_remain,
-            location_id: o.location_id,
-            issued: o.issued,
-          });
-        }
+        if (o.is_buy_order) continue;
+        if (!stationIds.includes(o.location_id)) continue;
+        ourOrders.push({
+          characterId: c.id,
+          order_id: o.order_id,
+          type_id: o.type_id,
+          price: o.price,
+          volume_remain: o.volume_remain,
+          location_id: o.location_id,
+          issued: o.issued,
+        });
       }
     }
 
     // Optional: filter orders to those belonging to a specific commit scope
     if (params.planCommitId) {
-      const commit = await this.prisma.planCommit.findUnique({
-        where: { id: params.planCommitId },
-        select: { id: true, createdAt: true },
+      const lines = await this.prisma.planCommitLine.findMany({
+        where: { commitId: params.planCommitId },
+        select: { typeId: true, destinationStationId: true },
       });
-      if (commit) {
-        // Limit to orders for lines in the commit and issued after commit time
-        const lines = await this.prisma.planCommitLine.findMany({
-          where: { commitId: params.planCommitId },
-          select: { typeId: true, destinationStationId: true },
-        });
+
+      if (lines.length > 0) {
+        // Only check orders for items/stations in the commit
         const allowed = new Set(
           lines.map((l) => `${l.destinationStationId}:${l.typeId}`),
         );
-        const issuedAfter = new Date(commit.createdAt);
+
         for (let i = ourOrders.length - 1; i >= 0; i--) {
           const o = ourOrders[i];
           const key = `${o.location_id}:${o.type_id}`;
-          const okKey = allowed.has(key);
-          const okIssued = !o.issued || new Date(o.issued) >= issuedAfter;
-          if (!okKey || !okIssued) ourOrders.splice(i, 1);
+          if (!allowed.has(key)) {
+            ourOrders.splice(i, 1);
+          }
         }
       }
     }

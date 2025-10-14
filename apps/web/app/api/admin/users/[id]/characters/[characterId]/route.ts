@@ -1,28 +1,36 @@
 import { NextRequest, NextResponse } from "next/server";
-import crypto from "node:crypto";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
 
-const API_BASE =
-  process.env.API_BASE_URL ||
-  process.env.NEXT_PUBLIC_API_BASE ||
-  "http://localhost:3000";
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
 
 export async function DELETE(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string; characterId: string }> },
 ) {
+  const session = await getServerSession(authOptions);
+
+  if (!session?.accessToken) {
+    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  }
+
   const { id, characterId } = await params;
-  const reqId = _req.headers.get("x-request-id") || crypto.randomUUID();
   const res = await fetch(
-    `${API_BASE}/admin/users/${id}/characters/${characterId}`,
+    `${API_URL}/admin/users/${id}/characters/${characterId}`,
     {
       method: "DELETE",
       cache: "no-store",
-      headers: { "x-request-id": reqId },
+      headers: {
+        Authorization: `Bearer ${session.accessToken}`,
+      },
     },
   );
+
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ error: "Unknown error" }));
+    return NextResponse.json(error, { status: res.status });
+  }
+
   const data = await res.json();
-  return NextResponse.json(data, {
-    status: res.status,
-    headers: { "x-request-id": reqId },
-  });
+  return NextResponse.json(data);
 }

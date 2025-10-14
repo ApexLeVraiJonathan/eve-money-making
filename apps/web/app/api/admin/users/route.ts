@@ -3,13 +3,14 @@ import { fetchWithAuth } from "@/lib/api-client";
 
 export async function GET(req: NextRequest) {
   try {
-    const url = new URL("/admin/users", "http://localhost");
+    const base = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
+    const url = new URL("/admin/users", base);
     const limit = req.nextUrl.searchParams.get("limit");
     const offset = req.nextUrl.searchParams.get("offset");
     if (limit) url.searchParams.set("limit", limit);
     if (offset) url.searchParams.set("offset", offset);
 
-    const res = await fetchWithAuth(`${url.pathname}${url.search}`);
+    const res = await fetchWithAuth(url.pathname + url.search);
     const data = await res.json();
     return NextResponse.json(data, { status: res.status });
   } catch (err) {

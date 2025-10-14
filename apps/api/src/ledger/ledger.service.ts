@@ -237,12 +237,12 @@ export class LedgerService {
     });
     if (!cycle) throw new Error('Cycle not found');
 
-    // Clean up unpaid participations for this cycle
-    // Remove any participations that are still AWAITING_INVESTMENT
+    // Clean up unpaid and refunded participations for this cycle
+    // Remove any participations that are AWAITING_INVESTMENT or REFUNDED
     await this.prisma.cycleParticipation.deleteMany({
       where: {
         cycleId: input.cycleId,
-        status: 'AWAITING_INVESTMENT',
+        status: { in: ['AWAITING_INVESTMENT', 'REFUNDED'] },
       },
     });
 
@@ -989,18 +989,25 @@ export class LedgerService {
       // Use the character from the first (best) match
       const primaryJournal = matchedJournals[0].journal;
 
-      // Get the actual character name from the payer
-      const payerCharacter = await this.prisma.eveCharacter.findUnique({
-        where: { id: primaryJournal.characterId },
-        select: { name: true },
-      });
+      // Get the donor's character name from firstPartyId (the sender)
+      // Note: firstPartyId might not be in our EveCharacter table if they haven't linked
+      let donorName = p.characterName; // Keep original name as fallback
+      if (primaryJournal.firstPartyId) {
+        const donorCharacter = await this.prisma.eveCharacter.findUnique({
+          where: { id: primaryJournal.firstPartyId },
+          select: { name: true },
+        });
+        if (donorCharacter) {
+          donorName = donorCharacter.name;
+        }
+      }
 
-      // Update participation with actual amount and character
+      // Update participation with actual amount and link to journal
       const updated = await this.prisma.cycleParticipation.update({
         where: { id: p.id },
         data: {
           amountIsk: totalAmount.toFixed(2),
-          characterName: payerCharacter?.name ?? p.characterName,
+          characterName: donorName, // Keep donor's name, not logistics character
           status: 'OPTED_IN',
           validatedAt: new Date(),
           walletJournalId: primaryJournal.journalId,
@@ -1050,23 +1057,24 @@ export class LedgerService {
       where: { id: input.participationId },
     });
     if (!p) throw new Error('Participation not found');
-    const updated = await this.prisma.cycleParticipation.update({
-      where: { id: input.participationId },
-      data: {
-        refundAmountIsk: input.amountIsk,
-        refundedAt: new Date(),
-        status: 'REFUNDED',
-      },
-    });
+
+    // Create ledger entry for audit trail
     await this.appendEntry({
-      cycleId: updated.cycleId,
+      cycleId: p.cycleId,
       entryType: 'withdrawal',
       amountIsk: input.amountIsk,
-      memo: `Participation refund ${updated.characterName}`,
-      participationId: updated.id,
+      memo: `Participation refund ${p.characterName}`,
+      participationId: p.id,
       planCommitId: null,
     });
-    return updated;
+
+    // Delete the participation now that refund is complete
+    // User can opt-in again if they want to participate
+    const deleted = await this.prisma.cycleParticipation.delete({
+      where: { id: input.participationId },
+    });
+
+    return deleted;
   }
 
   async getAllParticipations() {
@@ -1575,28 +1583,11 @@ export class LedgerService {
     return out;
   }
 
-  async getMyParticipation(
-    cycleId: string,
-    userId: string,
-  ): Promise<{
-    id: string;
-    cycleId: string;
-    userId: string | null;
-    characterName: string;
-    amountIsk: string;
-    memo: string;
-    status: string;
-    walletJournalId: bigint | null;
-    validatedAt: Date | null;
-    optedOutAt: Date | null;
-    refundAmountIsk: string | null;
-    refundedAt: Date | null;
-    payoutAmountIsk: string | null;
-    payoutPaidAt: Date | null;
-    createdAt: Date;
-    updatedAt: Date;
-    estimatedPayoutIsk?: string;
-  } | null> {
+  async getMyParticipation(cycleId: string, userId: string) {
+    this.logger.log(
+      `[getMyParticipation] Querying: cycleId=${cycleId}, userId=${userId}`,
+    );
+
     const row = await this.prisma.cycleParticipation.findFirst({
       where: { cycleId, userId },
       select: {
@@ -1618,7 +1609,13 @@ export class LedgerService {
         updatedAt: true,
       },
     });
+
+    this.logger.log(
+      `[getMyParticipation] Query result: ${row ? `Found - id=${row.id}, userId=${row.userId}, status=${row.status}` : 'Not found (null)'}`,
+    );
+
     if (!row) return null;
+
     // Compute estimated payout using current pool suggestion
     try {
       const rec = await this.computePayouts(cycleId, 0.5);
@@ -1626,42 +1623,15 @@ export class LedgerService {
       const payout = (rec.payouts as unknown as P[]).find(
         (x) => String(x.participationId) === String(row.id),
       );
-      if (payout?.payoutIsk)
+      if (payout?.payoutIsk) {
         (row as unknown as { estimatedPayoutIsk?: string }).estimatedPayoutIsk =
           String(payout.payoutIsk);
+      }
     } catch {
       // ignore errors in estimate
     }
-    // Map Decimal fields to strings to match DTO signature
-    const mapped = row
-      ? {
-          ...row,
-          amountIsk: String(row.amountIsk),
-          refundAmountIsk:
-            row.refundAmountIsk !== null ? String(row.refundAmountIsk) : null,
-          payoutAmountIsk:
-            row.payoutAmountIsk !== null ? String(row.payoutAmountIsk) : null,
-        }
-      : null;
-    return mapped as unknown as {
-      id: string;
-      cycleId: string;
-      userId: string | null;
-      characterName: string;
-      amountIsk: string;
-      memo: string;
-      status: string;
-      walletJournalId: bigint | null;
-      validatedAt: Date | null;
-      optedOutAt: Date | null;
-      refundAmountIsk: string | null;
-      refundedAt: Date | null;
-      payoutAmountIsk: string | null;
-      payoutPaidAt: Date | null;
-      createdAt: Date;
-      updatedAt: Date;
-      estimatedPayoutIsk?: string;
-    } | null;
+
+    return row;
   }
 
   async computeNav(cycleId: string): Promise<NavTotals> {

@@ -14,6 +14,7 @@ export async function POST() {
     const res = await fetch(
       `${process.env.API_URL || "http://localhost:3000"}/jobs/esi-cache/cleanup`,
       {
+        method: "POST",
         headers: {
           Authorization: `Bearer ${session.accessToken}`,
         },

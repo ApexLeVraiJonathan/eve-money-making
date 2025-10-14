@@ -31,34 +31,34 @@ Location: /arbitrage/admin/triggers → Participations tab
 Location: /arbitrage/admin/triggers → Participations tab
 [ x] See "Match Participation Payments" card
 [x ] Click "Match Payments" button
-[ ] Results appear below button showing:
+[x] Results appear below button showing:
 ✅ Matched: Fully paid participations
 ⚠️ Partial/Updated: Overpaid or additional payments
 ❌ Unmatched: Donations that couldn't be linked
-[ ] Check console for detailed matching results
+[x] Check console for detailed matching results
 5️⃣ Admin Flow - Manual Payment Matching
 Location: /arbitrage/admin/participations
-[ ] See "Manual Payment Matching" section at top
-[ ] Left side: "Awaiting Payment" list (should show opt-ins without payment)
-[ ] Right side: "Unmatched Donations" list (donations without matched participation)
-[ ] Click a participation on left → Highlights
-[ ] Click a donation on right → Highlights
-[ ] Click "Link Selected Payment" → Confirmation dialog
-[ ] Confirm → Participation status updates to "Opted In"
-[ ] Lists refresh automatically
+[ x] See "Manual Payment Matching" section at top
+[ x] Left side: "Awaiting Payment" list (should show opt-ins without payment)
+[ x] Right side: "Unmatched Donations" list (donations without matched participation)
+[x ] Click a participation on left → Highlights
+[ x] Click a donation on right → Highlights
+[ x] Click "Link Selected Payment" → Confirmation dialog
+[ x] Confirm → Participation status updates to "Opted In"
+[ x] Lists refresh automatically
 6️⃣ Admin Flow - Refunds
 Location: /arbitrage/admin/participations
 Setup: User opts out AFTER payment
-[ ] User opts in and pays (manually via ESI or mock)
-[ ] Admin imports wallet and matches payment
-[ ] User clicks "Cancel Participation" → Refund requested
+[x ] User opts in and pays (manually via ESI or mock)
+[ x] Admin imports wallet and matches payment
+[x] User clicks "Cancel Participation" → Refund requested
 Test:
-[ ] See participation in "Refunds Needed" section
-[ ] Shows character name, amount, cycle, cancelled date
-[ ] Click "Mark Refund Sent" → Confirmation prompt
-[ ] Confirm → Status updates to "Refunded"
-[ ] Entry disappears from refunds list
-[ ] Withdrawal ledger entry created (check DB/logs)
+[x] See participation in "Refunds Needed" section
+[x] Shows character name, amount, cycle, cancelled date
+[x] Click "Mark Refund Sent" → Confirmation prompt
+[x] Confirm → Status updates to "Refunded"
+[x] Entry disappears from refunds list
+[x] Withdrawal ledger entry created (check DB/logs)
 7️⃣ Admin Flow - Payouts
 Location: /arbitrage/admin/participations
 Setup: Cycle completes with profit/loss

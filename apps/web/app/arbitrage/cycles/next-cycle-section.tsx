@@ -22,8 +22,10 @@ type Participation = {
   amountIsk: string;
   memo: string;
   status: string;
+  walletJournalId: string | null;
   createdAt: string;
   validatedAt: string | null;
+  optedOutAt: string | null;
 };
 
 type NextCycle = {
@@ -82,14 +84,28 @@ export default function NextCycleSection({ next }: { next: NextCycle | null }) {
         throw new Error("Failed to opt out");
       }
 
+      const wasAwaitingInvestment =
+        participation.status === "AWAITING_INVESTMENT";
+
       toast.success(
-        participation.status === "AWAITING_INVESTMENT"
+        wasAwaitingInvestment
           ? "Participation cancelled successfully"
           : "Participation cancelled. A refund will be processed by an admin.",
       );
 
-      // Clear participation
-      setParticipation(null);
+      // If it was AWAITING_INVESTMENT, it's deleted - clear the state
+      // If it was OPTED_IN, it's marked OPTED_OUT - refetch to show updated status
+      if (wasAwaitingInvestment) {
+        setParticipation(null);
+      } else {
+        // Refetch participation to show OPTED_OUT status
+        if (next) {
+          fetch(`/api/ledger/cycles/${next.id}/participations/me`)
+            .then((r) => r.json())
+            .then((data) => setParticipation(data))
+            .catch(() => {});
+        }
+      }
     } catch (error) {
       toast.error("Failed to cancel participation. Please try again.");
     } finally {

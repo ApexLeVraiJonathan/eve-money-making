@@ -3,6 +3,7 @@ import { Logger } from '@nestjs/common';
 import cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
 import { LoggingInterceptor } from './common/logging.interceptor';
+import { BigIntSerializationInterceptor } from './common/bigint-serialization.interceptor';
 import { HttpExceptionFilter } from './common/http-exception.filter';
 
 async function bootstrap() {
@@ -23,7 +24,10 @@ async function bootstrap() {
   });
 
   app.use(cookieParser());
-  app.useGlobalInterceptors(new LoggingInterceptor());
+  app.useGlobalInterceptors(
+    new BigIntSerializationInterceptor(), // Must be first to serialize before logging
+    new LoggingInterceptor(),
+  );
   app.useGlobalFilters(new HttpExceptionFilter());
 
   const port = Number(process.env.PORT ?? 3000);
