@@ -20,6 +20,7 @@ type OptInDialogProps = {
   nextCycleName: string;
   triggerLabel?: string;
   triggerClassName?: string;
+  onSuccess?: () => void;
 };
 
 export default function OptInDialog(props: OptInDialogProps) {
@@ -27,6 +28,7 @@ export default function OptInDialog(props: OptInDialogProps) {
     nextCycleName,
     triggerLabel = "Opt-in now",
     triggerClassName,
+    onSuccess,
   } = props;
 
   const [open, setOpen] = React.useState(false);
@@ -39,6 +41,7 @@ export default function OptInDialog(props: OptInDialogProps) {
   const [memo, setMemo] = React.useState<string>("");
   const [charLoading, setCharLoading] = React.useState<boolean>(false);
   const [charAutoError, setCharAutoError] = React.useState<string | null>(null);
+  const [participationCreated, setParticipationCreated] = React.useState(false);
 
   // Format number with commas for display
   const formatNumberWithCommas = (num: number): string => {
@@ -131,19 +134,26 @@ export default function OptInDialog(props: OptInDialogProps) {
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || res.statusText);
       setMemo(String(data.memo ?? `ARB ${next.id} ${character}`));
+      setParticipationCreated(true);
       setStep("confirm");
     } finally {
       setSubmitting(false);
     }
   };
 
-  // Reset to form when dialog closes
+  // Reset to form when dialog closes and call onSuccess if participation was created
   React.useEffect(() => {
     if (!open) {
+      // If participation was successfully created, notify parent
+      if (participationCreated) {
+        onSuccess?.();
+        setParticipationCreated(false);
+      }
+      // Reset state
       setStep("form");
       setMemo("");
     }
-  }, [open]);
+  }, [open, participationCreated, onSuccess]);
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>

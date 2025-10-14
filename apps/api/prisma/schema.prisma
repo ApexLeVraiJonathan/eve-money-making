@@ -340,6 +340,7 @@ model WalletJournalEntry {
   contextId     BigInt?  @map("context_id")
   contextIdType String?  @map("context_id_type")
   description   String?  @map("description")
+  reason        String?  @map("reason")
   firstPartyId  Int?     @map("first_party_id")
   secondPartyId Int?     @map("second_party_id")
   tax           Decimal? @map("tax") @db.Decimal(28, 2)
@@ -379,7 +380,7 @@ model CycleParticipation {
   userId          String?              @map("user_id")
   characterName   String               @map("character_name")
   amountIsk       Decimal              @map("amount_isk") @db.Decimal(28, 2)
-  memo            String               @unique @map("memo")
+  memo            String               @map("memo") // Removed @unique - same memo for all users in a cycle
   status          ParticipationStatus  @map("status")
   walletJournalId BigInt?              @map("wallet_journal_id")
   validatedAt     DateTime?            @map("validated_at")
@@ -393,6 +394,7 @@ model CycleParticipation {
 
   ledgerEntries CycleLedgerEntry[]
 
+  @@unique([cycleId, userId], name: "cycle_user_unique")
   @@index([cycleId])
   @@map("cycle_participations")
 }

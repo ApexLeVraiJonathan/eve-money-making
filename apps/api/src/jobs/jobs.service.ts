@@ -186,6 +186,12 @@ export class JobsService {
     return { deleted: res.count };
   }
 
+  async cleanupWalletJournals(): Promise<{ deleted: number }> {
+    const res = await this.prisma.walletJournalEntry.deleteMany({});
+    this.logger.log(`Wallet journal cleanup: deleted=${res.count}`);
+    return { deleted: res.count };
+  }
+
   /**
    * Computes staleness (missing daily market files) for last N days.
    */

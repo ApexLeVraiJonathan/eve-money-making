@@ -12,7 +12,7 @@ export async function POST() {
 
   try {
     const res = await fetch(
-      `${process.env.API_URL || "http://localhost:3000"}/jobs/esi-cache/cleanup`,
+      `${process.env.API_URL || "http://localhost:3000"}/jobs/system-tokens/refresh`,
       {
         headers: {
           Authorization: `Bearer ${session.accessToken}`,
@@ -22,9 +22,9 @@ export async function POST() {
 
     if (!res.ok) {
       const errorText = await res.text();
-      console.error("ESI cache cleanup failed:", errorText);
+      console.error("System token refresh failed:", errorText);
       return NextResponse.json(
-        { error: "Failed to cleanup ESI cache" },
+        { error: "Failed to refresh system tokens" },
         { status: res.status },
       );
     }
@@ -32,7 +32,7 @@ export async function POST() {
     const data = await res.json();
     return NextResponse.json(data);
   } catch (error) {
-    console.error("ESI cache cleanup error:", error);
+    console.error("System token refresh error:", error);
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 },

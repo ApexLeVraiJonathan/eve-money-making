@@ -4,6 +4,10 @@ import { authOptions } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
+/**
+ * Delete all wallet journal entries to allow fresh re-import with new fields
+ * USE WITH CAUTION - This is for dev/testing only
+ */
 export async function POST() {
   const session = await getServerSession(authOptions);
   if (!session?.accessToken) {
@@ -12,8 +16,9 @@ export async function POST() {
 
   try {
     const res = await fetch(
-      `${process.env.API_URL || "http://localhost:3000"}/jobs/esi-cache/cleanup`,
+      `${process.env.API_URL || "http://localhost:3000"}/jobs/wallet/cleanup`,
       {
+        method: "POST",
         headers: {
           Authorization: `Bearer ${session.accessToken}`,
         },
@@ -22,9 +27,9 @@ export async function POST() {
 
     if (!res.ok) {
       const errorText = await res.text();
-      console.error("ESI cache cleanup failed:", errorText);
+      console.error("Wallet cleanup failed:", errorText);
       return NextResponse.json(
-        { error: "Failed to cleanup ESI cache" },
+        { error: "Failed to cleanup wallet journals" },
         { status: res.status },
       );
     }
@@ -32,7 +37,7 @@ export async function POST() {
     const data = await res.json();
     return NextResponse.json(data);
   } catch (error) {
-    console.error("ESI cache cleanup error:", error);
+    console.error("Wallet cleanup error:", error);
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 },

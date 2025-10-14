@@ -324,6 +324,7 @@ export class EsiCharactersService {
       context_id?: number;
       context_id_type?: string;
       description?: string;
+      reason?: string;
       first_party_id?: number;
       second_party_id?: number;
       tax?: number;
@@ -344,6 +345,7 @@ export class EsiCharactersService {
           context_id?: number;
           context_id_type?: string;
           description?: string;
+          reason?: string;
           first_party_id?: number;
           second_party_id?: number;
           tax?: number;

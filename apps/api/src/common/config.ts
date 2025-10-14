@@ -73,6 +73,32 @@ export const AppConfig = {
     } as const;
   },
 
+  /**
+   * ESI SSO credentials for character linking (App 2).
+   * Used for USER-managed characters linked via /auth/link-character/*.
+   */
+  esiSsoLinking() {
+    return {
+      clientId: process.env.EVE_CLIENT_ID_LINKING ?? '',
+      clientSecret: process.env.EVE_CLIENT_SECRET_LINKING ?? '',
+      userAgent:
+        process.env.ESI_USER_AGENT ?? process.env.ESI_SSO_USER_AGENT ?? '',
+    } as const;
+  },
+
+  /**
+   * ESI SSO credentials for SYSTEM characters (App 3).
+   * Used for SYSTEM-managed characters (managedBy=SYSTEM, role=LOGISTICS).
+   */
+  esiSsoSystem() {
+    return {
+      clientId: process.env.EVE_CLIENT_ID_SYSTEM ?? '',
+      clientSecret: process.env.EVE_CLIENT_SECRET_SYSTEM ?? '',
+      userAgent:
+        process.env.ESI_USER_AGENT ?? process.env.ESI_SSO_USER_AGENT ?? '',
+    } as const;
+  },
+
   arbitrage(): ArbitrageDefaults {
     return {
       sourceStationId: Number(

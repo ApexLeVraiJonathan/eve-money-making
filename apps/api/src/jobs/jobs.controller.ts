@@ -1,4 +1,4 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, Post } from '@nestjs/common';
 import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
 import { UseGuards } from '@nestjs/common';
@@ -28,5 +28,27 @@ export class JobsController {
   async runWallets() {
     await this.jobs.runWalletImportsAndReconcile();
     return { ok: true };
+  }
+
+  @Get('oauth-state/cleanup')
+  @Roles('ADMIN')
+  @UseGuards(RolesGuard)
+  async cleanupOAuthStates() {
+    return this.jobs.cleanupExpiredOAuthStates();
+  }
+
+  @Get('system-tokens/refresh')
+  @Roles('ADMIN')
+  @UseGuards(RolesGuard)
+  async refreshSystemTokens() {
+    await this.jobs.refreshSystemCharacterTokens();
+    return { ok: true };
+  }
+
+  @Post('wallet/cleanup')
+  @Roles('ADMIN')
+  @UseGuards(RolesGuard)
+  async cleanupWalletJournals() {
+    return this.jobs.cleanupWalletJournals();
   }
 }

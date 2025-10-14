@@ -11,6 +11,7 @@ import {
   UserCheck,
   BadgeDollarSign,
   NotebookPen,
+  Users,
   Zap,
 } from "lucide-react";
 
@@ -138,6 +139,11 @@ export const APPS: AppConfig[] = [
         icon: BadgeDollarSign,
       },
       { name: "Ledger", url: "/arbitrage/admin/ledger", icon: NotebookPen },
+      {
+        name: "Participations",
+        url: "/arbitrage/admin/participations",
+        icon: Users,
+      },
       { name: "Triggers", url: "/arbitrage/admin/triggers", icon: Zap },
     ],
   },

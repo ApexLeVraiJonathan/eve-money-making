@@ -1,4 +1,4 @@
-import { Controller, Get, Query, UsePipes } from '@nestjs/common';
+import { Controller, Get, Post, Query, UsePipes } from '@nestjs/common';
 import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
 import { UseGuards } from '@nestjs/common';
@@ -85,7 +85,7 @@ export class WalletController {
     return await this.wallet.listJournal(id, since, query.limit, query.offset);
   }
 
-  @Get('all')
+  @Post('all')
   @Roles('ADMIN')
   @UseGuards(RolesGuard)
   async importAll() {

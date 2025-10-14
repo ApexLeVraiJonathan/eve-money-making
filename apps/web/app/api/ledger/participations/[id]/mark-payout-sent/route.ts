@@ -15,17 +15,16 @@ export async function POST(
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
-  const body = await req.json();
-
-  const res = await fetch(`${API_URL}/ledger/participations/${id}/refund`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${session.accessToken}`,
-      "Content-Type": "application/json",
+  const res = await fetch(
+    `${API_URL}/ledger/participations/${id}/mark-payout-sent`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${session.accessToken}`,
+      },
+      cache: "no-store",
     },
-    body: JSON.stringify(body),
-    cache: "no-store",
-  });
+  );
 
   if (!res.ok) {
     const error = await res.json().catch(() => ({ error: "Unknown error" }));

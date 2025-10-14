@@ -237,6 +237,15 @@ export class LedgerService {
     });
     if (!cycle) throw new Error('Cycle not found');
 
+    // Clean up unpaid participations for this cycle
+    // Remove any participations that are still AWAITING_INVESTMENT
+    await this.prisma.cycleParticipation.deleteMany({
+      where: {
+        cycleId: input.cycleId,
+        status: 'AWAITING_INVESTMENT',
+      },
+    });
+
     // Close any existing open cycle
     const open = await this.getCurrentOpenCycle();
     if (open && open.id !== cycle.id) {
@@ -712,10 +721,18 @@ export class LedgerService {
       });
       characterName = anyChar?.name ?? 'Unknown';
     }
-    const memo = `ARB ${cycle.id} ${characterName}`;
-    // Return existing if same memo exists
-    const existing = await this.prisma.cycleParticipation.findUnique({
-      where: { memo },
+
+    // Generate short memo to fit EVE's donation reason field (~40 char limit)
+    // Format: ARB-{first8CharsOfCycleId}
+    // Character name removed - can be inferred from journal's firstPartyId
+    const memo = `ARB-${cycle.id.substring(0, 8)}`;
+
+    // Check for existing participation by cycle + user (memo might not be unique anymore)
+    const existing = await this.prisma.cycleParticipation.findFirst({
+      where: {
+        cycleId: input.cycleId,
+        userId: input.userId ?? null,
+      },
     });
     if (existing) return existing;
     return await this.prisma.cycleParticipation.create({
@@ -761,13 +778,23 @@ export class LedgerService {
     if (cycle.startedAt <= new Date()) {
       throw new Error('Cannot opt-out after cycle start');
     }
-    if (p.validatedAt || p.status === 'OPTED_IN') {
-      throw new Error('Already validated; admin refund required');
+
+    // If still awaiting investment (no payment), just delete the participation
+    if (p.status === 'AWAITING_INVESTMENT') {
+      return await this.prisma.cycleParticipation.delete({
+        where: { id: participationId },
+      });
     }
-    return await this.prisma.cycleParticipation.update({
-      where: { id: participationId },
-      data: { status: 'OPTED_OUT', optedOutAt: new Date() },
-    });
+
+    // If payment received (OPTED_IN), mark for refund
+    if (p.status === 'OPTED_IN') {
+      return await this.prisma.cycleParticipation.update({
+        where: { id: participationId },
+        data: { status: 'OPTED_OUT', optedOutAt: new Date() },
+      });
+    }
+
+    throw new Error('Invalid participation status for opt-out');
   }
 
   async adminValidatePayment(input: {
@@ -799,6 +826,225 @@ export class LedgerService {
     return updated;
   }
 
+  /**
+   * Match wallet journal entries (player donations) to participations.
+   * Supports:
+   * - Exact memo matching
+   * - Fuzzy memo matching (typos)
+   * - Multiple payments with same memo (sum them)
+   * - Wrong character (use actual payer)
+   * - Partial/over payments (update to actual amount)
+   */
+  async matchParticipationPayments(cycleId?: string): Promise<{
+    matched: number;
+    partial: number;
+    unmatched: Array<{
+      journalId: string;
+      characterId: number;
+      amount: string;
+      description: string | null;
+      reason: string | null;
+      date: Date;
+    }>;
+  }> {
+    // Get all AWAITING_INVESTMENT participations
+    const participations = await this.prisma.cycleParticipation.findMany({
+      where: {
+        status: 'AWAITING_INVESTMENT',
+        ...(cycleId ? { cycleId } : {}),
+      },
+      include: {
+        cycle: { select: { id: true, startedAt: true } },
+      },
+    });
+
+    if (!participations.length) {
+      return { matched: 0, partial: 0, unmatched: [] };
+    }
+
+    // Get all player_donation journal entries that aren't already linked
+    const journals = await this.prisma.walletJournalEntry.findMany({
+      where: {
+        refType: 'player_donation',
+        // Only consider donations to logistics characters
+        characterId: {
+          in: await this.prisma.eveCharacter
+            .findMany({
+              where: { role: 'LOGISTICS' },
+              select: { id: true },
+            })
+            .then((chars) => chars.map((c) => c.id)),
+        },
+      },
+      orderBy: { date: 'desc' },
+    });
+
+    // Find journals already linked to participations
+    const linkedJournalIds = new Set(
+      (
+        await this.prisma.cycleParticipation.findMany({
+          where: { walletJournalId: { not: null } },
+          select: { walletJournalId: true },
+        })
+      )
+        .map((p) => p.walletJournalId)
+        .filter((id): id is bigint => id !== null),
+    );
+
+    const unlinkedJournals = journals.filter(
+      (j) => !linkedJournalIds.has(j.journalId),
+    );
+
+    let matched = 0;
+    let partial = 0;
+    const unmatchedJournals: Array<{
+      journalId: string;
+      characterId: number;
+      amount: string;
+      description: string | null;
+      reason: string | null;
+      date: Date;
+    }> = [];
+
+    // Helper: Fuzzy memo matching (Levenshtein distance)
+    const fuzzyMatch = (a: string, b: string): number => {
+      const matrix: number[][] = [];
+      for (let i = 0; i <= b.length; i++) {
+        matrix[i] = [i];
+      }
+      for (let j = 0; j <= a.length; j++) {
+        matrix[0][j] = j;
+      }
+      for (let i = 1; i <= b.length; i++) {
+        for (let j = 1; j <= a.length; j++) {
+          if (b.charAt(i - 1) === a.charAt(j - 1)) {
+            matrix[i][j] = matrix[i - 1][j - 1];
+          } else {
+            matrix[i][j] = Math.min(
+              matrix[i - 1][j - 1] + 1,
+              matrix[i][j - 1] + 1,
+              matrix[i - 1][j] + 1,
+            );
+          }
+        }
+      }
+      return matrix[b.length][a.length];
+    };
+
+    // Try to match each participation
+    for (const p of participations) {
+      const expectedMemo = p.memo;
+      const expectedAmount = Number(p.amountIsk);
+
+      // Find all journals that could match this participation
+      const candidates = unlinkedJournals
+        .map((j) => {
+          // Use 'reason' field for memo matching (EVE Online donation memo)
+          const memo = (j.reason || '').trim();
+          let score = 0;
+
+          // Exact memo match = highest priority
+          if (memo === expectedMemo) {
+            score = 1000;
+          }
+          // Contains memo
+          else if (memo.includes(expectedMemo)) {
+            score = 500;
+          }
+          // Fuzzy match (allow up to 3 character differences)
+          else {
+            const distance = fuzzyMatch(
+              memo.toLowerCase(),
+              expectedMemo.toLowerCase(),
+            );
+            if (distance <= 3) {
+              score = 100 - distance * 10;
+            }
+          }
+
+          // Boost score if amount matches exactly
+          const amount = Number(j.amount);
+          if (amount === expectedAmount) {
+            score += 50;
+          }
+
+          return { journal: j, score, amount };
+        })
+        .filter((c) => c.score > 0)
+        .sort((a, b) => b.score - a.score);
+
+      if (candidates.length === 0) {
+        // No match found for this participation
+        continue;
+      }
+
+      // Sum up all matching payments (support multiple payments with same memo)
+      const matchedJournals = candidates.filter((c) => c.score >= 100); // Only take good matches
+      const totalAmount = matchedJournals.reduce((sum, c) => sum + c.amount, 0);
+
+      if (matchedJournals.length === 0) {
+        continue;
+      }
+
+      // Use the character from the first (best) match
+      const primaryJournal = matchedJournals[0].journal;
+
+      // Get the actual character name from the payer
+      const payerCharacter = await this.prisma.eveCharacter.findUnique({
+        where: { id: primaryJournal.characterId },
+        select: { name: true },
+      });
+
+      // Update participation with actual amount and character
+      const updated = await this.prisma.cycleParticipation.update({
+        where: { id: p.id },
+        data: {
+          amountIsk: totalAmount.toFixed(2),
+          characterName: payerCharacter?.name ?? p.characterName,
+          status: 'OPTED_IN',
+          validatedAt: new Date(),
+          walletJournalId: primaryJournal.journalId,
+        },
+      });
+
+      // Create deposit ledger entry
+      await this.appendEntry({
+        cycleId: updated.cycleId,
+        entryType: 'deposit',
+        amountIsk: String(updated.amountIsk),
+        memo: `Participation deposit ${updated.characterName} (auto-matched)`,
+        participationId: updated.id,
+        planCommitId: null,
+      });
+
+      // Mark these journals as "used"
+      for (const c of matchedJournals) {
+        linkedJournalIds.add(c.journal.journalId);
+      }
+
+      matched++;
+      if (totalAmount !== expectedAmount) {
+        partial++;
+      }
+    }
+
+    // Collect unmatched journals
+    for (const j of unlinkedJournals) {
+      if (!linkedJournalIds.has(j.journalId)) {
+        unmatchedJournals.push({
+          journalId: j.journalId.toString(),
+          characterId: j.characterId,
+          amount: j.amount.toString(),
+          description: j.description,
+          reason: j.reason,
+          date: j.date,
+        });
+      }
+    }
+
+    return { matched, partial, unmatched: unmatchedJournals };
+  }
+
   async adminMarkRefund(input: { participationId: string; amountIsk: string }) {
     const p = await this.prisma.cycleParticipation.findUnique({
       where: { id: input.participationId },
@@ -821,6 +1067,77 @@ export class LedgerService {
       planCommitId: null,
     });
     return updated;
+  }
+
+  async getAllParticipations() {
+    return await this.prisma.cycleParticipation.findMany({
+      include: {
+        cycle: {
+          select: {
+            id: true,
+            name: true,
+            startedAt: true,
+            closedAt: true,
+          },
+        },
+      },
+      orderBy: [{ createdAt: 'desc' }],
+    });
+  }
+
+  async getUnmatchedDonations() {
+    // Get all player_donation journal entries to LOGISTICS characters
+    const logisticsCharacterIds = await this.prisma.eveCharacter
+      .findMany({
+        where: { role: 'LOGISTICS' },
+        select: { id: true, name: true },
+      })
+      .then((chars) => chars);
+
+    const charIdMap = new Map(logisticsCharacterIds.map((c) => [c.id, c.name]));
+    const charIds = logisticsCharacterIds.map((c) => c.id);
+
+    // Get all linked journal IDs
+    const linkedJournalIds = new Set(
+      (
+        await this.prisma.cycleParticipation.findMany({
+          where: { walletJournalId: { not: null } },
+          select: { walletJournalId: true },
+        })
+      )
+        .map((p) => p.walletJournalId)
+        .filter((id): id is bigint => id !== null),
+    );
+
+    // Get all player_donation journals
+    const journals = await this.prisma.walletJournalEntry.findMany({
+      where: {
+        refType: 'player_donation',
+        characterId: { in: charIds },
+      },
+      orderBy: { date: 'desc' },
+      take: 200, // Limit to recent 200
+    });
+
+    // Filter unlinked and add character names
+    return journals
+      .filter((j) => !linkedJournalIds.has(j.journalId))
+      .map((j) => ({
+        journalId: j.journalId.toString(),
+        characterId: j.characterId,
+        characterName: charIdMap.get(j.characterId) ?? null,
+        amount: j.amount.toString(),
+        description: j.description,
+        reason: j.reason,
+        date: j.date.toISOString(),
+      }));
+  }
+
+  async markPayoutAsSent(participationId: string) {
+    return await this.prisma.cycleParticipation.update({
+      where: { id: participationId },
+      data: { payoutPaidAt: new Date() },
+    });
   }
 
   async computePayouts(cycleId: string, profitSharePct = 0.5) {

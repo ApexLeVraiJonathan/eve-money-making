@@ -77,6 +77,7 @@ export class WalletService {
           contextId: r.context_id ? BigInt(r.context_id) : null,
           contextIdType: r.context_id_type ?? null,
           description: r.description ?? null,
+          reason: r.reason ?? null,
           firstPartyId: r.first_party_id ?? null,
           secondPartyId: r.second_party_id ?? null,
           tax: r.tax ?? null,
@@ -93,6 +94,7 @@ export class WalletService {
 
   async importAllLinked(reqId?: string) {
     const chars = await this.prisma.eveCharacter.findMany({
+      where: { role: 'LOGISTICS' },
       select: { id: true },
     });
     for (const c of chars) {

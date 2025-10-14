@@ -199,9 +199,37 @@ export class LedgerController {
     return (await this.ledger.getMyParticipation(cycleId, uid)) as unknown;
   }
 
+  @Get('participations/all')
+  @Roles('ADMIN')
+  @UseGuards(RolesGuard)
+  async allParticipations(): Promise<unknown> {
+    return await this.ledger.getAllParticipations();
+  }
+
+  @Get('participations/unmatched-donations')
+  @Roles('ADMIN')
+  @UseGuards(RolesGuard)
+  async unmatchedDonations(): Promise<unknown> {
+    return await this.ledger.getUnmatchedDonations();
+  }
+
+  @Post('participations/:id/mark-payout-sent')
+  @Roles('ADMIN')
+  @UseGuards(RolesGuard)
+  async markPayoutSent(@Param('id') id: string): Promise<unknown> {
+    return await this.ledger.markPayoutAsSent(id);
+  }
+
   @Post('participations/:id/opt-out')
   async optOut(@Param('id') id: string): Promise<unknown> {
     return await this.ledger.optOutParticipation(id);
+  }
+
+  @Post('participations/match')
+  @Roles('ADMIN')
+  @UseGuards(RolesGuard)
+  async matchPayments(@Query('cycleId') cycleId?: string): Promise<unknown> {
+    return await this.ledger.matchParticipationPayments(cycleId);
   }
 
   @Post('participations/:id/validate')

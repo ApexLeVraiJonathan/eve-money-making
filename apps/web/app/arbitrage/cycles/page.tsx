@@ -5,7 +5,7 @@ import { Suspense } from "react";
 import { Recycle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { formatIsk } from "@/lib/utils";
-import OptInDialog from "./opt-in-dialog";
+import NextCycleSection from "./next-cycle-section";
 import {
   Empty,
   EmptyDescription,
@@ -13,7 +13,7 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty";
-import { CircleHelp, Lock } from "lucide-react";
+import { CircleHelp } from "lucide-react";
 
 export default async function CyclesOverviewPage() {
   const hdrs = await headers();
@@ -190,42 +190,8 @@ export default async function CyclesOverviewPage() {
             </div>
           }
         >
-          {next ? (
-            <div className="mt-2 text-sm">
-              <div>
-                <span className="text-muted-foreground">Name:</span>{" "}
-                <span className="text-foreground">{next.name ?? next.id}</span>
-              </div>
-              <div>
-                <span className="text-muted-foreground">Starts:</span>{" "}
-                {new Date(next.startedAt).toLocaleString()} •
-                <span className="ml-1 text-muted-foreground">Status:</span>{" "}
-                <span className="text-foreground">{next.status}</span>
-              </div>
-            </div>
-          ) : (
-            <Empty className="mt-3">
-              <EmptyHeader>
-                <EmptyMedia variant="icon">
-                  <Lock className="size-6" />
-                </EmptyMedia>
-                <EmptyTitle>No planned cycle</EmptyTitle>
-                <EmptyDescription>
-                  Planning isn’t open yet. When the next cycle is announced, you
-                  can opt in here.
-                </EmptyDescription>
-              </EmptyHeader>
-            </Empty>
-          )}
+          <NextCycleSection next={next} />
         </Suspense>
-        {next ? (
-          <div className="mt-3">
-            <OptInDialog
-              nextCycleName={next?.name ?? "Next cycle"}
-              triggerClassName="inline-flex h-9 items-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground shadow hover:opacity-90"
-            />
-          </div>
-        ) : null}
       </section>
     </div>
   );
