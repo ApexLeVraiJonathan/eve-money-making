@@ -265,91 +265,34 @@ export class LedgerService {
       });
     }
 
-    // Compute initial capital snapshot (carryover + optional injection)
+    // Sum validated participations for this cycle
+    const validatedParticipations =
+      await this.prisma.cycleParticipation.aggregate({
+        where: {
+          cycleId: cycle.id,
+          status: 'OPTED_IN',
+          validatedAt: { not: null },
+        },
+        _sum: { amountIsk: true },
+      });
+    const participationTotal = validatedParticipations._sum.amountIsk
+      ? Number(validatedParticipations._sum.amountIsk)
+      : 0;
+
+    // Compute initial capital snapshot (carryover + optional injection + validated participations)
     const nowCap = await this.computeCurrentCapitalNow();
     const inj = cycle.initialInjectionIsk
       ? Number(cycle.initialInjectionIsk)
       : 0;
-    const initialCapital = nowCap.cash + nowCap.inventory + inj;
+    const initialCapital =
+      nowCap.cash + nowCap.inventory + inj + participationTotal;
     await this.prisma.cycle.update({
       where: { id: cycle.id },
       data: { initialCapitalIsk: initialCapital.toFixed(2) },
     });
 
-    // Create opening balance commit with carryover items
-    const lines = await this.buildOpeningBalanceLines();
-    if (lines.length) {
-      // Resolve source station from previous cycle commit lines when possible
-      const prevCycle = await this.prisma.cycle.findFirst({
-        where: { id: { not: cycle.id } },
-        orderBy: { startedAt: 'desc' },
-        select: { id: true },
-      });
-      const prevSourceByTypeDest = new Map<string, number>();
-      if (prevCycle) {
-        const prevLines = await this.prisma.planCommitLine.findMany({
-          where: { commit: { cycleId: prevCycle.id } },
-          select: {
-            typeId: true,
-            destinationStationId: true,
-            sourceStationId: true,
-          },
-        });
-        for (const pl of prevLines) {
-          prevSourceByTypeDest.set(
-            `${pl.typeId}:${pl.destinationStationId}`,
-            pl.sourceStationId,
-          );
-        }
-      }
-
-      const commit = await this.prisma.planCommit.create({
-        data: {
-          request: { type: 'opening_balance', cycleId: cycle.id },
-          result: {
-            lines: lines.length,
-            generatedAt: new Date().toISOString(),
-          },
-          memo: this.rolloverOpeningCommitMemo,
-          cycleId: cycle.id,
-        },
-        select: { id: true },
-      });
-      const commitLineRows = lines.map((l) => {
-        const key = `${l.typeId}:${l.stationId}`; // destination == current station
-        const src = prevSourceByTypeDest.get(key) ?? this.jitaStationId;
-        return {
-          commitId: commit.id,
-          typeId: l.typeId,
-          sourceStationId: src,
-          destinationStationId: l.stationId,
-          plannedUnits: l.qty,
-          unitCost: String(Number(l.unitCost ?? '0').toFixed(2)),
-          unitProfit: 0,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        } as const;
-      });
-      await this.prisma.planCommitLine.createMany({ data: commitLineRows });
-
-      // Insert minimal negative execution entries to mark items as "bought" for this commit without double-counting prior cycle cost
-      await this.prisma.cycleLedgerEntry.createMany({
-        data: commitLineRows.map((row, idx) => ({
-          cycleId: cycle.id,
-          occurredAt: new Date(),
-          entryType: 'execution',
-          amount: '-1.00', // sentinel small negative to indicate buy without impacting prior accounting
-          memo: 'Opening balance carryover (synthetic buy marker)',
-          planCommitId: commit.id,
-          characterId: null,
-          stationId: row.sourceStationId,
-          typeId: row.typeId,
-          source: 'manual',
-          sourceId: `opening_balance_buy:${commit.id}:${row.typeId}:${row.destinationStationId}:${idx}`,
-          matchStatus: 'linked',
-        })),
-      });
-    }
+    // No longer creating synthetic opening balance entries
+    // Inventory rollover is handled via cycle lines if needed
 
     return await this.prisma.cycle.findUnique({ where: { id: cycle.id } });
   }
@@ -627,32 +570,19 @@ export class LedgerService {
       });
       if (lines.length >= 1000) break; // avoid overly large commit
     }
+    // Create CycleLine records for opening balance inventory (if any)
     if (lines.length) {
-      const commit = await this.prisma.planCommit.create({
-        data: {
-          request: { type: 'opening_balance', cycleId: cycle.id },
-          result: {
-            lines: lines.length,
-            generatedAt: new Date().toISOString(),
-          },
-          memo: this.rolloverOpeningCommitMemo,
-          cycleId: cycle.id,
-        },
-        select: { id: true },
-      });
-      await this.prisma.planCommitLine.createMany({
+      await this.prisma.cycleLine.createMany({
         data: lines.map((l) => ({
-          commitId: commit.id,
+          cycleId: cycle.id,
           typeId: l.typeId,
-          sourceStationId: l.sourceStationId,
           destinationStationId: l.destinationStationId,
           plannedUnits: l.plannedUnits,
-          unitCost: String(Number(l.unitCost ?? '0').toFixed(2)),
-          unitProfit: 0,
-          createdAt: new Date(),
-          updatedAt: new Date(),
         })),
       });
+      this.logger.log(
+        `Created ${lines.length} opening balance cycle lines for cycle ${cycle.id}`,
+      );
     }
 
     return cycle;
@@ -685,7 +615,6 @@ export class LedgerService {
         amount: input.amountIsk,
         occurredAt: input.occurredAt ?? new Date(),
         memo: input.memo ?? null,
-        planCommitId: input.planCommitId ?? null,
         participationId: input.participationId ?? null,
       },
     });
@@ -1247,12 +1176,7 @@ export class LedgerService {
       entryType: string;
       amount: string;
       memo: string | null;
-      planCommitId: string | null;
-      characterName: string | null;
-      stationName: string | null;
-      typeName: string | null;
-      source: string;
-      matchStatus: string | null;
+      participationId: string | null;
     }>
   > {
     const rows = await this.prisma.cycleLedgerEntry.findMany({
@@ -1266,78 +1190,19 @@ export class LedgerService {
         entryType: true,
         amount: true,
         memo: true,
-        planCommitId: true,
-        characterId: true,
-        stationId: true,
-        typeId: true,
-        source: true,
-        matchStatus: true,
+        participationId: true,
       },
     });
 
-    const charIds = Array.from(
-      new Set(
-        rows.map((r) => r.characterId).filter((v): v is number => v !== null),
-      ),
-    );
-    const stationIds = Array.from(
-      new Set(
-        rows.map((r) => r.stationId).filter((v): v is number => v !== null),
-      ),
-    );
-    const typeIds = Array.from(
-      new Set(rows.map((r) => r.typeId).filter((v): v is number => v !== null)),
-    );
-
-    const [chars, stations, types] = await Promise.all([
-      charIds.length
-        ? this.prisma.eveCharacter.findMany({
-            where: { id: { in: charIds } },
-            select: { id: true, name: true },
-          })
-        : Promise.resolve<Array<{ id: number; name: string }>>([]),
-      stationIds.length
-        ? this.prisma.stationId.findMany({
-            where: { id: { in: stationIds } },
-            select: { id: true, name: true },
-          })
-        : Promise.resolve<Array<{ id: number; name: string }>>([]),
-      typeIds.length
-        ? this.prisma.typeId.findMany({
-            where: { id: { in: typeIds } },
-            select: { id: true, name: true },
-          })
-        : Promise.resolve<Array<{ id: number; name: string }>>([]),
-    ]);
-
-    const charNameById = new Map<number, string>(
-      chars.map((c) => [c.id, c.name] as [number, string]),
-    );
-    const stationNameById = new Map<number, string>(
-      stations.map((s) => [s.id, s.name] as [number, string]),
-    );
-    const typeNameById = new Map<number, string>(
-      types.map((t) => [t.id, t.name] as [number, string]),
-    );
-
+    // CycleLedgerEntry now only stores investor cash flows (deposits, withdrawals, payouts)
+    // No need to resolve character/station/type names
     return rows.map((r) => ({
       id: r.id,
       occurredAt: r.occurredAt,
       entryType: r.entryType,
       amount: r.amount.toString(),
       memo: r.memo ?? null,
-      planCommitId: r.planCommitId ?? null,
-      characterName:
-        r.characterId !== null
-          ? (charNameById.get(r.characterId) ?? null)
-          : null,
-      stationName:
-        r.stationId !== null
-          ? (stationNameById.get(r.stationId) ?? null)
-          : null,
-      typeName: r.typeId !== null ? (typeNameById.get(r.typeId) ?? null) : null,
-      source: r.source,
-      matchStatus: r.matchStatus ?? null,
+      participationId: r.participationId ?? null,
     }));
   }
 
@@ -1425,162 +1290,9 @@ export class LedgerService {
     return { current: currentOut, next: nextOut };
   }
 
-  async getCommitSummaries(cycleId: string): Promise<
-    Array<{
-      id: string;
-      name: string;
-      openedAt: string;
-      closedAt: string | null;
-      totals: {
-        investedISK: number;
-        soldISK: number;
-        estSellISK: number;
-        estFeesISK: number;
-        estProfitISK: number;
-        estReturnPct: number;
-      };
-    }>
-  > {
-    const commits = await this.prisma.planCommit.findMany({
-      where: { cycleId },
-      orderBy: { createdAt: 'asc' },
-      select: { id: true, createdAt: true, closedAt: true, memo: true },
-    });
-    if (!commits.length) return [];
-
-    // Preload lines per commit
-    const commitIds = commits.map((c) => c.id);
-    const lines = await this.prisma.planCommitLine.findMany({
-      where: { commitId: { in: commitIds } },
-      select: {
-        commitId: true,
-        typeId: true,
-        destinationStationId: true,
-        plannedUnits: true,
-        unitCost: true,
-      },
-    });
-    const linesByCommit = new Map<string, typeof lines>();
-    for (const l of lines) {
-      const arr = linesByCommit.get(l.commitId) ?? [];
-      arr.push(l);
-      linesByCommit.set(l.commitId, arr);
-    }
-
-    // Preload ledger entries per commit
-    const ledger = await this.prisma.cycleLedgerEntry.findMany({
-      where: { planCommitId: { in: commitIds } },
-      select: { planCommitId: true, entryType: true, amount: true },
-    });
-    const ledgerByCommit = new Map<string, typeof ledger>();
-    for (const e of ledger) {
-      const arr = ledgerByCommit.get(e.planCommitId ?? '') ?? [];
-      arr.push(e);
-      if (e.planCommitId) ledgerByCommit.set(e.planCommitId, arr);
-    }
-
-    // Helper to get lowest sell at station
-    const stationRegionCache = new Map<number, number | null>();
-    const getRegionForStation = async (
-      stationId: number,
-    ): Promise<number | null> => {
-      if (stationRegionCache.has(stationId))
-        return stationRegionCache.get(stationId)!;
-      const st = await this.prisma.stationId.findUnique({
-        where: { id: stationId },
-        select: { solarSystemId: true },
-      });
-      if (!st) {
-        stationRegionCache.set(stationId, null);
-        return null;
-      }
-      const sys = await this.prisma.solarSystemId.findUnique({
-        where: { id: st.solarSystemId },
-        select: { regionId: true },
-      });
-      const rid = sys?.regionId ?? null;
-      stationRegionCache.set(stationId, rid);
-      return rid;
-    };
-    const getLowestSell = async (
-      stationId: number,
-      typeId: number,
-    ): Promise<number | null> => {
-      const regionId = await getRegionForStation(stationId);
-      if (!regionId) return null;
-      try {
-        const orders = await fetchStationOrders(this.esi, {
-          regionId,
-          typeId,
-          stationId,
-          side: 'sell',
-        });
-        orders.sort((a, b) => a.price - b.price);
-        return orders.length ? orders[0].price : null;
-      } catch {
-        return null;
-      }
-    };
-
-    const out = [] as Array<{
-      id: string;
-      name: string;
-      openedAt: string;
-      closedAt: string | null;
-      totals: {
-        investedISK: number;
-        soldISK: number;
-        estSellISK: number;
-        estFeesISK: number;
-        estProfitISK: number;
-        estReturnPct: number;
-      };
-    }>;
-
-    for (const c of commits) {
-      const lns = linesByCommit.get(c.id) ?? [];
-      const invested = lns.reduce(
-        (s: number, l) =>
-          s +
-          Number((l as { unitCost: unknown }).unitCost) *
-            (l as { plannedUnits: number }).plannedUnits,
-        0,
-      );
-      const led = ledgerByCommit.get(c.id) ?? [];
-      const sold = led
-        .filter((e) => e.entryType === 'execution')
-        .reduce((s, e) => s + Number(e.amount), 0);
-      const fees = led
-        .filter((e) => e.entryType === 'fee')
-        .reduce((s, e) => s + Number(e.amount), 0);
-      // Estimate sell value for remaining items (approx: all planned units)
-      let estSell = 0;
-      for (const l of lns) {
-        const px = await getLowestSell(l.destinationStationId, l.typeId);
-        if (px && px > 0) estSell += px * l.plannedUnits;
-      }
-      const investedNum = Number(invested);
-      const feesNum = Number(fees);
-      const estProfit =
-        Number(sold) + Number(estSell) - (investedNum + feesNum);
-      const estReturn = investedNum > 0 ? estProfit / investedNum : 0;
-      out.push({
-        id: c.id,
-        name: c.memo ?? `Commit ${c.createdAt.toISOString().slice(0, 10)}`,
-        openedAt: c.createdAt.toISOString(),
-        closedAt: c.closedAt ? c.closedAt.toISOString() : null,
-        totals: {
-          investedISK: Number(investedNum.toFixed(2)),
-          soldISK: Number(sold.toFixed(2)),
-          estSellISK: Number(estSell.toFixed(2)),
-          estFeesISK: Number(fees.toFixed(2)),
-          estProfitISK: Number(estProfit.toFixed(2)),
-          estReturnPct: Number(estReturn.toFixed(6)),
-        },
-      });
-    }
-
-    return out;
+  async getCommitSummaries(cycleId: string) {
+    // Return cycle line summaries instead of commit summaries
+    return await this.listCycleLines(cycleId);
   }
 
   async getMyParticipation(cycleId: string, userId: string) {
@@ -1704,16 +1416,24 @@ export class LedgerService {
     }
 
     // 1) Cash: sum wallets for configured characters minus 400M reserve
-    let cashSum = 0;
     const tracked = await this.getTrackedCharacterIds();
-    for (const cid of tracked) {
-      try {
-        const bal = await this.esiChars.getWallet(cid);
-        cashSum += bal;
-      } catch (e) {
-        this.logger.warn(`Wallet fetch failed for ${cid}: ${String(e)}`);
+
+    // Fetch all wallets in parallel
+    const walletResults = await Promise.allSettled(
+      tracked.map((cid) => this.esiChars.getWallet(cid)),
+    );
+
+    let cashSum = 0;
+    walletResults.forEach((result, idx) => {
+      if (result.status === 'fulfilled') {
+        cashSum += result.value;
+      } else {
+        this.logger.warn(
+          `Wallet fetch failed for ${tracked[idx]}: ${String(result.reason)}`,
+        );
       }
-    }
+    });
+
     const reserve = 100_000_000 * tracked.length;
     const cash = Math.max(0, cashSum - reserve);
 
@@ -1750,17 +1470,24 @@ export class LedgerService {
       byTypeStation.set(k, pos);
     }
 
-    // Query our active sell orders to capture on-market items
+    // Query our active sell orders and assets in parallel
+    const chars = await this.getTrackedCharacterIds();
+
+    // Fetch all orders and assets in parallel
+    const [ordersResults, assetsResults] = await Promise.all([
+      Promise.allSettled(chars.map((cid) => this.esiChars.getOrders(cid))),
+      Promise.allSettled(chars.map((cid) => this.esiChars.getAssets(cid))),
+    ]);
+
+    // Process orders
     const ourSellOrders: Array<{
       typeId: number;
       stationId: number;
       remaining: number;
     }> = [];
-    const chars = await this.getTrackedCharacterIds();
-    for (const cid of chars) {
-      try {
-        const orders = await this.esiChars.getOrders(cid);
-        for (const o of orders) {
+    ordersResults.forEach((result, idx) => {
+      if (result.status === 'fulfilled') {
+        for (const o of result.value) {
           if (!o.is_buy_order) {
             ourSellOrders.push({
               typeId: o.type_id,
@@ -1769,27 +1496,30 @@ export class LedgerService {
             });
           }
         }
-      } catch (e) {
-        this.logger.warn(`Orders fetch failed for ${cid}: ${String(e)}`);
+      } else {
+        this.logger.warn(
+          `Orders fetch failed for ${chars[idx]}: ${String(result.reason)}`,
+        );
       }
-    }
+    });
 
-    // Query assets for the same characters (items on market won't appear here)
+    // Process assets
     const assetsByStationType = new Map<string, number>();
-    for (const cid of chars) {
-      try {
-        const assets = await this.esiChars.getAssets(cid);
-        for (const a of assets) {
+    assetsResults.forEach((result, idx) => {
+      if (result.status === 'fulfilled') {
+        for (const a of result.value) {
           const k = key(a.location_id, a.type_id);
           assetsByStationType.set(
             k,
             (assetsByStationType.get(k) ?? 0) + a.quantity,
           );
         }
-      } catch (e) {
-        this.logger.warn(`Assets fetch failed for ${cid}: ${String(e)}`);
+      } else {
+        this.logger.warn(
+          `Assets fetch failed for ${chars[idx]}: ${String(result.reason)}`,
+        );
       }
-    }
+    });
 
     // Merge assets + on-market quantities by station/type
     const qtyByTypeStation = new Map<string, number>();
@@ -1860,24 +1590,66 @@ export class LedgerService {
     };
 
     // Compute inventory value per station
-    let inventoryTotal = 0;
-    const breakdownMap = new Map<number, number>();
+    // First, collect items that need Jita pricing (no cost basis)
+    const itemsNeedingPricing: Array<{
+      key: string;
+      typeId: number;
+      stationId: number;
+      qty: number;
+    }> = [];
+    const itemsWithCostBasis: Array<{
+      stationId: number;
+      unitValue: number;
+      qty: number;
+    }> = [];
+
     for (const [k2, qty] of qtyByTypeStation) {
       const [stationIdStr, typeIdStr] = k2.split(':');
       const stationId = Number(stationIdStr);
       const typeId = Number(typeIdStr);
       const pos = byTypeStation.get(k2);
-      let unitValue: number | null = null;
+
       if (pos && pos.quantity > 0) {
-        unitValue = pos.totalCost / pos.quantity; // weighted average cost
+        // Have cost basis - use immediately
+        const unitValue = pos.totalCost / pos.quantity;
+        itemsWithCostBasis.push({ stationId, unitValue, qty });
       } else {
-        unitValue = await getJitaLowest(typeId);
+        // Need Jita pricing
+        itemsNeedingPricing.push({ key: k2, typeId, stationId, qty });
       }
-      if (!unitValue) continue;
-      const value = unitValue * qty;
-      inventoryTotal += value;
-      breakdownMap.set(stationId, (breakdownMap.get(stationId) ?? 0) + value);
     }
+
+    // Fetch all Jita prices in parallel
+    const jitaPriceResults = await Promise.allSettled(
+      itemsNeedingPricing.map((item) => getJitaLowest(item.typeId)),
+    );
+
+    // Compute totals
+    let inventoryTotal = 0;
+    const breakdownMap = new Map<number, number>();
+
+    // Add items with cost basis
+    for (const item of itemsWithCostBasis) {
+      const value = item.unitValue * item.qty;
+      inventoryTotal += value;
+      breakdownMap.set(
+        item.stationId,
+        (breakdownMap.get(item.stationId) ?? 0) + value,
+      );
+    }
+
+    // Add items with Jita pricing
+    jitaPriceResults.forEach((result, idx) => {
+      if (result.status === 'fulfilled' && result.value) {
+        const item = itemsNeedingPricing[idx];
+        const value = result.value * item.qty;
+        inventoryTotal += value;
+        breakdownMap.set(
+          item.stationId,
+          (breakdownMap.get(item.stationId) ?? 0) + value,
+        );
+      }
+    });
 
     const total = cash + inventoryTotal;
     const pctCash = total > 0 ? (cash / total) * 100 : 0;
@@ -1920,5 +1692,306 @@ export class LedgerService {
     });
 
     return out;
+  }
+
+  // ===== Cycle Lines (Buy Commits) =====
+
+  async createCycleLine(input: {
+    cycleId: string;
+    typeId: number;
+    destinationStationId: number;
+    plannedUnits: number;
+  }) {
+    return await this.prisma.cycleLine.create({
+      data: {
+        cycleId: input.cycleId,
+        typeId: input.typeId,
+        destinationStationId: input.destinationStationId,
+        plannedUnits: input.plannedUnits,
+      },
+    });
+  }
+
+  async listCycleLines(cycleId: string) {
+    const lines = await this.prisma.cycleLine.findMany({
+      where: { cycleId },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    // Enrich with type and station names
+    const typeIds = Array.from(new Set(lines.map((l) => l.typeId)));
+    const stationIds = Array.from(
+      new Set(lines.map((l) => l.destinationStationId)),
+    );
+
+    const [types, stations] = await Promise.all([
+      this.prisma.typeId.findMany({
+        where: { id: { in: typeIds } },
+        select: { id: true, name: true },
+      }),
+      this.prisma.stationId.findMany({
+        where: { id: { in: stationIds } },
+        select: { id: true, name: true },
+      }),
+    ]);
+
+    const typeNameById = new Map(types.map((t) => [t.id, t.name]));
+    const stationNameById = new Map(stations.map((s) => [s.id, s.name]));
+
+    return lines.map((l) => {
+      const unitsBought = l.unitsBought;
+      const unitsSold = l.unitsSold;
+      const unitsRemaining = Math.max(0, unitsBought - unitsSold);
+      const wacUnitCost =
+        unitsBought > 0 ? Number(l.buyCostIsk) / unitsBought : 0;
+      const lineProfitExclTransport =
+        Number(l.salesNetIsk) -
+        Number(l.buyCostIsk) -
+        Number(l.brokerFeesIsk) -
+        Number(l.relistFeesIsk);
+
+      return {
+        ...l,
+        typeName: typeNameById.get(l.typeId) ?? String(l.typeId),
+        destinationStationName:
+          stationNameById.get(l.destinationStationId) ??
+          String(l.destinationStationId),
+        unitsRemaining,
+        wacUnitCost: wacUnitCost.toFixed(2),
+        lineProfitExclTransport: lineProfitExclTransport.toFixed(2),
+        buyCostIsk: l.buyCostIsk.toString(),
+        salesGrossIsk: l.salesGrossIsk.toString(),
+        salesTaxIsk: l.salesTaxIsk.toString(),
+        salesNetIsk: l.salesNetIsk.toString(),
+        brokerFeesIsk: l.brokerFeesIsk.toString(),
+        relistFeesIsk: l.relistFeesIsk.toString(),
+      };
+    });
+  }
+
+  async updateCycleLine(lineId: string, data: { plannedUnits?: number }) {
+    return await this.prisma.cycleLine.update({
+      where: { id: lineId },
+      data,
+    });
+  }
+
+  async deleteCycleLine(lineId: string) {
+    return await this.prisma.cycleLine.delete({
+      where: { id: lineId },
+    });
+  }
+
+  // ===== Fees =====
+
+  async addBrokerFee(input: { lineId: string; amountIsk: string }) {
+    const line = await this.prisma.cycleLine.findUnique({
+      where: { id: input.lineId },
+      select: { brokerFeesIsk: true },
+    });
+    if (!line) throw new Error('Line not found');
+
+    const newTotal = Number(line.brokerFeesIsk) + Number(input.amountIsk);
+    return await this.prisma.cycleLine.update({
+      where: { id: input.lineId },
+      data: { brokerFeesIsk: newTotal.toFixed(2) },
+    });
+  }
+
+  async addRelistFee(input: { lineId: string; amountIsk: string }) {
+    const line = await this.prisma.cycleLine.findUnique({
+      where: { id: input.lineId },
+      select: { relistFeesIsk: true },
+    });
+    if (!line) throw new Error('Line not found');
+
+    const newTotal = Number(line.relistFeesIsk) + Number(input.amountIsk);
+    return await this.prisma.cycleLine.update({
+      where: { id: input.lineId },
+      data: { relistFeesIsk: newTotal.toFixed(2) },
+    });
+  }
+
+  async addTransportFee(input: {
+    cycleId: string;
+    amountIsk: string;
+    memo?: string;
+  }) {
+    return await this.prisma.cycleFeeEvent.create({
+      data: {
+        cycleId: input.cycleId,
+        feeType: 'transport',
+        amountIsk: input.amountIsk,
+        memo: input.memo,
+      },
+    });
+  }
+
+  async listTransportFees(cycleId: string) {
+    return await this.prisma.cycleFeeEvent.findMany({
+      where: { cycleId, feeType: 'transport' },
+      orderBy: { occurredAt: 'desc' },
+    });
+  }
+
+  // ===== Cycle Profit (Cash-only) =====
+
+  async computeCycleProfit(cycleId: string): Promise<{
+    lineProfitExclTransport: string;
+    transportFees: string;
+    cycleProfitCash: string;
+    lineBreakdown: Array<{
+      lineId: string;
+      typeId: number;
+      typeName: string;
+      destinationStationId: number;
+      destinationStationName: string;
+      profit: string;
+    }>;
+  }> {
+    const lines = await this.prisma.cycleLine.findMany({
+      where: { cycleId },
+      select: {
+        id: true,
+        typeId: true,
+        destinationStationId: true,
+        salesNetIsk: true,
+        buyCostIsk: true,
+        brokerFeesIsk: true,
+        relistFeesIsk: true,
+      },
+    });
+
+    const fees = await this.prisma.cycleFeeEvent.findMany({
+      where: { cycleId, feeType: 'transport' },
+      select: { amountIsk: true },
+    });
+
+    let lineProfitTotal = 0;
+    const breakdown: Array<{
+      lineId: string;
+      typeId: number;
+      typeName: string;
+      destinationStationId: number;
+      destinationStationName: string;
+      profit: string;
+    }> = [];
+
+    // Fetch names
+    const typeIds = Array.from(new Set(lines.map((l) => l.typeId)));
+    const stationIds = Array.from(
+      new Set(lines.map((l) => l.destinationStationId)),
+    );
+    const [types, stations] = await Promise.all([
+      this.prisma.typeId.findMany({
+        where: { id: { in: typeIds } },
+        select: { id: true, name: true },
+      }),
+      this.prisma.stationId.findMany({
+        where: { id: { in: stationIds } },
+        select: { id: true, name: true },
+      }),
+    ]);
+    const typeNameById = new Map(types.map((t) => [t.id, t.name]));
+    const stationNameById = new Map(stations.map((s) => [s.id, s.name]));
+
+    for (const line of lines) {
+      const profit =
+        Number(line.salesNetIsk) -
+        Number(line.buyCostIsk) -
+        Number(line.brokerFeesIsk) -
+        Number(line.relistFeesIsk);
+      lineProfitTotal += profit;
+      breakdown.push({
+        lineId: line.id,
+        typeId: line.typeId,
+        typeName: typeNameById.get(line.typeId) ?? String(line.typeId),
+        destinationStationId: line.destinationStationId,
+        destinationStationName:
+          stationNameById.get(line.destinationStationId) ??
+          String(line.destinationStationId),
+        profit: profit.toFixed(2),
+      });
+    }
+
+    const transportTotal = fees.reduce(
+      (sum, f) => sum + Number(f.amountIsk),
+      0,
+    );
+    const cycleProfitCash = lineProfitTotal - transportTotal;
+
+    return {
+      lineProfitExclTransport: lineProfitTotal.toFixed(2),
+      transportFees: transportTotal.toFixed(2),
+      cycleProfitCash: cycleProfitCash.toFixed(2),
+      lineBreakdown: breakdown,
+    };
+  }
+
+  // ===== Cycle Snapshots =====
+
+  async createCycleSnapshot(cycleId: string): Promise<{
+    walletCashIsk: string;
+    inventoryIsk: string;
+    cycleProfitIsk: string;
+  }> {
+    // Get wallet cash for SELLER characters
+    const tracked = await this.getTrackedCharacterIds();
+    const walletResults = await Promise.allSettled(
+      tracked.map((cid) => this.esiChars.getWallet(cid)),
+    );
+    let cashSum = 0;
+    walletResults.forEach((result, idx) => {
+      if (result.status === 'fulfilled') {
+        cashSum += result.value;
+      } else {
+        this.logger.warn(
+          `Wallet fetch failed for ${tracked[idx]}: ${String(result.reason)}`,
+        );
+      }
+    });
+    const reserve = Number(process.env.WALLET_RESERVE_PER_CHAR ?? 100_000_000);
+    const walletCash = Math.max(0, cashSum - reserve * tracked.length);
+
+    // Compute inventory from cycle lines (no ESI needed)
+    const lines = await this.prisma.cycleLine.findMany({
+      where: { cycleId },
+      select: { unitsBought: true, unitsSold: true, buyCostIsk: true },
+    });
+    let inventoryTotal = 0;
+    for (const line of lines) {
+      const unitsRemaining = Math.max(0, line.unitsBought - line.unitsSold);
+      if (unitsRemaining > 0 && line.unitsBought > 0) {
+        const wac = Number(line.buyCostIsk) / line.unitsBought;
+        inventoryTotal += wac * unitsRemaining;
+      }
+    }
+
+    // Compute cycle profit
+    const profit = await this.computeCycleProfit(cycleId);
+
+    // Store snapshot
+    await this.prisma.cycleSnapshot.create({
+      data: {
+        cycleId,
+        snapshotAt: new Date(),
+        walletCashIsk: walletCash.toFixed(2),
+        inventoryIsk: inventoryTotal.toFixed(2),
+        cycleProfitIsk: profit.cycleProfitCash,
+      },
+    });
+
+    return {
+      walletCashIsk: walletCash.toFixed(2),
+      inventoryIsk: inventoryTotal.toFixed(2),
+      cycleProfitIsk: profit.cycleProfitCash,
+    };
+  }
+
+  async getCycleSnapshots(cycleId: string) {
+    return await this.prisma.cycleSnapshot.findMany({
+      where: { cycleId },
+      orderBy: { snapshotAt: 'asc' },
+    });
   }
 }

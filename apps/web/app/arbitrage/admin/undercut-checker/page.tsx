@@ -33,7 +33,7 @@ export default function UndercutCheckerPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [useCommit, setUseCommit] = useState<boolean>(true);
-  const [commitId, setCommitId] = useState<string>("");
+  const [cycleId, setCycleId] = useState<string>("");
   const [selected, setSelected] = useState<Record<string, boolean>>({});
   const RELIST_PCT = Number(process.env.NEXT_PUBLIC_BROKER_RELIST_PCT ?? 0.3);
 
@@ -56,23 +56,29 @@ export default function UndercutCheckerPage() {
   }, []);
 
   useEffect(() => {
-    const fetchLatestCommit = async () => {
+    const fetchLatestCycle = async () => {
       try {
         const resp = await fetch("/api/arbitrage/commits?limit=1");
         if (!resp.ok) return;
         const rows: Array<{
           id: string;
           createdAt: string;
-          memo?: string | null;
+          name?: string | null;
+          closedAt?: Date | null;
         }> = await resp.json();
-        if (Array.isArray(rows) && rows.length > 0) {
-          setCommitId(rows[0].id);
+        // Get the first open cycle (not closed)
+        const openCycle = rows.find((r) => !r.closedAt);
+        if (openCycle) {
+          setCycleId(openCycle.id);
+        } else if (rows.length > 0) {
+          // Fallback to most recent cycle if no open one
+          setCycleId(rows[0].id);
         }
       } catch {
         // ignore
       }
     };
-    if (useCommit) fetchLatestCommit();
+    if (useCommit) fetchLatestCycle();
   }, [useCommit]);
 
   const onRun = async () => {
@@ -80,15 +86,20 @@ export default function UndercutCheckerPage() {
     setError(null);
     setResult(null);
     try {
-      let cid = commitId;
+      let cid = cycleId;
       if (useCommit && !cid) {
         try {
           const respLatest = await fetch("/api/arbitrage/commits?limit=1");
           if (respLatest.ok) {
-            const rows: Array<{ id: string }> = await respLatest.json();
-            if (Array.isArray(rows) && rows.length > 0) {
+            const rows: Array<{ id: string; closedAt?: Date | null }> =
+              await respLatest.json();
+            const openCycle = rows.find((r) => !r.closedAt);
+            if (openCycle) {
+              cid = openCycle.id;
+              setCycleId(cid);
+            } else if (rows.length > 0) {
               cid = rows[0].id;
-              setCommitId(cid);
+              setCycleId(cid);
             }
           }
         } catch {
@@ -104,7 +115,7 @@ export default function UndercutCheckerPage() {
             : selectedStations.length
               ? selectedStations
               : undefined,
-          planCommitId: useCommit ? cid || undefined : undefined,
+          cycleId: useCommit ? cid || undefined : undefined,
         }),
       });
       if (!resp.ok) throw new Error(await resp.text());
@@ -126,39 +137,78 @@ export default function UndercutCheckerPage() {
     setSelected((prev) => ({ ...prev, [key]: !prev[key] }));
 
   const onConfirmReprice = async () => {
-    const updates: Array<{
-      orderId: number;
-      typeId: number;
-      remaining: number;
-      newUnitPrice: number;
-    }> = [];
-    for (const g of result ?? []) {
+    if (!cycleId || !result) return;
+
+    // Need to get cycle lines to match typeIds to lineIds
+    let cycleLines;
+    try {
+      const resp = await fetch(`/api/ledger/cycles/${cycleId}/lines`);
+      if (!resp.ok) {
+        throw new Error(`Failed to fetch cycle lines: ${resp.statusText}`);
+      }
+      cycleLines = await resp.json();
+    } catch (e) {
+      setError(
+        `Failed to fetch cycle lines: ${e instanceof Error ? e.message : String(e)}`,
+      );
+      return;
+    }
+
+    const errors: string[] = [];
+    const promises: Promise<void>[] = [];
+
+    for (const g of result) {
       for (const u of g.updates) {
         const key = `${g.characterId}:${g.stationId}:${u.orderId}`;
-        if (selected[key]) {
-          updates.push({
-            orderId: u.orderId,
-            typeId: u.typeId,
-            remaining: u.remaining,
-            newUnitPrice: u.suggestedNewPriceTicked,
-          });
+        if (!selected[key]) continue;
+
+        // Find matching cycle line by typeId and stationId
+        const line = cycleLines.find(
+          (l) =>
+            Number(l.typeId) === Number(u.typeId) &&
+            Number(l.destinationStationId) === Number(g.stationId),
+        );
+
+        if (!line) {
+          errors.push(
+            `Could not find cycle line for ${u.itemName} (typeId: ${u.typeId}, stationId: ${g.stationId})`,
+          );
+          continue;
         }
+
+        // Execute all API calls in parallel
+        promises.push(
+          fetch("/api/pricing/confirm-reprice", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              lineId: line.id,
+              quantity: u.remaining,
+              newUnitPrice: u.suggestedNewPriceTicked,
+            }),
+          })
+            .then(async (resp) => {
+              if (!resp.ok) {
+                errors.push(`${u.itemName}: ${await resp.text()}`);
+              }
+            })
+            .catch((e) => {
+              errors.push(
+                `${u.itemName}: ${e instanceof Error ? e.message : String(e)}`,
+              );
+            }),
+        );
       }
     }
-    if (!commitId || !updates.length) return;
-    const resp = await fetch("/api/pricing/confirm-reprice", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        planCommitId: commitId,
-        characterId: 0,
-        stationId: 0,
-        updates,
-      }),
-    });
-    if (!resp.ok) {
-      const txt = await resp.text();
-      setError(txt || "Confirm failed");
+
+    // Wait for all requests to complete
+    await Promise.all(promises);
+
+    if (errors.length) {
+      setError(errors.join("\n"));
+    } else {
+      setError(null);
+      alert("Relist fees recorded successfully!");
     }
   };
 
@@ -173,22 +223,22 @@ export default function UndercutCheckerPage() {
             checked={useCommit}
             onChange={(e) => setUseCommit(e.target.checked)}
           />
-          <Label htmlFor="use-commit">Use latest open commit</Label>
+          <Label htmlFor="use-commit">Use latest open cycle</Label>
         </div>
         {!useCommit && (
           <div className="space-y-2">
-            <Label>Commit Id</Label>
+            <Label>Cycle Id</Label>
             <input
               className="border rounded p-2 w-full bg-background text-foreground"
-              value={commitId}
-              onChange={(e) => setCommitId(e.target.value)}
-              placeholder="planCommitId"
+              value={cycleId}
+              onChange={(e) => setCycleId(e.target.value)}
+              placeholder="cycleId"
             />
           </div>
         )}
-        {useCommit && commitId && (
+        {useCommit && cycleId && (
           <div className="text-sm text-muted-foreground">
-            Using commit {commitId.slice(0, 8)}…
+            Using cycle {cycleId.slice(0, 8)}…
           </div>
         )}
       </div>
@@ -222,7 +272,7 @@ export default function UndercutCheckerPage() {
         </div>
       )}
       <div>
-        <Button onClick={onRun} disabled={loading || (useCommit && !commitId)}>
+        <Button onClick={onRun} disabled={loading || (useCommit && !cycleId)}>
           {loading ? "Checking..." : "Run Check"}
         </Button>
       </div>
@@ -352,7 +402,7 @@ export default function UndercutCheckerPage() {
           <div>
             <Button
               onClick={onConfirmReprice}
-              disabled={!useCommit || !commitId}
+              disabled={!useCommit || !cycleId}
             >
               Confirm Repriced
             </Button>

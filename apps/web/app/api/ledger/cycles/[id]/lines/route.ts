@@ -4,7 +4,10 @@ import { authOptions } from "@/lib/auth";
 
 const API_BASE = process.env.API_URL || "http://localhost:3000";
 
-export async function POST(req: NextRequest) {
+export async function GET(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
   try {
     const session = await getServerSession(authOptions);
 
@@ -12,28 +15,25 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
-    const body = await req.json();
-    const resp = await fetch(`${API_BASE}/pricing/confirm-listing`, {
-      method: "POST",
+    const { id } = await params;
+    const res = await fetch(`${API_BASE}/ledger/cycles/${id}/lines`, {
+      cache: "no-store",
       headers: {
-        "Content-Type": "application/json",
         Authorization: `Bearer ${session.accessToken}`,
       },
-      body: JSON.stringify(body),
-      cache: "no-store",
     });
 
-    if (!resp.ok) {
-      const error = await resp.json().catch(() => ({ error: "Unknown error" }));
-      return NextResponse.json(error, { status: resp.status });
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({ error: "Unknown error" }));
+      return NextResponse.json(error, { status: res.status });
     }
 
-    const data = await resp.json();
+    const data = await res.json();
     return NextResponse.json(data);
   } catch (err) {
     return NextResponse.json(
       {
-        error: "Failed to confirm listing",
+        error: "Failed to fetch cycle lines",
         details: err instanceof Error ? err.message : String(err),
       },
       { status: 500 },

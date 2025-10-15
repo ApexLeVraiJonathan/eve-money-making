@@ -3,7 +3,7 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { ImportService } from '../import/import.service';
 import { WalletService } from '../wallet/wallet.service';
-import { ReconciliationService } from '../reconciliation/reconciliation.service';
+import { AllocationService } from '../reconciliation/allocation.service';
 import { LedgerService } from '../ledger/ledger.service';
 import { EsiTokenService } from '../auth/esi-token.service';
 
@@ -14,7 +14,7 @@ export class JobsService {
     private readonly logger: Logger,
     private readonly imports: ImportService,
     private readonly wallets: WalletService,
-    private readonly recon: ReconciliationService,
+    private readonly allocation: AllocationService,
     private readonly ledger: LedgerService,
     private readonly esiToken: EsiTokenService,
   ) {}
@@ -67,19 +67,56 @@ export class JobsService {
     }
   }
 
+  /**
+   * Core wallet import and allocation logic (no jobs-enabled check).
+   * Can be called manually via API or from scheduled job.
+   */
+  async executeWalletImportsAndAllocation(): Promise<{
+    buysAllocated: number;
+    sellsAllocated: number;
+  }> {
+    await this.wallets.importAllLinked();
+    const result = await this.allocation.allocateAll();
+    this.logger.log(
+      `Wallets import and allocation completed: buys=${result.buysAllocated}, sells=${result.sellsAllocated}`,
+    );
+
+    // Create snapshots for open cycles
+    await this.snapshotOpenCycles();
+
+    return result;
+  }
+
   @Cron(CronExpression.EVERY_HOUR)
-  async runWalletImportsAndReconcile(): Promise<void> {
+  async runWalletImportsAndAllocation(): Promise<void> {
     if (!this.jobsEnabled() || !this.jobFlag('JOB_WALLETS_ENABLED', true)) {
-      this.logger.debug('Skipping wallets import/reconcile (jobs disabled)');
+      this.logger.debug('Skipping wallets import/allocation (jobs disabled)');
       return;
     }
     try {
-      await this.wallets.importAllLinked();
-      await this.recon.reconcileFromWalletStrict(null);
-      this.logger.log('Hourly wallets import and reconcile completed');
+      await this.executeWalletImportsAndAllocation();
     } catch (e) {
       this.logger.warn(
-        `Hourly wallets/reconcile failed: ${e instanceof Error ? e.message : String(e)}`,
+        `Hourly wallets/allocation failed: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
+  }
+
+  private async snapshotOpenCycles(): Promise<void> {
+    try {
+      const openCycles = await this.prisma.cycle.findMany({
+        where: { closedAt: null },
+        select: { id: true },
+      });
+      for (const c of openCycles) {
+        await this.ledger.createCycleSnapshot(c.id);
+      }
+      this.logger.log(
+        `Cycle snapshots created for ${openCycles.length} open cycles`,
+      );
+    } catch (e) {
+      this.logger.warn(
+        `Snapshot creation failed: ${e instanceof Error ? e.message : String(e)}`,
       );
     }
   }

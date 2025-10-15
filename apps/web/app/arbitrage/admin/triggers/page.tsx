@@ -26,6 +26,8 @@ import {
   Wrench,
   RefreshCw,
   Shield,
+  DollarSign,
+  FileCheck,
 } from "lucide-react";
 
 type TriggerState = {
@@ -273,7 +275,7 @@ export default function TriggersPage() {
       </div>
 
       <Tabs defaultValue="imports" className="space-y-6">
-        <TabsList className="grid w-full max-w-2xl grid-cols-3">
+        <TabsList className="grid w-full max-w-2xl grid-cols-4">
           <TabsTrigger value="imports" className="gap-2">
             <Database className="h-4 w-4" />
             Data Imports
@@ -281,6 +283,10 @@ export default function TriggersPage() {
           <TabsTrigger value="participations" className="gap-2">
             <PlayCircle className="h-4 w-4" />
             Participations
+          </TabsTrigger>
+          <TabsTrigger value="financial" className="gap-2">
+            <DollarSign className="h-4 w-4" />
+            Financial
           </TabsTrigger>
           <TabsTrigger value="system-cleanup" className="gap-2">
             <Wrench className="h-4 w-4" />
@@ -888,6 +894,153 @@ export default function TriggersPage() {
                   )}
                 </div>
               )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Financial Tab */}
+        <TabsContent value="financial" className="space-y-6">
+          {/* Wallet Import + Reconciliation */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <RefreshCw className="h-5 w-5" />
+                Wallet Import + Reconciliation
+              </CardTitle>
+              <CardDescription>
+                Import wallet transactions for all LOGISTICS characters and
+                automatically reconcile them with commit lines in the ledger
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="rounded-lg border bg-blue-500/10 p-4 space-y-2">
+                <h3 className="text-sm font-medium">💡 What this does</h3>
+                <ul className="text-sm text-muted-foreground space-y-1 list-disc list-inside">
+                  <li>Fetches latest wallet transactions from EVE ESI</li>
+                  <li>
+                    Matches transactions to commit lines (buy/sell orders)
+                  </li>
+                  <li>Creates ledger entries for matched transactions</li>
+                  <li>Helps track capital flow and commit execution status</li>
+                </ul>
+              </div>
+
+              <Button
+                onClick={async () => {
+                  setLoading((prev) => ({ ...prev, ["wallet-recon"]: true }));
+                  try {
+                    const res = await fetch("/api/jobs/wallets/run", {
+                      method: "POST",
+                    });
+                    if (!res.ok) {
+                      const error = await res
+                        .json()
+                        .catch(() => ({ error: "Unknown error" }));
+                      throw new Error(error.error || res.statusText);
+                    }
+                    await res.json();
+                    toast.success(
+                      "Wallet import and reconciliation completed successfully",
+                    );
+                  } catch (error) {
+                    const errorMessage =
+                      error instanceof Error
+                        ? error.message
+                        : "Failed to run wallet import and reconciliation";
+                    toast.error(errorMessage);
+                  } finally {
+                    setLoading((prev) => ({
+                      ...prev,
+                      ["wallet-recon"]: false,
+                    }));
+                  }
+                }}
+                disabled={loading["wallet-recon"]}
+                className="w-full"
+              >
+                {loading["wallet-recon"] ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Running...
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="mr-2 h-4 w-4" />
+                    Run Wallet Import + Reconciliation
+                  </>
+                )}
+              </Button>
+            </CardContent>
+          </Card>
+
+          {/* Standalone Reconciliation */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <FileCheck className="h-5 w-5" />
+                Reconciliation Only
+              </CardTitle>
+              <CardDescription>
+                Run reconciliation on existing wallet transactions without
+                re-importing from ESI
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="rounded-lg border bg-amber-500/10 p-4 space-y-2">
+                <h3 className="text-sm font-medium">📝 Note</h3>
+                <p className="text-sm text-muted-foreground">
+                  Use this if wallet transactions are already imported and you
+                  just want to re-run the matching logic to ledger entries.
+                  Useful after fixing data issues or updating commit lines.
+                </p>
+              </div>
+
+              <Button
+                onClick={async () => {
+                  setLoading((prev) => ({ ...prev, ["reconcile-only"]: true }));
+                  try {
+                    const res = await fetch("/api/recon/reconcile", {
+                      method: "POST",
+                    });
+                    if (!res.ok) {
+                      const error = await res
+                        .json()
+                        .catch(() => ({ error: "Unknown error" }));
+                      throw new Error(error.error || res.statusText);
+                    }
+                    const data = await res.json();
+                    toast.success(
+                      `Reconciliation completed: ${data.created || 0} ledger entries created`,
+                    );
+                  } catch (error) {
+                    const errorMessage =
+                      error instanceof Error
+                        ? error.message
+                        : "Failed to run reconciliation";
+                    toast.error(errorMessage);
+                  } finally {
+                    setLoading((prev) => ({
+                      ...prev,
+                      ["reconcile-only"]: false,
+                    }));
+                  }
+                }}
+                disabled={loading["reconcile-only"]}
+                variant="secondary"
+                className="w-full"
+              >
+                {loading["reconcile-only"] ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Reconciling...
+                  </>
+                ) : (
+                  <>
+                    <FileCheck className="mr-2 h-4 w-4" />
+                    Run Reconciliation Only
+                  </>
+                )}
+              </Button>
             </CardContent>
           </Card>
         </TabsContent>

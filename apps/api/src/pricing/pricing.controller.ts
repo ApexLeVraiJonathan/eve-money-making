@@ -18,46 +18,27 @@ export const UndercutCheckSchema = z.object({
   characterIds: z.array(z.number().int().positive()).optional(),
   // If provided, limit to these station IDs; otherwise use tracked stations
   stationIds: z.array(z.number().int().positive()).optional(),
-  // Optional commit filter
-  planCommitId: z.string().uuid().optional(),
+  // Optional cycle filter (replaces planCommitId)
+  cycleId: z.string().uuid().optional(),
 });
 export type UndercutCheckRequest = z.infer<typeof UndercutCheckSchema>;
 
 export const ConfirmListingSchema = z.object({
-  planCommitId: z.string().uuid(),
-  characterId: z.number().int().positive(),
-  stationId: z.number().int().positive(),
-  items: z
-    .array(
-      z.object({
-        typeId: z.number().int().positive(),
-        quantity: z.number().int().min(1),
-        unitPrice: z.number().positive(),
-      }),
-    )
-    .min(1),
+  lineId: z.string().uuid(),
+  quantity: z.number().int().min(1),
+  unitPrice: z.number().positive(),
 });
 export type ConfirmListingRequest = z.infer<typeof ConfirmListingSchema>;
 
 export const ConfirmRepriceSchema = z.object({
-  planCommitId: z.string().uuid(),
-  characterId: z.number().int().positive(),
-  stationId: z.number().int().positive(),
-  updates: z
-    .array(
-      z.object({
-        orderId: z.number().int().positive(),
-        typeId: z.number().int().positive(),
-        remaining: z.number().int().min(0),
-        newUnitPrice: z.number().positive(),
-      }),
-    )
-    .min(1),
+  lineId: z.string().uuid(),
+  quantity: z.number().int().min(0),
+  newUnitPrice: z.number().positive(),
 });
 export type ConfirmRepriceRequest = z.infer<typeof ConfirmRepriceSchema>;
 
 export const SellAppraiseByCommitSchema = z.object({
-  planCommitId: z.string().uuid(),
+  cycleId: z.string().uuid(),
 });
 export type SellAppraiseByCommitRequest = z.infer<
   typeof SellAppraiseByCommitSchema

@@ -7,6 +7,8 @@ import {
   Post,
   Query,
   UsePipes,
+  Patch,
+  Delete,
 } from '@nestjs/common';
 import { LedgerService } from './ledger.service';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
@@ -329,5 +331,133 @@ export class LedgerController {
       cycleId,
       body.profitSharePct ?? 0.5,
     );
+  }
+
+  // ===== Cycle Lines (Buy Commits) =====
+
+  @Post('cycles/:cycleId/lines')
+  @Roles('ADMIN')
+  @UsePipes(
+    new ZodValidationPipe(
+      z
+        .object({
+          typeId: z.number().int(),
+          destinationStationId: z.number().int(),
+          plannedUnits: z.number().int().min(1),
+        })
+        .strict(),
+    ),
+  )
+  async createCycleLine(
+    @Param('cycleId') cycleId: string,
+    @Body()
+    body: {
+      typeId: number;
+      destinationStationId: number;
+      plannedUnits: number;
+    },
+  ): Promise<unknown> {
+    return await this.ledger.createCycleLine({
+      cycleId,
+      ...body,
+    });
+  }
+
+  @Get('cycles/:cycleId/lines')
+  async listCycleLines(@Param('cycleId') cycleId: string): Promise<unknown> {
+    return await this.ledger.listCycleLines(cycleId);
+  }
+
+  @Patch('lines/:lineId')
+  @Roles('ADMIN')
+  @UsePipes(
+    new ZodValidationPipe(
+      z.object({ plannedUnits: z.number().int().min(1).optional() }).strict(),
+    ),
+  )
+  async updateCycleLine(
+    @Param('lineId') lineId: string,
+    @Body() body: { plannedUnits?: number },
+  ): Promise<unknown> {
+    return await this.ledger.updateCycleLine(lineId, body);
+  }
+
+  @Delete('lines/:lineId')
+  @Roles('ADMIN')
+  async deleteCycleLine(@Param('lineId') lineId: string): Promise<unknown> {
+    return await this.ledger.deleteCycleLine(lineId);
+  }
+
+  // ===== Fees =====
+
+  @Post('lines/:lineId/broker-fee')
+  @Roles('ADMIN')
+  @UsePipes(
+    new ZodValidationPipe(
+      z.object({ amountIsk: z.string().regex(/^\d+\.\d{2}$/) }).strict(),
+    ),
+  )
+  async addBrokerFee(
+    @Param('lineId') lineId: string,
+    @Body() body: { amountIsk: string },
+  ): Promise<unknown> {
+    return await this.ledger.addBrokerFee({ lineId, ...body });
+  }
+
+  @Post('lines/:lineId/relist-fee')
+  @Roles('ADMIN')
+  @UsePipes(
+    new ZodValidationPipe(
+      z.object({ amountIsk: z.string().regex(/^\d+\.\d{2}$/) }).strict(),
+    ),
+  )
+  async addRelistFee(
+    @Param('lineId') lineId: string,
+    @Body() body: { amountIsk: string },
+  ): Promise<unknown> {
+    return await this.ledger.addRelistFee({ lineId, ...body });
+  }
+
+  @Post('cycles/:cycleId/transport-fee')
+  @Roles('ADMIN')
+  @UsePipes(
+    new ZodValidationPipe(
+      z
+        .object({
+          amountIsk: z.string().regex(/^\d+\.\d{2}$/),
+          memo: z.string().optional(),
+        })
+        .strict(),
+    ),
+  )
+  async addTransportFee(
+    @Param('cycleId') cycleId: string,
+    @Body() body: { amountIsk: string; memo?: string },
+  ): Promise<unknown> {
+    return await this.ledger.addTransportFee({ cycleId, ...body });
+  }
+
+  @Get('cycles/:cycleId/transport-fees')
+  @Roles('ADMIN')
+  async listTransportFees(@Param('cycleId') cycleId: string): Promise<unknown> {
+    return await this.ledger.listTransportFees(cycleId);
+  }
+
+  // ===== Cycle Profit & Snapshots =====
+
+  @Get('cycles/:cycleId/profit')
+  async getCycleProfit(@Param('cycleId') cycleId: string): Promise<unknown> {
+    return await this.ledger.computeCycleProfit(cycleId);
+  }
+
+  @Post('cycles/:cycleId/snapshot')
+  @Roles('ADMIN')
+  async createSnapshot(@Param('cycleId') cycleId: string): Promise<unknown> {
+    return await this.ledger.createCycleSnapshot(cycleId);
+  }
+
+  @Get('cycles/:cycleId/snapshots')
+  async getSnapshots(@Param('cycleId') cycleId: string): Promise<unknown> {
+    return await this.ledger.getCycleSnapshots(cycleId);
   }
 }

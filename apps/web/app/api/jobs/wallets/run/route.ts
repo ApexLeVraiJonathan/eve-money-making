@@ -1,26 +1,18 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 
 const API_BASE = process.env.API_URL || "http://localhost:3000";
 
-export async function POST(req: NextRequest) {
+export async function POST() {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.accessToken) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Get optional cycleId from query params
-    const { searchParams } = new URL(req.url);
-    const cycleId = searchParams.get("cycleId");
-
-    const url = cycleId
-      ? `${API_BASE}/recon/reconcile?cycleId=${cycleId}`
-      : `${API_BASE}/recon/reconcile`;
-
-    const res = await fetch(url, {
-      method: "POST",
+    const res = await fetch(`${API_BASE}/jobs/wallets/run`, {
+      method: "GET",
       headers: {
         Authorization: `Bearer ${session.accessToken}`,
       },
@@ -35,7 +27,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(data);
   } catch (err) {
     return NextResponse.json(
-      { error: "Failed to run reconciliation", details: `${err}` },
+      {
+        error: "Failed to run wallet import and reconciliation",
+        details: `${err}`,
+      },
       { status: 500 },
     );
   }

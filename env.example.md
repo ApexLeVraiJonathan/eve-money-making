@@ -121,3 +121,14 @@ Notes:
 - JOB_WALLETS_ENABLED: Enable hourly wallet import + reconciliation (default true).
 - JOB_CAPITAL_ENABLED: Enable hourly capital recompute for open cycles (default true).
 - JOB_SYSTEM_TOKENS_ENABLED: Enable monthly refresh of SYSTEM character tokens (default true).
+
+### Cycle Accounting
+
+- DEFAULT_SALES_TAX_PCT: Sales tax percentage (default 3.37).
+  - `DEFAULT_SALES_TAX_PCT=3.37`
+- DEFAULT_BROKER_FEE_PCT: Broker fee percentage (default 1.5).
+  - `DEFAULT_BROKER_FEE_PCT=1.5`
+- DEFAULT_RELIST_FEE_PCT: Relist fee percentage (default 0.3).
+  - `DEFAULT_RELIST_FEE_PCT=0.3`
+- WALLET_RESERVE_PER_CHAR: ISK to reserve per character when calculating available capital (default 100000000 = 100M ISK).
+  - `WALLET_RESERVE_PER_CHAR=100000000`

@@ -1,9 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -164,13 +158,13 @@ model EsiCacheEntry {
 
 /// Users of the application (can be single owner for now)
 model User {
-  id        String   @id @default(uuid()) @map("id")
-  email     String?  @unique @map("email")
-  role      String   @default("USER") @map("role")
-  primaryCharacterId Int?    @unique @map("primary_character_id")
+  id                 String        @id @default(uuid()) @map("id")
+  email              String?       @unique @map("email")
+  role               String        @default("USER") @map("role")
+  primaryCharacterId Int?          @unique @map("primary_character_id")
   primaryCharacter   EveCharacter? @relation("UserPrimaryCharacter", fields: [primaryCharacterId], references: [id], onDelete: SetNull)
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  createdAt          DateTime      @default(now()) @map("created_at")
+  updatedAt          DateTime      @updatedAt @map("updated_at")
 
   characters EveCharacter[] @relation("UserCharacters")
 
@@ -179,19 +173,19 @@ model User {
 
 /// Linked EVE characters
 model EveCharacter {
-  id        Int      @id @map("character_id")
-  name      String   @map("character_name")
-  ownerHash String   @map("owner_hash")
-  userId    String?  @map("user_id")
-  user      User?    @relation("UserCharacters", fields: [userId], references: [id], onDelete: SetNull)
-  userAsPrimaryFor User? @relation("UserPrimaryCharacter")
-  role      CharacterRole      @default(USER) @map("role")
-  function  CharacterFunction? @map("function")
-  location  CharacterLocation? @map("location")
-  managedBy CharacterManagedBy @default(USER) @map("managed_by")
-  notes     String?            @map("notes")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  id               Int                @id @map("character_id")
+  name             String             @map("character_name")
+  ownerHash        String             @map("owner_hash")
+  userId           String?            @map("user_id")
+  user             User?              @relation("UserCharacters", fields: [userId], references: [id], onDelete: SetNull)
+  userAsPrimaryFor User?              @relation("UserPrimaryCharacter")
+  role             CharacterRole      @default(USER) @map("role")
+  function         CharacterFunction? @map("function")
+  location         CharacterLocation? @map("location")
+  managedBy        CharacterManagedBy @default(USER) @map("managed_by")
+  notes            String?            @map("notes")
+  createdAt        DateTime           @default(now()) @map("created_at")
+  updatedAt        DateTime           @updatedAt @map("updated_at")
 
   token CharacterToken?
 
@@ -219,25 +213,6 @@ model CharacterToken {
   @@map("character_tokens")
 }
 
-/// Snapshot of a planned execution (request + result) for later reconciliation
-model PlanCommit {
-  id               String             @id @default(uuid()) @map("id")
-  request          Json               @map("request")
-  result           Json               @map("result")
-  memo             String?            @map("memo")
-  closedAt         DateTime?          @map("closed_at")
-  createdAt        DateTime           @default(now()) @map("created_at")
-  updatedAt        DateTime           @updatedAt @map("updated_at")
-  /// Optional link to the investment cycle this commit belongs to
-  cycleId          String?            @map("cycle_id")
-  cycle            Cycle?             @relation(fields: [cycleId], references: [id], onDelete: Cascade)
-  CycleLedgerEntry CycleLedgerEntry[]
-  PlanCommitLine   PlanCommitLine[]
-
-  @@map("plan_commits")
-  @@index([cycleId])
-}
-
 /// Investment cycles for grouping commits and cash flows
 model Cycle {
   id        String    @id @default(uuid()) @map("id")
@@ -255,7 +230,9 @@ model Cycle {
   ledgerEntries     CycleLedgerEntry[]
   CycleCapitalCache CycleCapitalCache[]
   participations    CycleParticipation[]
-  planCommits       PlanCommit[]
+  cycleLines        CycleLine[]
+  cycleFeeEvents    CycleFeeEvent[]
+  cycleSnapshots    CycleSnapshot[]
 
   @@map("cycles")
 }
@@ -273,24 +250,16 @@ model CycleCapitalCache {
   @@map("cycle_capital_cache")
 }
 
-/// Ledger entries (deposits, withdrawals, executions, fees) for a cycle
+/// Ledger entries for investor cash flows ONLY (deposits, withdrawals, payouts)
+/// NOTE: No longer used for executions (buys/sells). Use BuyAllocation/SellAllocation instead.
 model CycleLedgerEntry {
-  id           String      @id @default(uuid()) @map("id")
-  cycleId      String      @map("cycle_id")
-  cycle        Cycle       @relation(fields: [cycleId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  occurredAt   DateTime    @default(now()) @map("occurred_at")
-  entryType    String      @map("entry_type")
-  amount       Decimal     @map("amount_isk") @db.Decimal(28, 2)
-  memo         String?     @map("memo")
-  planCommitId String?     @map("plan_commit_id")
-  planCommit   PlanCommit? @relation(fields: [planCommitId], references: [id], onDelete: SetNull)
-  // Provenance for automated reconciliation
-  characterId  Int?        @map("character_id")
-  stationId    Int?        @map("station_id")
-  typeId       Int?        @map("type_id")
-  source       String      @default("manual") @map("source") // wallet_tx | wallet_journal | manual
-  sourceId     String?     @map("source_id")
-  matchStatus  String?     @map("match_status") // linked | unlinked | ambiguous
+  id         String   @id @default(uuid()) @map("id")
+  cycleId    String   @map("cycle_id")
+  cycle      Cycle    @relation(fields: [cycleId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  occurredAt DateTime @default(now()) @map("occurred_at")
+  entryType  String   @map("entry_type") // deposit | withdrawal | payout
+  amount     Decimal  @map("amount_isk") @db.Decimal(28, 2)
+  memo       String?  @map("memo")
 
   /// Link to user participation when this entry represents a deposit/refund/payout
   participationId String?             @map("participation_id")
@@ -299,13 +268,9 @@ model CycleLedgerEntry {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  @@unique([source, sourceId])
   @@index([cycleId])
-  @@index([planCommitId])
-  @@index([characterId])
-  @@index([stationId])
-  @@index([typeId])
   @@index([participationId])
+  @@index([entryType])
   @@map("cycle_ledger")
 }
 
@@ -353,44 +318,25 @@ model WalletJournalEntry {
   @@map("wallet_journal")
 }
 
-/// Extracted lines from a plan commit for matching reconciliation
-model PlanCommitLine {
-  id                   String     @id @default(uuid()) @map("id")
-  commitId             String     @map("commit_id")
-  commit               PlanCommit @relation(fields: [commitId], references: [id], onDelete: Cascade)
-  typeId               Int        @map("type_id")
-  sourceStationId      Int        @map("source_station_id")
-  destinationStationId Int        @map("destination_station_id")
-  plannedUnits         Int        @map("planned_units")
-  unitCost             Decimal    @map("unit_cost") @db.Decimal(28, 2)
-  unitProfit           Decimal    @map("unit_profit") @db.Decimal(28, 2)
-  createdAt            DateTime   @default(now()) @map("created_at")
-  updatedAt            DateTime   @updatedAt @map("updated_at")
-
-  @@index([commitId])
-  @@index([typeId, destinationStationId])
-  @@map("plan_commit_lines")
-}
-
 /// User participation (opt-in) for upcoming investment cycles
 model CycleParticipation {
-  id              String               @id @default(uuid()) @map("id")
-  cycleId         String               @map("cycle_id")
-  cycle           Cycle                @relation(fields: [cycleId], references: [id], onDelete: Cascade)
-  userId          String?              @map("user_id")
-  characterName   String               @map("character_name")
-  amountIsk       Decimal              @map("amount_isk") @db.Decimal(28, 2)
-  memo            String               @map("memo") // Removed @unique - same memo for all users in a cycle
-  status          ParticipationStatus  @map("status")
-  walletJournalId BigInt?              @map("wallet_journal_id")
-  validatedAt     DateTime?            @map("validated_at")
-  optedOutAt      DateTime?            @map("opted_out_at")
-  refundAmountIsk Decimal?             @map("refund_amount_isk") @db.Decimal(28, 2)
-  refundedAt      DateTime?            @map("refunded_at")
-  payoutAmountIsk Decimal?             @map("payout_amount_isk") @db.Decimal(28, 2)
-  payoutPaidAt    DateTime?            @map("payout_paid_at")
-  createdAt       DateTime             @default(now()) @map("created_at")
-  updatedAt       DateTime             @updatedAt @map("updated_at")
+  id              String              @id @default(uuid()) @map("id")
+  cycleId         String              @map("cycle_id")
+  cycle           Cycle               @relation(fields: [cycleId], references: [id], onDelete: Cascade)
+  userId          String?             @map("user_id")
+  characterName   String              @map("character_name")
+  amountIsk       Decimal             @map("amount_isk") @db.Decimal(28, 2)
+  memo            String              @map("memo") // Removed @unique - same memo for all users in a cycle
+  status          ParticipationStatus @map("status")
+  walletJournalId BigInt?             @map("wallet_journal_id")
+  validatedAt     DateTime?           @map("validated_at")
+  optedOutAt      DateTime?           @map("opted_out_at")
+  refundAmountIsk Decimal?            @map("refund_amount_isk") @db.Decimal(28, 2)
+  refundedAt      DateTime?           @map("refunded_at")
+  payoutAmountIsk Decimal?            @map("payout_amount_isk") @db.Decimal(28, 2)
+  payoutPaidAt    DateTime?           @map("payout_paid_at")
+  createdAt       DateTime            @default(now()) @map("created_at")
+  updatedAt       DateTime            @updatedAt @map("updated_at")
 
   ledgerEntries CycleLedgerEntry[]
 
@@ -401,15 +347,112 @@ model CycleParticipation {
 
 /// Temporary storage for OAuth state during character linking flow
 model OAuthState {
-  id           String    @id @default(uuid())
-  state        String    @unique
-  codeVerifier String    @map("code_verifier")
-  userId       String?   @map("user_id")
-  returnUrl    String?   @map("return_url")
-  createdAt    DateTime  @default(now()) @map("created_at")
-  expiresAt    DateTime  @map("expires_at")
+  id           String   @id @default(uuid())
+  state        String   @unique
+  codeVerifier String   @map("code_verifier")
+  userId       String?  @map("user_id")
+  returnUrl    String?  @map("return_url")
+  createdAt    DateTime @default(now()) @map("created_at")
+  expiresAt    DateTime @map("expires_at")
 
   @@index([state])
   @@index([expiresAt])
   @@map("oauth_states")
+}
+
+/// Buy commitment line per item per destination for a cycle
+model CycleLine {
+  id                   String   @id @default(uuid()) @map("id")
+  cycleId              String   @map("cycle_id")
+  cycle                Cycle    @relation(fields: [cycleId], references: [id], onDelete: Cascade)
+  typeId               Int      @map("type_id")
+  destinationStationId Int      @map("destination_station_id")
+  plannedUnits         Int      @map("planned_units")
+  unitsBought          Int      @default(0) @map("units_bought")
+  buyCostIsk           Decimal  @default(0) @map("buy_cost_isk") @db.Decimal(28, 2)
+  unitsSold            Int      @default(0) @map("units_sold")
+  salesGrossIsk        Decimal  @default(0) @map("sales_gross_isk") @db.Decimal(28, 2)
+  salesTaxIsk          Decimal  @default(0) @map("sales_tax_isk") @db.Decimal(28, 2)
+  salesNetIsk          Decimal  @default(0) @map("sales_net_isk") @db.Decimal(28, 2)
+  brokerFeesIsk        Decimal  @default(0) @map("broker_fees_isk") @db.Decimal(28, 2)
+  relistFeesIsk        Decimal  @default(0) @map("relist_fees_isk") @db.Decimal(28, 2)
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  buyAllocations  BuyAllocation[]
+  sellAllocations SellAllocation[]
+
+  @@index([cycleId])
+  @@index([typeId])
+  @@index([destinationStationId])
+  @@index([cycleId, typeId])
+  @@map("cycle_lines")
+}
+
+/// Links a wallet buy transaction to a cycle line with quantity allocated
+model BuyAllocation {
+  id                  String    @id @default(uuid()) @map("id")
+  walletCharacterId   Int       @map("wallet_character_id")
+  walletTransactionId BigInt    @map("wallet_transaction_id")
+  lineId              String    @map("line_id")
+  line                CycleLine @relation(fields: [lineId], references: [id], onDelete: Cascade)
+  quantity            Int       @map("quantity")
+  unitPrice           Decimal   @map("unit_price") @db.Decimal(28, 2)
+  createdAt           DateTime  @default(now()) @map("created_at")
+
+  @@unique([walletCharacterId, walletTransactionId, lineId])
+  @@index([lineId])
+  @@index([walletCharacterId, walletTransactionId])
+  @@map("buy_allocations")
+}
+
+/// Links a wallet sell transaction to a cycle line with quantity allocated
+model SellAllocation {
+  id                  String    @id @default(uuid()) @map("id")
+  walletCharacterId   Int       @map("wallet_character_id")
+  walletTransactionId BigInt    @map("wallet_transaction_id")
+  lineId              String    @map("line_id")
+  line                CycleLine @relation(fields: [lineId], references: [id], onDelete: Cascade)
+  quantity            Int       @map("quantity")
+  unitPrice           Decimal   @map("unit_price") @db.Decimal(28, 2)
+  revenueIsk          Decimal   @map("revenue_isk") @db.Decimal(28, 2)
+  taxIsk              Decimal   @map("tax_isk") @db.Decimal(28, 2)
+  createdAt           DateTime  @default(now()) @map("created_at")
+
+  @@unique([walletCharacterId, walletTransactionId, lineId])
+  @@index([lineId])
+  @@index([walletCharacterId, walletTransactionId])
+  @@map("sell_allocations")
+}
+
+/// Cycle-level fees (transport, etc.) not tied to specific items
+model CycleFeeEvent {
+  id         String   @id @default(uuid()) @map("id")
+  cycleId    String   @map("cycle_id")
+  cycle      Cycle    @relation(fields: [cycleId], references: [id], onDelete: Cascade)
+  feeType    String   @map("fee_type") // transport | other
+  amountIsk  Decimal  @map("amount_isk") @db.Decimal(28, 2)
+  occurredAt DateTime @default(now()) @map("occurred_at")
+  memo       String?  @map("memo")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([cycleId])
+  @@index([occurredAt])
+  @@map("cycle_fee_events")
+}
+
+/// Periodic snapshots for tracking cash, inventory, and profit over time
+model CycleSnapshot {
+  id             String   @id @default(uuid()) @map("id")
+  cycleId        String   @map("cycle_id")
+  cycle          Cycle    @relation(fields: [cycleId], references: [id], onDelete: Cascade)
+  snapshotAt     DateTime @map("snapshot_at")
+  walletCashIsk  Decimal  @map("wallet_cash_isk") @db.Decimal(28, 2)
+  inventoryIsk   Decimal  @map("inventory_isk") @db.Decimal(28, 2)
+  cycleProfitIsk Decimal  @map("cycle_profit_isk") @db.Decimal(28, 2)
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@index([cycleId])
+  @@index([snapshotAt])
+  @@map("cycle_snapshots")
 }

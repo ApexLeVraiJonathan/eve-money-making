@@ -26,8 +26,12 @@ export class JobsController {
   @Roles('ADMIN')
   @UseGuards(RolesGuard)
   async runWallets() {
-    await this.jobs.runWalletImportsAndReconcile();
-    return { ok: true };
+    const result = await this.jobs.executeWalletImportsAndAllocation();
+    return {
+      ok: true,
+      buysAllocated: result.buysAllocated,
+      sellsAllocated: result.sellsAllocated,
+    };
   }
 
   @Get('oauth-state/cleanup')

@@ -410,129 +410,78 @@ export class ArbitrageService {
     request: unknown;
     result: unknown;
     memo?: string;
-  }) {
-    // If there is an existing open commit (no closedAt) in the current open cycle, we'll roll over its remaining units and then mark it closed.
-    await this.prisma.cycle.findFirst({
-      where: { OR: [{ closedAt: null }, { closedAt: { gte: new Date() } }] },
-      orderBy: { startedAt: 'desc' },
-      select: { id: true },
-    });
-
-    const previousOpen = await this.prisma.planCommit.findFirst({
-      where: { closedAt: null },
-      orderBy: { createdAt: 'desc' },
-      select: { id: true, createdAt: true },
-    });
-
-    // Attempt to link to the current open cycle when present
+  }): Promise<{ id: string; createdAt: Date }> {
+    // Find the current open cycle
     const currentOpen = await this.prisma.cycle.findFirst({
       where: { startedAt: { lte: new Date() }, closedAt: null },
       select: { id: true },
     });
-    const row = await this.prisma.planCommit.create({
-      data: {
-        request: payload.request as object,
-        result: payload.result as object,
-        memo: payload.memo ?? null,
-        cycleId: currentOpen?.id ?? null,
-      },
-      select: { id: true, createdAt: true },
-    });
-    this.logger.log(`Plan commit saved id=${row.id}`);
 
-    // Extract PlanCommitLine rows from the plan result to enable strict reconciliation later.
+    if (!currentOpen) {
+      throw new Error('No open cycle found. Please create a cycle first.');
+    }
+
+    // Extract plan lines and create CycleLine records
     try {
       const plan = payload.result as PlanResult;
-      const sourceStationId =
-        (payload.request as { sourceStationId?: number } | undefined)
-          ?.sourceStationId ?? 60003760;
-      const lines = [] as Array<{
-        commitId: string;
+      const lines: Array<{
+        cycleId: string;
         typeId: number;
-        sourceStationId: number;
         destinationStationId: number;
         plannedUnits: number;
-        unitCost: number;
-        unitProfit: number;
-      }>;
+      }> = [];
+
       for (const pkg of plan.packages ?? []) {
         const dst = pkg.destinationStationId;
         for (const it of pkg.items ?? []) {
-          lines.push({
-            commitId: row.id,
-            typeId: it.typeId,
-            sourceStationId,
-            destinationStationId: dst,
-            plannedUnits: it.units,
-            unitCost: it.unitCost,
-            unitProfit: it.unitProfit,
+          // Check if line already exists for this type+destination
+          const existing = await this.prisma.cycleLine.findFirst({
+            where: {
+              cycleId: currentOpen.id,
+              typeId: it.typeId,
+              destinationStationId: dst,
+            },
           });
-        }
-      }
-      if (lines.length > 0) {
-        await this.prisma.planCommitLine.createMany({ data: lines });
-      }
-    } catch (e) {
-      this.logger.warn(
-        `Plan commit lines extraction failed id=${row.id}: ${String(e)}`,
-      );
-    }
 
-    // Rollover remaining units from previous open commit (approximation using planned units)
-    try {
-      if (previousOpen?.id && previousOpen.id !== row.id) {
-        const prevLines = await this.prisma.planCommitLine.findMany({
-          where: { commitId: previousOpen.id },
-          select: {
-            typeId: true,
-            sourceStationId: true,
-            destinationStationId: true,
-            plannedUnits: true,
-            unitCost: true,
-          },
-        });
-        const rollover: Array<{
-          commitId: string;
-          typeId: number;
-          sourceStationId: number;
-          destinationStationId: number;
-          plannedUnits: number;
-          unitCost: number;
-          unitProfit: number;
-        }> = [];
-        for (const l of prevLines) {
-          if (l.plannedUnits > 0) {
-            rollover.push({
-              commitId: row.id,
-              typeId: l.typeId,
-              sourceStationId: l.sourceStationId,
-              destinationStationId: l.destinationStationId,
-              plannedUnits: l.plannedUnits,
-              unitCost: Number(l.unitCost),
-              unitProfit: 0,
+          if (existing) {
+            // Update planned units
+            await this.prisma.cycleLine.update({
+              where: { id: existing.id },
+              data: { plannedUnits: existing.plannedUnits + it.units },
+            });
+          } else {
+            // Create new line
+            lines.push({
+              cycleId: currentOpen.id,
+              typeId: it.typeId,
+              destinationStationId: dst,
+              plannedUnits: it.units,
             });
           }
         }
-        if (rollover.length) {
-          await this.prisma.planCommitLine.createMany({ data: rollover });
-        }
-        // Close previous open commit to ensure only one open at a time
-        await this.prisma.planCommit.update({
-          where: { id: previousOpen.id },
-          data: { closedAt: new Date() },
-        });
       }
+
+      if (lines.length > 0) {
+        await this.prisma.cycleLine.createMany({ data: lines });
+      }
+
+      this.logger.log(
+        `Plan committed: ${lines.length} new lines added to cycle ${currentOpen.id}`,
+      );
+
+      return { id: currentOpen.id, createdAt: new Date() };
     } catch (e) {
-      this.logger.warn(`Rollover from previous commit failed: ${String(e)}`);
+      this.logger.error(`Failed to commit plan to cycle lines: ${String(e)}`);
+      throw e;
     }
-    return row;
   }
 
   async listCommits(params?: { limit?: number; offset?: number }) {
+    // Return open cycles instead of commits
     const take = Math.min(Math.max(params?.limit ?? 25, 1), 200);
     const skip = Math.max(params?.offset ?? 0, 0);
-    return await this.prisma.planCommit.findMany({
-      select: { id: true, createdAt: true, memo: true },
+    return await this.prisma.cycle.findMany({
+      select: { id: true, createdAt: true, name: true, closedAt: true },
       orderBy: { createdAt: 'desc' },
       take,
       skip,

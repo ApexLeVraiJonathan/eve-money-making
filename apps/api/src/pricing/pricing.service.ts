@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { EsiService } from '../esi/esi.service';
 import { EsiCharactersService } from '../esi/esi-characters.service';
+import { LedgerService } from '../ledger/ledger.service';
 import { fetchStationOrders } from '../esi/market-helpers';
 import { nextCheaperTick } from '../common/money';
 import { getEffectiveSell } from '../arbitrage/fees';
@@ -13,6 +14,7 @@ export class PricingService {
     private readonly prisma: PrismaService,
     private readonly esi: EsiService,
     private readonly esiChars: EsiCharactersService,
+    private readonly ledger: LedgerService,
   ) {}
 
   private parseLines(lines: string[]): Array<{ name: string; qty: number }> {
@@ -169,7 +171,7 @@ export class PricingService {
   async undercutCheck(params: {
     characterIds?: number[];
     stationIds?: number[];
-    planCommitId?: string;
+    cycleId?: string;
   }): Promise<
     Array<{
       characterId: number;
@@ -258,15 +260,15 @@ export class PricingService {
       }
     }
 
-    // Optional: filter orders to those belonging to a specific commit scope
-    if (params.planCommitId) {
-      const lines = await this.prisma.planCommitLine.findMany({
-        where: { commitId: params.planCommitId },
+    // Optional: filter orders to those belonging to a specific cycle scope
+    if (params.cycleId) {
+      const lines = await this.prisma.cycleLine.findMany({
+        where: { cycleId: params.cycleId },
         select: { typeId: true, destinationStationId: true },
       });
 
       if (lines.length > 0) {
-        // Only check orders for items/stations in the commit
+        // Only check orders for items/stations in the cycle
         const allowed = new Set(
           lines.map((l) => `${l.destinationStationId}:${l.typeId}`),
         );
@@ -405,7 +407,7 @@ export class PricingService {
     return results;
   }
 
-  async sellAppraiseByCommit(params: { planCommitId: string }): Promise<
+  async sellAppraiseByCommit(params: { cycleId: string }): Promise<
     Array<{
       itemName: string;
       typeId: number;
@@ -415,23 +417,31 @@ export class PricingService {
       suggestedSellPriceTicked: number | null;
     }>
   > {
-    // Compute remaining units per line
-    const lines = await this.prisma.planCommitLine.findMany({
-      where: { commitId: params.planCommitId },
+    // Get cycle lines
+    const lines = await this.prisma.cycleLine.findMany({
+      where: { cycleId: params.cycleId },
       select: {
         typeId: true,
         destinationStationId: true,
         plannedUnits: true,
-        unitCost: true,
+        unitsBought: true,
+        unitsSold: true,
       },
     });
 
-    // Estimate remaining via reconciliation helper if available by comparing buys/sells
-    // Fallback: plannedUnits (UI can further restrict)
+    // Calculate remaining units (bought - sold, or fall back to planned if nothing bought yet)
     const remainingMap = new Map<string, number>();
     for (const l of lines) {
-      const k = `${l.destinationStationId}:${l.typeId}`;
-      remainingMap.set(k, (remainingMap.get(k) ?? 0) + l.plannedUnits);
+      const bought = l.unitsBought ?? 0;
+      const sold = l.unitsSold ?? 0;
+      // If items have been bought, show remaining inventory (bought - sold)
+      // Otherwise, show planned units to allow pre-listing price checks
+      const remaining =
+        bought > 0 ? Math.max(0, bought - sold) : l.plannedUnits;
+      if (remaining > 0) {
+        const k = `${l.destinationStationId}:${l.typeId}`;
+        remainingMap.set(k, (remainingMap.get(k) ?? 0) + remaining);
+      }
     }
 
     const typeIds = Array.from(new Set(lines.map((l) => l.typeId)));
@@ -518,71 +528,40 @@ export class PricingService {
   }
 
   async confirmListing(params: {
-    planCommitId: string;
-    characterId: number;
-    stationId: number;
-    items: Array<{ typeId: number; quantity: number; unitPrice: number }>;
+    lineId: string;
+    quantity: number;
+    unitPrice: number;
   }) {
     // Compute 1.5% broker fee on total value
     const feePct = AppConfig.arbitrage().fees.brokerFeePercent; // default 1.5
-    const total = params.items.reduce(
-      (s, it) => s + it.quantity * it.unitPrice,
-      0,
-    );
+    const total = params.quantity * params.unitPrice;
     const amount = (total * (feePct / 100)).toFixed(2);
-    await this.prisma.cycleLedgerEntry.create({
-      data: {
-        cycleId: await this.getOpenCycleIdFor(new Date()),
-        occurredAt: new Date(),
-        entryType: 'fee',
-        amount,
-        memo: 'broker_fee_listing',
-        planCommitId: params.planCommitId,
-        characterId: params.characterId,
-        stationId: params.stationId,
-        typeId: null,
-        source: 'computed',
-        sourceId: null,
-        matchStatus: 'linked',
-      },
+
+    // Add broker fee to cycle line
+    await this.ledger.addBrokerFee({
+      lineId: params.lineId,
+      amountIsk: amount,
     });
+
     return { ok: true, feeAmountISK: amount };
   }
 
   async confirmReprice(params: {
-    planCommitId: string;
-    characterId: number;
-    stationId: number;
-    updates: Array<{
-      orderId: number;
-      typeId: number;
-      remaining: number;
-      newUnitPrice: number;
-    }>;
+    lineId: string;
+    quantity: number;
+    newUnitPrice: number;
   }) {
     // Compute 0.3% broker fee on remaining * newUnitPrice
-    const feePct = Number(process.env.DEFAULT_BROKER_RELIST_PCT ?? 0.3);
-    const total = params.updates.reduce(
-      (s, it) => s + it.remaining * it.newUnitPrice,
-      0,
-    );
+    const feePct = Number(process.env.DEFAULT_RELIST_FEE_PCT ?? 0.3);
+    const total = params.quantity * params.newUnitPrice;
     const amount = (total * (feePct / 100)).toFixed(2);
-    await this.prisma.cycleLedgerEntry.create({
-      data: {
-        cycleId: await this.getOpenCycleIdFor(new Date()),
-        occurredAt: new Date(),
-        entryType: 'fee',
-        amount,
-        memo: 'broker_fee_relist',
-        planCommitId: params.planCommitId,
-        characterId: params.characterId,
-        stationId: params.stationId,
-        typeId: null,
-        source: 'computed',
-        sourceId: null,
-        matchStatus: 'linked',
-      },
+
+    // Add relist fee to cycle line
+    await this.ledger.addRelistFee({
+      lineId: params.lineId,
+      amountIsk: amount,
     });
+
     return { ok: true, feeAmountISK: amount };
   }
 
@@ -606,26 +585,25 @@ export class PricingService {
     return cycle.id;
   }
 
-  async getRemainingLines(commitId: string) {
-    // Lightweight remaining-by-planned approximation for UI; detailed version in reconciliation service
-    const lines = await this.prisma.planCommitLine.findMany({
-      where: { commitId },
+  async getRemainingLines(cycleId: string) {
+    // Get actual remaining units from cycle lines
+    const lines = await this.prisma.cycleLine.findMany({
+      where: { cycleId },
       select: {
         id: true,
         typeId: true,
-        sourceStationId: true,
         destinationStationId: true,
-        plannedUnits: true,
-        unitCost: true,
+        unitsBought: true,
+        unitsSold: true,
+        buyCostIsk: true,
       },
     });
     return lines.map((l) => ({
       lineId: l.id,
       typeId: l.typeId,
-      sourceStationId: l.sourceStationId,
       destinationStationId: l.destinationStationId,
-      remainingUnits: l.plannedUnits,
-      unitCost: Number(l.unitCost),
+      remainingUnits: Math.max(0, l.unitsBought - l.unitsSold),
+      unitCost: l.unitsBought > 0 ? Number(l.buyCostIsk) / l.unitsBought : 0,
     }));
   }
 }
