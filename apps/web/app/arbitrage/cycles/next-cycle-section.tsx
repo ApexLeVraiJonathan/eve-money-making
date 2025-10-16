@@ -2,10 +2,12 @@
 
 import * as React from "react";
 import { useEffect, useState } from "react";
-import { Copy, Lock, X } from "lucide-react";
+import { Copy, Lock, X, LogIn } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { useSession } from "next-auth/react";
+import { useRouter } from "next/navigation";
 import OptInDialog from "./opt-in-dialog";
 import {
   Empty,
@@ -36,6 +38,8 @@ type NextCycle = {
 };
 
 export default function NextCycleSection({ next }: { next: NextCycle | null }) {
+  const { data: session, status } = useSession();
+  const router = useRouter();
   const [participation, setParticipation] = useState<Participation | null>(
     null,
   );
@@ -48,6 +52,16 @@ export default function NextCycleSection({ next }: { next: NextCycle | null }) {
       return;
     }
 
+    // Only fetch participation if user is authenticated
+    if (status === "unauthenticated") {
+      setLoading(false);
+      return;
+    }
+
+    if (status === "loading") {
+      return; // Wait for session to load
+    }
+
     // Fetch user's participation for this cycle
     fetch(`/api/ledger/cycles/${next.id}/participations/me`)
       .then((r) => r.json())
@@ -58,7 +72,7 @@ export default function NextCycleSection({ next }: { next: NextCycle | null }) {
       .catch(() => {
         setLoading(false);
       });
-  }, [next]);
+  }, [next, status]);
 
   const handleOptOut = async () => {
     if (!participation) return;
@@ -305,6 +319,28 @@ export default function NextCycleSection({ next }: { next: NextCycle | null }) {
               )}
             </div>
           )}
+        </div>
+      ) : status === "unauthenticated" ? (
+        <div className="mt-3 rounded-lg border border-primary/20 bg-primary/5 p-4">
+          <div className="flex items-start gap-3">
+            <LogIn className="h-5 w-5 text-primary mt-0.5" />
+            <div className="flex-1">
+              <p className="text-sm font-medium mb-2">
+                Sign in to participate in this cycle
+              </p>
+              <p className="text-sm text-muted-foreground mb-3">
+                Connect your EVE Online character to opt-in and invest ISK in
+                upcoming arbitrage cycles.
+              </p>
+              <Button
+                onClick={() => router.push("/api/auth/login")}
+                className="gap-2"
+              >
+                <LogIn className="h-4 w-4" />
+                Sign in with EVE Online
+              </Button>
+            </div>
+          </div>
         </div>
       ) : (
         <div className="mt-3">

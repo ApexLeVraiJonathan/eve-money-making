@@ -96,14 +96,20 @@ export const APPS: AppConfig[] = [
         title: "Cycles",
         url: "/arbitrage/cycles",
         icon: Recycle,
-        items: [
-          { title: "Details", url: "/arbitrage/cycles/details" },
-          { title: "History", url: "/arbitrage/cycles/history" },
-        ],
       },
       {
-        title: "Reports",
-        url: "/arbitrage/reports",
+        title: "Cycle Details",
+        url: "/arbitrage/cycle-details",
+        icon: TableOfContents,
+      },
+      {
+        title: "Cycle History",
+        url: "/arbitrage/cycle-history",
+        icon: TableOfContents,
+      },
+      {
+        title: "My Investments",
+        url: "/arbitrage/my-investments",
         icon: PieChart,
       },
     ],

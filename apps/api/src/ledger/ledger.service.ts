@@ -1219,6 +1219,8 @@ export class LedgerService {
         originalInvestmentISK: number;
       };
       performance: { marginPct: number; profitISK: number };
+      participantCount: number;
+      totalInvestorCapital: number;
     };
     next: null | {
       id: string;
@@ -1248,6 +1250,8 @@ export class LedgerService {
         originalInvestmentISK: number;
       };
       performance: { marginPct: number; profitISK: number };
+      participantCount: number;
+      totalInvestorCapital: number;
     } = null;
 
     if (current) {
@@ -1263,6 +1267,22 @@ export class LedgerService {
         : new Date(
             current.startedAt.getTime() + 14 * 24 * 60 * 60 * 1000,
           ).toISOString();
+
+      // Get participant count and total investor capital
+      const participations = await this.prisma.cycleParticipation.findMany({
+        where: {
+          cycleId: current.id,
+          status: { in: ['OPTED_IN', 'COMPLETED'] },
+        },
+        select: { amountIsk: true },
+      });
+
+      const participantCount = participations.length;
+      const totalInvestorCapital = participations.reduce(
+        (sum, p) => sum + Number(p.amountIsk),
+        0,
+      );
+
       currentOut = {
         id: current.id,
         name: current.name ?? null,
@@ -1275,6 +1295,8 @@ export class LedgerService {
           originalInvestmentISK: initial,
         },
         performance: { marginPct, profitISK: profit },
+        participantCount,
+        totalInvestorCapital,
       };
     }
 

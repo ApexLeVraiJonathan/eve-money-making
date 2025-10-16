@@ -456,6 +456,7 @@ export class LedgerController {
     return await this.ledger.createCycleSnapshot(cycleId);
   }
 
+  @Public()
   @Get('cycles/:cycleId/snapshots')
   async getSnapshots(@Param('cycleId') cycleId: string): Promise<unknown> {
     return await this.ledger.getCycleSnapshots(cycleId);

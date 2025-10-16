@@ -1,5 +1,12 @@
 import Link from "next/link";
-import { CircleDollarSign, Recycle, PieChart } from "lucide-react";
+import {
+  CircleDollarSign,
+  TrendingUp,
+  Shield,
+  Clock,
+  BarChart3,
+  AlertCircle,
+} from "lucide-react";
 
 export default function ArbitrageHome() {
   return (
@@ -10,14 +17,15 @@ export default function ArbitrageHome() {
           <span className="inline-flex h-10 w-10 items-center justify-center rounded-md bg-primary/15 text-primary">
             <CircleDollarSign className="h-6 w-6" />
           </span>
-          Arbitrage
+          Arbitrage Investment
         </h1>
-        <p className="mt-2 max-w-3xl">
-          Track invested capital and profit share across arbitrage cycles.
-          Opt-in with ISK, follow progress during the cycle, and receive a
-          payout at the end.
+        <p className="mt-2 max-w-3xl text-base">
+          Earn passive income in EVE Online by investing in professional market
+          trading operations. Contribute ISK to a cycle, and we handle the
+          trading—buying and selling across markets to generate profit. At the
+          end of each cycle, receive your principal plus a share of the profits.
         </p>
-        <div className="mt-4 flex gap-3 text-sm items-center">
+        <div className="mt-4 flex flex-wrap gap-3 text-sm items-center">
           <Link
             href="/arbitrage/cycles/opt-in"
             className="inline-flex h-9 items-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground shadow hover:opacity-90"
@@ -41,42 +49,157 @@ export default function ArbitrageHome() {
         </div>
       </section>
 
-      {/* Three-up intro */}
+      {/* How it works */}
       <section className="grid gap-4 md:grid-cols-3">
-        <div className="rounded-md border p-4 surface-1">
-          <h2 className="text-base font-medium">What you can do</h2>
-          <ul className="list-disc pl-6 mt-2 space-y-1 text-sm">
-            <li>Opt-in to cycles with an ISK amount</li>
-            <li>Track cycle progress and your estimated payout</li>
-            <li>Review your past performance and payouts</li>
+        <div className="rounded-md border p-4 bg-card">
+          <div className="flex items-center gap-2 mb-3">
+            <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary/10 text-primary">
+              <span className="text-sm font-semibold">1</span>
+            </div>
+            <h2 className="text-base font-semibold">Opt-in & Contribute</h2>
+          </div>
+          <p className="text-sm">
+            Choose how much ISK you want to invest in the next cycle. Send your
+            investment to the designated character with your unique memo code to
+            validate your participation.
+          </p>
+        </div>
+
+        <div className="rounded-md border p-4 bg-card">
+          <div className="flex items-center gap-2 mb-3">
+            <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary/10 text-primary">
+              <span className="text-sm font-semibold">2</span>
+            </div>
+            <h2 className="text-base font-semibold">Track Progress</h2>
+          </div>
+          <p className="text-sm">
+            Follow your investment in real-time. See current cycle capital,
+            inventory status, and your estimated share of profits as the trading
+            cycle progresses.
+          </p>
+        </div>
+
+        <div className="rounded-md border p-4 bg-card">
+          <div className="flex items-center gap-2 mb-3">
+            <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary/10 text-primary">
+              <span className="text-sm font-semibold">3</span>
+            </div>
+            <h2 className="text-base font-semibold">Receive Payout</h2>
+          </div>
+          <p className="text-sm">
+            When the cycle closes, receive your original investment plus your
+            proportional share of the profits. All payouts are validated and
+            tracked transparently.
+          </p>
+        </div>
+      </section>
+
+      {/* Features */}
+      <section className="grid gap-4 md:grid-cols-2">
+        <div className="rounded-md border p-4 bg-card">
+          <div className="flex items-center gap-2 mb-3">
+            <TrendingUp className="h-5 w-5 text-primary" />
+            <h2 className="text-base font-semibold">What You Get</h2>
+          </div>
+          <ul className="space-y-2 text-sm">
+            <li className="flex items-start gap-2">
+              <div className="mt-0.5 h-1.5 w-1.5 rounded-full bg-primary flex-shrink-0" />
+              <span>
+                <strong>Passive Income:</strong> Earn ISK without active
+                trading—we do the work
+              </span>
+            </li>
+            <li className="flex items-start gap-2">
+              <div className="mt-0.5 h-1.5 w-1.5 rounded-full bg-primary flex-shrink-0" />
+              <span>
+                <strong>Full Transparency:</strong> View detailed reports on
+                capital, trades, and profit calculations
+              </span>
+            </li>
+            <li className="flex items-start gap-2">
+              <div className="mt-0.5 h-1.5 w-1.5 rounded-full bg-primary flex-shrink-0" />
+              <span>
+                <strong>Proportional Returns:</strong> Your share of profit is
+                based on your investment percentage
+              </span>
+            </li>
+            <li className="flex items-start gap-2">
+              <div className="mt-0.5 h-1.5 w-1.5 rounded-full bg-primary flex-shrink-0" />
+              <span>
+                <strong>Validated Transactions:</strong> All contributions and
+                payouts verified via wallet journals
+              </span>
+            </li>
           </ul>
         </div>
-        <div className="rounded-md border p-4 surface-1">
-          <h2 className="text-base font-medium">How it works</h2>
-          <ol className="list-decimal pl-6 mt-2 space-y-1 text-sm">
-            <li>Opt-in for the next cycle with your investment amount</li>
-            <li>Send ISK to the designated character with the provided memo</li>
-            <li>Follow progress; receive payout after the cycle ends</li>
-          </ol>
+
+        <div className="rounded-md border p-4 bg-card">
+          <div className="flex items-center gap-2 mb-3">
+            <Shield className="h-5 w-5 text-primary" />
+            <h2 className="text-base font-semibold">Important Information</h2>
+          </div>
+          <ul className="space-y-2 text-sm">
+            <li className="flex items-start gap-2">
+              <Clock className="h-4 w-4 mt-0.5 text-muted-foreground flex-shrink-0" />
+              <span>
+                <strong>Cycle Duration:</strong> Cycles run for a defined
+                period. Your ISK is locked during active trading.
+              </span>
+            </li>
+            <li className="flex items-start gap-2">
+              <BarChart3 className="h-4 w-4 mt-0.5 text-muted-foreground flex-shrink-0" />
+              <span>
+                <strong>Profit Variability:</strong> Returns depend on market
+                conditions and trading opportunities—profits are not guaranteed.
+              </span>
+            </li>
+            <li className="flex items-start gap-2">
+              <AlertCircle className="h-4 w-4 mt-0.5 text-muted-foreground flex-shrink-0" />
+              <span>
+                <strong>Risk:</strong> Market trading carries inherent risk.
+                While we use proven strategies, losses are possible. Only invest
+                what you can afford to lose.
+              </span>
+            </li>
+            <li className="flex items-start gap-2">
+              <Shield className="h-4 w-4 mt-0.5 text-muted-foreground flex-shrink-0" />
+              <span>
+                <strong>Trust:</strong> This system requires trust in the
+                operator. Review past cycle reports and performance before
+                investing.
+              </span>
+            </li>
+          </ul>
         </div>
-        <div className="rounded-md border p-4 surface-1">
-          <h2 className="text-base font-medium">Project plan</h2>
-          <p className="text-sm mt-2">
-            Public Arbitrage provides limited visibility into cycle performance
-            and investor payouts, with anonymity preserved.
-          </p>
-          <div className="mt-2 flex items-center gap-2 text-muted-foreground">
-            <Recycle className="h-4 w-4" />
-            <span className="text-xs">
-              Cycles: commits, cash/inventory, returns
-            </span>
-          </div>
-          <div className="mt-1 flex items-center gap-2 text-muted-foreground">
-            <PieChart className="h-4 w-4" />
-            <span className="text-xs">
-              Reports: payouts, returns, participation
-            </span>
-          </div>
+      </section>
+
+      {/* Getting Started CTA */}
+      <section className="rounded-lg border bg-card p-6">
+        <h2 className="text-lg font-semibold mb-2">Ready to Get Started?</h2>
+        <p className="text-sm mb-4">
+          Review the current cycle details, check out past performance reports,
+          or opt-in to the next cycle to start earning passive income from
+          professional EVE market trading.
+        </p>
+        <div className="flex flex-wrap gap-3">
+          <Link
+            href="/arbitrage/cycles"
+            className="inline-flex h-9 items-center rounded-md border border-input bg-background px-4 text-sm font-medium shadow-sm hover:bg-accent hover:text-accent-foreground"
+          >
+            View Current Cycle
+          </Link>
+          <Link
+            href="/arbitrage/reports"
+            className="inline-flex h-9 items-center rounded-md border border-input bg-background px-4 text-sm font-medium shadow-sm hover:bg-accent hover:text-accent-foreground"
+          >
+            Review Past Reports
+          </Link>
+          <Link
+            href="/arbitrage/cycles/opt-in"
+            className="inline-flex h-9 items-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground shadow hover:opacity-90"
+          >
+            Opt-in to Next Cycle
+          </Link>
         </div>
       </section>
     </div>

@@ -2,8 +2,10 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { Recycle } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Recycle, Users, Wallet, TrendingUp } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { formatIsk } from "@/lib/utils";
 import NextCycleSection from "./next-cycle-section";
 import {
@@ -15,6 +17,32 @@ import {
 } from "@/components/ui/empty";
 import { CircleHelp } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+  ChartLegend,
+  ChartLegendContent,
+} from "@/components/ui/chart";
+import {
+  PieChart,
+  Pie,
+  Cell,
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  ResponsiveContainer,
+  ReferenceLine,
+} from "recharts";
 
 type CycleOverviewData = {
   current: null | {
@@ -29,6 +57,8 @@ type CycleOverviewData = {
       originalInvestmentISK: number;
     };
     performance: { marginPct: number; profitISK: number };
+    participantCount?: number;
+    totalInvestorCapital?: number;
   };
   next: null | {
     id: string;
@@ -38,18 +68,61 @@ type CycleOverviewData = {
   };
 };
 
+type CycleSnapshot = {
+  id: string;
+  cycleId: string;
+  snapshotAt: string;
+  walletCashIsk: string;
+  inventoryIsk: string;
+  cycleProfitIsk: string;
+};
+
+const chartConfig = {
+  cash: {
+    label: "Cash",
+    color: "#d97706", // Amber-600
+  },
+  inventory: {
+    label: "Inventory",
+    color: "#92400e", // Amber-800
+  },
+  profit: {
+    label: "Profit",
+    color: "#059669", // Emerald-600
+  },
+};
+
 export default function CyclesOverviewPage() {
+  const router = useRouter();
   const [data, setData] = React.useState<CycleOverviewData | null>(null);
+  const [snapshots, setSnapshots] = React.useState<CycleSnapshot[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
 
   React.useEffect(() => {
-    fetch("/api/ledger/cycles/overview")
-      .then((r) => r.json())
-      .then((d) => {
-        setData(d);
+    async function loadData() {
+      try {
+        const overviewRes = await fetch("/api/ledger/cycles/overview");
+        const overviewData = await overviewRes.json();
+        setData(overviewData);
+
+        // Fetch snapshots if there's a current cycle
+        if (overviewData.current?.id) {
+          const snapshotsRes = await fetch(
+            `/api/ledger/cycles/${overviewData.current.id}/snapshots?limit=10`,
+          );
+          if (snapshotsRes.ok) {
+            const snapshotsData = await snapshotsRes.json();
+            setSnapshots(snapshotsData);
+          }
+        }
+      } catch (error) {
+        console.error("Failed to load cycle data:", error);
+      } finally {
         setIsLoading(false);
-      })
-      .catch(() => setIsLoading(false));
+      }
+    }
+
+    loadData();
   }, []);
 
   const formatTimeLeft = (end: string | number | Date) => {
@@ -67,6 +140,36 @@ export default function CyclesOverviewPage() {
     return `${mins}m ${secs}s left`;
   };
 
+  // Prepare pie chart data
+  const pieData = data?.current
+    ? [
+        {
+          name: "Cash",
+          value: data.current.capital.cashISK,
+          fill: "#d97706", // Amber-600
+        },
+        {
+          name: "Inventory",
+          value: data.current.capital.inventoryISK,
+          fill: "#92400e", // Amber-800
+        },
+      ]
+    : [];
+
+  // Prepare profit line chart data
+  const sortedSnapshots = [...snapshots].sort(
+    (a, b) =>
+      new Date(a.snapshotAt).getTime() - new Date(b.snapshotAt).getTime(),
+  );
+
+  const profitOverTimeData = sortedSnapshots.map((snap) => ({
+    date: new Date(snap.snapshotAt).toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+    }),
+    profit: parseFloat(snap.cycleProfitIsk) / 1_000_000, // Convert to millions
+  }));
+
   return (
     <div className="p-6 space-y-6">
       <div className="flex items-center gap-2">
@@ -78,145 +181,206 @@ export default function CyclesOverviewPage() {
 
       {/* Current Cycle Section */}
       {isLoading ? (
-        <section className="rounded-lg border p-4 surface-1">
-          <div className="flex items-center justify-between gap-3">
-            <Skeleton className="h-6 w-48" />
-            <Skeleton className="h-6 w-32" />
-          </div>
-          <div className="mt-4 grid gap-4 md:grid-cols-3">
-            {[1, 2, 3].map((i) => (
-              <div key={i} className="rounded-md border p-3 surface-2">
-                <Skeleton className="h-4 w-24 mb-2" />
-                <div className="space-y-1">
-                  <Skeleton className="h-4 w-full" />
-                  <Skeleton className="h-4 w-full" />
-                  <Skeleton className="h-4 w-full" />
-                </div>
+        <section className="space-y-4">
+          <Card>
+            <CardHeader>
+              <Skeleton className="h-6 w-48" />
+              <Skeleton className="h-4 w-64 mt-2" />
+            </CardHeader>
+            <CardContent>
+              <div className="grid gap-4 md:grid-cols-3">
+                {[1, 2, 3].map((i) => (
+                  <Skeleton key={i} className="h-24" />
+                ))}
               </div>
-            ))}
-          </div>
+            </CardContent>
+          </Card>
         </section>
       ) : data?.current ? (
-        <section className="rounded-lg border p-4 surface-1">
-          <div className="flex items-center justify-between gap-3">
-            <h2 className="text-base font-medium">
-              Current cycle — {data.current.name ?? data.current.id}
-            </h2>
-            <div className="flex items-center gap-3 text-sm">
-              {data.current.endsAt ? (
-                <Badge className="tabular-nums">
-                  {formatTimeLeft(data.current.endsAt)}
-                </Badge>
-              ) : null}
-              <Link
-                href="/arbitrage/cycles/details"
-                className="underline underline-offset-4"
-              >
-                View details
-              </Link>
-            </div>
-          </div>
-          <div className="mt-4 grid gap-4 md:grid-cols-3">
-            <div className="rounded-md border p-3 surface-2">
-              <div className="text-xs text-muted-foreground">Data & Status</div>
-              <div className="mt-1 text-sm">
-                <div>
-                  <span className="text-muted-foreground">Ends:</span>{" "}
-                  <span className="text-foreground">
-                    {data.current.endsAt
-                      ? new Date(data.current.endsAt).toLocaleString()
-                      : "TBD"}
-                  </span>
+        <section className="space-y-4">
+          {/* Header Card */}
+          <Card>
+            <CardHeader>
+              <div className="grid md:grid-cols-2 gap-6">
+                {/* Left: Cycle Info */}
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex-1">
+                    <CardTitle className="text-xl">
+                      {data.current.name ?? data.current.id}
+                    </CardTitle>
+                    <CardDescription className="mt-1.5">
+                      Started{" "}
+                      {new Date(data.current.startedAt).toLocaleDateString()}
+                      {data.current.endsAt && (
+                        <span>
+                          {" "}
+                          • Ends{" "}
+                          {new Date(data.current.endsAt).toLocaleDateString()}
+                        </span>
+                      )}
+                    </CardDescription>
+                  </div>
+                  <div className="flex items-center gap-3 flex-shrink-0">
+                    {data.current.endsAt && (
+                      <Badge className="tabular-nums text-sm px-3 py-1.5">
+                        {formatTimeLeft(data.current.endsAt)}
+                      </Badge>
+                    )}
+                    <Badge variant="outline" className="text-sm px-3 py-1.5">
+                      {data.current.status}
+                    </Badge>
+                  </div>
                 </div>
-                <div>
-                  <span className="text-muted-foreground">Status:</span>{" "}
-                  <span className="text-foreground">{data.current.status}</span>
-                </div>
-              </div>
-            </div>
-            <div className="rounded-md border p-3 surface-2">
-              <div className="text-xs text-muted-foreground">Capital</div>
-              <div className="mt-1 text-sm">
-                <div>
-                  <span className="text-muted-foreground">Cash:</span>{" "}
-                  <span className="text-foreground">
-                    {formatIsk(data.current.capital.cashISK)}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">Inventory:</span>{" "}
-                  <span className="text-foreground">
-                    {formatIsk(data.current.capital.inventoryISK)}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">Orig. Invested:</span>{" "}
-                  <span className="text-foreground">
-                    {formatIsk(data.current.capital.originalInvestmentISK)}
-                  </span>
-                </div>
-              </div>
-            </div>
-            <div className="rounded-md border p-3 surface-2">
-              <div className="text-xs text-muted-foreground">Performance</div>
-              <div className="mt-1 text-sm">
-                <div>
-                  <span className="text-muted-foreground">Margin:</span>{" "}
-                  <span
-                    className={
-                      data.current.performance.marginPct < 0
-                        ? "text-red-400"
-                        : "text-emerald-500"
-                    }
+
+                {/* Right: More Details Link */}
+                <div className="flex items-center justify-between border-l pl-6">
+                  <div>
+                    <p className="text-sm font-medium">Want more details?</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      View charts, capital over time, and in-depth analytics
+                    </p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => router.push("/arbitrage/cycle-details")}
+                    className="ml-3"
                   >
-                    {(data.current.performance.marginPct * 100).toFixed(1)}%
-                  </span>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">Profit:</span>{" "}
-                  <span
-                    className={
-                      data.current.performance.profitISK < 0
-                        ? "text-red-400"
-                        : "text-foreground"
-                    }
-                  >
-                    {formatIsk(data.current.performance.profitISK)}
-                  </span>
+                    View Details
+                  </Button>
                 </div>
               </div>
-            </div>
+            </CardHeader>
+          </Card>
+
+          {/* Key Metrics Cards */}
+          <div className="grid gap-4 md:grid-cols-4">
+            <Card>
+              <CardHeader className="pb-2">
+                <div className="text-sm font-medium">Total Capital</div>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-semibold tabular-nums">
+                  {formatIsk(
+                    data.current.capital.cashISK +
+                      data.current.capital.inventoryISK,
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Cash + Inventory
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="pb-2">
+                <div className="text-sm font-medium flex items-center gap-1.5">
+                  <Users className="h-4 w-4" />
+                  Investors
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-semibold tabular-nums">
+                  {data.current.participantCount ?? "—"}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Active participants
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="pb-2">
+                <div className="text-sm font-medium flex items-center gap-1.5">
+                  <Wallet className="h-4 w-4" />
+                  Investor Capital
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-semibold tabular-nums">
+                  {data.current.totalInvestorCapital
+                    ? formatIsk(data.current.totalInvestorCapital)
+                    : "—"}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Total pooled ISK
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="pb-2">
+                <div className="text-sm font-medium flex items-center gap-1.5">
+                  <TrendingUp className="h-4 w-4" />
+                  Portfolio Value Growth
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div
+                  className={`text-2xl font-semibold tabular-nums ${
+                    data.current.performance.profitISK < 0
+                      ? "text-red-500"
+                      : "text-emerald-600"
+                  }`}
+                >
+                  {formatIsk(data.current.performance.profitISK)}
+                </div>
+                <p
+                  className={`text-xs mt-1 font-medium ${
+                    data.current.performance.marginPct < 0
+                      ? "text-red-500"
+                      : "text-emerald-600"
+                  }`}
+                >
+                  {(data.current.performance.marginPct * 100).toFixed(1)}% gain
+                </p>
+                <p className="text-xs text-muted-foreground mt-2">
+                  Total capital vs initial
+                  <br />
+                  <span className="text-[10px]">Includes inventory value</span>
+                </p>
+              </CardContent>
+            </Card>
           </div>
         </section>
       ) : (
-        <section className="rounded-lg border p-4 surface-1">
-          <Empty className="min-h-48">
-            <EmptyHeader>
-              <EmptyMedia variant="icon">
-                <CircleHelp className="size-6" />
-              </EmptyMedia>
-              <EmptyTitle>No current cycle</EmptyTitle>
-              <EmptyDescription>
-                Please check back another time. A new cycle will appear here
-                when it opens.
-              </EmptyDescription>
-            </EmptyHeader>
-          </Empty>
-        </section>
+        <Card>
+          <CardContent className="pt-6">
+            <Empty className="min-h-48">
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <CircleHelp className="size-6" />
+                </EmptyMedia>
+                <EmptyTitle>No current cycle</EmptyTitle>
+                <EmptyDescription>
+                  Please check back another time. A new cycle will appear here
+                  when it opens.
+                </EmptyDescription>
+              </EmptyHeader>
+            </Empty>
+          </CardContent>
+        </Card>
       )}
 
       {/* Next Cycle Section */}
-      <section className="rounded-lg border p-4 surface-1">
-        <h2 className="text-base font-medium">Next cycle</h2>
-        {isLoading ? (
-          <div className="mt-2">
-            <Skeleton className="h-4 w-full mb-2" />
-            <Skeleton className="h-4 w-3/4" />
-          </div>
-        ) : (
-          <NextCycleSection next={data?.next || null} />
-        )}
-      </section>
+      <Card>
+        <CardHeader>
+          <CardTitle>Next Cycle</CardTitle>
+          <CardDescription>
+            Opt-in to participate in upcoming trading opportunities
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <div className="space-y-2">
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-4 w-3/4" />
+            </div>
+          ) : (
+            <NextCycleSection next={data?.next || null} />
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }
