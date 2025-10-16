@@ -33,6 +33,8 @@ export interface MultiPlanOptions {
   // Per-destination risk cap: default 20% of total budget per *item* per *destination*
   perDestinationMaxBudgetSharePerItem?: number; // default 0.20
   maxPackagesHint?: number; // default 30
+  // Maximum package collateral (total value of items in package) - default 5B ISK
+  maxPackageCollateralISK?: number; // default 5_000_000_000
   // Per-destination market/budget caps (hard)
   destinationCaps?: Record<number, DestinationCaps>;
   // How to spread investment between destinations

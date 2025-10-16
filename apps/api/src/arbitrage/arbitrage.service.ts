@@ -139,6 +139,37 @@ export class ArbitrageService {
     // Get liquidity for all tracked stations with defaults
     const liquidity = await this.liquidity.runCheck();
 
+    // Get current open cycle to check for existing inventory
+    const currentCycle = await this.prisma.cycle.findFirst({
+      where: { startedAt: { lte: new Date() }, closedAt: null },
+      select: { id: true },
+    });
+
+    // Fetch all cycle lines with remaining inventory (items not fully sold)
+    const existingInventory = new Set<string>();
+    if (currentCycle) {
+      const lines = await this.prisma.cycleLine.findMany({
+        where: {
+          cycleId: currentCycle.id,
+        },
+        select: {
+          typeId: true,
+          destinationStationId: true,
+          unitsBought: true,
+          unitsSold: true,
+        },
+      });
+
+      // Build set of "typeId:destinationStationId" for items with remaining stock
+      for (const line of lines) {
+        const remaining = line.unitsBought - line.unitsSold;
+        if (remaining > 0) {
+          const key = `${line.typeId}:${line.destinationStationId}`;
+          existingInventory.add(key);
+        }
+      }
+    }
+
     const result: Record<string, DestinationGroup> = {};
 
     // Memoize source station sell orders by typeId; compute marginal price per quantity
@@ -198,6 +229,14 @@ export class ArbitrageService {
               const i = iIdx++;
               if (i >= list.length) break;
               const item = list[i];
+
+              // Skip items we still have in stock at this destination
+              const inventoryKey = `${item.typeId}:${destinationStationId}`;
+              if (existingInventory.has(inventoryKey)) {
+                // We still have unsold inventory for this item at this destination
+                continue;
+              }
+
               const recentDailyVolume = item.avgDailyAmount;
               const plannedArbitrageQuantity =
                 recentDailyVolume * arbitrageMultiplier;

@@ -34,6 +34,7 @@ export class ArbitragePackagerService {
     // per-destination item cap (in ISK) = share * totalInvestment
     perItemBudgetCapISK: number;
     itemExposureForDest: Record<number, { spendISK: number; units: number }>;
+    maxPackageCollateralISK: number;
   }): Omit<PackagePlan, 'packageIndex' | 'efficiency'> | null {
     const {
       destinationStationId,
@@ -42,6 +43,7 @@ export class ArbitragePackagerService {
       packageCapacityM3,
       perItemBudgetCapISK,
       itemExposureForDest,
+      maxPackageCollateralISK,
     } = params;
 
     if (params.budgetLeft < shippingCostISK) return null;
@@ -67,6 +69,7 @@ export class ArbitragePackagerService {
 
     let volumeLeft = packageCapacityM3;
     let budgetLeft = params.budgetLeft;
+    let collateralUsed = 0;
 
     const chosen: PackedUnit[] = [];
     let boxProfit = 0;
@@ -78,9 +81,21 @@ export class ArbitragePackagerService {
       const exposure = itemExposureForDest[it.typeId]?.spendISK ?? 0;
       const remainingCapISK = Math.max(0, perItemBudgetCapISK - exposure);
       const byItemCap = Math.floor(remainingCapISK / it.unitCost);
+      // Collateral constraint: don't exceed max package collateral
+      const collateralLeft = Math.max(
+        0,
+        maxPackageCollateralISK - collateralUsed,
+      );
+      const byCollateral = Math.floor(collateralLeft / it.unitCost);
       return Math.max(
         0,
-        Math.min(byVolume, byBudget, byItemCap, it.remainingUnits),
+        Math.min(
+          byVolume,
+          byBudget,
+          byItemCap,
+          byCollateral,
+          it.remainingUnits,
+        ),
       );
     }
 
@@ -111,6 +126,7 @@ export class ArbitragePackagerService {
         it.remainingUnits -= take;
         budgetLeft -= spendAdd;
         volumeLeft -= volAdd;
+        collateralUsed += spendAdd;
         boxProfit += profitAdd;
 
         progressed = true;
@@ -155,6 +171,7 @@ export class ArbitragePackagerService {
       investmentISK,
       perDestinationMaxBudgetSharePerItem = 0.2,
       maxPackagesHint = 30,
+      maxPackageCollateralISK = 5_000_000_000, // 5B ISK default
       destinationCaps = {},
       allocation = {},
     } = opts;
@@ -246,6 +263,7 @@ export class ArbitragePackagerService {
           budgetLeft,
           perItemBudgetCapISK: perItemCapISK,
           itemExposureForDest: itemExposureByDest[d.destinationStationId],
+          maxPackageCollateralISK,
         });
 
         if (!cand) {
@@ -305,6 +323,7 @@ export class ArbitragePackagerService {
         perItemBudgetCapISK: perItemCapISK,
         itemExposureForDest:
           itemExposureByDest[chosenDest.destinationStationId],
+        maxPackageCollateralISK,
       });
 
       if (!committed) {
@@ -322,6 +341,7 @@ export class ArbitragePackagerService {
           perItemBudgetCapISK: perItemCapISK,
           itemExposureForDest:
             itemExposureByDest[nextDest.destinationStationId],
+          maxPackageCollateralISK,
         });
         if (!committed2) break; // give up this round
         // use committed2
@@ -392,6 +412,7 @@ export class ArbitragePackagerService {
 
     notes.push(
       `Per-destination item cap: ≤ ${(perDestinationMaxBudgetSharePerItem * 100).toFixed(0)}% of total budget per item (per destination).`,
+      `Max package collateral: ${(maxPackageCollateralISK / 1_000_000_000).toFixed(1)}B ISK.`,
       `Max packages considered: ${maxPackagesHint}.`,
       `Allocation mode: ${mode}${mode === 'targetWeighted' ? ` (bias=${spreadBias}, targets=${JSON.stringify(targets)})` : ''}.`,
     );

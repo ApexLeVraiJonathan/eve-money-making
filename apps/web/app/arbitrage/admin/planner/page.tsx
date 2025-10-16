@@ -63,6 +63,7 @@ const defaultPayload = {
   investmentISK: 10_000_000_000,
   perDestinationMaxBudgetSharePerItem: 0.2,
   maxPackagesHint: 20,
+  maxPackageCollateralISK: 5_000_000_000, // 5B ISK default
   allocation: { mode: "best" as const },
 };
 
@@ -246,6 +247,23 @@ export default function HomePage() {
                         j.perDestinationMaxBudgetSharePerItem = Number(
                           e.target.value,
                         );
+                        setJson(JSON.stringify(j, null, 2));
+                      } catch {}
+                    }}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="maxCollateral" className="text-xs">
+                    Max pkg collateral (ISK)
+                  </Label>
+                  <Input
+                    id="maxCollateral"
+                    type="number"
+                    defaultValue={defaultPayload.maxPackageCollateralISK}
+                    onChange={(e) => {
+                      try {
+                        const j = JSON.parse(json);
+                        j.maxPackageCollateralISK = Number(e.target.value);
                         setJson(JSON.stringify(j, null, 2));
                       } catch {}
                     }}
