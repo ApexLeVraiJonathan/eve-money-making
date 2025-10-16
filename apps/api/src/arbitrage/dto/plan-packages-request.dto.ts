@@ -18,6 +18,7 @@ export const PlanPackagesRequestSchema = z
       .max(1)
       .optional(),
     maxPackagesHint: z.coerce.number().int().min(1).max(200).optional(),
+    maxPackageCollateralISK: z.coerce.number().positive().optional(),
     destinationCaps: z
       .record(
         z.string(),
