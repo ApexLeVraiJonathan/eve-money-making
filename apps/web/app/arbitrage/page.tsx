@@ -189,10 +189,10 @@ export default function ArbitrageHome() {
             View Current Cycle
           </Link>
           <Link
-            href="/arbitrage/reports"
+            href="/arbitrage/my-investments"
             className="inline-flex h-9 items-center rounded-md border border-input bg-background px-4 text-sm font-medium shadow-sm hover:bg-accent hover:text-accent-foreground"
           >
-            Review Past Reports
+            View My Investments
           </Link>
           <Link
             href="/arbitrage/cycles/opt-in"

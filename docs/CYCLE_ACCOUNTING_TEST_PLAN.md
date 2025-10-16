@@ -100,7 +100,7 @@
 - [x] See "My Participation" section
 - [x] Shows investment amount
 - [x] Shows status (pending/validated)
-- [] Shows estimated payout (if cycle is running)
+- [x] Shows estimated payout (if cycle is running)
 
 ---
 
