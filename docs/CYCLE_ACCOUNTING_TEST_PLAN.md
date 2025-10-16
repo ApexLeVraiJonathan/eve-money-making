@@ -324,10 +324,10 @@ POST /api/ledger/cycles/{cycleId}/snapshot
 
 Snapshot includes:
 
-- [ ] Current wallet cash balance
-- [ ] Current inventory value (WAC-based)
-- [ ] Current cycle profit
-- [ ] Timestamp
+- [x] Current wallet cash balance
+- [x] Current inventory value (WAC-based)
+- [x] Current cycle profit
+- [x] Timestamp
 
 ### View Snapshots
 
@@ -337,9 +337,9 @@ Snapshot includes:
 GET /api/ledger/cycles/{cycleId}/snapshots
 ```
 
-- [ ] Returns list of all snapshots ordered by time
-- [ ] Each shows: `walletCashIsk`, `inventoryIsk`, `cycleProfitIsk`, `snapshotAt`
-- [ ] Can compare progression over time
+- [x] Returns list of all snapshots ordered by time
+- [x] Each shows: `walletCashIsk`, `inventoryIsk`, `cycleProfitIsk`, `snapshotAt`
+- [x] Can compare progression over time
 
 ---
 
@@ -357,13 +357,6 @@ GET /api/ledger/cycles/{cycleId}/snapshots
 - [ ] Click close/end cycle action
 - [ ] Confirm → Cycle status changes to "Closed"
 - [ ] `closedAt` timestamp set
-
-**Alternative - API**:
-
-```bash
-PATCH /api/ledger/cycles/{cycleId}
-Body: { "closedAt": "2025-10-15T23:59:59Z" }
-```
 
 ### Verify Final State
 
@@ -393,22 +386,6 @@ Body: { "closedAt": "2025-10-15T23:59:59Z" }
 1. **Pool size** = Cycle profit × pool % (e.g., 50% goes to investors)
 2. **Each investor's share** = (Their investment / Total investments) × Pool
 3. **Payout** = Investment + Share of profit
-
-**Using API**:
-
-```bash
-GET /api/ledger/cycles/{cycleId}/payouts?poolPct=0.5
-```
-
-Response shows:
-
-- [ ] Total cycle profit
-- [ ] Pool available for investors (50%)
-- [ ] Each participation with:
-  - [ ] Original investment amount
-  - [ ] Share of profit pool
-  - [ ] **Total payout** (investment + profit share)
-  - [ ] Return %
 
 ### Verify Payout Calculations
 

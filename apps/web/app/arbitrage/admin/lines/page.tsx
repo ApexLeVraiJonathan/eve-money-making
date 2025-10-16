@@ -22,7 +22,19 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Plus, ArrowLeft, DollarSign } from "lucide-react";
+import {
+  Plus,
+  ArrowLeft,
+  DollarSign,
+  MoreHorizontal,
+  Trash2,
+} from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { formatIsk } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -341,7 +353,7 @@ export default function CycleLinesPage() {
                     </TableCell>
                     <TableCell>
                       <div className="text-sm">
-                        {line.destinationStationName}
+                        {line.destinationStationName.split(" ")[0]}
                       </div>
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
@@ -378,31 +390,34 @@ export default function CycleLinesPage() {
                       </span>
                     </TableCell>
                     <TableCell className="text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => openBrokerDialog(line)}
-                        >
-                          <DollarSign className="h-3 w-3 mr-1" />
-                          Broker
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => openRelistDialog(line)}
-                        >
-                          <DollarSign className="h-3 w-3 mr-1" />
-                          Relist
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="destructive"
-                          onClick={() => setDeleteLineId(line.id)}
-                        >
-                          Delete
-                        </Button>
-                      </div>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="sm">
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem
+                            onClick={() => openBrokerDialog(line)}
+                          >
+                            <DollarSign className="h-4 w-4 mr-2" />
+                            Add Broker Fee
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => openRelistDialog(line)}
+                          >
+                            <DollarSign className="h-4 w-4 mr-2" />
+                            Add Relist Fee
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => setDeleteLineId(line.id)}
+                            className="text-destructive focus:text-destructive"
+                          >
+                            <Trash2 className="h-4 w-4 mr-2" />
+                            Delete Line
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </TableCell>
                   </TableRow>
                 );

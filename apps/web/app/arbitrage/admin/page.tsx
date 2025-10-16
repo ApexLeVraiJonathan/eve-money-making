@@ -10,7 +10,27 @@ import {
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Activity, Database, TrendingUp, Wallet } from "lucide-react";
+import {
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+  ChartLegend,
+  ChartLegendContent,
+} from "@/components/ui/chart";
+import {
+  PieChart,
+  Pie,
+  Cell,
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  ReferenceLine,
+  ResponsiveContainer,
+} from "recharts";
+import { formatIsk } from "@/lib/utils";
 
 type Metrics = {
   cacheHitMem: number;
@@ -47,14 +67,29 @@ type CapitalSnapshot = {
   };
 };
 
-type WalletBalance = { characterId: number; name: string; balanceISK: number };
-
-type Participation = {
+type CycleSnapshot = {
   id: string;
-  characterName: string;
-  amountIsk: string;
-  status: string;
-  memo: string;
+  cycleId: string;
+  snapshotAt: string;
+  walletCashIsk: string;
+  inventoryIsk: string;
+  cycleProfitIsk: string;
+  createdAt: string;
+};
+
+const chartConfig = {
+  cash: {
+    label: "Cash",
+    color: "#f59e0b", // Emerald-600 for cash (darker, less neon)
+  },
+  inventory: {
+    label: "Inventory",
+    color: "#2563eb", // Blue-600 for inventory (darker, less neon)
+  },
+  profit: {
+    label: "Profit",
+    color: "#d97706", // Emerald-600 for profit line (matches cash, darker green)
+  },
 };
 
 export default function AdminPage() {
@@ -62,43 +97,21 @@ export default function AdminPage() {
   const [staleness, setStaleness] = React.useState<Staleness | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(false);
-
   const [latestCycle, setLatestCycle] = React.useState<Cycle | null>(null);
   const [capital, setCapital] = React.useState<CapitalSnapshot | null>(null);
-  const [wallets, setWallets] = React.useState<WalletBalance[] | null>(null);
-  const [planning, setPlanning] = React.useState(false);
-  const [opening, setOpening] = React.useState<string | null>(null);
-  const [participations, setParticipations] = React.useState<
-    Array<{
-      id: string;
-      characterName: string;
-      amountIsk: string;
-      status: string;
-      memo: string;
-    }>
-  >([]);
-
-  const formatISK = (value: number | string | null | undefined) => {
-    const n =
-      typeof value === "string" ? Number.parseFloat(value) : (value ?? 0);
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "ISK",
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    })
-      .format(n)
-      .replace("ISK", "ISK");
-  };
+  const [snapshots, setSnapshots] = React.useState<CycleSnapshot[]>([]);
 
   const load = async () => {
     setLoading(true);
     setError(null);
     try {
+      // Load metrics
       const res = await fetch("/api/metrics", { cache: "no-store" });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || res.statusText);
       setMetrics(data as Metrics);
+
+      // Load staleness
       const sRes = await fetch("/api/jobs/staleness", { cache: "no-store" });
       const sData = await sRes.json();
       if (sRes.ok) setStaleness(sData as Staleness);
@@ -111,66 +124,23 @@ export default function AdminPage() {
       if (cyclesRes.ok && Array.isArray(cyclesData) && cyclesData.length > 0) {
         const latest = cyclesData[0];
         setLatestCycle(latest);
+
+        // Load current capital
         const capRes = await fetch(`/api/ledger/cycles/${latest.id}/capital`, {
           cache: "no-store",
         });
         const capData = (await capRes.json()) as CapitalSnapshot;
         if (capRes.ok) setCapital(capData);
-      }
 
-      // Load specific character wallet balances with display names
-      const characters = [
-        { id: 2122406821, name: "LeVraiMindTrader01" },
-        { id: 2122406910, name: "LeVraiMindTrader02" },
-        { id: 2122406955, name: "LeVraiMindTrader03" },
-        { id: 2122471041, name: "LeVraiMindTrader04" },
-      ];
-      const walletResults = await Promise.all(
-        characters.map(async ({ id, name }) => {
-          try {
-            const wRes = await fetch(`/api/auth/wallet?characterId=${id}`, {
-              cache: "no-store",
-            });
-            const wData = await wRes.json();
-            return wRes.ok
-              ? ({
-                  characterId: id,
-                  name,
-                  balanceISK: Number(wData.balanceISK),
-                } as WalletBalance)
-              : ({ characterId: id, name, balanceISK: 0 } as WalletBalance);
-          } catch {
-            return { characterId: id, name, balanceISK: 0 } as WalletBalance;
-          }
-        }),
-      );
-      setWallets(walletResults);
-
-      // Load planned cycle participations (if a planned cycle exists)
-      try {
-        const allCyclesRes = await fetch("/api/ledger/cycles", {
-          cache: "no-store",
-        });
-        const allCycles = (await allCyclesRes.json()) as Cycle[];
-        const now = Date.now();
-        const next = allCycles
-          .filter((c) => new Date(c.startedAt).getTime() > now)
-          .sort(
-            (a, b) =>
-              new Date(a.startedAt).getTime() - new Date(b.startedAt).getTime(),
-          )[0];
-        if (next) {
-          const partsRes = await fetch(
-            `/api/ledger/cycles/${next.id}/participations`,
-            { cache: "no-store" },
-          );
-          const partsData = (await partsRes.json()) as Participation[];
-          if (partsRes.ok) setParticipations(partsData);
-        } else {
-          setParticipations([]);
-        }
-      } catch {
-        // ignore
+        // Load historical snapshots (last 10)
+        const snapsRes = await fetch(
+          `/api/ledger/cycles/${latest.id}/snapshots?limit=10`,
+          {
+            cache: "no-store",
+          },
+        );
+        const snapsData = (await snapsRes.json()) as CycleSnapshot[];
+        if (snapsRes.ok) setSnapshots(snapsData); // Keep in ascending order (oldest to newest)
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -183,386 +153,387 @@ export default function AdminPage() {
     void load();
   }, []);
 
-  const handleAdminLogin = () => {
-    const base =
-      process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:3000";
-    const returnUrl =
-      typeof window !== "undefined" ? window.location.href : "/";
-    window.location.href = `${base}/auth/login/admin?returnUrl=${encodeURIComponent(returnUrl)}`;
-  };
+  // Prepare data for pie chart
+  // Use darker, more muted colors for a professional look
+  const pieData = capital
+    ? [
+        {
+          name: "Cash",
+          value: parseFloat(capital.capital.cash),
+          fill: "#d97706", // Emerald-600 for cash (darker green)
+        },
+        {
+          name: "Inventory",
+          value: parseFloat(capital.capital.inventory),
+          fill: "#92400e", // Blue-600 for inventory (darker blue)
+        },
+      ]
+    : [];
 
-  const [charFunction, setCharFunction] = React.useState<string>("SELLER");
-  const [charLocation, setCharLocation] = React.useState<string>("JITA");
-  const [selectedCharacterId, setSelectedCharacterId] =
-    React.useState<string>("");
+  // Prepare data for line chart
+  // Sort by snapshotAt to ensure chronological order (oldest to newest)
+  const sortedSnapshots = [...snapshots].sort(
+    (a, b) =>
+      new Date(a.snapshotAt).getTime() - new Date(b.snapshotAt).getTime(),
+  );
+
+  const lineData = sortedSnapshots.map((snap) => ({
+    date: new Date(snap.snapshotAt).toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+    }),
+    time: new Date(snap.snapshotAt).toLocaleTimeString("en-US", {
+      hour: "2-digit",
+      minute: "2-digit",
+    }),
+    profit: parseFloat(snap.cycleProfitIsk) / 1_000_000, // Convert to millions for readability
+    snapshotAt: snap.snapshotAt, // Keep for debugging
+  }));
+
+  // Calculate Y-axis domain to include zero and have nice bounds
+  const minProfit = lineData.length
+    ? Math.min(...lineData.map((d) => d.profit))
+    : 0;
+  const maxProfit = lineData.length
+    ? Math.max(...lineData.map((d) => d.profit))
+    : 0;
+  const yAxisMin = Math.floor(Math.min(minProfit, 0) * 1.1); // Add 10% padding, ensure includes 0
+  const yAxisMax = Math.ceil(Math.max(maxProfit, 0) * 1.1); // Add 10% padding, ensure includes 0
+
+  const totalCacheHits = metrics ? metrics.cacheHitMem + metrics.cacheHitDb : 0;
+  const totalRequests = metrics
+    ? metrics.cacheHitMem +
+      metrics.cacheHitDb +
+      metrics.cacheMiss +
+      metrics.http200
+    : 1;
+  const cacheHitRate =
+    totalRequests > 0 ? ((totalCacheHits / totalRequests) * 100).toFixed(1) : 0;
 
   return (
-    <div className="container mx-auto max-w-6xl p-4 space-y-4">
+    <div className="container mx-auto max-w-7xl p-6 space-y-6">
+      <div className="space-y-1">
+        <h1 className="text-3xl font-bold tracking-tight">Admin Dashboard</h1>
+        <p className="text-muted-foreground">
+          Quick overview of system health and cycle performance
+        </p>
+      </div>
+
       {error && (
-        <div className="rounded-md border border-destructive/40 bg-destructive/10 text-destructive text-sm px-3 py-2">
+        <div className="rounded-lg border border-destructive/40 bg-destructive/10 text-destructive text-sm px-4 py-3">
           Error: {error}
         </div>
       )}
-      {/* Top summary cards */}
+
+      {/* Key Metrics Row */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card className="py-4 gap-0">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xl font-bold">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">
               Trade Data Missing
             </CardTitle>
-            <CardDescription className="text-muted-foreground">
-              Days
-            </CardDescription>
+            <Database className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
-          <CardContent className="flex py-4">
+          <CardContent>
             {loading ? (
-              <Skeleton className="h-6 w-20" />
+              <Skeleton className="h-8 w-16" />
             ) : (
-              <div className="text-xl font-bold tabular-nums">
-                {staleness ? staleness.missing.length : 0} Days
-              </div>
-            )}
-          </CardContent>
-        </Card>
-        <Card className="py-4 gap-0">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xl font-bold">HTTP 200</CardTitle>
-            <CardDescription className="text-muted-foreground">
-              Requests
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex py-4">
-            {loading ? (
-              <Skeleton className="h-6 w-16" />
-            ) : (
-              <div className="text-xl font-bold tabular-nums">
-                {metrics ? metrics.http200 : 0}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Latest Cycle Overview */}
-      <div className="space-y-2">
-        <div className="flex items-baseline justify-between">
-          <h2 className="text-lg font-semibold">
-            Latest Cycle{latestCycle?.name ? `: ${latestCycle.name}` : ""}
-          </h2>
-          {latestCycle && (
-            <div className="text-xs text-muted-foreground">
-              started {new Date(latestCycle.startedAt).toLocaleDateString()}
-              {latestCycle.closedAt
-                ? ` • closed ${new Date(
-                    latestCycle.closedAt,
-                  ).toLocaleDateString()}`
-                : ""}
-            </div>
-          )}
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-xl font-bold">Cash</CardTitle>
-              {capital ? (
-                <CardDescription>
-                  {capital.capital.percentSplit.cash}%
-                </CardDescription>
-              ) : null}
-            </CardHeader>
-            <CardContent>
-              {loading ? (
-                <Skeleton className="h-8 w-32" />
-              ) : (
-                <div className="text-3xl font-bold tabular-nums">
-                  {capital ? formatISK(capital.capital.cash) : formatISK(0)}
+              <>
+                <div className="text-2xl font-bold tabular-nums">
+                  {staleness ? staleness.missing.length : 0}
                 </div>
-              )}
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-xl font-bold">Inventory</CardTitle>
-              {capital ? (
-                <CardDescription>
-                  {capital.capital.percentSplit.inventory}%
-                </CardDescription>
-              ) : null}
-            </CardHeader>
-            <CardContent>
-              {loading ? (
-                <Skeleton className="h-8 w-32" />
-              ) : (
-                <div className="text-3xl font-bold tabular-nums">
+                <p className="text-xs text-muted-foreground">
+                  {staleness && staleness.missing.length === 1 ? "day" : "days"}
+                </p>
+              </>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">ESI Requests</CardTitle>
+            <Activity className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            {loading ? (
+              <Skeleton className="h-8 w-16" />
+            ) : (
+              <>
+                <div className="text-2xl font-bold tabular-nums">
+                  {metrics ? metrics.http200.toLocaleString() : 0}
+                </div>
+                <p className="text-xs text-muted-foreground">successful</p>
+              </>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">
+              Cache Hit Rate
+            </CardTitle>
+            <TrendingUp className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            {loading ? (
+              <Skeleton className="h-8 w-16" />
+            ) : (
+              <>
+                <div className="text-2xl font-bold tabular-nums">
+                  {cacheHitRate}%
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {totalCacheHits.toLocaleString()} hits
+                </p>
+              </>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Capital</CardTitle>
+            <Wallet className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            {loading ? (
+              <Skeleton className="h-8 w-24" />
+            ) : (
+              <>
+                <div className="text-2xl font-bold tabular-nums">
                   {capital
-                    ? formatISK(capital.capital.inventory)
-                    : formatISK(0)}
+                    ? `${(parseFloat(capital.capital.total) / 1_000_000_000).toFixed(2)}B`
+                    : "0B"}
                 </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
+                <p className="text-xs text-muted-foreground">ISK</p>
+              </>
+            )}
+          </CardContent>
+        </Card>
       </div>
 
-      {/* Character Balances */}
-      <div className="space-y-2">
-        <h2 className="text-lg font-semibold">Character Wallets</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {(
-            wallets ?? [
-              {
-                characterId: 2122406821,
-                name: "LeVraiMindTrader01",
-                balanceISK: 0,
-              },
-              {
-                characterId: 2122406910,
-                name: "LeVraiMindTrader02",
-                balanceISK: 0,
-              },
-              {
-                characterId: 2122406955,
-                name: "LeVraiMindTrader03",
-                balanceISK: 0,
-              },
-              {
-                characterId: 2122471041,
-                name: "LeVraiMindTrader04",
-                balanceISK: 0,
-              },
-            ]
-          ).map((w) => (
-            <Card key={w.characterId}>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-xl font-bold">{w.name}</CardTitle>
-                <CardDescription>Current Balance</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="text-lg font-bold tabular-nums">
-                  {loading && !wallets ? (
-                    <Skeleton className="h-5 w-24" />
-                  ) : (
-                    formatISK(w.balanceISK)
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+      {/* Charts Section */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Capital Distribution Pie Chart */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Capital Distribution</CardTitle>
+            <CardDescription>
+              {latestCycle?.name
+                ? `Current allocation for ${latestCycle.name}`
+                : "Current cycle capital breakdown"}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {loading || !capital ? (
+              <div className="flex items-center justify-center h-[300px]">
+                <Skeleton className="h-[250px] w-[250px] rounded-full" />
+              </div>
+            ) : pieData.length > 0 ? (
+              <ChartContainer config={chartConfig} className="h-[300px]">
+                <PieChart>
+                  <ChartTooltip
+                    cursor={false}
+                    content={
+                      <ChartTooltipContent
+                        hideLabel
+                        formatter={(value) => formatIsk(Number(value))}
+                      />
+                    }
+                  />
+                  <Pie
+                    data={pieData}
+                    cx="50%"
+                    cy="50%"
+                    labelLine={false}
+                    label={({ name, percent }) =>
+                      `${name}: ${(percent * 100).toFixed(1)}%`
+                    }
+                    outerRadius={100}
+                    innerRadius={60}
+                    dataKey="value"
+                  >
+                    {pieData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.fill} />
+                    ))}
+                  </Pie>
+                  <ChartLegend content={<ChartLegendContent />} />
+                </PieChart>
+              </ChartContainer>
+            ) : (
+              <div className="flex items-center justify-center h-[300px] text-muted-foreground">
+                No capital data available
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Profit Over Time Line Chart */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Profit Over Time</CardTitle>
+            <CardDescription>
+              {latestCycle?.name
+                ? `Historical snapshots for ${latestCycle.name}`
+                : "Cycle profit progression"}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {loading ? (
+              <div className="flex items-center justify-center h-[300px]">
+                <Skeleton className="h-full w-full" />
+              </div>
+            ) : lineData.length > 0 ? (
+              <ChartContainer config={chartConfig} className="h-[300px]">
+                <LineChart data={lineData}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis
+                    dataKey="date"
+                    tick={{ fontSize: 11 }}
+                    tickMargin={8}
+                    angle={-45}
+                    textAnchor="end"
+                    height={60}
+                  />
+                  <YAxis
+                    domain={[yAxisMin, yAxisMax]}
+                    tick={{ fontSize: 12 }}
+                    tickMargin={8}
+                    tickFormatter={(value) => `${value}M`}
+                  />
+                  <ReferenceLine
+                    y={0}
+                    stroke="hsl(var(--muted-foreground))"
+                    strokeDasharray="3 3"
+                    opacity={0.5}
+                  />
+                  <ChartTooltip
+                    content={
+                      <ChartTooltipContent
+                        labelFormatter={(label, payload) => {
+                          if (payload && payload[0]) {
+                            return `${payload[0].payload.date} ${payload[0].payload.time}`;
+                          }
+                          return label;
+                        }}
+                        formatter={(value) =>
+                          `${formatIsk(Number(value) * 1_000_000)}`
+                        }
+                      />
+                    }
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="profit"
+                    stroke={chartConfig.profit.color}
+                    strokeWidth={2}
+                    dot={{ r: 4 }}
+                  />
+                </LineChart>
+              </ChartContainer>
+            ) : (
+              <div className="flex items-center justify-center h-[300px] text-muted-foreground">
+                No snapshot data available. Create snapshots to see profit
+                trends.
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </div>
 
-      {/* Cycle Planning */}
-      <div className="space-y-2">
-        <h2 className="text-lg font-semibold">Cycle Planning</h2>
-        <div className="flex items-center gap-2">
-          <button
-            className="inline-flex h-9 items-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground shadow hover:opacity-90"
-            disabled={planning}
-            onClick={async () => {
-              setPlanning(true);
-              try {
-                const start = new Date(
-                  Date.now() + 10 * 24 * 60 * 60 * 1000,
-                ).toISOString();
-                const res = await fetch(`/api/ledger/cycles/plan`, {
-                  method: "POST",
-                  headers: { "content-type": "application/json" },
-                  body: JSON.stringify({
-                    name: "Planned Cycle",
-                    startedAt: start,
-                  }),
-                });
-                if (!res.ok)
-                  throw new Error((await res.json())?.error || res.statusText);
-                await load();
-              } catch (e) {
-                setError(e instanceof Error ? e.message : String(e));
-              } finally {
-                setPlanning(false);
+      {/* Quick Actions */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Quick Actions</CardTitle>
+          <CardDescription>
+            Common administrative tasks and shortcuts
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            <Button
+              variant="outline"
+              className="justify-start"
+              onClick={() =>
+                (window.location.href = "/arbitrage/admin/triggers")
               }
-            }}
-          >
-            {planning ? "Planning…" : "Plan Next Cycle"}
-          </button>
-          <button
-            className="inline-flex h-9 items-center rounded-md bg-secondary px-3 text-sm font-medium text-secondary-foreground shadow hover:opacity-90"
-            disabled={opening !== null}
-            onClick={async () => {
-              setOpening("pending");
-              try {
-                // Find earliest planned cycle
-                const cyclesRes = await fetch(`/api/ledger/cycles`, {
-                  cache: "no-store",
-                });
-                const cyclesData = (await cyclesRes.json()) as Cycle[];
-                const now = Date.now();
-                const next = cyclesData
-                  .filter((c) => new Date(c.startedAt).getTime() > now)
-                  .sort(
-                    (a, b) =>
-                      new Date(a.startedAt).getTime() -
-                      new Date(b.startedAt).getTime(),
-                  )[0];
-                if (!next) throw new Error("No planned cycle to open");
-                const res = await fetch(`/api/ledger/cycles/${next.id}/open`, {
-                  method: "POST",
-                });
-                if (!res.ok)
-                  throw new Error((await res.json())?.error || res.statusText);
-                await load();
-              } catch (e) {
-                setError(e instanceof Error ? e.message : String(e));
-              } finally {
-                setOpening(null);
-              }
-            }}
-          >
-            {opening ? "Opening…" : "Open Next Planned"}
-          </button>
-        </div>
-      </div>
-
-      {/* Planned Cycle Participations */}
-      <div className="space-y-2">
-        <h2 className="text-lg font-semibold">Planned Participations</h2>
-        <div className="rounded-md border surface-1">
-          <div className="grid grid-cols-4 gap-2 px-3 py-2 text-xs text-muted-foreground border-b">
-            <div>Character</div>
-            <div>Amount</div>
-            <div>Status</div>
-            <div>Actions</div>
+            >
+              <Database className="mr-2 h-4 w-4" />
+              Manual Triggers
+            </Button>
+            <Button
+              variant="outline"
+              className="justify-start"
+              onClick={() => (window.location.href = "/arbitrage/admin/lines")}
+            >
+              <Activity className="mr-2 h-4 w-4" />
+              Manage Lines
+            </Button>
+            <Button
+              variant="outline"
+              className="justify-start"
+              onClick={() => (window.location.href = "/arbitrage/admin/profit")}
+            >
+              <TrendingUp className="mr-2 h-4 w-4" />
+              View Profit
+            </Button>
+            <Button
+              variant="outline"
+              className="justify-start"
+              onClick={() => (window.location.href = "/arbitrage/cycles")}
+            >
+              <Wallet className="mr-2 h-4 w-4" />
+              All Cycles
+            </Button>
           </div>
-          {participations.length === 0 ? (
-            <div className="px-3 py-3 text-sm text-muted-foreground">
-              No participations yet.
-            </div>
-          ) : (
-            <div className="divide-y">
-              {participations.map((p) => (
-                <div
-                  key={p.id}
-                  className="grid grid-cols-4 gap-2 px-3 py-2 text-sm items-center"
-                >
-                  <div className="truncate">{p.characterName}</div>
-                  <div className="tabular-nums">{formatISK(p.amountIsk)}</div>
-                  <div>{p.status}</div>
-                  <div className="flex gap-2">
-                    <button
-                      className="h-8 rounded-md border px-2 text-xs"
-                      onClick={async () => {
-                        try {
-                          const res = await fetch(
-                            `/api/ledger/participations/${p.id}/validate`,
-                            { method: "POST" },
-                          );
-                          if (!res.ok)
-                            throw new Error(
-                              (await res.json())?.error || res.statusText,
-                            );
-                          await load();
-                        } catch (e) {
-                          setError(e instanceof Error ? e.message : String(e));
-                        }
-                      }}
-                    >
-                      Validate
-                    </button>
-                    <button
-                      className="h-8 rounded-md border px-2 text-xs"
-                      onClick={async () => {
-                        try {
-                          const res = await fetch(
-                            `/api/ledger/participations/${p.id}/refund`,
-                            {
-                              method: "POST",
-                              headers: { "content-type": "application/json" },
-                              body: JSON.stringify({ amountIsk: p.amountIsk }),
-                            },
-                          );
-                          if (!res.ok)
-                            throw new Error(
-                              (await res.json())?.error || res.statusText,
-                            );
-                          await load();
-                        } catch (e) {
-                          setError(e instanceof Error ? e.message : String(e));
-                        }
-                      }}
-                    >
-                      Refund
-                    </button>
+        </CardContent>
+      </Card>
+
+      {/* Cycle Info */}
+      {latestCycle && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Current Cycle</CardTitle>
+            <CardDescription>
+              {latestCycle.name || "Unnamed Cycle"}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
+              <div>
+                <div className="text-muted-foreground">Started</div>
+                <div className="font-medium">
+                  {new Date(latestCycle.startedAt).toLocaleDateString()}
+                </div>
+              </div>
+              <div>
+                <div className="text-muted-foreground">Status</div>
+                <div className="font-medium">
+                  {latestCycle.closedAt ? "Closed" : "Open"}
+                </div>
+              </div>
+              {capital && (
+                <>
+                  <div>
+                    <div className="text-muted-foreground">Cash</div>
+                    <div className="font-medium tabular-nums">
+                      {formatIsk(parseFloat(capital.capital.cash))}
+                    </div>
                   </div>
-                </div>
-              ))}
+                  <div>
+                    <div className="text-muted-foreground">Inventory</div>
+                    <div className="font-medium tabular-nums">
+                      {formatIsk(parseFloat(capital.capital.inventory))}
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
-          )}
-        </div>
-      </div>
-
-      {/* Admin Linking */}
-      <div className="space-y-2">
-        <h2 className="text-lg font-semibold">Admin Linking</h2>
-        <div className="flex flex-col sm:flex-row gap-2 items-start sm:items-center">
-          <div className="flex gap-2 items-center">
-            <span className="text-sm text-muted-foreground">Character</span>
-            <Input
-              className="h-9 w-48"
-              placeholder="Character ID"
-              value={selectedCharacterId}
-              onChange={(e) => setSelectedCharacterId(e.target.value)}
-            />
-          </div>
-          <div className="flex gap-2 items-center">
-            <span className="text-sm text-muted-foreground">Function</span>
-            <Input
-              className="h-9 w-40"
-              placeholder="SELLER or BUYER"
-              value={charFunction}
-              onChange={(e) => setCharFunction(e.target.value.toUpperCase())}
-            />
-          </div>
-          <div className="flex gap-2 items-center">
-            <span className="text-sm text-muted-foreground">Location</span>
-            <Input
-              className="h-9 w-40"
-              placeholder="JITA, DODIXIE, ..."
-              value={charLocation}
-              onChange={(e) => setCharLocation(e.target.value.toUpperCase())}
-            />
-          </div>
-          <Button onClick={handleAdminLogin}>Link Admin Character</Button>
-          <Button
-            variant="secondary"
-            onClick={async () => {
-              if (!selectedCharacterId) return;
-              try {
-                const res = await fetch(
-                  `/api/auth/characters/${selectedCharacterId}`,
-                  {
-                    method: "PATCH",
-                    headers: { "content-type": "application/json" },
-                    body: JSON.stringify({
-                      role: "ADMIN",
-                      function: charFunction,
-                      location: charLocation,
-                    }),
-                  },
-                );
-                if (!res.ok)
-                  throw new Error((await res.json())?.error || res.statusText);
-              } catch (e) {
-                setError(e instanceof Error ? e.message : String(e));
-              }
-            }}
-          >
-            Save Profile
-          </Button>
-        </div>
-        <div className="text-xs text-muted-foreground">
-          After linking, you can enter the character ID and set
-          function/location.
-        </div>
-      </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
