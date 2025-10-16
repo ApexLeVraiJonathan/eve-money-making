@@ -24,6 +24,7 @@ export const authOptions: AuthOptions = {
       // On initial sign-in, copy EVE access_token and expiry
       if (account?.access_token) {
         token.accessToken = account.access_token;
+        token.refreshToken = account.refresh_token;
 
         // EVE provides expires_at (absolute unix timestamp in seconds), not expires_in
         const expiresAtSeconds = Number(account.expires_at) || 0;
@@ -66,7 +67,68 @@ export const authOptions: AuthOptions = {
         } catch (error) {
           console.error("Failed to link character to backend:", error);
         }
+
+        return token;
       }
+
+      // Token refresh logic
+      // EVE refresh tokens are long-lived, so we can refresh even expired tokens
+      // Refresh if token is expired or will expire soon (within 5 minutes)
+      const nowMs = Date.now();
+      const expiresAtMs = (token.expires_at as number) || 0;
+      const timeUntilExpiryMs = expiresAtMs - nowMs;
+      const fiveMinutesMs = 5 * 60 * 1000;
+      const shouldRefresh = !expiresAtMs || timeUntilExpiryMs < fiveMinutesMs;
+
+      // Refresh as long as we have a refresh token
+      if (shouldRefresh && token.refreshToken) {
+        try {
+          const isExpired = timeUntilExpiryMs < 0;
+          console.log(
+            isExpired
+              ? "Token expired, refreshing..."
+              : "Token expiring soon, refreshing...",
+          );
+
+          // EVE Online token endpoint
+          const response = await fetch(
+            "https://login.eveonline.com/v2/oauth/token",
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/x-www-form-urlencoded",
+                Authorization: `Basic ${Buffer.from(
+                  `${process.env.EVE_CLIENT_ID}:${process.env.EVE_CLIENT_SECRET}`,
+                ).toString("base64")}`,
+              },
+              body: new URLSearchParams({
+                grant_type: "refresh_token",
+                refresh_token: token.refreshToken as string,
+              }),
+            },
+          );
+
+          if (!response.ok) {
+            throw new Error("Token refresh failed");
+          }
+
+          const refreshedTokens = await response.json();
+
+          // Update token with new values
+          token.accessToken = refreshedTokens.access_token;
+          token.refreshToken =
+            refreshedTokens.refresh_token ?? token.refreshToken;
+          token.expires_at = Date.now() + refreshedTokens.expires_in * 1000;
+
+          console.log("Token refreshed successfully");
+        } catch (error) {
+          console.error("Error refreshing token:", error);
+          // Keep the token even if refresh fails - only EVE revoking the refresh token
+          // should truly end the session. Otherwise we'll try again next time.
+          token.error = "RefreshAccessTokenError";
+        }
+      }
+
       return token;
     },
     async session({ session, token }) {
@@ -76,6 +138,7 @@ export const authOptions: AuthOptions = {
       session.characterId = token.characterId;
       session.characterName = token.characterName;
       session.ownerHash = token.ownerHash;
+      session.error = token.error;
       return session;
     },
   },

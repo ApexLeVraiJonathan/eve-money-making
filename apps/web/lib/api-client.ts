@@ -13,7 +13,7 @@ export async function fetchWithAuth(
     throw new Error("Not authenticated");
   }
 
-  const apiUrl = process.env.API_URL || "http://localhost:4000";
+  const apiUrl = process.env.API_URL || "http://localhost:3000";
   const url = `${apiUrl}${endpoint.startsWith("/") ? endpoint : `/${endpoint}`}`;
 
   return fetch(url, {

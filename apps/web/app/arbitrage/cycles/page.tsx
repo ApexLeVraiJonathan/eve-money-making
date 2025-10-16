@@ -109,18 +109,6 @@ export default function CyclesOverviewPage() {
                 </Badge>
               ) : null}
               <Link
-                href={`/arbitrage/cycles/${data.current.id}/lines`}
-                className="underline underline-offset-4"
-              >
-                Manage lines
-              </Link>
-              <Link
-                href={`/arbitrage/cycles/${data.current.id}/profit`}
-                className="underline underline-offset-4"
-              >
-                View profit
-              </Link>
-              <Link
                 href="/arbitrage/cycles/details"
                 className="underline underline-offset-4"
               >

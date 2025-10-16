@@ -115,7 +115,16 @@ export const APPS: AppConfig[] = [
         icon: Recycle,
         items: [
           { name: "Planner", url: "/arbitrage/admin/planner", icon: Recycle },
-          { name: "Commits", url: "/arbitrage/admin/commits", icon: Recycle },
+          {
+            name: "Manage Lines",
+            url: "/arbitrage/admin/lines",
+            icon: Recycle,
+          },
+          {
+            name: "View Profit",
+            url: "/arbitrage/admin/profit",
+            icon: Recycle,
+          },
           {
             name: "Undercut Checker",
             url: "/arbitrage/admin/undercut-checker",

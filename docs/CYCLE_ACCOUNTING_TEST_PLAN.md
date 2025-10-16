@@ -102,24 +102,6 @@
 - [x] Shows status (pending/validated)
 - [] Shows estimated payout (if cycle is running)
 
-**Method 2 - API**:
-
-```bash
-GET /api/ledger/cycles/{cycleId}/participations/my
-```
-
-- [ ] Returns user's participation details
-
-**Method 3 - Database**:
-
-```sql
-SELECT * FROM cycle_participations WHERE cycle_id = 'your-cycle-id';
-```
-
-- [ ] Verify `status = 'validated'`
-- [ ] Verify `wallet_journal_id` is set
-- [ ] Verify `amount_isk` matches sent amount
-
 ---
 
 ## 3️⃣ Arbitrage Planning
@@ -153,7 +135,7 @@ SELECT * FROM cycle_participations WHERE cycle_id = 'your-cycle-id';
 
 ## 4️⃣ Cycle Lines Management
 
-**Location**: `/arbitrage/cycles/[cycleId]/lines` (NEW PAGE - may need component installation)
+**Location**: `/arbitrage/admin/lines` (ADMIN-ONLY PAGE)
 
 ### View Cycle Lines
 
@@ -163,37 +145,22 @@ SELECT * FROM cycle_participations WHERE cycle_id = 'your-cycle-id';
 cd apps/web && npx shadcn@latest add alert-dialog
 ```
 
-- [ ] Navigate via "Manage Lines" link from cycles page (`/arbitrage/cycles`)
-- [ ] **If page doesn't load**: Install alert-dialog component and fix `apiClient` import
-- [ ] See list of all planned items for the cycle
-- [ ] Each line shows:
-  - [ ] Item type name
-  - [ ] Destination station name
-  - [ ] Planned units
-  - [ ] Units bought (initially 0)
-  - [ ] Units sold (initially 0)
-  - [ ] Units remaining (calculated)
-  - [ ] Buy cost ISK
-  - [ ] Sales revenue ISK
-  - [ ] Broker fees ISK
-  - [ ] Relist fees ISK
-
-### API Testing Alternative (if frontend not ready)
-
-Use API calls directly via Postman/curl:
-
-```bash
-# List cycle lines for current cycle
-GET /api/ledger/cycles/{cycleId}/lines
-
-# Create cycle line manually
-POST /api/ledger/cycles/{cycleId}/lines
-Body: {
-  "typeId": 34,
-  "destinationStationId": 60011866,
-  "plannedUnits": 100
-}
-```
+- [x] Navigate via "Manage Lines" link in admin sidebar (under Cycles)
+- [x] Page automatically loads latest open cycle (or most recent if none open)
+- [x] Can optionally override with query parameter: `/arbitrage/admin/lines?cycleId=your-cycle-id`
+- [x] Page shows which cycle is being used (first 8 characters of cycle ID)
+- [x] See list of all planned items for the cycle
+- [x] Each line shows:
+  - [x] Item type name
+  - [x] Destination station name
+  - [x] Planned units
+  - [x] Units bought (initially 0)
+  - [x] Units sold (initially 0)
+  - [x] Units remaining (calculated)
+  - [x] Buy cost ISK
+  - [x] Sales revenue ISK
+  - [x] Broker fees ISK
+  - [x] Relist fees ISK
 
 ---
 
@@ -203,89 +170,53 @@ Body: {
 
 ### Execute Buys In-Game
 
-- [ ] Log in to BUYER character in-game
-- [ ] Navigate to Jita (or source station)
-- [ ] Buy items from cycle lines using market orders
-- [ ] Note: Buys can be partial (multiple orders for same item)
+- [x] Log in to BUYER character in-game
+- [x] Navigate to Jita (or source station)
+- [x] Buy items from cycle lines using market orders
+- [x] Note: Buys can be partial (multiple orders for same item)
 
 ### Import Wallet Transactions
 
 **Location**: `/arbitrage/admin/triggers`
 
-- [ ] Navigate to "Wallets" tab
-- [ ] Set "Days back" parameter (e.g., 15)
-- [ ] Click "Import Wallets" button with refresh icon
-- [ ] Toast shows "Importing wallet transactions..."
-- [ ] After completion, success message with count
-- [ ] Verify in backend console/logs that transactions imported
+- [x] Navigate to "Wallets" tab
+- [x] Set "Days back" parameter (e.g., 15)
+- [x] Click "Import Wallets" button with refresh icon
+- [x] Toast shows "Importing wallet transactions..."
+- [x] After completion, success message with count
+- [x] Verify in backend console/logs that transactions imported
 
 ### Run Buy Allocation
 
 **Location**: `/arbitrage/admin/triggers` → "Jobs" tab
 
-- [ ] Look for "Run Wallets" button (imports + allocates)
-- [ ] Click button → System:
+- [x] Look for "Run Wallets" button (imports + allocates)
+- [x] Click button → System:
   1. Imports latest wallet transactions
   2. Runs allocation for buys
   3. Runs allocation for sells
-- [ ] Check backend logs for allocation results:
-  - [ ] Number of buy transactions allocated
-  - [ ] Number of cycle lines updated
-  - [ ] Any errors or unmatched transactions
+- [x] Check backend logs for allocation results:
+  - [x] Number of buy transactions allocated
+  - [x] Number of cycle lines updated
+  - [x] Any errors or unmatched transactions
 
 ### Verify Buy Allocations
 
 **Method 1 - Frontend** (if lines page is working):
 **Location**: `/arbitrage/cycles/[cycleId]/lines`
 
-- [ ] Return to cycle lines page
-- [ ] Verify `Units Bought` increased for affected lines
-- [ ] Verify `Buy Cost ISK` updated with total cost
-- [ ] Check `Units Remaining` = `Planned Units` initially (since nothing sold yet)
-
-**Method 2 - API** (recommended for now):
-
-```bash
-GET /api/ledger/cycles/{cycleId}/lines
-```
-
-- [ ] Check response shows updated `unitsBought` and `buyCostIsk`
-
-**Method 3 - Database**:
-
-```sql
-SELECT * FROM cycle_lines WHERE cycle_id = 'your-cycle-id';
-```
-
-- [ ] Verify `units_bought` and `buy_cost_isk` values updated
-
----
+- [x] Return to cycle lines page
+- [x] Verify `Units Bought` increased for affected lines
+- [x] Verify `Buy Cost ISK` updated with total cost
+- [x] Check `Units Remaining` = `Planned Units` initially (since nothing sold yet)
 
 ## 6️⃣ Transport & Listing Phase
 
 ### Transport Items
 
-- [ ] Move items in-game from source to destination station (manual, out-of-game via contract service)
-- [ ] **Important**: Contract tracking is NOT currently working from ESI
-- [ ] **Important**: No automatic way to match transport contracts to cycles
-
-### Record Transport Fees Manually
-
-**Location**: API only (no UI yet)
-
-Transport fees must be manually recorded since contracts can't be auto-imported:
-
-```bash
-POST /api/ledger/cycles/{cycleId}/transport-fee
-Body: {
-  "amountIsk": "50000000",
-  "memo": "PushX contract #12345 - Jita to Dodixie"
-}
-```
-
-- [ ] After each transport contract, manually record the fee
-- [ ] Include contract reference in memo for tracking
-- [ ] Fees tracked at cycle level (not per line)
+- [x] Move items in-game from source to destination station (manual, out-of-game via contract service)
+- [x] **Important**: Contract tracking is NOT currently working from ESI
+- [x] **Important**: No automatic way to match transport contracts to cycles
 
 ### Record Broker Fees (Initial Listing)
 
@@ -295,23 +226,14 @@ Body: {
 
 **Workflow**:
 
-- [ ] Navigate to `/arbitrage/admin/sell-appraiser`
-- [ ] Check "Use latest open commit" (should auto-load current cycle)
-- [ ] Click "Appraise" → System fetches remaining inventory and suggests prices
-- [ ] Review suggested prices (based on current market lowest sell)
-- [ ] Check items you're listing
-- [ ] List items in-game at the suggested prices
-- [ ] Return to appraiser page
-- [ ] Click "Confirm Listed" → Records 1.5% broker fee for selected items
-
-**Note**: The frontend currently uses `planCommitId` but backend expects cycle-based parameters. The API endpoints need updating to match new system.
-
-**Alternative - Manual API call per line**:
-
-```bash
-POST /api/ledger/cycles/lines/{lineId}/broker-fee
-Body: { "amountIsk": "1500000" }  # 1.5% of listing value
-```
+- [x] Navigate to `/arbitrage/admin/sell-appraiser`
+- [x] Check "Use latest open commit" (should auto-load current cycle)
+- [x] Click "Appraise" → System fetches remaining inventory and suggests prices
+- [x] Review suggested prices (based on current market lowest sell)
+- [x] Check items you're listing
+- [x] List items in-game at the suggested prices
+- [x] Return to appraiser page
+- [x] Click "Confirm Listed" → Records 1.5% broker fee for selected items
 
 ---
 
@@ -319,46 +241,21 @@ Body: { "amountIsk": "1500000" }  # 1.5% of listing value
 
 ### Execute Sells In-Game
 
-- [ ] Log in to SELLER character in-game
-- [ ] Items sell gradually via market orders at destination station
-- [ ] Note: Multiple partial sales may occur
-- [ ] **Important**: Seller character's `location` in database MUST match the destination station for sells to allocate correctly
+- [x] Log in to SELLER character in-game
+- [x] Items sell gradually via market orders at destination station
+- [x] Note: Multiple partial sales may occur
+- [x] **Important**: Seller character's `location` in database MUST match the destination station for sells to allocate correctly
 
 ### Import Wallet Transactions & Run Allocation
 
 **Location**: `/arbitrage/admin/triggers` → "Jobs" tab
 
-- [ ] Click "Run Wallets" button (same as buy phase)
-- [ ] System automatically:
+- [x] Click "Run Wallets" button (same as buy phase)
+- [x] System automatically:
   1. Imports latest wallet transactions (buys AND sells)
   2. Runs buy allocation
   3. Runs sell allocation
-- [ ] Check backend logs for results
-
-### Verify Sell Allocations
-
-**Method 1 - API**:
-
-```bash
-GET /api/ledger/cycles/{cycleId}/lines
-```
-
-- [ ] Check `unitsSold` increased
-- [ ] Check `salesGrossIsk`, `salesTaxIsk`, `salesNetIsk` updated
-- [ ] Verify tax = 3.37% of gross sales
-
-**Method 2 - Database**:
-
-```sql
-SELECT * FROM cycle_lines WHERE cycle_id = 'your-cycle-id';
-SELECT * FROM sell_allocations WHERE line_id = 'your-line-id';
-```
-
-- [ ] `units_sold` increased for affected lines
-- [ ] `sales_gross_isk` shows total revenue before tax
-- [ ] `sales_tax_isk` shows 3.37% tax deducted
-- [ ] `sales_net_isk` = gross - tax
-- [ ] Units remaining = bought - sold
+- [x] Check backend logs for results
 
 ---
 
@@ -372,26 +269,26 @@ SELECT * FROM sell_allocations WHERE line_id = 'your-line-id';
 
 **Workflow**:
 
-- [ ] Navigate to `/arbitrage/admin/undercut-checker`
-- [ ] Check "Use latest open commit" (should auto-load current cycle)
-- [ ] Click "Run Check" → System compares your sell orders vs market
-- [ ] Results grouped by character and station
-- [ ] Each row shows:
-  - [ ] Item name
-  - [ ] Remaining quantity
-  - [ ] Your current price
-  - [ ] Competitor's lowest price
-  - [ ] Suggested new price (0.01 ISK cheaper, with tick rounding)
-  - [ ] **Calculated relist fee** (0.3% of new order value)
-- [ ] Total relist fee shown at bottom for selected items
+- [x] Navigate to `/arbitrage/admin/undercut-checker`
+- [x] Check "Use latest open commit" (should auto-load current cycle)
+- [x] Click "Run Check" → System compares your sell orders vs market
+- [x] Results grouped by character and station
+- [x] Each row shows:
+  - [x] Item name
+  - [x] Remaining quantity
+  - [x] Your current price
+  - [x] Competitor's lowest price
+  - [x] Suggested new price (0.01 ISK cheaper, with tick rounding)
+  - [x] **Calculated relist fee** (0.3% of new order value)
+- [x] Total relist fee shown at bottom for selected items
 
 ### Record Relist Fees
 
-- [ ] Review suggested prices and relist fees
-- [ ] Select items you want to reprice (checkboxes)
-- [ ] Update prices in-game to match suggested prices
-- [ ] Return to undercut checker page
-- [ ] Click "Confirm Repriced" → Records 0.3% relist fee for selected items
+- [x] Review suggested prices and relist fees
+- [x] Select items you want to reprice (checkboxes)
+- [x] Update prices in-game to match suggested prices
+- [x] Return to undercut checker page
+- [x] Click "Confirm Repriced" → Records 0.3% relist fee for selected items
 
 **Important**: Relist fees are 0.3% of the NEW order value (remaining quantity × new price), NOT the original listing price. This is why the undercut checker calculates and displays them.
 
@@ -404,26 +301,6 @@ POST /api/ledger/cycles/lines/{lineId}/relist-fee
 Body: { "amountIsk": "30000" }  # 0.3% of new order value
 ```
 
-### Verify Relist Fees Recorded
-
-**Method 1 - API**:
-
-```bash
-GET /api/ledger/cycles/{cycleId}/lines
-```
-
-- [ ] Check `relistFeesIsk` increased for affected lines
-
-**Method 2 - Database**:
-
-```sql
-SELECT id, type_id, relist_fees_isk FROM cycle_lines WHERE cycle_id = 'your-cycle-id';
-```
-
-- [ ] Verify `relist_fees_isk` values updated
-
----
-
 ## 8️⃣ Profit Calculation & Snapshots
 
 **Location**: `/arbitrage/cycles/[cycleId]/profit` (NEW PAGE - may need component installation)
@@ -434,24 +311,8 @@ SELECT id, type_id, relist_fees_isk FROM cycle_lines WHERE cycle_id = 'your-cycl
 
 **Method 1 - Frontend** (if profit page is working):
 
-- [ ] Navigate via "View Profit" link from `/arbitrage/cycles`
-- [ ] See overall profit summary with all fees and net profit
-
-**Method 2 - API** (recommended for now):
-
-```bash
-GET /api/ledger/cycles/{cycleId}/profit
-```
-
-Response should show:
-
-- [ ] Total buy cost
-- [ ] Total sales revenue (net)
-- [ ] Total broker fees (from lines)
-- [ ] Total relist fees (from lines)
-- [ ] Total transport fees (from cycle fee events)
-- [ ] **Cycle Net Profit** = Sales - Costs - Fees
-- [ ] Line-level breakdown with profit per item
+- [x] Navigate via "View Profit" link from `/arbitrage/cycles`
+- [x] See overall profit summary with all fees and net profit
 
 ### Create Manual Snapshot
 

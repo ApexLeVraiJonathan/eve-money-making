@@ -8,15 +8,18 @@ declare module "next-auth" {
     characterId?: number;
     characterName?: string;
     ownerHash?: string;
+    error?: string;
   }
 }
 
 declare module "next-auth/jwt" {
   interface JWT {
     accessToken?: string;
+    refreshToken?: string;
     expires_at?: number;
     characterId?: number;
     characterName?: string;
     ownerHash?: string;
+    error?: string;
   }
 }
