@@ -4,7 +4,32 @@ import { Button } from "@/components/ui/button";
 import { formatIsk } from "@/lib/utils";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-//
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import {
+  Calculator,
+  CheckCircle2,
+  AlertCircle,
+  Loader2,
+  FileText,
+  Store,
+  Package,
+} from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 type TrackedStation = {
   id: string;
@@ -227,129 +252,207 @@ export default function SellAppraiserPage() {
   };
 
   return (
-    <div className="max-w-4xl min-w-4xl mx-auto space-y-4 pt-4">
-      <h1 className="text-2xl font-semibold">Sell Appraiser</h1>
-      <div className="space-y-2">
-        <div className="flex items-center gap-2">
-          <input
-            id="use-commit"
-            type="checkbox"
-            checked={useCommit}
-            onChange={(e) => setUseCommit(e.target.checked)}
-          />
-          <Label htmlFor="use-commit">Use latest open cycle</Label>
+    <div className="p-6 space-y-6">
+      {/* Header */}
+      <div className="flex items-center gap-2">
+        <span className="inline-flex h-10 w-10 items-center justify-center rounded-md bg-primary/15 text-primary">
+          <Calculator className="h-6 w-6" />
+        </span>
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">
+            Sell Appraiser
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            Calculate optimal sell prices for your inventory
+          </p>
         </div>
-        {!useCommit && (
-          <div className="space-y-2">
-            <Label>Cycle Id</Label>
-            <input
-              className="border rounded p-2 w-full bg-background text-foreground"
-              value={cycleId}
-              onChange={(e) => setCycleId(e.target.value)}
-              placeholder="cycleId"
-            />
-          </div>
-        )}
-        {useCommit && cycleId && (
-          <div className="text-sm text-muted-foreground">
-            Using cycle {cycleId.slice(0, 8)}…
-          </div>
-        )}
       </div>
-      {!useCommit && (
-        <>
-          <div className="space-y-2">
-            <Label>Destination</Label>
-            <select
-              className="border rounded p-2 w-full bg-background text-foreground"
-              value={destinationId ?? ""}
-              onChange={(e) => setDestinationId(Number(e.target.value))}
+
+      {/* Configuration Card */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <FileText className="h-5 w-5" />
+            Configuration
+          </CardTitle>
+          <CardDescription>
+            Configure items to appraise for selling
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center gap-2">
+            <Checkbox
+              id="use-commit"
+              checked={useCommit}
+              onCheckedChange={(checked) => setUseCommit(checked === true)}
+            />
+            <Label htmlFor="use-commit" className="cursor-pointer">
+              Use latest open cycle
+            </Label>
+          </div>
+
+          {!useCommit && (
+            <div className="space-y-2">
+              <Label>Cycle ID</Label>
+              <Input
+                value={cycleId}
+                onChange={(e) => setCycleId(e.target.value)}
+                placeholder="Enter cycle ID"
+              />
+            </div>
+          )}
+
+          {useCommit && cycleId && (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground p-3 rounded-md bg-muted/50">
+              <CheckCircle2 className="h-4 w-4" />
+              Using cycle {cycleId.slice(0, 8)}…
+            </div>
+          )}
+
+          {!useCommit && (
+            <>
+              <div className="space-y-2">
+                <Label>Destination Station</Label>
+                <Select
+                  value={destinationId?.toString() ?? ""}
+                  onValueChange={(value) => setDestinationId(Number(value))}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a station" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {stations.map((s) => (
+                      <SelectItem key={s.id} value={s.stationId.toString()}>
+                        {s.station?.name ?? s.stationId}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Paste Items</Label>
+                <p className="text-xs text-muted-foreground">
+                  Format: itemName qty (one per line)
+                </p>
+                <Textarea
+                  value={paste}
+                  onChange={(e) => setPaste(e.target.value)}
+                  rows={8}
+                  placeholder="Damage Control II 10&#10;Gyrostabilizer II 5&#10;..."
+                  className="font-mono text-sm"
+                />
+              </div>
+            </>
+          )}
+
+          <div className="flex gap-2">
+            <Button
+              onClick={onSubmit}
+              disabled={loading || (useCommit ? !cycleId : !destinationId)}
+              className="gap-2"
             >
-              {stations.map((s) => (
-                <option key={s.id} value={s.stationId}>
-                  {s.station?.name ?? s.stationId}
-                </option>
-              ))}
-            </select>
+              {loading ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Computing...
+                </>
+              ) : (
+                <>
+                  <Calculator className="h-4 w-4" />
+                  Appraise
+                </>
+              )}
+            </Button>
+            <Button
+              onClick={onConfirmListed}
+              disabled={!useCommit || !cycleId}
+              variant="secondary"
+              className="gap-2"
+            >
+              <CheckCircle2 className="h-4 w-4" />
+              Confirm Listed
+            </Button>
           </div>
-          <div className="space-y-2">
-            <Label>Paste items (format: itemName qty, one per line)</Label>
-            <Textarea
-              value={paste}
-              onChange={(e) => setPaste(e.target.value)}
-              rows={8}
-            />
-          </div>
-        </>
+        </CardContent>
+      </Card>
+
+      {error && (
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
       )}
-      <div className="flex gap-2">
-        <Button
-          onClick={onSubmit}
-          disabled={loading || (useCommit ? !cycleId : !destinationId)}
-        >
-          {loading ? "Computing..." : "Appraise"}
-        </Button>
-        <Button
-          onClick={onConfirmListed}
-          disabled={!useCommit || !cycleId}
-          variant="secondary"
-        >
-          Confirm Listed
-        </Button>
-      </div>
 
-      {error && <div className="text-red-600">{error}</div>}
-
-      {Array.isArray(result) && (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left border-b">
-                <th className="py-2">
-                  <input
-                    type="checkbox"
-                    checked={
-                      result.length > 0 &&
-                      result.every((r) => {
-                        const key = `${r.destinationStationId}:${isCommitRow(r) ? r.typeId : r.itemName}`;
-                        return selected[key];
-                      })
-                    }
-                    onChange={toggleAll}
-                  />
-                </th>
-                <th className="py-2">Item</th>
-                <th className="py-2">Qty</th>
-                <th className="py-2">Lowest Sell</th>
-                <th className="py-2">Suggested (ticked)</th>
-              </tr>
-            </thead>
-            <tbody>
-              {result.map((r, idx) => {
-                const key = `${r.destinationStationId}:${"typeId" in r ? r.typeId : r.itemName}`;
-                return (
-                  <tr key={idx} className="border-b">
-                    <td className="py-1 pr-2">
-                      <input
-                        type="checkbox"
-                        checked={!!selected[key]}
-                        onChange={() => toggle(key)}
+      {Array.isArray(result) && result.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Package className="h-5 w-5" />
+              Appraisal Results
+            </CardTitle>
+            <CardDescription>
+              {result.length} item{result.length !== 1 ? "s" : ""} ready to list
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left border-b">
+                    <th className="py-3 px-3">
+                      <Checkbox
+                        checked={
+                          result.length > 0 &&
+                          result.every((r) => {
+                            const key = `${r.destinationStationId}:${isCommitRow(r) ? r.typeId : r.itemName}`;
+                            return selected[key];
+                          })
+                        }
+                        onCheckedChange={toggleAll}
                       />
-                    </td>
-                    <td className="py-1 pr-2">{r.itemName}</td>
-                    <td className="py-1 pr-2">
-                      {"quantity" in r ? r.quantity : r.quantityRemaining}
-                    </td>
-                    <td className="py-1 pr-2">{formatIsk(r.lowestSell)}</td>
-                    <td className="py-1 pr-2 font-medium">
-                      {formatIsk(r.suggestedSellPriceTicked)}
-                    </td>
+                    </th>
+                    <th className="py-3 px-3 text-left font-medium">Item</th>
+                    <th className="py-3 px-3 text-right font-medium">Qty</th>
+                    <th className="py-3 px-3 text-right font-medium">
+                      Lowest Sell
+                    </th>
+                    <th className="py-3 px-3 text-right font-medium">
+                      Suggested (ticked)
+                    </th>
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+                </thead>
+                <tbody>
+                  {result.map((r, idx) => {
+                    const key = `${r.destinationStationId}:${"typeId" in r ? r.typeId : r.itemName}`;
+                    return (
+                      <tr
+                        key={idx}
+                        className="border-b hover:bg-muted/50 transition-colors"
+                      >
+                        <td className="py-2 px-3">
+                          <Checkbox
+                            checked={!!selected[key]}
+                            onCheckedChange={() => toggle(key)}
+                          />
+                        </td>
+                        <td className="py-2 px-3">{r.itemName}</td>
+                        <td className="py-2 px-3 text-right tabular-nums">
+                          {"quantity" in r ? r.quantity : r.quantityRemaining}
+                        </td>
+                        <td className="py-2 px-3 text-right tabular-nums">
+                          {formatIsk(r.lowestSell)}
+                        </td>
+                        <td className="py-2 px-3 text-right font-medium tabular-nums">
+                          {formatIsk(r.suggestedSellPriceTicked)}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
       )}
     </div>
   );

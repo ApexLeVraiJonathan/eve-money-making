@@ -3,6 +3,25 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { formatIsk } from "@/lib/utils";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import {
+  TrendingDown,
+  RefreshCw,
+  CheckCircle2,
+  AlertCircle,
+  Loader2,
+  Package,
+  Store,
+} from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 type Group = {
   characterId: number;
@@ -213,200 +232,264 @@ export default function UndercutCheckerPage() {
   };
 
   return (
-    <div className="max-w-screen-2xl mx-auto  space-y-4 pt-4">
-      <h1 className="text-2xl font-semibold">Undercut Checker</h1>
-      <div className="space-y-2">
-        <div className="flex items-center gap-2">
-          <input
-            id="use-commit"
-            type="checkbox"
-            checked={useCommit}
-            onChange={(e) => setUseCommit(e.target.checked)}
-          />
-          <Label htmlFor="use-commit">Use latest open cycle</Label>
+    <div className="p-6 space-y-6">
+      {/* Header */}
+      <div className="flex items-center gap-2">
+        <span className="inline-flex h-10 w-10 items-center justify-center rounded-md bg-primary/15 text-primary">
+          <TrendingDown className="h-6 w-6" />
+        </span>
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">
+            Undercut Checker
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            Check for undercuts and manage repricing
+          </p>
         </div>
-        {!useCommit && (
-          <div className="space-y-2">
-            <Label>Cycle Id</Label>
-            <input
-              className="border rounded p-2 w-full bg-background text-foreground"
-              value={cycleId}
-              onChange={(e) => setCycleId(e.target.value)}
-              placeholder="cycleId"
+      </div>
+
+      {/* Configuration Card */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <RefreshCw className="h-5 w-5" />
+            Configuration
+          </CardTitle>
+          <CardDescription>
+            Configure which items to check for undercuts
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center gap-2">
+            <Checkbox
+              id="use-commit"
+              checked={useCommit}
+              onCheckedChange={(checked) => setUseCommit(checked === true)}
             />
+            <Label htmlFor="use-commit" className="cursor-pointer">
+              Use latest open cycle
+            </Label>
           </div>
-        )}
-        {useCommit && cycleId && (
-          <div className="text-sm text-muted-foreground">
-            Using cycle {cycleId.slice(0, 8)}…
-          </div>
-        )}
-      </div>
-      {!useCommit && (
-        <div className="space-y-2">
-          <Label>Stations</Label>
-          <div className="flex flex-wrap gap-2">
-            {stations.map((s) => {
-              const checked = selectedStations.includes(s.stationId);
-              return (
-                <label
-                  key={s.id}
-                  className="flex items-center gap-2 border rounded px-2 py-1"
-                >
-                  <input
-                    type="checkbox"
-                    checked={checked}
-                    onChange={(e) => {
-                      setSelectedStations((prev) =>
-                        e.target.checked
-                          ? [...prev, s.stationId]
-                          : prev.filter((id) => id !== s.stationId),
-                      );
-                    }}
-                  />
-                  <span>{s.station?.name ?? s.stationId}</span>
-                </label>
-              );
-            })}
-          </div>
-        </div>
-      )}
-      <div>
-        <Button onClick={onRun} disabled={loading || (useCommit && !cycleId)}>
-          {loading ? "Checking..." : "Run Check"}
-        </Button>
-      </div>
 
-      {error && <div className="text-red-600">{error}</div>}
+          {!useCommit && (
+            <div className="space-y-2">
+              <Label>Cycle ID</Label>
+              <Input
+                value={cycleId}
+                onChange={(e) => setCycleId(e.target.value)}
+                placeholder="Enter cycle ID"
+              />
+            </div>
+          )}
 
-      {Array.isArray(result) && result.length > 0 && (
-        <div className="space-y-6">
-          {result.map((group, gi) => (
-            <div key={gi} className="border rounded p-3">
-              <div className="font-medium mb-2">
-                Character {group.characterName ?? group.characterId} — Station{" "}
-                {group.stationName ?? group.stationId}
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b">
-                      <th className="py-2 px-3">
-                        <input
-                          type="checkbox"
-                          checked={
-                            group.updates.every(
-                              (u) =>
-                                selected[
-                                  `${group.characterId}:${group.stationId}:${u.orderId}`
-                                ],
-                            ) && group.updates.length > 0
-                          }
-                          onChange={(e) => {
-                            const keys = group.updates.map(
-                              (u) =>
-                                `${group.characterId}:${group.stationId}:${u.orderId}`,
-                            );
-                            const next: Record<string, boolean> = {};
-                            for (const k of keys) next[k] = e.target.checked;
-                            setSelected(next);
-                          }}
-                        />
-                      </th>
-                      <th className="py-2 px-3 whitespace-nowrap text-left">
-                        Item
-                      </th>
-                      <th className="py-2 px-3 whitespace-nowrap text-right">
-                        Remain
-                      </th>
-                      <th className="py-2 px-3 whitespace-nowrap text-right">
-                        Current
-                      </th>
-                      <th className="py-2 px-3 whitespace-nowrap text-right">
-                        Competitor Lowest
-                      </th>
-                      <th className="py-2 px-3 whitespace-nowrap text-right">
-                        Suggested
-                      </th>
-                      <th className="py-2 px-3 whitespace-nowrap text-right">
-                        Relist Fee ({RELIST_PCT}%)
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {group.updates.map((u, ui) => {
-                      const key = `${group.characterId}:${group.stationId}:${u.orderId}`;
-                      return (
-                        <tr key={ui} className="border-b">
-                          <td className="py-2 px-3">
-                            <input
-                              type="checkbox"
-                              checked={!!selected[key]}
-                              onChange={() => toggle(key)}
-                            />
-                          </td>
-                          <td className="py-2 px-3 text-left whitespace-nowrap">
-                            {u.itemName}
-                          </td>
-                          <td className="py-2 px-3 text-right">
-                            {u.remaining}
-                          </td>
-                          <td className="py-2 px-3 text-right">
-                            {formatIsk(u.currentPrice)}
-                          </td>
-                          <td className="py-2 px-3 text-right">
-                            {formatIsk(u.competitorLowest)}
-                          </td>
-                          <td className="py-2 px-3 font-medium text-right">
-                            {formatIsk(u.suggestedNewPriceTicked)}
-                          </td>
-                          <td className="py-2 px-3 font-medium text-right">
-                            {formatIsk(
-                              u.remaining *
-                                u.suggestedNewPriceTicked *
-                                (RELIST_PCT / 100),
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                  <tfoot>
-                    <tr className="border-t">
-                      <td className="py-2 px-3"></td>
-                      <td className="py-2 px-3" colSpan={4}></td>
-                      <td className="py-2 px-3 text-right font-medium">
-                        Total relist fee (selected):
-                      </td>
-                      <td className="py-2 px-3 font-semibold text-right">
-                        {formatIsk(
-                          group.updates.reduce((s, u) => {
-                            const key = `${group.characterId}:${group.stationId}:${u.orderId}`;
-                            return (
-                              s +
-                              (selected[key]
-                                ? u.remaining *
-                                  u.suggestedNewPriceTicked *
-                                  (RELIST_PCT / 100)
-                                : 0)
-                            );
-                          }, 0),
-                        )}
-                      </td>
-                    </tr>
-                  </tfoot>
-                </table>
+          {useCommit && cycleId && (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground p-3 rounded-md bg-muted/50">
+              <CheckCircle2 className="h-4 w-4" />
+              Using cycle {cycleId.slice(0, 8)}…
+            </div>
+          )}
+
+          {!useCommit && (
+            <div className="space-y-2">
+              <Label>Stations</Label>
+              <div className="flex flex-wrap gap-2">
+                {stations.map((s) => {
+                  const checked = selectedStations.includes(s.stationId);
+                  return (
+                    <label
+                      key={s.id}
+                      className={`flex items-center gap-2 border rounded-md px-3 py-2 cursor-pointer transition-colors ${
+                        checked
+                          ? "bg-primary/10 border-primary"
+                          : "hover:bg-muted/50"
+                      }`}
+                    >
+                      <Checkbox
+                        checked={checked}
+                        onCheckedChange={(isChecked) => {
+                          setSelectedStations((prev) =>
+                            isChecked
+                              ? [...prev, s.stationId]
+                              : prev.filter((id) => id !== s.stationId),
+                          );
+                        }}
+                      />
+                      <span className="text-sm">
+                        {s.station?.name ?? s.stationId}
+                      </span>
+                    </label>
+                  );
+                })}
               </div>
             </div>
-          ))}
-          <div>
+          )}
+
+          <Button
+            onClick={onRun}
+            disabled={loading || (useCommit && !cycleId)}
+            className="gap-2"
+          >
+            {loading ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Checking...
+              </>
+            ) : (
+              <>
+                <RefreshCw className="h-4 w-4" />
+                Run Check
+              </>
+            )}
+          </Button>
+        </CardContent>
+      </Card>
+
+      {error && (
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
+
+      {Array.isArray(result) && result.length > 0 && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold">Undercut Results</h2>
             <Button
               onClick={onConfirmReprice}
               disabled={!useCommit || !cycleId}
+              className="gap-2"
             >
+              <CheckCircle2 className="h-4 w-4" />
               Confirm Repriced
             </Button>
           </div>
+
+          {result.map((group, gi) => (
+            <Card key={gi}>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Store className="h-5 w-5" />
+                  {group.characterName ?? `Character ${group.characterId}`}
+                </CardTitle>
+                <CardDescription>
+                  {group.stationName ?? `Station ${group.stationId}`}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b">
+                        <th className="py-2 px-3">
+                          <input
+                            type="checkbox"
+                            checked={
+                              group.updates.every(
+                                (u) =>
+                                  selected[
+                                    `${group.characterId}:${group.stationId}:${u.orderId}`
+                                  ],
+                              ) && group.updates.length > 0
+                            }
+                            onChange={(e) => {
+                              const keys = group.updates.map(
+                                (u) =>
+                                  `${group.characterId}:${group.stationId}:${u.orderId}`,
+                              );
+                              const next: Record<string, boolean> = {};
+                              for (const k of keys) next[k] = e.target.checked;
+                              setSelected(next);
+                            }}
+                          />
+                        </th>
+                        <th className="py-2 px-3 whitespace-nowrap text-left">
+                          Item
+                        </th>
+                        <th className="py-2 px-3 whitespace-nowrap text-right">
+                          Remain
+                        </th>
+                        <th className="py-2 px-3 whitespace-nowrap text-right">
+                          Current
+                        </th>
+                        <th className="py-2 px-3 whitespace-nowrap text-right">
+                          Competitor Lowest
+                        </th>
+                        <th className="py-2 px-3 whitespace-nowrap text-right">
+                          Suggested
+                        </th>
+                        <th className="py-2 px-3 whitespace-nowrap text-right">
+                          Relist Fee ({RELIST_PCT}%)
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {group.updates.map((u, ui) => {
+                        const key = `${group.characterId}:${group.stationId}:${u.orderId}`;
+                        return (
+                          <tr key={ui} className="border-b">
+                            <td className="py-2 px-3">
+                              <input
+                                type="checkbox"
+                                checked={!!selected[key]}
+                                onChange={() => toggle(key)}
+                              />
+                            </td>
+                            <td className="py-2 px-3 text-left whitespace-nowrap">
+                              {u.itemName}
+                            </td>
+                            <td className="py-2 px-3 text-right">
+                              {u.remaining}
+                            </td>
+                            <td className="py-2 px-3 text-right">
+                              {formatIsk(u.currentPrice)}
+                            </td>
+                            <td className="py-2 px-3 text-right">
+                              {formatIsk(u.competitorLowest)}
+                            </td>
+                            <td className="py-2 px-3 font-medium text-right">
+                              {formatIsk(u.suggestedNewPriceTicked)}
+                            </td>
+                            <td className="py-2 px-3 font-medium text-right">
+                              {formatIsk(
+                                u.remaining *
+                                  u.suggestedNewPriceTicked *
+                                  (RELIST_PCT / 100),
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                    <tfoot>
+                      <tr className="border-t">
+                        <td className="py-2 px-3"></td>
+                        <td className="py-2 px-3" colSpan={4}></td>
+                        <td className="py-2 px-3 text-right font-medium">
+                          Total relist fee (selected):
+                        </td>
+                        <td className="py-2 px-3 font-semibold text-right">
+                          {formatIsk(
+                            group.updates.reduce((s, u) => {
+                              const key = `${group.characterId}:${group.stationId}:${u.orderId}`;
+                              return (
+                                s +
+                                (selected[key]
+                                  ? u.remaining *
+                                    u.suggestedNewPriceTicked *
+                                    (RELIST_PCT / 100)
+                                  : 0)
+                              );
+                            }, 0),
+                          )}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
         </div>
       )}
     </div>
