@@ -222,12 +222,91 @@ export default function ParticipationsPage() {
   }
 
   return (
-    <div className="container mx-auto max-w-7xl p-6 space-y-6">
-      <div className="space-y-1">
-        <h1 className="text-3xl font-bold tracking-tight">Participations</h1>
-        <p className="text-muted-foreground">
-          Manage cycle participations, payments, refunds, and payouts
-        </p>
+    <div className="p-6 space-y-6">
+      {/* Header */}
+      <div className="flex items-center gap-2">
+        <span className="inline-flex h-10 w-10 items-center justify-center rounded-md bg-primary/15 text-primary">
+          <Users className="h-6 w-6" />
+        </span>
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">
+            Participations
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            Manage cycle participations, payments, refunds, and payouts
+          </p>
+        </div>
+      </div>
+
+      {/* Summary Stats */}
+      <div className="grid gap-4 md:grid-cols-4">
+        <Card>
+          <CardHeader className="pb-2">
+            <div className="text-sm font-medium flex items-center gap-1.5">
+              <Users className="h-4 w-4 text-muted-foreground" />
+              Total Participants
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-semibold tabular-nums">
+              {participations.length}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              Across all cycles
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <div className="text-sm font-medium flex items-center gap-1.5">
+              <LinkIcon className="h-4 w-4 text-amber-600" />
+              Awaiting Payment
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-semibold tabular-nums text-amber-600">
+              {awaitingPayment.length}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              Need to be matched
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <div className="text-sm font-medium flex items-center gap-1.5">
+              <Ban className="h-4 w-4 text-red-600" />
+              Refunds Needed
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-semibold tabular-nums text-red-600">
+              {needsRefund.length}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              Cancelled participations
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <div className="text-sm font-medium flex items-center gap-1.5">
+              <DollarSign className="h-4 w-4 text-emerald-600" />
+              Payouts Pending
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-semibold tabular-nums text-emerald-600">
+              {needsPayout.length}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              Ready to pay out
+            </p>
+          </CardContent>
+        </Card>
       </div>
 
       {/* All Participants Overview */}
@@ -235,16 +314,23 @@ export default function ParticipationsPage() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Users className="h-5 w-5" />
-            All Participants ({participations.length})
+            All Participants
           </CardTitle>
           <CardDescription>
-            Current participation status for all cycles
+            Current participation status for all cycles ({participations.length}{" "}
+            total)
           </CardDescription>
         </CardHeader>
         <CardContent>
           {participations.length === 0 ? (
-            <div className="p-8 text-center text-sm text-muted-foreground">
-              No participations found
+            <div className="rounded-lg border p-8 text-center">
+              <Users className="mx-auto h-12 w-12 text-muted-foreground/50 mb-4" />
+              <h3 className="text-sm font-medium mb-1">
+                No participations yet
+              </h3>
+              <p className="text-sm text-muted-foreground">
+                Participations will appear here once users opt in to cycles
+              </p>
             </div>
           ) : (
             <div className="rounded-lg border">
@@ -317,7 +403,7 @@ export default function ParticipationsPage() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <LinkIcon className="h-5 w-5" />
+            <ArrowLeftRight className="h-5 w-5" />
             Manual Payment Matching
           </CardTitle>
           <CardDescription>
@@ -327,14 +413,20 @@ export default function ParticipationsPage() {
         <CardContent>
           <div className="grid gap-4 lg:grid-cols-2">
             {/* Participations Column */}
-            <div className="space-y-2">
-              <h3 className="text-sm font-medium">
-                Awaiting Payment ({awaitingPayment.length})
-              </h3>
-              <div className="rounded-lg border max-h-[400px] overflow-y-auto">
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-medium">Awaiting Payment</h3>
+                <Badge variant="secondary" className="text-xs">
+                  {awaitingPayment.length}
+                </Badge>
+              </div>
+              <div className="rounded-lg border max-h-[400px] overflow-y-auto bg-muted/20">
                 {awaitingPayment.length === 0 ? (
-                  <div className="p-8 text-center text-sm text-muted-foreground">
-                    No participations awaiting payment
+                  <div className="p-8 text-center">
+                    <LinkIcon className="mx-auto h-10 w-10 text-muted-foreground/50 mb-3" />
+                    <p className="text-sm text-muted-foreground">
+                      No participations awaiting payment
+                    </p>
                   </div>
                 ) : (
                   <div className="divide-y">
@@ -342,7 +434,7 @@ export default function ParticipationsPage() {
                       <div
                         key={p.id}
                         onClick={() => setSelectedParticipation(p.id)}
-                        className={`p-3 cursor-pointer transition-colors ${
+                        className={`p-3 cursor-pointer transition-all ${
                           selectedParticipation === p.id
                             ? "bg-primary/10 border-l-4 border-l-primary"
                             : "hover:bg-muted/50"
@@ -354,7 +446,7 @@ export default function ParticipationsPage() {
                         <div className="text-xs text-muted-foreground mt-1">
                           {formatIsk(p.amountIsk)} ISK
                         </div>
-                        <div className="text-xs font-mono text-muted-foreground mt-1">
+                        <div className="text-xs font-mono text-muted-foreground mt-1 truncate">
                           {p.memo}
                         </div>
                       </div>
@@ -365,14 +457,20 @@ export default function ParticipationsPage() {
             </div>
 
             {/* Donations Column */}
-            <div className="space-y-2">
-              <h3 className="text-sm font-medium">
-                Unmatched Donations ({unmatchedDonations.length})
-              </h3>
-              <div className="rounded-lg border max-h-[400px] overflow-y-auto">
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-medium">Unmatched Donations</h3>
+                <Badge variant="secondary" className="text-xs">
+                  {unmatchedDonations.length}
+                </Badge>
+              </div>
+              <div className="rounded-lg border max-h-[400px] overflow-y-auto bg-muted/20">
                 {unmatchedDonations.length === 0 ? (
-                  <div className="p-8 text-center text-sm text-muted-foreground">
-                    No unmatched donations
+                  <div className="p-8 text-center">
+                    <DollarSign className="mx-auto h-10 w-10 text-muted-foreground/50 mb-3" />
+                    <p className="text-sm text-muted-foreground">
+                      No unmatched donations
+                    </p>
                   </div>
                 ) : (
                   <div className="divide-y">
@@ -380,7 +478,7 @@ export default function ParticipationsPage() {
                       <div
                         key={`${d.characterId}-${d.journalId}-${idx}`}
                         onClick={() => setSelectedDonation(d.journalId)}
-                        className={`p-3 cursor-pointer transition-colors ${
+                        className={`p-3 cursor-pointer transition-all ${
                           selectedDonation === d.journalId
                             ? "bg-primary/10 border-l-4 border-l-primary"
                             : "hover:bg-muted/50"
@@ -392,7 +490,7 @@ export default function ParticipationsPage() {
                         <div className="text-xs text-muted-foreground mt-1">
                           {formatIsk(d.amount)} ISK
                         </div>
-                        <div className="text-xs font-mono text-muted-foreground mt-1">
+                        <div className="text-xs font-mono text-muted-foreground mt-1 truncate">
                           {d.description || "(no memo)"}
                         </div>
                         <div className="text-xs text-muted-foreground mt-1">
@@ -406,10 +504,11 @@ export default function ParticipationsPage() {
             </div>
           </div>
 
-          <div className="mt-4 flex items-center justify-center">
+          <div className="mt-6 flex items-center justify-center">
             <Button
               onClick={handleManualMatch}
               disabled={!selectedParticipation || !selectedDonation || matching}
+              size="lg"
               className="gap-2"
             >
               {matching ? (
@@ -432,11 +531,12 @@ export default function ParticipationsPage() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Ban className="h-5 w-5" />
-            Refunds Needed ({needsRefund.length})
+            <Ban className="h-5 w-5 text-red-600" />
+            Refunds Needed
           </CardTitle>
           <CardDescription>
-            Participations that have been cancelled and need refunds
+            Participations that have been cancelled and need refunds (
+            {needsRefund.length} pending)
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -450,78 +550,89 @@ export default function ParticipationsPage() {
             </div>
           ) : (
             <div className="rounded-lg border">
-              <table className="w-full text-sm">
-                <thead className="border-b bg-muted/50">
-                  <tr>
-                    <th className="text-left p-3 font-medium">Character</th>
-                    <th className="text-right p-3 font-medium">Amount</th>
-                    <th className="text-left p-3 font-medium">Cycle</th>
-                    <th className="text-left p-3 font-medium">Cancelled</th>
-                    <th className="text-right p-3 font-medium">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y">
-                  {needsRefund.map((p) => (
-                    <tr key={p.id} className="hover:bg-muted/50">
-                      <td className="p-3 font-medium">{p.characterName}</td>
-                      <td className="p-3 text-right font-mono">
-                        {formatIsk(p.amountIsk)} ISK
-                      </td>
-                      <td className="p-3">{p.cycle.name || p.cycle.id}</td>
-                      <td className="p-3 text-xs text-muted-foreground">
-                        {new Date(p.optedOutAt!).toLocaleString()}
-                      </td>
-                      <td className="p-3 text-right">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={async () => {
-                            const confirmed = window.confirm(
-                              `Mark ${formatIsk(p.amountIsk)} ISK refund as sent to ${p.characterName}?`,
-                            );
-                            if (!confirmed) return;
-
-                            try {
-                              // Ensure amountIsk has exactly 2 decimal places for backend validation
-                              const amount = parseFloat(p.amountIsk).toFixed(2);
-                              const res = await fetch(
-                                `/api/ledger/participations/${p.id}/refund`,
-                                {
-                                  method: "POST",
-                                  headers: {
-                                    "Content-Type": "application/json",
-                                  },
-                                  body: JSON.stringify({
-                                    amountIsk: amount,
-                                  }),
-                                },
-                              );
-                              if (!res.ok) {
-                                const error = await res
-                                  .json()
-                                  .catch(() => ({ error: "Unknown error" }));
-                                throw new Error(
-                                  error.error || error.message || "Failed",
-                                );
-                              }
-                              toast.success("Refund marked as sent!");
-                              await loadData();
-                            } catch (error) {
-                              const msg =
-                                error instanceof Error
-                                  ? error.message
-                                  : "Failed to mark refund";
-                              toast.error(msg);
-                            }
-                          }}
-                        >
-                          Mark Refund Sent
-                        </Button>
-                      </td>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="border-b bg-muted/50">
+                    <tr>
+                      <th className="text-left p-3 font-medium">Character</th>
+                      <th className="text-right p-3 font-medium">Amount</th>
+                      <th className="text-left p-3 font-medium">Cycle</th>
+                      <th className="text-left p-3 font-medium">Cancelled</th>
+                      <th className="text-right p-3 font-medium">Actions</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y">
+                    {needsRefund.map((p) => (
+                      <tr
+                        key={p.id}
+                        className="hover:bg-muted/50 transition-colors"
+                      >
+                        <td className="p-3 font-medium">{p.characterName}</td>
+                        <td className="p-3 text-right font-mono text-red-600 font-semibold">
+                          {formatIsk(p.amountIsk)} ISK
+                        </td>
+                        <td className="p-3 text-xs text-muted-foreground">
+                          {p.cycle.name || p.cycle.id}
+                        </td>
+                        <td className="p-3 text-xs text-muted-foreground">
+                          {new Date(p.optedOutAt!).toLocaleString()}
+                        </td>
+                        <td className="p-3 text-right">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="gap-2"
+                            onClick={async () => {
+                              const confirmed = window.confirm(
+                                `Mark ${formatIsk(p.amountIsk)} ISK refund as sent to ${p.characterName}?`,
+                              );
+                              if (!confirmed) return;
+
+                              try {
+                                // Ensure amountIsk has exactly 2 decimal places for backend validation
+                                const amount = parseFloat(p.amountIsk).toFixed(
+                                  2,
+                                );
+                                const res = await fetch(
+                                  `/api/ledger/participations/${p.id}/refund`,
+                                  {
+                                    method: "POST",
+                                    headers: {
+                                      "Content-Type": "application/json",
+                                    },
+                                    body: JSON.stringify({
+                                      amountIsk: amount,
+                                    }),
+                                  },
+                                );
+                                if (!res.ok) {
+                                  const error = await res
+                                    .json()
+                                    .catch(() => ({ error: "Unknown error" }));
+                                  throw new Error(
+                                    error.error || error.message || "Failed",
+                                  );
+                                }
+                                toast.success("Refund marked as sent!");
+                                await loadData();
+                              } catch (error) {
+                                const msg =
+                                  error instanceof Error
+                                    ? error.message
+                                    : "Failed to mark refund";
+                                toast.error(msg);
+                              }
+                            }}
+                          >
+                            <Ban className="h-3.5 w-3.5" />
+                            Mark Refund Sent
+                          </Button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
         </CardContent>
@@ -531,11 +642,12 @@ export default function ParticipationsPage() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <DollarSign className="h-5 w-5" />
-            Payouts Needed ({needsPayout.length})
+            <DollarSign className="h-5 w-5 text-emerald-600" />
+            Payouts Needed
           </CardTitle>
           <CardDescription>
-            Completed cycle participations awaiting payout
+            Completed cycle participations awaiting payout ({needsPayout.length}{" "}
+            pending)
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -549,70 +661,97 @@ export default function ParticipationsPage() {
             </div>
           ) : (
             <div className="rounded-lg border">
-              <table className="w-full text-sm">
-                <thead className="border-b bg-muted/50">
-                  <tr>
-                    <th className="text-left p-3 font-medium">Character</th>
-                    <th className="text-right p-3 font-medium">Investment</th>
-                    <th className="text-right p-3 font-medium">Payout</th>
-                    <th className="text-left p-3 font-medium">Cycle</th>
-                    <th className="text-right p-3 font-medium">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y">
-                  {needsPayout.map((p) => (
-                    <tr key={p.id} className="hover:bg-muted/50">
-                      <td className="p-3 font-medium">{p.characterName}</td>
-                      <td className="p-3 text-right font-mono">
-                        {formatIsk(p.amountIsk)} ISK
-                      </td>
-                      <td className="p-3 text-right font-mono font-semibold text-emerald-600">
-                        {formatIsk(p.payoutAmountIsk!)} ISK
-                      </td>
-                      <td className="p-3">{p.cycle.name || p.cycle.id}</td>
-                      <td className="p-3 text-right">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={async () => {
-                            const confirmed = window.confirm(
-                              `Mark ${formatIsk(p.payoutAmountIsk!)} ISK payout as sent to ${p.characterName}?`,
-                            );
-                            if (!confirmed) return;
-
-                            try {
-                              const res = await fetch(
-                                `/api/ledger/participations/${p.id}/mark-payout-sent`,
-                                {
-                                  method: "POST",
-                                },
-                              );
-                              if (!res.ok) {
-                                const error = await res
-                                  .json()
-                                  .catch(() => ({ error: "Unknown error" }));
-                                throw new Error(
-                                  error.error || error.message || "Failed",
-                                );
-                              }
-                              toast.success("Payout marked as sent!");
-                              await loadData();
-                            } catch (error) {
-                              const msg =
-                                error instanceof Error
-                                  ? error.message
-                                  : "Failed to mark payout";
-                              toast.error(msg);
-                            }
-                          }}
-                        >
-                          Mark Payout Sent
-                        </Button>
-                      </td>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="border-b bg-muted/50">
+                    <tr>
+                      <th className="text-left p-3 font-medium">Character</th>
+                      <th className="text-right p-3 font-medium">Investment</th>
+                      <th className="text-right p-3 font-medium">Payout</th>
+                      <th className="text-right p-3 font-medium">Return</th>
+                      <th className="text-left p-3 font-medium">Cycle</th>
+                      <th className="text-right p-3 font-medium">Actions</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y">
+                    {needsPayout.map((p) => {
+                      const investment = parseFloat(p.amountIsk);
+                      const payout = parseFloat(p.payoutAmountIsk!);
+                      const profit = payout - investment;
+                      const returnPct = (profit / investment) * 100;
+
+                      return (
+                        <tr
+                          key={p.id}
+                          className="hover:bg-muted/50 transition-colors"
+                        >
+                          <td className="p-3 font-medium">{p.characterName}</td>
+                          <td className="p-3 text-right font-mono text-xs">
+                            {formatIsk(p.amountIsk)} ISK
+                          </td>
+                          <td className="p-3 text-right font-mono font-semibold text-emerald-600">
+                            {formatIsk(p.payoutAmountIsk!)} ISK
+                          </td>
+                          <td className="p-3 text-right">
+                            <div className="text-emerald-600 font-semibold text-xs">
+                              +{returnPct.toFixed(1)}%
+                            </div>
+                            <div className="text-xs text-muted-foreground font-mono">
+                              +{formatIsk(profit.toString())}
+                            </div>
+                          </td>
+                          <td className="p-3 text-xs text-muted-foreground">
+                            {p.cycle.name || p.cycle.id}
+                          </td>
+                          <td className="p-3 text-right">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="gap-2"
+                              onClick={async () => {
+                                const confirmed = window.confirm(
+                                  `Mark ${formatIsk(p.payoutAmountIsk!)} ISK payout as sent to ${p.characterName}?`,
+                                );
+                                if (!confirmed) return;
+
+                                try {
+                                  const res = await fetch(
+                                    `/api/ledger/participations/${p.id}/mark-payout-sent`,
+                                    {
+                                      method: "POST",
+                                    },
+                                  );
+                                  if (!res.ok) {
+                                    const error = await res
+                                      .json()
+                                      .catch(() => ({
+                                        error: "Unknown error",
+                                      }));
+                                    throw new Error(
+                                      error.error || error.message || "Failed",
+                                    );
+                                  }
+                                  toast.success("Payout marked as sent!");
+                                  await loadData();
+                                } catch (error) {
+                                  const msg =
+                                    error instanceof Error
+                                      ? error.message
+                                      : "Failed to mark payout";
+                                  toast.error(msg);
+                                }
+                              }}
+                            >
+                              <DollarSign className="h-3.5 w-3.5" />
+                              Mark Payout Sent
+                            </Button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
         </CardContent>
