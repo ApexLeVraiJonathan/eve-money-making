@@ -28,10 +28,10 @@ export class LiquidityService {
     >
   > {
     const stationId = params?.station_id;
-    const windowDays = params?.windowDays ?? 7;
+    const windowDays = params?.windowDays ?? 30;
     const minCoverageRatio = params?.minCoverageRatio ?? 0.57;
     const minISK = params?.minLiquidityThresholdISK ?? 1_000_000; // 1M
-    const minTradesPerDay = params?.minWindowTrades ?? 3; // average trades/day
+    const minTradesPerDay = params?.minWindowTrades ?? 5; // average trades/day
 
     // Determine stations to analyze and station names
     let stationIds: number[] = [];

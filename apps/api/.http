@@ -84,13 +84,13 @@ x-test-role: ADMIN
 ### Liquidity item stats
 POST http://localhost:3000/liquidity/item-stats HTTP/1.1
 content-type: application/json
-x-test-role: ADMIN
+// x-test-role: ADMIN
 
 {
-  "itemName": "Minmatar Drone Specialization",
+  "itemName": "Small Projectile Ambit Extension II",
   //"itemId": 40520,
   //"stationName": "Rens VI - Moon 8 - Brutor Tribe Treasury",
-  "stationId": 60011866,
+  "stationId": 60004588,
   //"isBuyOrder": true,
   "windowDays": 7
 }

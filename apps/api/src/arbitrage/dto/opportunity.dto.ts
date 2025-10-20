@@ -1,4 +1,4 @@
-export type PriceValidationSource = 'ESI' | 'LiquidityHigh' | 'None';
+export type PriceValidationSource = 'ESI' | 'LiquidityAvg' | 'None';
 
 export type Opportunity = {
   typeId: number;

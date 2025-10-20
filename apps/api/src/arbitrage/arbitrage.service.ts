@@ -273,13 +273,13 @@ export class ArbitrageService {
               ) {
                 const rawMargin = (destinationPrice / srcPrice) * 100;
                 if (rawMargin - 100 > marginValidateThreshold) {
-                  const liquidityHigh = Number(item.latest?.high ?? '0');
+                  const liquidityavg = Number(item.latest?.avg ?? '0');
                   const validated = Math.min(
                     destinationPrice,
-                    liquidityHigh || destinationPrice,
+                    liquidityavg || destinationPrice,
                   );
                   if (validated !== destinationPrice)
-                    priceValidationSource = 'LiquidityHigh';
+                    priceValidationSource = 'LiquidityAvg';
                   destinationPrice = validated;
                 }
               }
