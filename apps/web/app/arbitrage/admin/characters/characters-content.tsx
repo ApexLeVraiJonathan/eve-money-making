@@ -80,18 +80,16 @@ async function getSystemCharacterLinkUrl(
   notes?: string,
   returnUrl?: string,
 ): Promise<string> {
-  const apiUrl =
-    process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:3000";
+  // Route through Next.js API to avoid relying on public env/base URLs
   const params = new URLSearchParams();
   if (notes) params.set("notes", notes);
   if (returnUrl) params.set("returnUrl", returnUrl);
 
   const res = await fetch(
-    `${apiUrl}/auth/admin/system-characters/link/url${params.toString() ? `?${params.toString()}` : ""}`,
+    `/api/auth/admin/system-characters/link/url${params.toString() ? `?${params.toString()}` : ""}`,
     {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
+      // Authorization handled server-side via session in the API route
+      cache: "no-store",
     },
   );
 
@@ -238,16 +236,11 @@ export default function CharactersPageContent() {
   const [loginUserUrl, setLoginUserUrl] = React.useState<string>("");
   React.useEffect(() => {
     try {
-      const base =
-        (process.env.NEXT_PUBLIC_API_BASE_URL as string) ||
-        "http://localhost:3000";
-      // Include current tab in return URL
+      // Build login URL via Next.js route to avoid hardcoded base
       const params = new URLSearchParams();
       params.set("tab", activeTab);
       const returnUrl = `${window.location.origin}${window.location.pathname}?${params.toString()}`;
-      setLoginUserUrl(
-        `${base}/auth/login/user?returnUrl=${encodeURIComponent(returnUrl)}`,
-      );
+      setLoginUserUrl(`/auth/login?returnUrl=${encodeURIComponent(returnUrl)}`);
     } catch {
       // ignore
     }
