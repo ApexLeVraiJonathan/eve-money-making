@@ -108,6 +108,12 @@ Notes:
 - API_URL: Internal URL where NestJS API is accessible from Next.js
   - Dev: `API_URL=http://localhost:3000`
   - Prod: `API_URL=http://api:3000` (or your internal service URL)
+- API_BASE_URL: Public URL of your NestJS API (used for OAuth redirect URIs)
+  - Dev: `API_BASE_URL=http://localhost:3000`
+  - Prod: `API_BASE_URL=https://your-api-domain.railway.app`
+  - **Important**: This must match the callback URLs registered in your EVE SSO applications:
+    - App 2 uses: `{API_BASE_URL}/auth/link-character/callback`
+    - App 3 uses: `{API_BASE_URL}/auth/admin/system-characters/callback`
 - ESI_SSO_SCOPES_USER: Comma-separated list of ESI scopes for user characters (optional, can be empty for auth-only)
   - Example: `ESI_SSO_SCOPES_USER=` (empty for authentication only)
   - With scopes: `ESI_SSO_SCOPES_USER=esi-wallet.read_character_wallet.v1,esi-assets.read_assets.v1`
