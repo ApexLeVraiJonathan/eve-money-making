@@ -37,6 +37,14 @@ type TrackedStation = {
   station: { name: string };
 };
 
+type CycleLine = {
+  id: string;
+  typeId: number;
+  destinationStationId: number;
+  plannedUnits: number;
+  unitsBought: number;
+};
+
 type PasteRow = {
   itemName: string;
   quantity: number;
@@ -180,7 +188,7 @@ export default function SellAppraiserPage() {
     if (!useCommit || !cycleId || !result) return;
 
     // Need to get cycle lines to match typeIds to lineIds
-    let cycleLines;
+    let cycleLines: CycleLine[];
     try {
       const resp = await fetch(`/api/ledger/cycles/${cycleId}/lines`);
       if (!resp.ok) {

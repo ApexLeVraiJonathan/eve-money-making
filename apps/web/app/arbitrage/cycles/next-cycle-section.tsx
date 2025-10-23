@@ -181,8 +181,8 @@ export default function NextCycleSection({ next }: { next: NextCycle | null }) {
           </EmptyMedia>
           <EmptyTitle>No planned cycle</EmptyTitle>
           <EmptyDescription>
-            Planning isn't open yet. When the next cycle is announced, you can
-            opt in here.
+            Planning isn&apos;t open yet. When the next cycle is announced, you
+            can opt in here.
           </EmptyDescription>
         </EmptyHeader>
       </Empty>
@@ -214,7 +214,7 @@ export default function NextCycleSection({ next }: { next: NextCycle | null }) {
             <div className="flex-1 space-y-2">
               <div className="flex items-center gap-2">
                 <span className="text-sm font-medium">
-                  You're participating in this cycle
+                  You&apos;re participating in this cycle
                 </span>
                 {getStatusBadge(participation.status)}
               </div>
@@ -238,7 +238,7 @@ export default function NextCycleSection({ next }: { next: NextCycle | null }) {
                 {participation.status === "AWAITING_INVESTMENT" && (
                   <div className="mt-2 rounded-md bg-amber-500/10 p-3 text-amber-900 dark:text-amber-100">
                     <div className="font-medium mb-3 text-sm">
-                      ⚠️ Don't forget to send{" "}
+                      ⚠️ Don&apos;t forget to send{" "}
                       {formatIsk(participation.amountIsk)} ISK to complete your
                       participation
                     </div>

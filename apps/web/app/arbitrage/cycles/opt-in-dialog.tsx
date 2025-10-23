@@ -242,7 +242,7 @@ export default function OptInDialog(props: OptInDialogProps) {
                   </div>
                   {charAutoError && (
                     <p className="mt-2 text-xs text-muted-foreground">
-                      Could not auto-detect character. Please ensure you're
+                      Could not auto-detect character. Please ensure you&apos;re
                       logged in.
                     </p>
                   )}
@@ -388,7 +388,7 @@ export default function OptInDialog(props: OptInDialogProps) {
                         <span>
                           Use the{" "}
                           <strong className="text-foreground">
-                            "Search for anything"
+                            &quot;Search for anything&quot;
                           </strong>{" "}
                           bar at the top left of your EVE client
                         </span>
@@ -400,7 +400,7 @@ export default function OptInDialog(props: OptInDialogProps) {
                           <code className="rounded bg-background px-1 py-0.5 text-xs font-mono">
                             LeVraiTrader
                           </code>{" "}
-                          and open the character's profile
+                          and open the character&apos;s profile
                         </span>
                       </li>
                       <li className="flex items-start gap-2">
@@ -408,7 +408,7 @@ export default function OptInDialog(props: OptInDialogProps) {
                         <span>
                           Right-click the character and select{" "}
                           <strong className="text-foreground">
-                            "Give Money"
+                            &quot;Give Money&quot;
                           </strong>
                         </span>
                       </li>
@@ -422,7 +422,8 @@ export default function OptInDialog(props: OptInDialogProps) {
                       </li>
                     </ol>
                     <p className="text-xs text-amber-700 dark:text-amber-300/80 font-medium">
-                      ⚠️ Don't use the Wallet - it won't let you add a reason!
+                      ⚠️ Don&apos;t use the Wallet - it won&apos;t let you add a
+                      reason!
                     </p>
                   </div>
                 </div>

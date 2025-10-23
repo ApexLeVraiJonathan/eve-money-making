@@ -1,5 +1,8 @@
 "use client";
 
+// Mark as dynamic since we use useSearchParams
+export const dynamic = "force-dynamic";
+
 import * as React from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -48,6 +51,14 @@ type TransportFee = {
 };
 
 export default function CycleProfitPage() {
+  return (
+    <React.Suspense fallback={<div className="p-6">Loading...</div>}>
+      <CycleProfitContent />
+    </React.Suspense>
+  );
+}
+
+function CycleProfitContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const queryParamCycleId = searchParams.get("cycleId");
@@ -472,8 +483,8 @@ export default function CycleProfitPage() {
         ) : (
           <div className="p-8 text-center">
             <p className="text-sm text-muted-foreground">
-              No transport fees recorded yet. Click "Record Transport Fee" to
-              add one.
+              No transport fees recorded yet. Click &quot;Record Transport
+              Fee&quot; to add one.
             </p>
           </div>
         )}

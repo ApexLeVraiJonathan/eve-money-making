@@ -1,5 +1,8 @@
 "use client";
 
+// Mark as dynamic since we use useParams
+export const dynamic = "force-dynamic";
+
 import * as React from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";

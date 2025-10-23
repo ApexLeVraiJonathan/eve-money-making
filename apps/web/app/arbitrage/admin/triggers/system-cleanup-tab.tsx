@@ -53,7 +53,9 @@ export function SystemCleanupTab({
                 Cleanup removes only <strong>expired</strong> entries, not all
                 cache
               </li>
-              <li>With jobs disabled, cleanup doesn't run automatically</li>
+              <li>
+                With jobs disabled, cleanup doesn&apos;t run automatically
+              </li>
             </ul>
           </div>
 

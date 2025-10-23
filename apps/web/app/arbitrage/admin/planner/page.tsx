@@ -233,7 +233,12 @@ export default function PlannerPage() {
         // Try to get detailed validation error info
         const errorMsg = body?.error || body?.message || res.statusText;
         const details = body?.issues
-          ? body.issues.map((i: any) => `${i.path}: ${i.message}`).join(", ")
+          ? body.issues
+              .map(
+                (i: { path: string; message: string }) =>
+                  `${i.path}: ${i.message}`,
+              )
+              .join(", ")
           : "";
         throw new Error(details ? `${errorMsg}: ${details}` : errorMsg);
       }

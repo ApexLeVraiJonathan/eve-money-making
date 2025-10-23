@@ -1,5 +1,8 @@
 "use client";
 
+// Mark as dynamic since we use useSearchParams
+export const dynamic = "force-dynamic";
+
 import * as React from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -72,6 +75,14 @@ type CycleLine = {
 };
 
 export default function CycleLinesPage() {
+  return (
+    <React.Suspense fallback={<div className="p-6">Loading...</div>}>
+      <CycleLinesContent />
+    </React.Suspense>
+  );
+}
+
+function CycleLinesContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const queryParamCycleId = searchParams.get("cycleId");

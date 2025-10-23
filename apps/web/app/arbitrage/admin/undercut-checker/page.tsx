@@ -45,6 +45,14 @@ type TrackedStation = {
   station: { name: string };
 };
 
+type CycleLine = {
+  id: string;
+  typeId: number;
+  destinationStationId: number;
+  plannedUnits: number;
+  unitsBought: number;
+};
+
 export default function UndercutCheckerPage() {
   const [stations, setStations] = useState<TrackedStation[]>([]);
   const [selectedStations, setSelectedStations] = useState<number[]>([]);
@@ -159,7 +167,7 @@ export default function UndercutCheckerPage() {
     if (!cycleId || !result) return;
 
     // Need to get cycle lines to match typeIds to lineIds
-    let cycleLines;
+    let cycleLines: CycleLine[];
     try {
       const resp = await fetch(`/api/ledger/cycles/${cycleId}/lines`);
       if (!resp.ok) {

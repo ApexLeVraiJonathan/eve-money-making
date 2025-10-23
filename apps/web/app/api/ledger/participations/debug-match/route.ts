@@ -4,6 +4,24 @@ import { authOptions } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
+type Participation = {
+  id: string;
+  characterName: string;
+  amountIsk: string;
+  memo?: string | null;
+  cycleId: string;
+  status: string;
+};
+
+type Donation = {
+  journalId: string;
+  characterId: string;
+  characterName: string;
+  amount: number;
+  description: string;
+  date: string;
+};
+
 export async function GET() {
   const session = await getServerSession(authOptions);
   if (!session?.accessToken) {
@@ -50,19 +68,19 @@ export async function GET() {
     const donations = await donRes.json();
 
     // Filter for AWAITING_INVESTMENT
-    const awaitingPayment = participations.filter(
-      (p: any) => p.status === "AWAITING_INVESTMENT",
+    const awaitingPayment = (participations as Participation[]).filter(
+      (p) => p.status === "AWAITING_INVESTMENT",
     );
 
     return NextResponse.json({
-      awaitingPayment: awaitingPayment.map((p: any) => ({
+      awaitingPayment: awaitingPayment.map((p) => ({
         id: p.id,
         characterName: p.characterName,
         amountIsk: p.amountIsk,
         memo: p.memo,
         cycleId: p.cycleId,
       })),
-      unmatchedDonations: donations.map((d: any) => ({
+      unmatchedDonations: (donations as Donation[]).map((d) => ({
         journalId: d.journalId,
         characterId: d.characterId,
         characterName: d.characterName,

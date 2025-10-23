@@ -43,6 +43,19 @@ type CycleHistory = {
   durationDays: number | null;
 };
 
+type Cycle = {
+  id: string;
+  name: string | null;
+  startedAt: string;
+  closedAt: string | null;
+  initialCapitalIsk: string;
+};
+
+type Participation = {
+  status: string;
+  amountIsk: string;
+};
+
 export default function CycleHistoryPage() {
   const [cycles, setCycles] = React.useState<CycleHistory[]>([]);
   const [loading, setLoading] = React.useState(true);
@@ -55,9 +68,9 @@ export default function CycleHistoryPage() {
         const data = await res.json();
 
         // Only show closed cycles in history
-        const closedCycles = data.filter(
-          (c: any) => c.closedAt !== null,
-        ) as any[];
+        const closedCycles = (data as Cycle[]).filter(
+          (c) => c.closedAt !== null,
+        );
 
         // Fetch detailed info for each closed cycle
         const detailedCycles = await Promise.all(
@@ -69,13 +82,15 @@ export default function CycleHistoryPage() {
               );
               const participationsData = await participationsRes.json();
 
-              const validParticipations = participationsData.filter(
-                (p: any) => p.status === "OPTED_IN" || p.status === "COMPLETED",
+              const validParticipations = (
+                participationsData as Participation[]
+              ).filter(
+                (p) => p.status === "OPTED_IN" || p.status === "COMPLETED",
               );
 
               const participantCount = validParticipations.length;
               const totalInvestorCapital = validParticipations.reduce(
-                (sum: number, p: any) => sum + Number(p.amountIsk),
+                (sum: number, p) => sum + Number(p.amountIsk),
                 0,
               );
 

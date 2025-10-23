@@ -181,8 +181,8 @@ export function FinancialTab({
             Cycle Snapshots
           </CardTitle>
           <CardDescription>
-            Capture point-in-time snapshots of the current cycle's financial
-            state (cash, inventory, profit)
+            Capture point-in-time snapshots of the current cycle&apos;s
+            financial state (cash, inventory, profit)
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">

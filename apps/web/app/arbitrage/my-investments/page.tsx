@@ -124,7 +124,7 @@ export default function MyInvestmentsPage() {
   ).length;
 
   // Not authenticated or auth required - show login CTA
-  if (!session || status === "unauthenticated" || authRequired) {
+  if (!session || status !== "authenticated" || authRequired) {
     return (
       <div className="p-6 space-y-6">
         <div className="flex items-center gap-2">
@@ -171,7 +171,7 @@ export default function MyInvestmentsPage() {
   }
 
   // Loading state (including session loading)
-  if (loading || status === "loading") {
+  if (loading) {
     return (
       <div className="p-6 space-y-6">
         <div className="flex items-center gap-2">
@@ -209,9 +209,9 @@ export default function MyInvestmentsPage() {
                 </EmptyMedia>
                 <EmptyTitle>No investments yet</EmptyTitle>
                 <EmptyDescription>
-                  You haven't participated in any arbitrage cycles yet. Opt-in
-                  to the next cycle to start investing and earning passive
-                  income.
+                  You haven&apos;t participated in any arbitrage cycles yet.
+                  Opt-in to the next cycle to start investing and earning
+                  passive income.
                 </EmptyDescription>
                 <Button
                   onClick={() => router.push("/arbitrage/cycles")}
