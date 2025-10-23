@@ -33,14 +33,18 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 type ParticipationHistory = {
   cycleId: string;
-  cycleName: string | null;
+  cycle: {
+    id: string;
+    name: string | null;
+    startedAt: string;
+    closedAt: string | null;
+  };
   amountIsk: string;
   status: string;
   createdAt: string;
   validatedAt: string | null;
-  estimatedPayoutIsk?: string;
-  finalPayoutIsk?: string;
-  cycleClosedAt?: string | null;
+  payoutAmountIsk?: string | null;
+  payoutPaidAt?: string | null;
 };
 
 export default function MyInvestmentsPage() {
@@ -102,10 +106,15 @@ export default function MyInvestmentsPage() {
     (sum, p) => sum + Number(p.amountIsk),
     0,
   );
-  const totalReturned = participations.reduce(
-    (sum, p) => sum + Number(p.finalPayoutIsk || 0),
-    0,
-  );
+  // Total returned = investment + profit for all completed payouts
+  const totalReturned = participations.reduce((sum, p) => {
+    if (p.payoutAmountIsk && p.payoutPaidAt) {
+      const investment = Number(p.amountIsk);
+      const profitShare = Number(p.payoutAmountIsk);
+      return sum + investment + profitShare;
+    }
+    return sum;
+  }, 0);
   const netProfit = totalReturned - totalInvested;
   const activeParticipations = participations.filter(
     (p) =>
@@ -332,33 +341,46 @@ export default function MyInvestmentsPage() {
               <TableBody>
                 {participations.map((p) => {
                   const invested = Number(p.amountIsk);
-                  const payout = Number(
-                    p.finalPayoutIsk || p.estimatedPayoutIsk || 0,
-                  );
-                  const profit = payout - invested;
-                  const roi = invested > 0 ? (profit / invested) * 100 : 0;
+                  // payoutAmountIsk is the profit share, total payout = investment + profit
+                  const profitShare = Number(p.payoutAmountIsk || 0);
+                  const totalPayout =
+                    profitShare > 0 ? invested + profitShare : 0;
+                  const roi = invested > 0 ? (profitShare / invested) * 100 : 0;
 
                   return (
                     <TableRow key={p.cycleId}>
                       <TableCell className="font-medium">
-                        {p.cycleName || p.cycleId.slice(0, 8)}
+                        {p.cycle.name || p.cycleId.slice(0, 8)}
                       </TableCell>
                       <TableCell className="text-right tabular-nums">
                         {formatIsk(invested)}
                       </TableCell>
                       <TableCell className="text-right tabular-nums">
-                        {payout > 0 ? formatIsk(payout) : "—"}
+                        {totalPayout > 0 ? (
+                          <div>
+                            <div className="font-semibold">
+                              {formatIsk(totalPayout)}
+                            </div>
+                            {!p.payoutPaidAt && (
+                              <div className="text-xs text-amber-600">
+                                Pending
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          "—"
+                        )}
                       </TableCell>
                       <TableCell
                         className={`text-right tabular-nums ${
-                          profit < 0
+                          profitShare < 0
                             ? "text-red-500"
-                            : profit > 0
+                            : profitShare > 0
                               ? "text-emerald-600"
                               : ""
                         }`}
                       >
-                        {payout > 0 ? formatIsk(profit) : "—"}
+                        {profitShare > 0 ? formatIsk(profitShare) : "—"}
                       </TableCell>
                       <TableCell
                         className={`text-right tabular-nums ${
@@ -369,7 +391,7 @@ export default function MyInvestmentsPage() {
                               : ""
                         }`}
                       >
-                        {payout > 0 ? `${roi.toFixed(1)}%` : "—"}
+                        {profitShare > 0 ? `${roi.toFixed(1)}%` : "—"}
                       </TableCell>
                       <TableCell>
                         <Badge variant="outline">

@@ -18,6 +18,8 @@ import {
   Ban,
   DollarSign,
   Loader2,
+  Copy,
+  Check,
 } from "lucide-react";
 
 type Participation = {
@@ -68,6 +70,18 @@ export default function ParticipationsPage() {
   );
   const [loading, setLoading] = React.useState(true);
   const [matching, setMatching] = React.useState(false);
+  const [copiedText, setCopiedText] = React.useState<string | null>(null);
+
+  const handleCopy = async (text: string, label: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedText(label);
+      toast.success(`Copied ${label}!`);
+      setTimeout(() => setCopiedText(null), 2000);
+    } catch (error) {
+      toast.error("Failed to copy");
+    }
+  };
 
   React.useEffect(() => {
     void loadData();
@@ -676,28 +690,68 @@ export default function ParticipationsPage() {
                   <tbody className="divide-y">
                     {needsPayout.map((p) => {
                       const investment = parseFloat(p.amountIsk);
-                      const payout = parseFloat(p.payoutAmountIsk!);
-                      const profit = payout - investment;
-                      const returnPct = (profit / investment) * 100;
+                      const profitShare = parseFloat(p.payoutAmountIsk!);
+                      // Total payout = investment + profit (so user gets their money back plus profit)
+                      const totalPayout = investment + profitShare;
+                      const returnPct = (profitShare / investment) * 100;
 
                       return (
                         <tr
                           key={p.id}
                           className="hover:bg-muted/50 transition-colors"
                         >
-                          <td className="p-3 font-medium">{p.characterName}</td>
+                          <td className="p-3">
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium">
+                                {p.characterName}
+                              </span>
+                              <button
+                                onClick={() =>
+                                  handleCopy(p.characterName, "character name")
+                                }
+                                className="text-blue-600 hover:text-blue-700 transition-colors"
+                                title="Copy character name"
+                              >
+                                {copiedText === "character name" ? (
+                                  <Check className="h-3.5 w-3.5 text-emerald-600" />
+                                ) : (
+                                  <Copy className="h-3.5 w-3.5" />
+                                )}
+                              </button>
+                            </div>
+                          </td>
                           <td className="p-3 text-right font-mono text-xs">
                             {formatIsk(p.amountIsk)} ISK
                           </td>
-                          <td className="p-3 text-right font-mono font-semibold text-emerald-600">
-                            {formatIsk(p.payoutAmountIsk!)} ISK
+                          <td className="p-3 text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              <div className="font-mono font-semibold text-emerald-600">
+                                {formatIsk(totalPayout.toString())} ISK
+                              </div>
+                              <button
+                                onClick={() =>
+                                  handleCopy(
+                                    totalPayout.toFixed(2),
+                                    "payout amount",
+                                  )
+                                }
+                                className="text-emerald-600 hover:text-emerald-700 transition-colors"
+                                title="Copy payout amount"
+                              >
+                                {copiedText === "payout amount" ? (
+                                  <Check className="h-4 w-4 text-emerald-600" />
+                                ) : (
+                                  <Copy className="h-4 w-4" />
+                                )}
+                              </button>
+                            </div>
                           </td>
                           <td className="p-3 text-right">
                             <div className="text-emerald-600 font-semibold text-xs">
                               +{returnPct.toFixed(1)}%
                             </div>
                             <div className="text-xs text-muted-foreground font-mono">
-                              +{formatIsk(profit.toString())}
+                              +{formatIsk(profitShare.toString())}
                             </div>
                           </td>
                           <td className="p-3 text-xs text-muted-foreground">
@@ -710,7 +764,7 @@ export default function ParticipationsPage() {
                               className="gap-2"
                               onClick={async () => {
                                 const confirmed = window.confirm(
-                                  `Mark ${formatIsk(p.payoutAmountIsk!)} ISK payout as sent to ${p.characterName}?`,
+                                  `Mark ${formatIsk(totalPayout.toString())} ISK payout as sent to ${p.characterName}?\n\nThis includes:\n- Investment: ${formatIsk(investment.toString())} ISK\n- Profit: ${formatIsk(profitShare.toString())} ISK`,
                                 );
                                 if (!confirmed) return;
 

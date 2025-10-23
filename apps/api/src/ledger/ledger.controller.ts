@@ -11,6 +11,8 @@ import {
   Delete,
 } from '@nestjs/common';
 import { LedgerService } from './ledger.service';
+import { WalletService } from '../wallet/wallet.service';
+import { AllocationService } from '../reconciliation/allocation.service';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { CurrentUser, type RequestUser } from '../auth/current-user.decorator';
 import { z } from 'zod';
@@ -59,7 +61,11 @@ type AppendEntryRequest = z.infer<typeof AppendEntrySchema>;
 export class LedgerController {
   private readonly logger = new Logger(LedgerController.name);
 
-  constructor(private readonly ledger: LedgerService) {}
+  constructor(
+    private readonly ledger: LedgerService,
+    private readonly wallet: WalletService,
+    private readonly allocation: AllocationService,
+  ) {}
 
   @Post('cycles')
   @UsePipes(new ZodValidationPipe(CreateCycleSchema))
@@ -90,7 +96,36 @@ export class LedgerController {
   @Post('cycles/:id/close')
   @Roles('ADMIN')
   async closeCycle(@Param('id') id: string): Promise<unknown> {
-    return await this.ledger.closeCycle(id, new Date());
+    this.logger.log(
+      `Closing cycle ${id} - running final wallet import and allocation`,
+    );
+
+    // Step 1: Import latest wallet transactions
+    await this.wallet.importAllLinked();
+    this.logger.log(`Wallet import completed for cycle ${id}`);
+
+    // Step 2: Run allocation to ensure all transactions are matched
+    const allocationResult = await this.allocation.allocateAll(id);
+    this.logger.log(
+      `Allocation completed for cycle ${id}: buys=${allocationResult.buysAllocated}, sells=${allocationResult.sellsAllocated}`,
+    );
+
+    // Step 3: Close the cycle
+    const closedCycle = await this.ledger.closeCycle(id, new Date());
+    this.logger.log(`Cycle ${id} closed successfully`);
+
+    // Step 4: Automatically create payouts for validated participations
+    try {
+      const payouts = await this.ledger.createPayouts(id);
+      this.logger.log(`Created ${payouts.length} payouts for cycle ${id}`);
+    } catch (error) {
+      this.logger.warn(
+        `Failed to create payouts for cycle ${id}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      // Don't fail the cycle close if payout creation fails
+    }
+
+    return closedCycle;
   }
 
   @Post('cycles/:id/open')
@@ -448,6 +483,20 @@ export class LedgerController {
   @Get('cycles/:cycleId/profit')
   async getCycleProfit(@Param('cycleId') cycleId: string): Promise<unknown> {
     return await this.ledger.computeCycleProfit(cycleId);
+  }
+
+  @Public()
+  @Get('cycles/:cycleId/profit/estimated')
+  async getEstimatedProfit(
+    @Param('cycleId') cycleId: string,
+  ): Promise<unknown> {
+    return await this.ledger.computeEstimatedProfit(cycleId);
+  }
+
+  @Public()
+  @Get('cycles/:cycleId/profit/portfolio')
+  async getPortfolioValue(@Param('cycleId') cycleId: string): Promise<unknown> {
+    return await this.ledger.computePortfolioValue(cycleId);
   }
 
   @Post('cycles/:cycleId/snapshot')

@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { History, TrendingUp, Calendar, Users } from "lucide-react";
+import { History, TrendingUp, Calendar, Users, Clock } from "lucide-react";
 import { formatIsk } from "@/lib/utils";
 import {
   Card,
@@ -35,11 +35,12 @@ type CycleHistory = {
   closedAt: string | null;
   status: string;
   initialCapitalIsk: string;
-  finalCapitalIsk: string | null;
+  finalCashIsk: string | null;
   profitIsk: string | null;
   marginPct: number | null;
   participantCount: number;
   totalInvestorCapital: number;
+  durationDays: number | null;
 };
 
 export default function CycleHistoryPage() {
@@ -78,19 +79,30 @@ export default function CycleHistoryPage() {
                 0,
               );
 
-              // Get capital snapshot
-              const capitalRes = await fetch(
-                `/api/ledger/cycles/${cycle.id}/capital`,
+              // Get profit data
+              const profitRes = await fetch(
+                `/api/ledger/cycles/${cycle.id}/profit`,
               );
-              const capitalData = await capitalRes.json();
+              const profitData = await profitRes.json();
+              const finalProfitIsk = Number(profitData.cycleProfitCash || 0);
 
-              const finalCapitalIsk =
-                Number(capitalData.capital.cash) +
-                Number(capitalData.capital.inventory);
               const initialCapitalIsk = Number(cycle.initialCapitalIsk || 0);
-              const profitIsk = finalCapitalIsk - initialCapitalIsk;
+
+              // Final cash = starting capital + realized profit
+              // This is the actual liquid cash available for payouts
+              const finalCashIsk = initialCapitalIsk + finalProfitIsk;
+
               const marginPct =
-                initialCapitalIsk > 0 ? profitIsk / initialCapitalIsk : 0;
+                initialCapitalIsk > 0 ? finalProfitIsk / initialCapitalIsk : 0;
+
+              // Calculate duration in days
+              const durationDays = cycle.closedAt
+                ? Math.ceil(
+                    (new Date(cycle.closedAt).getTime() -
+                      new Date(cycle.startedAt).getTime()) /
+                      (1000 * 60 * 60 * 24),
+                  )
+                : null;
 
               return {
                 id: cycle.id,
@@ -99,11 +111,12 @@ export default function CycleHistoryPage() {
                 closedAt: cycle.closedAt,
                 status: "Closed",
                 initialCapitalIsk: initialCapitalIsk.toString(),
-                finalCapitalIsk: finalCapitalIsk.toString(),
-                profitIsk: profitIsk.toString(),
+                finalCashIsk: finalCashIsk.toString(),
+                profitIsk: finalProfitIsk.toString(),
                 marginPct,
                 participantCount,
                 totalInvestorCapital,
+                durationDays,
               };
             } catch (error) {
               console.error(
@@ -117,11 +130,12 @@ export default function CycleHistoryPage() {
                 closedAt: cycle.closedAt,
                 status: "Closed",
                 initialCapitalIsk: cycle.initialCapitalIsk || "0",
-                finalCapitalIsk: null,
+                finalCashIsk: null,
                 profitIsk: null,
                 marginPct: null,
                 participantCount: 0,
                 totalInvestorCapital: 0,
+                durationDays: null,
               };
             }
           }),
@@ -171,11 +185,18 @@ export default function CycleHistoryPage() {
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
-      <div className="flex items-center gap-2">
-        <span className="inline-flex h-10 w-10 items-center justify-center rounded-md bg-primary/15 text-primary">
-          <History className="h-6 w-6" />
-        </span>
-        <h1 className="text-2xl font-semibold tracking-tight">Cycle History</h1>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <span className="inline-flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10 text-primary">
+            <History className="h-6 w-6" />
+          </span>
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">Cycle History</h1>
+            <p className="text-sm text-muted-foreground mt-0.5">
+              Review performance across all completed cycles
+            </p>
+          </div>
+        </div>
       </div>
 
       {cycles.length === 0 ? (
@@ -200,14 +221,14 @@ export default function CycleHistoryPage() {
           {/* Summary Statistics Cards */}
           <div className="grid gap-4 md:grid-cols-4">
             <Card>
-              <CardHeader className="pb-2">
-                <CardDescription className="flex items-center gap-1.5">
+              <CardHeader className="pb-3">
+                <div className="flex items-center gap-1.5 text-sm font-medium">
                   <Calendar className="h-4 w-4" />
                   Total Cycles
-                </CardDescription>
+                </div>
               </CardHeader>
               <CardContent>
-                <div className="text-3xl font-semibold tabular-nums">
+                <div className="text-2xl font-semibold tabular-nums">
                   {totalCycles}
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">
@@ -217,14 +238,14 @@ export default function CycleHistoryPage() {
             </Card>
 
             <Card>
-              <CardHeader className="pb-2">
-                <CardDescription className="flex items-center gap-1.5">
+              <CardHeader className="pb-3">
+                <div className="flex items-center gap-1.5 text-sm font-medium">
                   <TrendingUp className="h-4 w-4" />
                   Successful Cycles
-                </CardDescription>
+                </div>
               </CardHeader>
               <CardContent>
-                <div className="text-3xl font-semibold tabular-nums text-emerald-600">
+                <div className="text-2xl font-semibold tabular-nums text-emerald-600">
                   {successfulCycles}
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">
@@ -236,12 +257,14 @@ export default function CycleHistoryPage() {
             </Card>
 
             <Card>
-              <CardHeader className="pb-2">
-                <CardDescription>Total Profit Generated</CardDescription>
+              <CardHeader className="pb-3">
+                <div className="text-sm font-medium">
+                  Total Profit Generated
+                </div>
               </CardHeader>
               <CardContent>
                 <div
-                  className={`text-3xl font-semibold tabular-nums ${
+                  className={`text-2xl font-semibold tabular-nums ${
                     totalProfitGenerated < 0
                       ? "text-red-500"
                       : "text-emerald-600"
@@ -256,12 +279,12 @@ export default function CycleHistoryPage() {
             </Card>
 
             <Card>
-              <CardHeader className="pb-2">
-                <CardDescription>Average ROI</CardDescription>
+              <CardHeader className="pb-3">
+                <div className="text-sm font-medium">Average ROI</div>
               </CardHeader>
               <CardContent>
                 <div
-                  className={`text-3xl font-semibold tabular-nums ${
+                  className={`text-2xl font-semibold tabular-nums ${
                     averageROI < 0 ? "text-red-500" : "text-emerald-600"
                   }`}
                 >
@@ -282,60 +305,84 @@ export default function CycleHistoryPage() {
                 Historical performance of all closed trading cycles
               </CardDescription>
             </CardHeader>
-            <CardContent>
-              <div className="rounded-md border">
+            <CardContent className="px-0">
+              <div className="overflow-x-auto">
                 <Table>
                   <TableHeader>
-                    <TableRow>
-                      <TableHead>Cycle</TableHead>
-                      <TableHead>Period</TableHead>
-                      <TableHead className="text-right">
+                    <TableRow className="border-b">
+                      <TableHead className="pl-6 font-semibold text-foreground">
+                        Cycle
+                      </TableHead>
+                      <TableHead className="font-semibold text-foreground">
+                        Period
+                      </TableHead>
+                      <TableHead className="text-right font-semibold text-foreground">
+                        <div className="flex items-center justify-end gap-1.5">
+                          <Clock className="h-3.5 w-3.5" />
+                          Duration
+                        </div>
+                      </TableHead>
+                      <TableHead className="text-right font-semibold text-foreground">
                         <div className="flex items-center justify-end gap-1.5">
                           <Users className="h-3.5 w-3.5" />
                           Investors
                         </div>
                       </TableHead>
-                      <TableHead className="text-right">
-                        Pooled Capital
+                      <TableHead className="text-right font-semibold text-foreground">
+                        Starting Capital
                       </TableHead>
-                      <TableHead className="text-right">
-                        Final Capital
+                      <TableHead className="text-right font-semibold text-foreground">
+                        Final Cash
                       </TableHead>
-                      <TableHead className="text-right">Profit</TableHead>
-                      <TableHead className="text-right">ROI %</TableHead>
-                      <TableHead>Status</TableHead>
+                      <TableHead className="text-right font-semibold text-foreground">
+                        Realized Profit
+                      </TableHead>
+                      <TableHead className="text-right font-semibold text-foreground">
+                        ROI %
+                      </TableHead>
+                      <TableHead className="pr-6 font-semibold text-foreground">
+                        Status
+                      </TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {cycles.map((cycle) => (
-                      <TableRow key={cycle.id}>
-                        <TableCell className="font-medium">
+                      <TableRow
+                        key={cycle.id}
+                        className="hover:bg-muted/50 transition-colors"
+                      >
+                        <TableCell className="pl-6 font-medium">
                           {cycle.name ?? cycle.id.slice(0, 8)}
                         </TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
-                          <div>
+                        <TableCell className="text-sm">
+                          <div className="font-medium">
                             {new Date(cycle.startedAt).toLocaleDateString()}
                           </div>
-                          <div className="text-xs">
+                          <div className="text-xs text-muted-foreground">
                             to{" "}
                             {cycle.closedAt
                               ? new Date(cycle.closedAt).toLocaleDateString()
                               : "—"}
                           </div>
                         </TableCell>
-                        <TableCell className="text-right tabular-nums">
+                        <TableCell className="text-right tabular-nums text-sm text-muted-foreground">
+                          {cycle.durationDays !== null
+                            ? `${cycle.durationDays}d`
+                            : "—"}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums text-sm">
                           {cycle.participantCount}
                         </TableCell>
-                        <TableCell className="text-right tabular-nums">
-                          {formatIsk(cycle.totalInvestorCapital)}
+                        <TableCell className="text-right tabular-nums text-sm">
+                          {formatIsk(Number(cycle.initialCapitalIsk))}
                         </TableCell>
-                        <TableCell className="text-right tabular-nums">
-                          {cycle.finalCapitalIsk
-                            ? formatIsk(Number(cycle.finalCapitalIsk))
+                        <TableCell className="text-right tabular-nums font-semibold text-sm">
+                          {cycle.finalCashIsk
+                            ? formatIsk(Number(cycle.finalCashIsk))
                             : "—"}
                         </TableCell>
                         <TableCell
-                          className={`text-right tabular-nums ${
+                          className={`text-right tabular-nums font-semibold text-sm ${
                             cycle.profitIsk && Number(cycle.profitIsk) < 0
                               ? "text-red-500"
                               : cycle.profitIsk && Number(cycle.profitIsk) > 0
@@ -348,7 +395,7 @@ export default function CycleHistoryPage() {
                             : "—"}
                         </TableCell>
                         <TableCell
-                          className={`text-right tabular-nums ${
+                          className={`text-right tabular-nums font-semibold text-sm ${
                             cycle.marginPct && cycle.marginPct < 0
                               ? "text-red-500"
                               : cycle.marginPct && cycle.marginPct > 0
@@ -360,8 +407,10 @@ export default function CycleHistoryPage() {
                             ? `${(cycle.marginPct * 100).toFixed(1)}%`
                             : "—"}
                         </TableCell>
-                        <TableCell>
-                          <Badge variant="outline">{cycle.status}</Badge>
+                        <TableCell className="pr-6">
+                          <Badge variant="outline" className="font-normal">
+                            {cycle.status}
+                          </Badge>
                         </TableCell>
                       </TableRow>
                     ))}

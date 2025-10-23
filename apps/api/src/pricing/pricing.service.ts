@@ -543,6 +543,12 @@ export class PricingService {
       amountIsk: amount,
     });
 
+    // Save current sell price for estimated profit calculations
+    await this.prisma.cycleLine.update({
+      where: { id: params.lineId },
+      data: { currentSellPriceIsk: params.unitPrice.toFixed(2) },
+    });
+
     return { ok: true, feeAmountISK: amount };
   }
 
@@ -560,6 +566,12 @@ export class PricingService {
     await this.ledger.addRelistFee({
       lineId: params.lineId,
       amountIsk: amount,
+    });
+
+    // Update current sell price for estimated profit calculations
+    await this.prisma.cycleLine.update({
+      where: { id: params.lineId },
+      data: { currentSellPriceIsk: params.newUnitPrice.toFixed(2) },
     });
 
     return { ok: true, feeAmountISK: amount };

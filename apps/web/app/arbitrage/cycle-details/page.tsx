@@ -57,16 +57,17 @@ type CycleDetails = {
   startedAt: string;
   closedAt: string | null;
   status: string;
+  profit: {
+    current: number;
+    estimated: number;
+    portfolioValue: number;
+  };
   capital: {
-    cashISK: number;
-    inventoryISK: number;
-    totalISK: number;
-    originalInvestmentISK: number;
+    cash: number;
+    inventory: number;
+    total: number;
   };
-  performance: {
-    marginPct: number;
-    profitISK: number;
-  };
+  initialCapitalIsk: number;
   participantCount: number;
   totalInvestorCapital: number;
   myParticipation?: {
@@ -151,15 +152,6 @@ export default function CycleDetailsPage() {
 
         setCycle({
           ...overviewData.current,
-          capital: {
-            cashISK: overviewData.current.capital.cashISK,
-            inventoryISK: overviewData.current.capital.inventoryISK,
-            totalISK:
-              overviewData.current.capital.cashISK +
-              overviewData.current.capital.inventoryISK,
-            originalInvestmentISK:
-              overviewData.current.capital.originalInvestmentISK,
-          },
           myParticipation,
         });
 
@@ -179,12 +171,12 @@ export default function CycleDetailsPage() {
     ? [
         {
           name: "Cash",
-          value: cycle.capital.cashISK,
+          value: cycle.capital.cash,
           fill: "#d97706",
         },
         {
           name: "Inventory",
-          value: cycle.capital.inventoryISK,
+          value: cycle.capital.inventory,
           fill: "#92400e",
         },
       ]
@@ -292,7 +284,7 @@ export default function CycleDetailsPage() {
             <CardTitle className="text-base">Your Participation</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid gap-4 md:grid-cols-3">
+            <div className="grid gap-4 md:grid-cols-4">
               <div>
                 <p className="text-sm text-muted-foreground">Your Investment</p>
                 <p className="text-xl font-semibold tabular-nums">
@@ -312,6 +304,15 @@ export default function CycleDetailsPage() {
                 </p>
               </div>
               <div>
+                <p className="text-sm text-muted-foreground">Expected Return</p>
+                <p className="text-xl font-semibold tabular-nums text-emerald-600">
+                  {cycle.myParticipation.estimatedPayoutIsk &&
+                  Number(cycle.myParticipation.amountIsk) > 0
+                    ? `${((Number(cycle.myParticipation.estimatedPayoutIsk) / Number(cycle.myParticipation.amountIsk)) * 100).toFixed(2)}%`
+                    : "—"}
+                </p>
+              </div>
+              <div>
                 <p className="text-sm text-muted-foreground">Status</p>
                 <Badge className="mt-1" variant="outline">
                   {cycle.myParticipation.status.replace(/_/g, " ")}
@@ -326,58 +327,14 @@ export default function CycleDetailsPage() {
       <div className="grid gap-4 md:grid-cols-4">
         <Card>
           <CardHeader className="pb-2">
-            <div className="text-sm font-medium flex items-center gap-1.5">
-              <Wallet className="h-4 w-4" />
-              Total Capital
-            </div>
+            <div className="text-sm font-medium">Starting Capital</div>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-semibold tabular-nums">
-              {formatIsk(cycle.capital.totalISK)}
+              {formatIsk(cycle.initialCapitalIsk)}
             </div>
             <p className="text-xs text-muted-foreground mt-1">
-              Cash + Inventory
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2">
-            <div className="text-sm font-medium flex items-center gap-1.5">
-              <DollarSign className="h-4 w-4" />
-              Cash
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-semibold tabular-nums">
-              {formatIsk(cycle.capital.cashISK)}
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              {((cycle.capital.cashISK / cycle.capital.totalISK) * 100).toFixed(
-                1,
-              )}
-              % of total
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2">
-            <div className="text-sm font-medium flex items-center gap-1.5">
-              <Package className="h-4 w-4" />
-              Inventory
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-semibold tabular-nums">
-              {formatIsk(cycle.capital.inventoryISK)}
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              {(
-                (cycle.capital.inventoryISK / cycle.capital.totalISK) *
-                100
-              ).toFixed(1)}
-              % of total
+              Initial investment
             </p>
           </CardContent>
         </Card>
@@ -386,32 +343,53 @@ export default function CycleDetailsPage() {
           <CardHeader className="pb-2">
             <div className="text-sm font-medium flex items-center gap-1.5">
               <TrendingUp className="h-4 w-4" />
-              Portfolio Value Growth
+              Portfolio Value
             </div>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-semibold tabular-nums text-blue-600">
+              {formatIsk(cycle.capital.total)}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              Current total value
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <div className="text-sm font-medium">Current Profit</div>
           </CardHeader>
           <CardContent>
             <div
               className={`text-2xl font-semibold tabular-nums ${
-                cycle.performance.profitISK < 0
-                  ? "text-red-500"
-                  : "text-emerald-600"
+                cycle.profit.current < 0 ? "text-red-500" : "text-emerald-600"
               }`}
             >
-              {formatIsk(cycle.performance.profitISK)}
+              {formatIsk(cycle.profit.current)}
             </div>
-            <p
-              className={`text-xs mt-1 font-medium ${
-                cycle.performance.marginPct < 0
-                  ? "text-red-500"
-                  : "text-emerald-600"
+            <p className="text-xs text-muted-foreground mt-1">
+              {cycle.initialCapitalIsk > 0
+                ? `${((cycle.profit.current / cycle.initialCapitalIsk) * 100).toFixed(1)}% ROI`
+                : "—"}
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <div className="text-sm font-medium">Estimated Profit</div>
+          </CardHeader>
+          <CardContent>
+            <div
+              className={`text-2xl font-semibold tabular-nums ${
+                cycle.profit.estimated < 0 ? "text-red-500" : "text-amber-600"
               }`}
             >
-              {(cycle.performance.marginPct * 100).toFixed(1)}% gain
-            </p>
-            <p className="text-xs text-muted-foreground mt-2">
-              Total capital vs initial
-              <br />
-              <span className="text-[10px]">Includes inventory value</span>
+              {formatIsk(cycle.profit.estimated)}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              If all sells at current
             </p>
           </CardContent>
         </Card>

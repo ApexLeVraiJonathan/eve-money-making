@@ -15,22 +15,31 @@ export async function POST(
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
-  const res = await fetch(
-    `${API_URL}/ledger/participations/${id}/mark-payout-sent`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${session.accessToken}`,
+  try {
+    const res = await fetch(
+      `${API_URL}/ledger/participations/${id}/mark-payout-sent`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${session.accessToken}`,
+          "Content-Type": "application/json",
+        },
+        cache: "no-store",
       },
-      cache: "no-store",
-    },
-  );
+    );
 
-  if (!res.ok) {
-    const error = await res.json().catch(() => ({ error: "Unknown error" }));
-    return NextResponse.json(error, { status: res.status });
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({ error: "Unknown error" }));
+      return NextResponse.json(error, { status: res.status });
+    }
+
+    const data = await res.json();
+    return NextResponse.json(data);
+  } catch (error) {
+    console.error("Failed to mark payout as sent:", error);
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 },
+    );
   }
-
-  const data = await res.json();
-  return NextResponse.json(data);
 }

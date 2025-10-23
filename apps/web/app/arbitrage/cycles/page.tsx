@@ -51,12 +51,17 @@ type CycleOverviewData = {
     startedAt: string;
     endsAt: string | null;
     status: string;
-    capital: {
-      cashISK: number;
-      inventoryISK: number;
-      originalInvestmentISK: number;
+    profit: {
+      current: number;
+      estimated: number;
+      portfolioValue: number;
     };
-    performance: { marginPct: number; profitISK: number };
+    capital: {
+      cash: number;
+      inventory: number;
+      total: number;
+    };
+    initialCapitalIsk: number;
     participantCount?: number;
     totalInvestorCapital?: number;
   };
@@ -140,17 +145,17 @@ export default function CyclesOverviewPage() {
     return `${mins}m ${secs}s left`;
   };
 
-  // Prepare pie chart data
+  // Prepare pie chart data - showing capital distribution
   const pieData = data?.current
     ? [
         {
           name: "Cash",
-          value: data.current.capital.cashISK,
-          fill: "#d97706", // Amber-600
+          value: data.current.capital.cash,
+          fill: "#059669", // Emerald-600
         },
         {
           name: "Inventory",
-          value: data.current.capital.inventoryISK,
+          value: data.current.capital.inventory,
           fill: "#92400e", // Amber-800
         },
       ]
@@ -257,53 +262,14 @@ export default function CyclesOverviewPage() {
           <div className="grid gap-4 md:grid-cols-4">
             <Card>
               <CardHeader className="pb-2">
-                <div className="text-sm font-medium">Total Capital</div>
+                <div className="text-sm font-medium">Starting Capital</div>
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-semibold tabular-nums">
-                  {formatIsk(
-                    data.current.capital.cashISK +
-                      data.current.capital.inventoryISK,
-                  )}
+                  {formatIsk(data.current.initialCapitalIsk)}
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Cash + Inventory
-                </p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="pb-2">
-                <div className="text-sm font-medium flex items-center gap-1.5">
-                  <Users className="h-4 w-4" />
-                  Investors
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-semibold tabular-nums">
-                  {data.current.participantCount ?? "—"}
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Active participants
-                </p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="pb-2">
-                <div className="text-sm font-medium flex items-center gap-1.5">
-                  <Wallet className="h-4 w-4" />
-                  Investor Capital
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-semibold tabular-nums">
-                  {data.current.totalInvestorCapital
-                    ? formatIsk(data.current.totalInvestorCapital)
-                    : "—"}
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Total pooled ISK
+                  Initial investment
                 </p>
               </CardContent>
             </Card>
@@ -312,32 +278,55 @@ export default function CyclesOverviewPage() {
               <CardHeader className="pb-2">
                 <div className="text-sm font-medium flex items-center gap-1.5">
                   <TrendingUp className="h-4 w-4" />
-                  Portfolio Value Growth
+                  Portfolio Value
                 </div>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-semibold tabular-nums text-blue-600">
+                  {formatIsk(data.current.capital.total)}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Current total value
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="pb-2">
+                <div className="text-sm font-medium">Current Profit</div>
               </CardHeader>
               <CardContent>
                 <div
                   className={`text-2xl font-semibold tabular-nums ${
-                    data.current.performance.profitISK < 0
+                    data.current.profit.current < 0
                       ? "text-red-500"
                       : "text-emerald-600"
                   }`}
                 >
-                  {formatIsk(data.current.performance.profitISK)}
+                  {formatIsk(data.current.profit.current)}
                 </div>
-                <p
-                  className={`text-xs mt-1 font-medium ${
-                    data.current.performance.marginPct < 0
+                <p className="text-xs text-muted-foreground mt-1">
+                  Realized from sales
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="pb-2">
+                <div className="text-sm font-medium">Estimated Profit</div>
+              </CardHeader>
+              <CardContent>
+                <div
+                  className={`text-2xl font-semibold tabular-nums ${
+                    data.current.profit.estimated < 0
                       ? "text-red-500"
-                      : "text-emerald-600"
+                      : "text-amber-600"
                   }`}
                 >
-                  {(data.current.performance.marginPct * 100).toFixed(1)}% gain
-                </p>
-                <p className="text-xs text-muted-foreground mt-2">
-                  Total capital vs initial
-                  <br />
-                  <span className="text-[10px]">Includes inventory value</span>
+                  {formatIsk(data.current.profit.estimated)}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  If all sells at current
                 </p>
               </CardContent>
             </Card>

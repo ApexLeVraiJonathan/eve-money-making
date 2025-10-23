@@ -294,12 +294,7 @@ cd apps/web && npx shadcn@latest add alert-dialog
 
 **Note**: The frontend currently uses `planCommitId` but backend expects cycle-based parameters. The API endpoints need updating to match new system.
 
-**Alternative - Manual API call per line**:
-
-```bash
-POST /api/ledger/cycles/lines/{lineId}/relist-fee
-Body: { "amountIsk": "30000" }  # 0.3% of new order value
-```
+````
 
 ## 8️⃣ Profit Calculation & Snapshots
 
@@ -320,7 +315,7 @@ Body: { "amountIsk": "30000" }  # 0.3% of new order value
 
 ```bash
 POST /api/ledger/cycles/{cycleId}/snapshot
-```
+````
 
 Snapshot includes:
 
@@ -353,15 +348,15 @@ GET /api/ledger/cycles/{cycleId}/snapshots
 
 **Location**: `/arbitrage/admin/cycles`
 
-- [ ] Find the current open cycle
-- [ ] Click close/end cycle action
-- [ ] Confirm → Cycle status changes to "Closed"
-- [ ] `closedAt` timestamp set
+- [x] Find the current open cycle
+- [x] Click close/end cycle action
+- [x] Confirm → Cycle status changes to "Closed"
+- [x] `closedAt` timestamp set
 
 ### Verify Final State
 
-- [ ] Check cycle via API: `GET /api/ledger/cycles/{cycleId}`
-- [ ] Verify `closedAt` is set
+- [x] Check cycle via API: `GET /api/ledger/cycles/{cycleId}`
+- [x] Verify `closedAt` is set
 - [ ] Get final profit: `GET /api/ledger/cycles/{cycleId}/profit`
 - [ ] All cycle lines show final units bought/sold
 - [ ] Transport fees accounted for
