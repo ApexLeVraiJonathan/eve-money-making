@@ -6,7 +6,7 @@ import { Copy, Lock, X, LogIn } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { useSession } from "next-auth/react";
+import { useSession, signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import OptInDialog from "./opt-in-dialog";
 import {
@@ -333,7 +333,14 @@ export default function NextCycleSection({ next }: { next: NextCycle | null }) {
                 upcoming arbitrage cycles.
               </p>
               <Button
-                onClick={() => router.push("/api/auth/login")}
+                onClick={() =>
+                  void signIn("eveonline", {
+                    callbackUrl:
+                      typeof window !== "undefined"
+                        ? window.location.href
+                        : "/",
+                  })
+                }
                 className="gap-2"
               >
                 <LogIn className="h-4 w-4" />
