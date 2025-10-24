@@ -113,6 +113,10 @@ export class AllocationService {
     let allocated = 0;
     let unmatched = 0;
 
+    this.logger.log(
+      `[Allocation] Processing ${allBuyTxs.length} buy transactions for cycle ${cycleId}`,
+    );
+
     for (const tx of allBuyTxs) {
       // Check how much of this tx is already allocated
       const existingAllocations = await this.prisma.buyAllocation.aggregate({
@@ -125,7 +129,12 @@ export class AllocationService {
       const alreadyAllocated = existingAllocations._sum.quantity ?? 0;
       const remaining = tx.quantity - alreadyAllocated;
 
-      if (remaining <= 0) continue;
+      if (remaining <= 0) {
+        this.logger.debug(
+          `[Allocation] TX ${tx.transactionId} already fully allocated`,
+        );
+        continue;
+      }
 
       // Find lines for this type with capacity
       const matchingLines = lines.filter(
@@ -133,6 +142,9 @@ export class AllocationService {
       );
 
       if (matchingLines.length === 0) {
+        this.logger.debug(
+          `[Allocation] No matching lines for TX ${tx.transactionId} typeId=${tx.typeId} qty=${remaining}`,
+        );
         unmatched++;
         continue;
       }
@@ -146,6 +158,10 @@ export class AllocationService {
 
         if (allocQty <= 0) continue;
 
+        this.logger.log(
+          `[Allocation] Allocating ${allocQty} units from TX ${tx.transactionId} to line ${line.id} @ ${tx.unitPrice} ISK/unit`,
+        );
+
         // Create allocation
         await this.prisma.buyAllocation.create({
           data: {
@@ -157,20 +173,27 @@ export class AllocationService {
           },
         });
 
-        // Update line totals
-        const newBought = line.unitsBought + allocQty;
-        const newCost =
-          Number(line.buyCostIsk) + allocQty * Number(tx.unitPrice);
+        // Update line totals using atomic increments to avoid race conditions
+        const costIncrement = allocQty * Number(tx.unitPrice);
+
+        this.logger.log(
+          `[Allocation] Allocating to line ${line.id}: +${allocQty} units, +${costIncrement.toFixed(2)} ISK`,
+        );
+
         await this.prisma.cycleLine.update({
           where: { id: line.id },
           data: {
-            unitsBought: newBought,
-            buyCostIsk: newCost.toFixed(2),
+            unitsBought: { increment: allocQty },
+            buyCostIsk: { increment: costIncrement },
           },
         });
 
         toAllocate -= allocQty;
-        line.unitsBought = newBought; // update local cache
+        // Update local cache for subsequent iterations
+        line.unitsBought = line.unitsBought + allocQty;
+        (line as any).buyCostIsk = (
+          Number(line.buyCostIsk) + costIncrement
+        ).toString();
         allocated++;
       }
 
@@ -313,24 +336,25 @@ export class AllocationService {
           },
         });
 
-        // Update line totals
-        const newSold = line.unitsSold + allocQty;
-        const newGross = Number(line.salesGrossIsk) + revenue;
-        const newTax = Number(line.salesTaxIsk) + tax;
-        const newNet = Number(line.salesNetIsk) + net;
-
+        // Update line totals using atomic increments
         await this.prisma.cycleLine.update({
           where: { id: line.id },
           data: {
-            unitsSold: newSold,
-            salesGrossIsk: newGross.toFixed(2),
-            salesTaxIsk: newTax.toFixed(2),
-            salesNetIsk: newNet.toFixed(2),
+            unitsSold: { increment: allocQty },
+            salesGrossIsk: { increment: revenue },
+            salesTaxIsk: { increment: tax },
+            salesNetIsk: { increment: net },
           },
         });
 
         toAllocate -= allocQty;
-        line.unitsSold = newSold; // update local cache
+        // Update local cache for subsequent iterations
+        line.unitsSold = line.unitsSold + allocQty;
+        (line as any).salesGrossIsk = (
+          Number(line.salesGrossIsk) + revenue
+        ).toString();
+        (line as any).salesTaxIsk = (Number(line.salesTaxIsk) + tax).toString();
+        (line as any).salesNetIsk = (Number(line.salesNetIsk) + net).toString();
         allocated++;
       }
 
