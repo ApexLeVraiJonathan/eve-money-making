@@ -105,9 +105,11 @@ Notes:
 
 #### NestJS API Integration
 
-- API_URL: Internal URL where NestJS API is accessible from Next.js
+- API_URL: Internal URL where NestJS API is accessible from Next.js server-side
   - Dev: `API_URL=http://localhost:3000`
-  - Prod: `API_URL=http://api:3000` (or your internal service URL)
+  - Prod: `API_URL=https://your-api-domain.railway.app` (or your internal service URL)
+  - **Critical**: This must be set in production for the web app to communicate with the API backend
+  - Used by Next.js API routes to proxy requests to the NestJS backend
 - API_BASE_URL: Public URL of your NestJS API (used for OAuth redirect URIs)
   - Dev: `API_BASE_URL=http://localhost:3000`
   - Prod: `API_BASE_URL=https://your-api-domain.railway.app`

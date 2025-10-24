@@ -3,7 +3,7 @@ import { fetchWithAuth } from "@/lib/api-client";
 
 export async function GET(req: NextRequest) {
   try {
-    const base = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
+    const base = process.env.API_URL || "http://localhost:3000";
     const url = new URL("/admin/users", base);
     const limit = req.nextUrl.searchParams.get("limit");
     const offset = req.nextUrl.searchParams.get("offset");

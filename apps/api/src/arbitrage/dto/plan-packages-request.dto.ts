@@ -37,6 +37,7 @@ export const PlanPackagesRequestSchema = z
         spreadBias: z.coerce.number().min(0).max(1).optional(),
       })
       .optional(),
+    liquidityWindowDays: z.coerce.number().int().min(1).max(90).optional(),
   })
   .strict();
 

@@ -137,7 +137,9 @@ export class ArbitrageService {
     const feeInputs = { salesTaxPercent, brokerFeePercent };
 
     // Get liquidity for all tracked stations with defaults
-    const liquidity = await this.liquidity.runCheck();
+    const liquidity = await this.liquidity.runCheck({
+      windowDays: params?.liquidityWindowDays,
+    });
 
     // Get current open cycle to check for existing inventory
     const currentCycle = await this.prisma.cycle.findFirst({
@@ -205,8 +207,9 @@ export class ArbitrageService {
     const stations = Object.entries(liquidity);
     const desiredEsiConc =
       params?.esiMaxConcurrency ?? Math.max(1, itemConcurrency * 4);
+    const liquidityWindowDays = params?.liquidityWindowDays ?? 30;
     this.logger.log(
-      `[reqId=${reqId ?? '-'}] Arbitrage start src=${sourceStationId} mult=${arbitrageMultiplier} validate>${marginValidateThreshold}% minProfit=${minTotalProfitISK} stationConc=${stationConcurrency} itemConc=${itemConcurrency} stations=${stations.length} esiConc=${desiredEsiConc}`,
+      `[reqId=${reqId ?? '-'}] Arbitrage start src=${sourceStationId} mult=${arbitrageMultiplier} validate>${marginValidateThreshold}% minProfit=${minTotalProfitISK} stationConc=${stationConcurrency} itemConc=${itemConcurrency} stations=${stations.length} esiConc=${desiredEsiConc} liquidityDays=${liquidityWindowDays}`,
     );
     let sIdx = 0;
     const stationWorkers = Array.from(
@@ -384,7 +387,12 @@ export class ArbitrageService {
     reqId?: string,
   ): Promise<PlanResult> {
     // Build DestinationConfig[] from arbitrage check results
-    const arbitrage = await this.check(undefined, reqId);
+    const arbitrage = await this.check(
+      {
+        liquidityWindowDays: params.liquidityWindowDays,
+      },
+      reqId,
+    );
     // Fetch volumes (m3) for all needed typeIds from DB (TypeId.volume)
     const typeIds = Array.from(
       new Set(

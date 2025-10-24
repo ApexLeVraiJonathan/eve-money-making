@@ -83,6 +83,7 @@ const defaultPayload = {
   perDestinationMaxBudgetSharePerItem: 0.2,
   maxPackagesHint: 20,
   maxPackageCollateralISK: 5_000_000_000, // 5B ISK default
+  liquidityWindowDays: 15, // Days of market data to analyze (adjust based on available data)
   allocation: { mode: "best" as const },
 };
 
@@ -122,6 +123,9 @@ export default function PlannerPage() {
   );
   const [collateralDisplay, setCollateralDisplay] = React.useState(
     defaultPayload.maxPackageCollateralISK.toLocaleString(),
+  );
+  const [windowDaysDisplay, setWindowDaysDisplay] = React.useState(
+    defaultPayload.liquidityWindowDays.toString(),
   );
 
   // Helper to parse formatted number string to number
@@ -190,6 +194,18 @@ export default function PlannerPage() {
       const numValue = parseFormattedNumber(value);
       if (!isNaN(numValue)) {
         j.maxPackageCollateralISK = numValue;
+        setJson(JSON.stringify(j, null, 2));
+      }
+    } catch {}
+  };
+
+  const handleWindowDaysChange = (value: string) => {
+    setWindowDaysDisplay(value);
+    try {
+      const j = JSON.parse(json);
+      const numValue = Number(value);
+      if (!isNaN(numValue)) {
+        j.liquidityWindowDays = numValue;
         setJson(JSON.stringify(j, null, 2));
       }
     } catch {}
@@ -421,6 +437,19 @@ export default function PlannerPage() {
                   />
                   <p className="text-xs text-muted-foreground">
                     Max total value per package
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="windowDays">Liquidity Window (Days)</Label>
+                  <Input
+                    id="windowDays"
+                    type="text"
+                    value={windowDaysDisplay}
+                    onChange={(e) => handleWindowDaysChange(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Days of market data to analyze (1-90)
                   </p>
                 </div>
               </div>

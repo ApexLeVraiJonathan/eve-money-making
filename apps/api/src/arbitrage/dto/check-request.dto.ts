@@ -18,6 +18,7 @@ export const ArbitrageCheckRequestSchema = z
     salesTaxPercent: z.coerce.number().min(0).max(100).optional(),
     brokerFeePercent: z.coerce.number().min(0).max(100).optional(),
     esiMaxConcurrency: z.coerce.number().int().min(1).max(400).optional(),
+    liquidityWindowDays: z.coerce.number().int().min(1).max(90).optional(),
   })
   .strict();
 
