@@ -1,9 +1,18 @@
 import { PrismaClient } from '@prisma/client';
 
-const prisma = new PrismaClient();
-
-async function fixAllocation(cycleId?: string) {
+async function fixAllocation(databaseUrl: string, cycleId?: string) {
   console.log('🔧 Fixing allocation for cycle...');
+  console.log(
+    `📍 Target database: ${databaseUrl.replace(/:[^:@]+@/, ':****@')}`,
+  );
+
+  const prisma = new PrismaClient({
+    datasources: {
+      db: {
+        url: databaseUrl,
+      },
+    },
+  });
 
   // Get the cycle to fix (either specified or the latest open one)
   const cycle = cycleId
@@ -71,16 +80,29 @@ async function fixAllocation(cycleId?: string) {
   console.log(
     '   Next step: Run the reconciliation endpoint to re-allocate transactions.',
   );
+
+  await prisma.$disconnect();
 }
 
-// Get cycle ID from command line args
-const cycleId = process.argv[2];
+// Get database URL and optional cycle ID from command line args
+const databaseUrl = process.argv[2];
+const cycleId = process.argv[3];
 
-fixAllocation(cycleId)
-  .catch((error) => {
-    console.error('❌ Error:', error);
-    process.exit(1);
-  })
-  .finally(() => {
-    prisma.$disconnect();
-  });
+if (!databaseUrl) {
+  console.error('❌ Error: DATABASE_URL argument is required');
+  console.log(
+    '\nUsage: pnpm tsx scripts/fix-allocation.ts <DATABASE_URL> [cycleId]',
+  );
+  console.log(
+    'Example: pnpm tsx scripts/fix-allocation.ts "postgresql://user:pass@host:5432/dbname"',
+  );
+  console.log(
+    'Example with cycle: pnpm tsx scripts/fix-allocation.ts "postgresql://user:pass@host:5432/dbname" abc-123',
+  );
+  process.exit(1);
+}
+
+fixAllocation(databaseUrl, cycleId).catch((error) => {
+  console.error('❌ Error:', error);
+  process.exit(1);
+});

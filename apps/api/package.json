@@ -26,7 +26,8 @@
     "db:seed": "prisma db seed",
     "db:reset": "prisma migrate reset",
     "db:reset-prod": "tsx scripts/reset-prod-db.ts",
-    "fix:allocation": "tsx scripts/fix-allocation.ts"
+    "fix:allocation": "tsx scripts/fix-allocation.ts",
+    "fix:missing-table": "tsx scripts/fix-missing-table.ts"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",
