@@ -25,7 +25,8 @@
     "db:studio": "prisma studio",
     "db:seed": "prisma db seed",
     "db:reset": "prisma migrate reset",
-    "db:reset-prod": "tsx scripts/reset-prod-db.ts"
+    "db:reset-prod": "tsx scripts/reset-prod-db.ts",
+    "fix:allocation": "tsx scripts/fix-allocation.ts"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",

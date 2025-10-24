@@ -70,9 +70,23 @@ export class AllocationService {
   private async allocateBuys(
     cycleId: string,
   ): Promise<{ allocated: number; unmatched: number }> {
-    // Fetch all wallet buy transactions not yet fully allocated
+    // Get cycle start date to filter transactions
+    const cycle = await this.prisma.cycle.findUnique({
+      where: { id: cycleId },
+      select: { startedAt: true },
+    });
+
+    if (!cycle) {
+      this.logger.warn(`[Allocation] Cycle ${cycleId} not found`);
+      return { allocated: 0, unmatched: 0 };
+    }
+
+    // Fetch all wallet buy transactions that occurred during or after cycle start
     const allBuyTxs = await this.prisma.walletTransaction.findMany({
-      where: { isBuy: true },
+      where: {
+        isBuy: true,
+        date: { gte: cycle.startedAt },
+      },
       orderBy: { date: 'asc' },
       select: {
         characterId: true,
@@ -177,6 +191,17 @@ export class AllocationService {
   private async allocateSells(
     cycleId: string,
   ): Promise<{ allocated: number; unmatched: number }> {
+    // Get cycle start date to filter transactions
+    const cycle = await this.prisma.cycle.findUnique({
+      where: { id: cycleId },
+      select: { startedAt: true },
+    });
+
+    if (!cycle) {
+      this.logger.warn(`[Allocation] Cycle ${cycleId} not found`);
+      return { allocated: 0, unmatched: 0 };
+    }
+
     // Get SELLER characters with locations
     const sellers = await this.prisma.eveCharacter.findMany({
       where: { function: 'SELLER' },
@@ -192,9 +217,12 @@ export class AllocationService {
       }
     }
 
-    // Fetch all wallet sell transactions
+    // Fetch all wallet sell transactions that occurred during or after cycle start
     const allSellTxs = await this.prisma.walletTransaction.findMany({
-      where: { isBuy: false },
+      where: {
+        isBuy: false,
+        date: { gte: cycle.startedAt },
+      },
       orderBy: { date: 'asc' },
       select: {
         characterId: true,
