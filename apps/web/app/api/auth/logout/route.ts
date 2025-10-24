@@ -1,10 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "node:crypto";
 
-const API_BASE =
-  process.env.API_BASE_URL ||
-  process.env.NEXT_PUBLIC_API_BASE ||
-  "http://localhost:3000";
+const API_BASE = process.env.API_URL || "http://localhost:3000";
 
 export async function GET(_req: NextRequest) {
   const reqId = _req.headers.get("x-request-id") || crypto.randomUUID();
