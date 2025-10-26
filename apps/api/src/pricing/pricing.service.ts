@@ -94,25 +94,17 @@ export class PricingService {
     });
     const regionId = system?.regionId ?? null;
 
-    const results: Array<{
-      itemName: string;
-      quantity: number;
-      destinationStationId: number;
-      lowestSell: number | null;
-      suggestedSellPriceTicked: number | null;
-    }> = [];
-
-    for (const p of parsed) {
+    // Fetch all market data in parallel for speed
+    const fetchPromises = parsed.map(async (p) => {
       const typeId = nameToType.get(p.name);
       if (!typeId || !regionId) {
-        results.push({
+        return {
           itemName: p.name,
           quantity: p.qty,
           destinationStationId: params.destinationStationId,
           lowestSell: null,
           suggestedSellPriceTicked: null,
-        });
-        continue;
+        };
       }
 
       // Try live station sell orders
@@ -148,16 +140,16 @@ export class PricingService {
 
       const suggested = lowest !== null ? nextCheaperTick(lowest) : null;
 
-      results.push({
+      return {
         itemName: p.name,
         quantity: p.qty,
         destinationStationId: params.destinationStationId,
         lowestSell: lowest,
         suggestedSellPriceTicked: suggested,
-      });
-    }
+      };
+    });
 
-    return results;
+    return await Promise.all(fetchPromises);
   }
 
   async undercutCheck(params: {
@@ -480,10 +472,12 @@ export class PricingService {
     for (const s of stations)
       regionByStation.set(s.id, regionBySystem.get(s.solarSystemId)!);
 
-    for (const l of lines) {
+    // Fetch all market data in parallel for speed
+    const fetchPromises = lines.map(async (l) => {
       const key = `${l.destinationStationId}:${l.typeId}`;
       const qty = remainingMap.get(key) ?? 0;
-      if (qty <= 0) continue;
+      if (qty <= 0) return null;
+
       const regionId = regionByStation.get(l.destinationStationId);
       let lowest: number | null = null;
       if (regionId) {
@@ -501,17 +495,18 @@ export class PricingService {
         }
       }
       const suggested = lowest !== null ? nextCheaperTick(lowest) : null;
-      out.push({
+      return {
         itemName: typeNameById.get(l.typeId) ?? String(l.typeId),
         typeId: l.typeId,
         quantityRemaining: qty,
         destinationStationId: l.destinationStationId,
         lowestSell: lowest,
         suggestedSellPriceTicked: suggested,
-      });
-    }
+      };
+    });
 
-    return out;
+    const results = await Promise.all(fetchPromises);
+    return results.filter((r) => r !== null) as typeof out;
   }
 
   async confirmListing(params: {
