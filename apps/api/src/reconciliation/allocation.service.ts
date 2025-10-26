@@ -159,17 +159,27 @@ export class AllocationService {
         if (allocQty <= 0) continue;
 
         this.logger.log(
-          `[Allocation] Allocating ${allocQty} units from TX ${tx.transactionId} to line ${line.id} @ ${tx.unitPrice} ISK/unit`,
+          `[Allocation] Allocating ${allocQty} units from TX ${tx.transactionId} to line ${line.id} @ ${tx.unitPrice.toString()} ISK/unit`,
         );
 
-        // Create allocation
-        await this.prisma.buyAllocation.create({
-          data: {
+        // Upsert allocation to make re-runs idempotent (increment if exists)
+        await this.prisma.buyAllocation.upsert({
+          where: {
+            walletCharacterId_walletTransactionId_lineId: {
+              walletCharacterId: tx.characterId,
+              walletTransactionId: tx.transactionId,
+              lineId: line.id,
+            },
+          },
+          create: {
             walletCharacterId: tx.characterId,
             walletTransactionId: tx.transactionId,
             lineId: line.id,
             quantity: allocQty,
             unitPrice: tx.unitPrice.toString(),
+          },
+          update: {
+            quantity: { increment: allocQty },
           },
         });
 
@@ -323,9 +333,16 @@ export class AllocationService {
         const tax = revenue * (this.salesTaxPct / 100);
         const net = revenue - tax;
 
-        // Create allocation
-        await this.prisma.sellAllocation.create({
-          data: {
+        // Upsert allocation to make re-runs idempotent (increment if exists)
+        await this.prisma.sellAllocation.upsert({
+          where: {
+            walletCharacterId_walletTransactionId_lineId: {
+              walletCharacterId: tx.characterId,
+              walletTransactionId: tx.transactionId,
+              lineId: line.id,
+            },
+          },
+          create: {
             walletCharacterId: tx.characterId,
             walletTransactionId: tx.transactionId,
             lineId: line.id,
@@ -333,6 +350,11 @@ export class AllocationService {
             unitPrice: tx.unitPrice.toString(),
             revenueIsk: revenue.toFixed(2),
             taxIsk: tax.toFixed(2),
+          },
+          update: {
+            quantity: { increment: allocQty },
+            revenueIsk: { increment: revenue },
+            taxIsk: { increment: tax },
           },
         });
 
