@@ -146,15 +146,7 @@ export class PricingService {
         if (latest?.high) lowest = Number(latest.high);
       }
 
-      const suggested =
-        lowest !== null
-          ? nextCheaperTick(
-              getEffectiveSell(lowest, {
-                salesTaxPercent: 0,
-                brokerFeePercent: 0,
-              }),
-            )
-          : null;
+      const suggested = lowest !== null ? nextCheaperTick(lowest) : null;
 
       results.push({
         itemName: p.name,
@@ -417,9 +409,12 @@ export class PricingService {
       suggestedSellPriceTicked: number | null;
     }>
   > {
-    // Get cycle lines
+    // Get cycle lines that haven't been listed yet (no currentSellPriceIsk set)
     const lines = await this.prisma.cycleLine.findMany({
-      where: { cycleId: params.cycleId },
+      where: {
+        cycleId: params.cycleId,
+        currentSellPriceIsk: null, // Only show items not yet listed
+      },
       select: {
         typeId: true,
         destinationStationId: true,
@@ -505,15 +500,7 @@ export class PricingService {
           lowest = null;
         }
       }
-      const suggested =
-        lowest !== null
-          ? nextCheaperTick(
-              getEffectiveSell(lowest, {
-                salesTaxPercent: feeDefaults.salesTaxPercent,
-                brokerFeePercent: 0,
-              }),
-            )
-          : null;
+      const suggested = lowest !== null ? nextCheaperTick(lowest) : null;
       out.push({
         itemName: typeNameById.get(l.typeId) ?? String(l.typeId),
         typeId: l.typeId,

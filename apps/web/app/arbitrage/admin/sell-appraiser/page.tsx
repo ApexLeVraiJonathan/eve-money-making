@@ -65,6 +65,12 @@ type CommitRow = {
   quantity?: undefined;
 };
 
+type GroupedResult = {
+  destinationStationId: number;
+  stationName: string;
+  items: Array<PasteRow | CommitRow>;
+};
+
 function isCommitRow(row: PasteRow | CommitRow): row is CommitRow {
   return (row as CommitRow).typeId !== undefined;
 }
@@ -79,8 +85,32 @@ export default function SellAppraiserPage() {
     null,
   );
   const [loading, setLoading] = useState(false);
+  const [confirmLoading, setConfirmLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Record<string, boolean>>({});
+
+  const BROKER_FEE_PCT = Number(process.env.NEXT_PUBLIC_BROKER_FEE_PCT ?? 1.5);
+
+  // Group results by destination
+  const groupedResults = useMemo<GroupedResult[]>(() => {
+    if (!result) return [];
+    const groupMap = new Map<number, Array<PasteRow | CommitRow>>();
+    for (const r of result) {
+      const list = groupMap.get(r.destinationStationId) ?? [];
+      list.push(r);
+      groupMap.set(r.destinationStationId, list);
+    }
+    const groups: GroupedResult[] = [];
+    for (const [destId, items] of groupMap) {
+      const station = stations.find((s) => s.stationId === destId);
+      groups.push({
+        destinationStationId: destId,
+        stationName: station?.station?.name ?? `Station ${destId}`,
+        items,
+      });
+    }
+    return groups;
+  }, [result, stations]);
 
   useEffect(() => {
     fetch("/api/tracked-stations")
@@ -94,7 +124,7 @@ export default function SellAppraiserPage() {
         }
       })
       .catch(() => {});
-  }, [destinationId]);
+  }, []);
 
   useEffect(() => {
     const fetchLatestCycle = async () => {
@@ -107,12 +137,10 @@ export default function SellAppraiserPage() {
           name?: string | null;
           closedAt?: Date | null;
         }> = await resp.json();
-        // Get the first open cycle (not closed)
         const openCycle = rows.find((r) => !r.closedAt);
         if (openCycle) {
           setCycleId(openCycle.id);
         } else if (rows.length > 0) {
-          // Fallback to most recent cycle if no open one
           setCycleId(rows[0].id);
         }
       } catch {
@@ -138,6 +166,14 @@ export default function SellAppraiserPage() {
         if (!resp.ok) throw new Error(await resp.text());
         const data = await resp.json();
         setResult(data);
+        // Default select all
+        const allKeys = data.map(
+          (r: PasteRow | CommitRow) =>
+            `${r.destinationStationId}:${isCommitRow(r) ? r.typeId : r.itemName}`,
+        );
+        const initial: Record<string, boolean> = {};
+        for (const k of allKeys) initial[k] = true;
+        setSelected(initial);
       } catch (e: unknown) {
         setError(e instanceof Error ? e.message : "Request failed");
       } finally {
@@ -156,10 +192,15 @@ export default function SellAppraiserPage() {
         body: JSON.stringify({ destinationStationId: destinationId, lines }),
       });
       if (!resp.ok) throw new Error(await resp.text());
-      const commitData = (await resp.json()) as Array<CommitRow>;
-      setResult(commitData);
-      const pasteData = (await resp.json()) as Array<PasteRow>;
-      setResult(pasteData);
+      const data = (await resp.json()) as Array<PasteRow>;
+      setResult(data);
+      // Default select all
+      const allKeys = data.map(
+        (r) => `${r.destinationStationId}:${r.itemName}`,
+      );
+      const initial: Record<string, boolean> = {};
+      for (const k of allKeys) initial[k] = true;
+      setSelected(initial);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Request failed");
     } finally {
@@ -170,22 +211,23 @@ export default function SellAppraiserPage() {
   const toggle = (key: string) =>
     setSelected((prev) => ({ ...prev, [key]: !prev[key] }));
 
-  const toggleAll = () => {
-    if (!result) return;
-    const allKeys = result.map(
+  const toggleGroup = (group: GroupedResult, check: boolean) => {
+    const keys = group.items.map(
       (r) =>
         `${r.destinationStationId}:${isCommitRow(r) ? r.typeId : r.itemName}`,
     );
-    const allSelected = allKeys.every((k) => selected[k]);
-    const next: Record<string, boolean> = {};
-    for (const k of allKeys) {
-      next[k] = !allSelected;
-    }
-    setSelected(next);
+    setSelected((prev) => {
+      const next = { ...prev };
+      for (const k of keys) next[k] = check;
+      return next;
+    });
   };
 
   const onConfirmListed = async () => {
     if (!useCommit || !cycleId || !result) return;
+
+    setConfirmLoading(true);
+    setError(null);
 
     // Need to get cycle lines to match typeIds to lineIds
     let cycleLines: CycleLine[];
@@ -199,6 +241,7 @@ export default function SellAppraiserPage() {
       setError(
         `Failed to fetch cycle lines: ${e instanceof Error ? e.message : String(e)}`,
       );
+      setConfirmLoading(false);
       return;
     }
 
@@ -209,6 +252,10 @@ export default function SellAppraiserPage() {
       const key = `${r.destinationStationId}:${isCommitRow(r) ? r.typeId : r.itemName}`;
       if (!selected[key]) continue;
       if (!isCommitRow(r)) continue; // Skip paste rows
+      if (r.suggestedSellPriceTicked === null) {
+        errors.push(`${r.itemName}: No suggested price available (skipped)`);
+        continue;
+      }
 
       // Find matching cycle line
       const line = cycleLines.find(
@@ -232,12 +279,13 @@ export default function SellAppraiserPage() {
           body: JSON.stringify({
             lineId: line.id,
             quantity: r.quantityRemaining,
-            unitPrice: r.suggestedSellPriceTicked ?? 0,
+            unitPrice: r.suggestedSellPriceTicked,
           }),
         })
           .then(async (resp) => {
             if (!resp.ok) {
-              errors.push(`${r.itemName}: ${await resp.text()}`);
+              const text = await resp.text();
+              errors.push(`${r.itemName}: ${text}`);
             }
           })
           .catch((e) => {
@@ -251,11 +299,15 @@ export default function SellAppraiserPage() {
     // Wait for all requests to complete
     await Promise.all(promises);
 
+    setConfirmLoading(false);
+
     if (errors.length) {
       setError(errors.join("\n"));
     } else {
       setError(null);
-      alert("Broker fees recorded successfully!");
+      alert(
+        "Broker fees recorded and current sell prices updated successfully!",
+      );
     }
   };
 
@@ -353,114 +405,190 @@ export default function SellAppraiserPage() {
             </>
           )}
 
-          <div className="flex gap-2">
-            <Button
-              onClick={onSubmit}
-              disabled={loading || (useCommit ? !cycleId : !destinationId)}
-              className="gap-2"
-            >
-              {loading ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Computing...
-                </>
-              ) : (
-                <>
-                  <Calculator className="h-4 w-4" />
-                  Appraise
-                </>
-              )}
-            </Button>
-            <Button
-              onClick={onConfirmListed}
-              disabled={!useCommit || !cycleId}
-              variant="secondary"
-              className="gap-2"
-            >
-              <CheckCircle2 className="h-4 w-4" />
-              Confirm Listed
-            </Button>
-          </div>
+          <Button
+            onClick={onSubmit}
+            disabled={loading || (useCommit ? !cycleId : !destinationId)}
+            className="gap-2"
+          >
+            {loading ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Computing...
+              </>
+            ) : (
+              <>
+                <Calculator className="h-4 w-4" />
+                Appraise
+              </>
+            )}
+          </Button>
         </CardContent>
       </Card>
 
       {error && (
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
-          <AlertDescription>{error}</AlertDescription>
+          <AlertDescription className="whitespace-pre-line">
+            {error}
+          </AlertDescription>
         </Alert>
       )}
 
-      {Array.isArray(result) && result.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Package className="h-5 w-5" />
-              Appraisal Results
-            </CardTitle>
-            <CardDescription>
-              {result.length} item{result.length !== 1 ? "s" : ""} ready to list
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-left border-b">
-                    <th className="py-3 px-3">
-                      <Checkbox
-                        checked={
-                          result.length > 0 &&
-                          result.every((r) => {
-                            const key = `${r.destinationStationId}:${isCommitRow(r) ? r.typeId : r.itemName}`;
-                            return selected[key];
-                          })
-                        }
-                        onCheckedChange={toggleAll}
-                      />
-                    </th>
-                    <th className="py-3 px-3 text-left font-medium">Item</th>
-                    <th className="py-3 px-3 text-right font-medium">Qty</th>
-                    <th className="py-3 px-3 text-right font-medium">
-                      Lowest Sell
-                    </th>
-                    <th className="py-3 px-3 text-right font-medium">
-                      Suggested (ticked)
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {result.map((r, idx) => {
-                    const key = `${r.destinationStationId}:${"typeId" in r ? r.typeId : r.itemName}`;
-                    return (
-                      <tr
-                        key={idx}
-                        className="border-b hover:bg-muted/50 transition-colors"
-                      >
-                        <td className="py-2 px-3">
-                          <Checkbox
-                            checked={!!selected[key]}
-                            onCheckedChange={() => toggle(key)}
+      {groupedResults.length > 0 && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold">Appraisal Results</h2>
+            {useCommit && (
+              <Button
+                onClick={onConfirmListed}
+                disabled={confirmLoading || !cycleId}
+                className="gap-2"
+              >
+                {confirmLoading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Confirming...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="h-4 w-4" />
+                    Confirm Listed
+                  </>
+                )}
+              </Button>
+            )}
+          </div>
+
+          {groupedResults.map((group, gi) => (
+            <Card key={gi}>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Store className="h-5 w-5" />
+                  {group.stationName}
+                </CardTitle>
+                <CardDescription>
+                  {group.items.length} item{group.items.length !== 1 ? "s" : ""}{" "}
+                  ready to list
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b">
+                        <th className="py-2 px-3">
+                          <input
+                            type="checkbox"
+                            checked={
+                              group.items.every((r) => {
+                                const key = `${r.destinationStationId}:${isCommitRow(r) ? r.typeId : r.itemName}`;
+                                return selected[key];
+                              }) && group.items.length > 0
+                            }
+                            onChange={(e) =>
+                              toggleGroup(group, e.target.checked)
+                            }
                           />
-                        </td>
-                        <td className="py-2 px-3">{r.itemName}</td>
-                        <td className="py-2 px-3 text-right tabular-nums">
-                          {"quantity" in r ? r.quantity : r.quantityRemaining}
-                        </td>
-                        <td className="py-2 px-3 text-right tabular-nums">
-                          {formatIsk(r.lowestSell)}
-                        </td>
-                        <td className="py-2 px-3 text-right font-medium tabular-nums">
-                          {formatIsk(r.suggestedSellPriceTicked)}
-                        </td>
+                        </th>
+                        <th className="py-2 px-3 whitespace-nowrap text-left">
+                          Item
+                        </th>
+                        <th className="py-2 px-3 whitespace-nowrap text-right">
+                          Qty
+                        </th>
+                        <th className="py-2 px-3 whitespace-nowrap text-right">
+                          Lowest Sell
+                        </th>
+                        <th className="py-2 px-3 whitespace-nowrap text-right">
+                          Suggested (ticked)
+                        </th>
+                        {useCommit && (
+                          <th className="py-2 px-3 whitespace-nowrap text-right">
+                            Broker Fee ({BROKER_FEE_PCT}%)
+                          </th>
+                        )}
                       </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </CardContent>
-        </Card>
+                    </thead>
+                    <tbody>
+                      {group.items.map((r, idx) => {
+                        const key = `${r.destinationStationId}:${isCommitRow(r) ? r.typeId : r.itemName}`;
+                        const qty = isCommitRow(r)
+                          ? r.quantityRemaining
+                          : r.quantity;
+                        const brokerFee =
+                          r.suggestedSellPriceTicked !== null
+                            ? qty *
+                              r.suggestedSellPriceTicked *
+                              (BROKER_FEE_PCT / 100)
+                            : 0;
+                        return (
+                          <tr
+                            key={idx}
+                            className="border-b hover:bg-muted/50 transition-colors"
+                          >
+                            <td className="py-2 px-3">
+                              <input
+                                type="checkbox"
+                                checked={!!selected[key]}
+                                onChange={() => toggle(key)}
+                              />
+                            </td>
+                            <td className="py-2 px-3 text-left whitespace-nowrap">
+                              {r.itemName}
+                            </td>
+                            <td className="py-2 px-3 text-right tabular-nums">
+                              {qty}
+                            </td>
+                            <td className="py-2 px-3 text-right tabular-nums">
+                              {formatIsk(r.lowestSell)}
+                            </td>
+                            <td className="py-2 px-3 text-right font-medium tabular-nums">
+                              {formatIsk(r.suggestedSellPriceTicked)}
+                            </td>
+                            {useCommit && (
+                              <td className="py-2 px-3 text-right font-medium tabular-nums">
+                                {formatIsk(brokerFee)}
+                              </td>
+                            )}
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                    {useCommit && (
+                      <tfoot>
+                        <tr className="border-t">
+                          <td className="py-2 px-3"></td>
+                          <td className="py-2 px-3" colSpan={3}></td>
+                          <td className="py-2 px-3 text-right font-medium">
+                            Total broker fee (selected):
+                          </td>
+                          <td className="py-2 px-3 font-semibold text-right">
+                            {formatIsk(
+                              group.items.reduce((s, r) => {
+                                const key = `${r.destinationStationId}:${isCommitRow(r) ? r.typeId : r.itemName}`;
+                                if (!selected[key]) return s;
+                                const qty = isCommitRow(r)
+                                  ? r.quantityRemaining
+                                  : r.quantity;
+                                const fee =
+                                  r.suggestedSellPriceTicked !== null
+                                    ? qty *
+                                      r.suggestedSellPriceTicked *
+                                      (BROKER_FEE_PCT / 100)
+                                    : 0;
+                                return s + fee;
+                              }, 0),
+                            )}
+                          </td>
+                        </tr>
+                      </tfoot>
+                    )}
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
       )}
     </div>
   );
