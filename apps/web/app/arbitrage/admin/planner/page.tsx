@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import {
   Package,
   Settings,
@@ -11,6 +12,7 @@ import {
   Copy,
   Check,
   AlertCircle,
+  CheckCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -107,6 +109,10 @@ export default function PlannerPage() {
   const [data, setData] = React.useState<PlanResult | null>(null);
   const [memo, setMemo] = React.useState("");
   const [copiedDest, setCopiedDest] = React.useState<string | null>(null);
+  const [commitSuccess, setCommitSuccess] = React.useState<{
+    cycleId: string;
+    packageCount: number;
+  } | null>(null);
 
   // Display values for form inputs (formatted)
   const [capacityDisplay, setCapacityDisplay] = React.useState(
@@ -509,6 +515,7 @@ export default function PlannerPage() {
               onClick={async () => {
                 if (!data) return;
                 try {
+                  setError(null);
                   const payload = JSON.parse(json);
                   const res = await fetch("/api/arbitrage/commit", {
                     method: "POST",
@@ -521,9 +528,12 @@ export default function PlannerPage() {
                   });
                   const body = await res.json();
                   if (!res.ok) throw new Error(body?.error || res.statusText);
-                  alert(`Plan committed: ${body.id}`);
+                  setCommitSuccess({
+                    cycleId: body.id,
+                    packageCount: data.packages.length,
+                  });
                 } catch (e) {
-                  alert(e instanceof Error ? e.message : String(e));
+                  setError(e instanceof Error ? e.message : String(e));
                 }
               }}
               className="gap-2"
@@ -539,6 +549,25 @@ export default function PlannerPage() {
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
           <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
+
+      {commitSuccess && (
+        <Alert className="border-emerald-500/20 bg-emerald-500/10">
+          <CheckCircle className="h-4 w-4 text-emerald-500" />
+          <AlertDescription className="flex items-center justify-between">
+            <span>
+              Plan committed successfully! {commitSuccess.packageCount} packages
+              created for cycle {commitSuccess.cycleId.slice(0, 8)}...
+            </span>
+            <Link
+              href={`/arbitrage/admin/packages?cycleId=${commitSuccess.cycleId}`}
+            >
+              <Button variant="outline" size="sm" className="ml-4">
+                View Packages →
+              </Button>
+            </Link>
+          </AlertDescription>
         </Alert>
       )}
 

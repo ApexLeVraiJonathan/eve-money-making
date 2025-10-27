@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { EsiService } from '../esi/esi.service';
 import { fetchStationOrders } from '../esi/market-helpers';
 import { ArbitragePackagerService } from '../../libs/arbitrage-packager/src';
+import { PackagesService } from '../packages/packages.service';
 import type {
   DestinationConfig,
   MultiPlanOptions,
@@ -28,6 +29,7 @@ export class ArbitrageService {
     private readonly esi: EsiService,
     private readonly logger: Logger,
     private readonly packager: ArbitragePackagerService,
+    private readonly packages: PackagesService,
   ) {}
 
   private async fetchCheapestSellAtStation(
@@ -515,6 +517,16 @@ export class ArbitrageService {
 
       this.logger.log(
         `Plan committed: ${lines.length} new lines added to cycle ${currentOpen.id}`,
+      );
+
+      // Create committed package records
+      const packageIds = await this.packages.createCommittedPackages(
+        currentOpen.id,
+        plan,
+      );
+
+      this.logger.log(
+        `Created ${packageIds.length} committed packages for cycle ${currentOpen.id}`,
       );
 
       return { id: currentOpen.id, createdAt: new Date() };

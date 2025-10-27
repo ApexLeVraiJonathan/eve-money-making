@@ -233,6 +233,7 @@ model Cycle {
   cycleLines        CycleLine[]
   cycleFeeEvents    CycleFeeEvent[]
   cycleSnapshots    CycleSnapshot[]
+  committedPackages CommittedPackage[]
 
   @@map("cycles")
 }
@@ -382,6 +383,7 @@ model CycleLine {
 
   buyAllocations  BuyAllocation[]
   sellAllocations SellAllocation[]
+  packageLinks    PackageCycleLine[]
 
   @@index([cycleId])
   @@index([typeId])
@@ -456,4 +458,64 @@ model CycleSnapshot {
   @@index([cycleId])
   @@index([snapshotAt])
   @@map("cycle_snapshots")
+}
+
+/// Historical record of committed courier packages
+model CommittedPackage {
+  id                     String   @id @default(uuid()) @map("id")
+  cycleId                String   @map("cycle_id")
+  cycle                  Cycle    @relation(fields: [cycleId], references: [id], onDelete: Cascade)
+  packageIndex           Int      @map("package_index")
+  destinationStationId   Int      @map("destination_station_id")
+  destinationName        String?  @map("destination_name")
+  collateralIsk          Decimal  @map("collateral_isk") @db.Decimal(28, 2)
+  shippingCostIsk        Decimal  @map("shipping_cost_isk") @db.Decimal(28, 2)
+  estimatedProfitIsk     Decimal  @map("estimated_profit_isk") @db.Decimal(28, 2)
+  status                 String   @default("active") @map("status") // active | failed | completed
+  committedAt            DateTime @default(now()) @map("committed_at")
+  failedAt               DateTime? @map("failed_at")
+  collateralRecoveredIsk Decimal? @map("collateral_recovered_isk") @db.Decimal(28, 2)
+  failureMemo            String?  @map("failure_memo")
+  createdAt              DateTime @default(now()) @map("created_at")
+  updatedAt              DateTime @updatedAt @map("updated_at")
+
+  items          CommittedPackageItem[]
+  cycleLineLinks PackageCycleLine[]
+
+  @@index([cycleId])
+  @@index([status])
+  @@map("committed_packages")
+}
+
+/// Items in a committed package at time of commit
+model CommittedPackageItem {
+  id         String           @id @default(uuid()) @map("id")
+  packageId  String           @map("package_id")
+  package    CommittedPackage @relation(fields: [packageId], references: [id], onDelete: Cascade)
+  typeId     Int              @map("type_id")
+  typeName   String           @map("type_name")
+  units      Int              @map("units")
+  unitCost   Decimal          @map("unit_cost") @db.Decimal(28, 2)
+  unitProfit Decimal          @map("unit_profit") @db.Decimal(28, 2)
+  createdAt  DateTime         @default(now()) @map("created_at")
+
+  @@index([packageId])
+  @@index([packageId, typeId])
+  @@map("committed_package_items")
+}
+
+/// Junction table linking packages to cycle lines (many-to-many)
+model PackageCycleLine {
+  id             String           @id @default(uuid()) @map("id")
+  packageId      String           @map("package_id")
+  package        CommittedPackage @relation(fields: [packageId], references: [id], onDelete: Cascade)
+  cycleLineId    String           @map("cycle_line_id")
+  cycleLine      CycleLine        @relation(fields: [cycleLineId], references: [id], onDelete: Cascade)
+  unitsCommitted Int              @map("units_committed")
+  createdAt      DateTime         @default(now()) @map("created_at")
+
+  @@unique([packageId, cycleLineId])
+  @@index([packageId])
+  @@index([cycleLineId])
+  @@map("package_cycle_lines")
 }

@@ -144,6 +144,11 @@ export const APPS: AppConfig[] = [
         ],
       },
       {
+        name: "Packages",
+        url: "/arbitrage/admin/packages",
+        icon: Package,
+      },
+      {
         name: "Characters",
         url: "/arbitrage/admin/characters",
         icon: UserCheck,

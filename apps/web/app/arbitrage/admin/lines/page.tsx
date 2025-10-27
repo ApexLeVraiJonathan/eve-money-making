@@ -72,6 +72,11 @@ type CycleLine = {
   lineProfitExclTransport: string;
   createdAt: string;
   updatedAt: string;
+  packages: Array<{
+    id: string;
+    index: number;
+    destinationName: string | null;
+  }>;
 };
 
 export default function CycleLinesPage() {
@@ -335,6 +340,7 @@ function CycleLinesContent() {
               <TableRow>
                 <TableHead>Item</TableHead>
                 <TableHead>Destination</TableHead>
+                <TableHead>Packages</TableHead>
                 <TableHead className="text-right">Planned</TableHead>
                 <TableHead className="text-right">Bought</TableHead>
                 <TableHead className="text-right">Sold</TableHead>
@@ -366,6 +372,24 @@ function CycleLinesContent() {
                       <div className="text-sm">
                         {line.destinationStationName.split(" ")[0]}
                       </div>
+                    </TableCell>
+                    <TableCell>
+                      {line.packages.length > 0 ? (
+                        <div className="flex gap-1 flex-wrap">
+                          {line.packages.map((pkg) => (
+                            <a
+                              key={pkg.id}
+                              href={`/arbitrage/admin/packages?cycleId=${line.cycleId}`}
+                              className="inline-flex items-center text-xs px-2 py-0.5 rounded-md bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
+                              title={`Package #${pkg.index}`}
+                            >
+                              #{pkg.index}
+                            </a>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">—</span>
+                      )}
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
                       {line.plannedUnits.toLocaleString()}

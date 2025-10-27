@@ -4,6 +4,7 @@ import type { ParticipationStatus, Prisma } from '@prisma/client';
 import { EsiCharactersService } from '../esi/esi-characters.service';
 import { EsiService } from '../esi/esi.service';
 import { fetchStationOrders } from '../esi/market-helpers';
+import { PackagesService } from '../packages/packages.service';
 
 export type NavTotals = {
   deposits: string;
@@ -53,6 +54,7 @@ export class LedgerService {
     private readonly esiChars: EsiCharactersService,
     private readonly esi: EsiService,
     private readonly logger: Logger,
+    private readonly packages: PackagesService,
   ) {}
 
   // Helpers
@@ -660,6 +662,9 @@ export class LedgerService {
   }
 
   async closeCycle(cycleId: string, closedAt: Date) {
+    // Mark all active packages as completed before closing cycle
+    await this.packages.completePackagesForCycle(cycleId);
+
     return await this.prisma.cycle.update({
       where: { id: cycleId },
       data: { closedAt },
@@ -1935,6 +1940,19 @@ export class LedgerService {
   async listCycleLines(cycleId: string) {
     const lines = await this.prisma.cycleLine.findMany({
       where: { cycleId },
+      include: {
+        packageLinks: {
+          include: {
+            package: {
+              select: {
+                id: true,
+                packageIndex: true,
+                destinationName: true,
+              },
+            },
+          },
+        },
+      },
       orderBy: { createdAt: 'asc' },
     });
 
@@ -1985,6 +2003,11 @@ export class LedgerService {
         salesNetIsk: l.salesNetIsk.toString(),
         brokerFeesIsk: l.brokerFeesIsk.toString(),
         relistFeesIsk: l.relistFeesIsk.toString(),
+        packages: l.packageLinks.map((link) => ({
+          id: link.package.id,
+          index: link.package.packageIndex,
+          destinationName: link.package.destinationName,
+        })),
       };
     });
   }
