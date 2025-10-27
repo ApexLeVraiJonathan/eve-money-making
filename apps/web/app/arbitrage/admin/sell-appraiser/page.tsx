@@ -91,6 +91,28 @@ export default function SellAppraiserPage() {
 
   const BROKER_FEE_PCT = Number(process.env.NEXT_PUBLIC_BROKER_FEE_PCT ?? 1.5);
 
+  // Sort items alphabetically with EVE convention: numbers before letters
+  const sortItems = (items: Array<PasteRow | CommitRow>) => {
+    return items.sort((a, b) => {
+      const nameA = a.itemName;
+      const nameB = b.itemName;
+
+      // Check if first character is a digit
+      const startsWithDigitA = /^\d/.test(nameA);
+      const startsWithDigitB = /^\d/.test(nameB);
+
+      // If one starts with digit and other doesn't, digit comes first
+      if (startsWithDigitA && !startsWithDigitB) return -1;
+      if (!startsWithDigitA && startsWithDigitB) return 1;
+
+      // Both start with same type (digit or letter), compare alphabetically
+      return nameA.localeCompare(nameB, "en", {
+        numeric: true,
+        sensitivity: "base",
+      });
+    });
+  };
+
   // Group results by destination
   const groupedResults = useMemo<GroupedResult[]>(() => {
     if (!result) return [];
@@ -106,7 +128,7 @@ export default function SellAppraiserPage() {
       groups.push({
         destinationStationId: destId,
         stationName: station?.station?.name ?? `Station ${destId}`,
-        items,
+        items: sortItems(items),
       });
     }
     return groups;
