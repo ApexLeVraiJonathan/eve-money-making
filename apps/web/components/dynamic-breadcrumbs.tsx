@@ -10,7 +10,7 @@ import {
   BreadcrumbList,
   BreadcrumbPage,
   BreadcrumbSeparator,
-} from "@/components/ui/breadcrumb";
+} from "@eve/ui";
 import { getActiveAppByPathname, getApps } from "@/app/apps.config";
 
 function buildTitleLookup(): Record<string, string> {

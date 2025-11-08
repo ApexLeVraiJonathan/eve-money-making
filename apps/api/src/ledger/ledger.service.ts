@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import type { ParticipationStatus, Prisma } from '@prisma/client';
+import type { ParticipationStatus, Prisma } from '@eve/prisma';
 import { EsiCharactersService } from '../esi/esi-characters.service';
 import { EsiService } from '../esi/esi.service';
 import { fetchStationOrders } from '../esi/market-helpers';

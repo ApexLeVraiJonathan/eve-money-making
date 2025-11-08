@@ -1,15 +1,15 @@
 "use client";
 
 import * as React from "react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@eve/ui";
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card";
-import { TabsContent } from "@/components/ui/tabs";
+} from "@eve/ui";
+import { TabsContent } from "@eve/ui";
 import { toast } from "sonner";
 import { Loader2, RefreshCw, Calendar, FileCheck } from "lucide-react";
 import type { TriggerState, CycleSnapshot } from "./types";

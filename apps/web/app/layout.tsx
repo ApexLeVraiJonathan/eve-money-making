@@ -2,15 +2,11 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
-import { Toaster } from "@/components/ui/sonner";
+import { Toaster } from "@eve/ui";
 import { QueryProvider } from "@/components/query-provider";
 import { SessionProvider } from "@/components/session-provider";
 import { AppSidebar } from "@/components/sidebar/app-sidebar";
-import {
-  SidebarInset,
-  SidebarProvider,
-  SidebarTrigger,
-} from "@/components/ui/sidebar";
+import { SidebarInset, SidebarProvider, SidebarTrigger } from "@eve/ui";
 import { ActiveAppName } from "@/components/active-app-name";
 import { DynamicBreadcrumbs } from "@/components/dynamic-breadcrumbs";
 

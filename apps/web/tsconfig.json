@@ -19,7 +19,13 @@
       }
     ],
     "paths": {
-      "@/*": ["./*"]
+      "@/*": ["./*"],
+      "@eve/shared": ["../../packages/shared/src/index.ts"],
+      "@eve/shared/*": ["../../packages/shared/src/*"],
+      "@eve/api-client": ["../../packages/api-client/src/index.ts"],
+      "@eve/api-client/*": ["../../packages/api-client/src/*"],
+      "@eve/ui": ["../../packages/ui/src/index.ts"],
+      "@eve/ui/*": ["../../packages/ui/src/*"]
     }
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],

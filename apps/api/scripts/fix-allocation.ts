@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from '@eve/prisma';
 
 async function fixAllocation(databaseUrl: string, cycleId?: string) {
   console.log('🔧 Fixing allocation for cycle...');

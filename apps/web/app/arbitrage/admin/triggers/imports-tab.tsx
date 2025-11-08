@@ -1,17 +1,17 @@
 "use client";
 
 import * as React from "react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@eve/ui";
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card";
-import { TabsContent } from "@/components/ui/tabs";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+} from "@eve/ui";
+import { TabsContent } from "@eve/ui";
+import { Input } from "@eve/ui";
+import { Label } from "@eve/ui";
 import {
   Download,
   Loader2,

@@ -1,10 +1,10 @@
 "use client";
 
 import * as React from "react";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
+import { Button } from "@eve/ui";
+import { Card, CardContent, CardHeader, CardTitle } from "@eve/ui";
+import { Input } from "@eve/ui";
+import { Badge } from "@eve/ui";
 
 type Cycle = {
   id: string;

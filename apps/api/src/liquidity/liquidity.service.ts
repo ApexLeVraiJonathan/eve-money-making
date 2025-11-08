@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { DataImportService } from '@shared/data-import';
-import type { Prisma } from '@prisma/client';
+import type { Prisma } from '@eve/prisma';
 import type { LiquidityItemDto } from './dto/liquidity-item.dto';
 
 @Injectable()

@@ -12,7 +12,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table";
+} from "@eve/ui";
 
 export default function BrokerageReportsPage() {
   const consignments: Consignment[] = MOCK_CONSIGNMENTS;

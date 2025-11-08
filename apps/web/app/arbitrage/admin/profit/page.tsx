@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 
 import * as React from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Button } from "@/components/ui/button";
+import { Button } from "@eve/ui";
 import {
   Table,
   TableBody,
@@ -13,7 +13,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table";
+} from "@eve/ui";
 import {
   Dialog,
   DialogContent,
@@ -22,13 +22,13 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+} from "@eve/ui";
+import { Input } from "@eve/ui";
+import { Label } from "@eve/ui";
+import { Textarea } from "@eve/ui";
 import { ArrowLeft, Plus } from "lucide-react";
 import { formatIsk } from "@/lib/utils";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Skeleton } from "@eve/ui";
 
 type CycleProfit = {
   lineProfitExclTransport: string;

@@ -1,0 +1,121 @@
+---
+description: Monorepo tooling and shared libraries rules
+globs:
+  - "packages/**/*"
+  - "apps/**/*"
+---
+
+# Packages Layout (canonical)
+
+- `packages/shared`: lightweight **types** and pure utilities. No env access.
+- `packages/ui`: **shadcn + tailwind** component library shared by all web apps.
+- `packages/api-client`: **the ONLY** HTTP client used by web apps (multi-baseURL via appId).
+- `packages/api-contracts`: **OpenAPI/Zod contracts** and **generated TS types** shared FE/BE.
+- `packages/prisma`: **single Prisma schema + migrations** consumed by all API apps.
+
+# Rules
+
+- **Apps must not import each other.** Share only via `packages/*`.
+- Do not duplicate types, query keys, or clients inside apps—**import from packages**.
+- Centralize environment access in **typed helpers** (e.g., `@shared/env`).
+
+# Shared API Client (pattern)
+
+```ts
+// packages/api-client/index.ts
+export type HttpMethod = "GET" | "POST" | "PATCH" | "DELETE";
+export type AppId = "web-portal" | "web-admin" | string;
+
+type Options = Omit<RequestInit, "method" | "body" | "headers"> & {
+  headers?: Record<string, string>;
+};
+
+const BASES: Record<AppId, string> = {
+  "web-portal": process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3000",
+  "web-admin":
+    process.env.NEXT_PUBLIC_ADMIN_API_BASE_URL ?? "http://localhost:3001",
+};
+
+function getBase(appId: AppId) {
+  return BASES[appId] ?? BASES["web-portal"];
+}
+
+function authHeader(): Record<string, string> {
+  if (typeof window !== "undefined") {
+    const token = localStorage.getItem("token");
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  }
+  return {};
+}
+
+async function request<T>(
+  base: string,
+  path: string,
+  method: HttpMethod,
+  body?: unknown,
+  opts: Options = {}
+): Promise<T> {
+  const res = await fetch(`${base}${path}`, {
+    method,
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeader(),
+      ...(opts.headers ?? {}),
+    },
+    body: body ? JSON.stringify(body) : undefined,
+    ...opts,
+  });
+  if (!res.ok) throw new Error((await res.text()) || `HTTP ${res.status}`);
+  return res.status === 204 ? (undefined as T) : res.json();
+}
+
+export function clientForApp(appId: AppId) {
+  const base = getBase(appId);
+  return {
+    get: <T>(p: string, o?: Options) =>
+      request<T>(base, p, "GET", undefined, o),
+    post: <T>(p: string, b?: unknown, o?: Options) =>
+      request<T>(base, p, "POST", b, o),
+    patch: <T>(p: string, b?: unknown, o?: Options) =>
+      request<T>(base, p, "PATCH", b, o),
+    delete: <T>(p: string, o?: Options) =>
+      request<T>(base, p, "DELETE", undefined, o),
+  };
+}
+```
+
+# Query Keys (pattern)
+
+```ts
+// packages/api-client/queryKeys.ts
+export const qk = {
+  users: {
+    _root: ["users"] as const,
+    list: () => ["users", "list"] as const,
+    byId: (id: string) => ["users", "byId", id] as const,
+  },
+  // add more domains here…
+};
+```
+
+# Types (pattern)
+
+```ts
+// packages/shared/types/index.ts
+export interface User {
+  id: string;
+  email: string;
+  name: string;
+}
+```
+
+# Anti-patterns (avoid)
+
+- Duplicating types or query keys inside apps.
+- Creating a second HTTP client in an app.
+- Cross-app imports (e.g., `apps/web-admin` importing from `apps/web-portal`).
+
+# Notes
+
+- Keep ESLint/Prettier/tsconfig at repo root; apps/packages extend.
+- Prefer `pnpm` workspace scripts to orchestrate lint/build/test across apps.

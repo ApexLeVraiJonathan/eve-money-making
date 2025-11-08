@@ -6,7 +6,7 @@ import {
   EmptyMedia,
   EmptyTitle,
   EmptyDescription,
-} from "@/components/ui/empty";
+} from "@eve/ui";
 import { CircleHelp } from "lucide-react";
 
 type HistoryCycle = {

@@ -2,14 +2,14 @@
 
 import * as React from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Button } from "@/components/ui/button";
+import { Button } from "@eve/ui";
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card";
+} from "@eve/ui";
 import {
   Dialog,
   DialogContent,
@@ -17,19 +17,19 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+} from "@eve/ui";
+import { Input } from "@eve/ui";
+import { Label } from "@eve/ui";
+import { Textarea } from "@eve/ui";
+import { Badge } from "@eve/ui";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@eve/ui";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
+} from "@eve/ui";
 import {
   AlertCircle,
   Package,
@@ -37,7 +37,7 @@ import {
   Loader2,
   CheckCircle2,
 } from "lucide-react";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Alert, AlertDescription } from "@eve/ui";
 import { formatIsk } from "@/lib/utils";
 
 type CommittedPackage = {
@@ -136,7 +136,10 @@ function PackagesContent() {
           setSelectedCycleId(initialCycleId);
         } else if (data.length > 0) {
           // Default to first open cycle or most recent
-          const openCycle = data.find((c: any) => !c.closedAt);
+          const openCycle = data.find(
+            (c: { id: string; name: string | null; closedAt: Date | null }) =>
+              !c.closedAt,
+          );
           setSelectedCycleId(openCycle?.id || data[0].id);
         }
       } catch (err) {
@@ -162,8 +165,10 @@ function PackagesContent() {
         if (!res.ok) throw new Error("Failed to load packages");
         const data = await res.json();
         setPackages(data);
-      } catch (err: any) {
-        setError(err.message);
+      } catch (err: unknown) {
+        setError(
+          err instanceof Error ? err.message : "Failed to load packages",
+        );
         console.error("Failed to load packages:", err);
       } finally {
         setIsLoading(false);
@@ -229,9 +234,11 @@ function PackagesContent() {
       }
 
       alert("Package marked as failed successfully");
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Failed to mark package as failed:", err);
-      alert(err.message || "Failed to mark package as failed");
+      alert(
+        err instanceof Error ? err.message : "Failed to mark package as failed",
+      );
     } finally {
       setIsSubmitting(false);
     }

@@ -14,24 +14,20 @@ import {
   AlertCircle,
   CheckCircle,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
+import { Button } from "@eve/ui";
+import { Input } from "@eve/ui";
+import { Textarea } from "@eve/ui";
+import { Label } from "@eve/ui";
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
+} from "@eve/ui";
+import { Alert, AlertDescription } from "@eve/ui";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@eve/ui";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@eve/ui";
 import { ChevronDown } from "lucide-react";
 
 type PlanItem = {

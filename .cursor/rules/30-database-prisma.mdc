@@ -1,0 +1,107 @@
+---
+description: Prisma & PostgreSQL data-layer rules for all API apps
+globs:
+  - "apps/*/api*/**/*.ts"
+  - "packages/prisma/**/*"
+---
+
+# Client & Lifecycle
+
+- Use a single PrismaClient via a DI-backed **PrismaService**. Do **not** `new PrismaClient()` in controllers/services ad hoc.
+- Enable graceful shutdown hooks so connections close on app stop.
+- In monorepos, keep the Prisma schema and migrations in `packages/prisma` and ensure all APIs reference the same client build.
+
+# Queries
+
+- Prefer `select` to limit payload; use `include` only for required relations.
+- **Avoid N+1**: fetch relations in a single query (use `include`, or separate batched queries) rather than looping queries.
+- **Paginate** large lists with `take/skip` or cursor pagination; never return unbounded result sets.
+- Keep filters sargable; push filtering/ordering to the DB (avoid in-memory filtering of large sets).
+
+# Transactions
+
+- Wrap multi-step writes in `prisma.$transaction` (interactive transaction form preferred for dependent steps).
+
+```ts
+await this.prisma.$transaction(async (tx) => {
+  const order = await tx.order.create({
+    data: {
+      /*…*/
+    },
+  });
+  await tx.item.update({ where: { id }, data: { orderId: order.id } });
+});
+```
+
+# Schema & Indexing
+
+- Normalize relations with explicit FKs; choose required relations where business rules demand integrity.
+- Add indexes for frequently filtered or joined columns; prefer composite indexes where applicable.
+
+```prisma
+model User {
+  id     String @id @default(cuid())
+  email  String @unique
+  name   String
+  posts  Post[]
+  @@index([name])
+}
+model Post {
+  id        String @id @default(cuid())
+  title     String
+  authorId  String
+  author    User   @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  @@index([authorId, title])
+}
+```
+
+# Migrations
+
+- Use `prisma migrate` for all schema changes; commit migration SQL to VCS.
+- Do **not** use `db push` for production environments.
+
+# Examples
+
+**Avoid N+1**
+
+```ts
+// ❌ N+1
+const posts = await prisma.post.findMany();
+return Promise.all(
+  posts.map((p) => prisma.user.findUnique({ where: { id: p.authorId } }))
+);
+
+// ✅ Single query with relation
+return prisma.post.findMany({
+  include: { author: { select: { id: true, name: true } } },
+});
+```
+
+**Selective Reads**
+
+```ts
+// ✅ Limit fields to reduce payload
+return this.prisma.user.findMany({
+  select: { id: true, email: true, name: true },
+  take: 50,
+  skip: 0,
+});
+```
+
+**Cursor Pagination**
+
+```ts
+return this.prisma.user.findMany({
+  take: 20,
+  skip: cursor ? 1 : 0,
+  cursor: cursor ? { id: cursor } : undefined,
+  orderBy: { id: "asc" },
+});
+```
+
+# Anti-patterns (avoid)
+
+- Multiple PrismaClient instances or creating clients inside hot code paths.
+- Unbounded `findMany()` without pagination.
+- In-memory filtering of large datasets when DB-side filters are possible.
+- Returning full entity shapes when only a few fields are needed.

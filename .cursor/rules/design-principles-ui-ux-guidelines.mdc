@@ -1,5 +1,8 @@
 ---
-alwaysApply: true
+description: Next.js design rules for all web apps
+globs:
+  - "apps/*/web*/**/*.{ts,tsx}"
+  - "apps/web*/**/*.{ts,tsx}"
 ---
 
 ## Design Principles & UI/UX Guidelines (Fantasy-Themed SaaS)

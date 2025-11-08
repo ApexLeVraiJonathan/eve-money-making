@@ -22,11 +22,11 @@ export async function GET(request: NextRequest) {
 
     const response = await api.get(`/packages?${params.toString()}`);
     return NextResponse.json(response.data);
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Failed to fetch packages:", error);
     return NextResponse.json(
-      { error: error.response?.data?.message || "Failed to fetch packages" },
-      { status: error.response?.status || 500 },
+      { error: "Failed to fetch packages" },
+      { status: 500 },
     );
   }
 }

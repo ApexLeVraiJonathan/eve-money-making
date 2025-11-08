@@ -1,0 +1,157 @@
+---
+description: NestJS rules for all API apps
+globs:
+  - "apps/*/api*/**/*.ts"
+---
+
+# Architecture
+
+- Use **feature modules per domain** (e.g., `UserModule`, `AuthModule`, `BillingModule`).
+- **Controllers are thin** (routing + DTO validation only).
+- **Services contain business logic** and orchestrate persistence, messaging, and integrations.
+- **No database calls in controllers.**
+
+# DTOs & Validation
+
+- Create DTOs for every request payload; **no raw `any`**.
+- Enable a global validation pipe with safe defaults:
+
+```ts
+// apps/<api-app>/src/main.ts
+app.useGlobalPipes(
+  new ValidationPipe({
+    whitelist: true,
+    forbidNonWhitelisted: true,
+    transform: true,
+  })
+);
+```
+
+- Example DTO with Swagger:
+
+```ts
+// apps/<api-app>/src/users/dto/create-user.dto.ts
+import { ApiProperty } from "@nestjs/swagger";
+import { IsEmail, IsString, MinLength } from "class-validator";
+
+export class CreateUserDto {
+  @ApiProperty() @IsEmail() email!: string;
+  @ApiProperty() @IsString() @MinLength(2) name!: string;
+}
+```
+
+# AuthN / AuthZ
+
+- Protect routes with JWT:
+
+```ts
+@UseGuards(JwtAuthGuard)
+@Get('me')
+getMe(@Req() req) {
+  return this.usersService.getById(req.user.sub);
+}
+```
+
+- Add `RolesGuard` where needed and decorate with `@Roles('admin')`.
+- Annotate protected controllers with `@ApiBearerAuth()` for Swagger.
+
+# Swagger
+
+- Enable at `/docs` in `main.ts` (title, version).
+- Decorate DTOs with `@ApiProperty` and controllers with `@ApiTags('<feature>')`.
+
+```ts
+// apps/<api-app>/src/main.ts
+const config = new DocumentBuilder()
+  .setTitle("API")
+  .setDescription("HTTP API")
+  .setVersion("1.0")
+  .addBearerAuth()
+  .build();
+const document = SwaggerModule.createDocument(app, config);
+SwaggerModule.setup("docs", app, document);
+```
+
+# Errors
+
+- Throw Nest HTTP exceptions (e.g., `BadRequestException`, `NotFoundException`).
+- Optional global exception filter to return a consistent shape:
+
+```ts
+{
+  "statusCode": 404,
+  "message": "User not found",
+  "error": "Not Found",
+  "timestamp": "2025-11-08T00:00:00.000Z",
+  "path": "/users/123"
+}
+```
+
+# Prisma & Data Access
+
+- Inject a singleton `PrismaService` via DI; **never** `new PrismaClient()` in handlers.
+- Prefer `select` for minimal payloads; use `include` for required relations.
+- **Avoid N+1** by joining/fetching relations in a single query.
+- **Paginate** large lists (`take/skip` or cursor).
+- Wrap multi-step writes in a **transaction**:
+
+```ts
+await this.prisma.$transaction(async (tx) => {
+  const order = await tx.order.create({
+    data: {
+      /* … */
+    },
+  });
+  await tx.item.update({ where: { id }, data: { orderId: order.id } });
+});
+```
+
+# Controller Example
+
+```ts
+// apps/<api-app>/src/users/users.controller.ts
+@ApiTags("users")
+@ApiBearerAuth()
+@Controller("users")
+@UseGuards(JwtAuthGuard)
+export class UsersController {
+  constructor(private readonly users: UsersService) {}
+
+  @Get()
+  findAll() {
+    return this.users.findAll();
+  }
+
+  @Post()
+  create(@Body() dto: CreateUserDto) {
+    return this.users.create(dto);
+  }
+}
+```
+
+# Service Example
+
+```ts
+// apps/<api-app>/src/users/users.service.ts
+@Injectable()
+export class UsersService {
+  constructor(private readonly prisma: PrismaService) {}
+
+  findAll() {
+    return this.prisma.user.findMany({
+      select: { id: true, email: true, name: true },
+    });
+  }
+
+  create(dto: CreateUserDto) {
+    return this.prisma.user.create({ data: dto });
+  }
+}
+```
+
+# Anti-patterns (avoid)
+
+- Business logic or DB access in controllers.
+- Skipping DTOs/validation.
+- Ad-hoc responses with wrong HTTP codes.
+- Multiple PrismaClient instances or unbounded queries.

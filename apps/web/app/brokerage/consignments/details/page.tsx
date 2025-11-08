@@ -14,7 +14,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table";
+} from "@eve/ui";
 
 function DetailsInner() {
   const params = useSearchParams();

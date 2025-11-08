@@ -2,10 +2,10 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
+import { Button } from "@eve/ui";
+import { Input } from "@eve/ui";
+import { Textarea } from "@eve/ui";
+import { Label } from "@eve/ui";
 // Checkbox not currently used
 import {
   Dialog,
@@ -13,7 +13,7 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
+} from "@eve/ui";
 import { ClipboardCopy } from "lucide-react";
 import { toast } from "sonner";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -31,7 +31,7 @@ import {
   TableHeader,
   TableRow,
   TableFooter,
-} from "@/components/ui/table";
+} from "@eve/ui";
 
 const HUBS = ["Jita 4-4", "C-N"] as const;
 const STRATEGIES = [

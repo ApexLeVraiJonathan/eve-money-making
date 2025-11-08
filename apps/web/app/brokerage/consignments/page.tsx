@@ -6,15 +6,15 @@ import { useMemo } from "react";
 import { formatISK, type Consignment } from "../_mock/data";
 import { useQuery } from "@tanstack/react-query";
 import { consignmentsQueryKey, listConsignments } from "../_mock/store";
-import { Separator } from "@/components/ui/separator";
+import { Separator } from "@eve/ui";
 import {
   Empty,
   EmptyContent,
   EmptyDescription,
   EmptyHeader,
   EmptyTitle,
-} from "@/components/ui/empty";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+} from "@eve/ui";
+import { Card, CardContent, CardHeader, CardTitle } from "@eve/ui";
 
 // Hubs are displayed in dedicated sections; no filter needed
 

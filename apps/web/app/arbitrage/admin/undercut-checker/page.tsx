@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
+import { Button } from "@eve/ui";
+import { Label } from "@eve/ui";
 import { formatIsk } from "@/lib/utils";
 import {
   Card,
@@ -9,9 +9,9 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Input } from "@/components/ui/input";
+} from "@eve/ui";
+import { Checkbox } from "@eve/ui";
+import { Input } from "@eve/ui";
 import {
   TrendingDown,
   RefreshCw,
@@ -21,7 +21,7 @@ import {
   Package,
   Store,
 } from "lucide-react";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Alert, AlertDescription } from "@eve/ui";
 
 type Group = {
   characterId: number;

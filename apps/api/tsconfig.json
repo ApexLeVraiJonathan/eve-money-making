@@ -25,7 +25,13 @@
       "@app/arbitrage-packager": ["libs/arbitrage-packager/src"],
       "@app/arbitrage-packager/*": ["libs/arbitrage-packager/src/*"],
       "@shared/data-import": ["libs/data-import/src"],
-      "@shared/data-import/*": ["libs/data-import/src/*"]
+      "@shared/data-import/*": ["libs/data-import/src/*"],
+      "@eve/shared": ["../../packages/shared/src/index.ts"],
+      "@eve/shared/*": ["../../packages/shared/src/*"],
+      "@eve/prisma": ["../../packages/prisma/client/index.d.ts"],
+      "@eve/prisma/*": ["../../packages/prisma/client/*"],
+      "@eve/api-client": ["../../packages/api-client/src/index.ts"],
+      "@eve/api-client/*": ["../../packages/api-client/src/*"]
     }
   }
 }

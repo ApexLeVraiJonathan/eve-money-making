@@ -7,11 +7,11 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Separator } from "@/components/ui/separator";
+} from "@eve/ui";
+import { Button } from "@eve/ui";
+import { Badge } from "@eve/ui";
+import { Avatar, AvatarFallback, AvatarImage } from "@eve/ui";
+import { Separator } from "@eve/ui";
 import { toast } from "sonner";
 import {
   User,

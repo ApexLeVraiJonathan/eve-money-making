@@ -7,7 +7,7 @@ import {
   EmptyHeader,
   EmptyMedia,
   EmptyTitle,
-} from "@/components/ui/empty";
+} from "@eve/ui";
 import { CircleHelp } from "lucide-react";
 
 export default async function CycleDetailsPage() {

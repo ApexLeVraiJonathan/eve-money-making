@@ -1,0 +1,30 @@
+{
+  "name": "@eve/prisma",
+  "version": "0.0.1",
+  "private": true,
+  "main": "./client/index.js",
+  "types": "./client/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./client/index.d.ts",
+      "default": "./client/index.js"
+    },
+    "./runtime/library": {
+      "types": "./client/runtime/library.d.ts",
+      "default": "./client/runtime/library.js"
+    }
+  },
+  "scripts": {
+    "build": "echo \"Prisma client generated during prisma:generate\"",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate:dev": "prisma migrate dev",
+    "prisma:migrate:deploy": "prisma migrate deploy",
+    "prisma:studio": "prisma studio"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.3.0"
+  },
+  "devDependencies": {
+    "prisma": "^6.3.0"
+  }
+}

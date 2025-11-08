@@ -7,7 +7,7 @@
  */
 
 import { execSync } from 'child_process';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from '@eve/prisma';
 
 async function resetProductionDatabase() {
   const databaseUrl = process.argv[2];

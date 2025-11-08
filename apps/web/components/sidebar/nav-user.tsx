@@ -4,7 +4,7 @@ import * as React from "react";
 import { ChevronsUpDown, LogIn } from "lucide-react";
 import { signIn } from "next-auth/react";
 
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@eve/ui";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -12,14 +12,14 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+} from "@eve/ui";
 import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
   useSidebar,
-} from "@/components/ui/sidebar";
-import { Button } from "@/components/ui/button";
+} from "@eve/ui";
+import { Button } from "@eve/ui";
 
 type LinkedCharacter = {
   id: number;

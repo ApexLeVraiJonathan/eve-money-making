@@ -11,11 +11,15 @@
     "dev": "pnpm --filter api dev",
     "format": "pnpm -r run format",
     "lint": "echo \"(add eslint later)\"",
+    "install:all": "pnpm install",
     "db:up": "docker compose -f docker-compose.dev.yml up -d",
     "db:down": "docker compose -f docker-compose.dev.yml down",
     "db:reset": "docker compose -f docker-compose.dev.yml down -v; docker compose -f docker-compose.dev.yml up -d",
     "db:logs": "docker compose -f docker-compose.dev.yml logs -f postgres",
-    "db:migrate:dev": "cross-env DATABASE_URL=postgresql://postgres:postgres@localhost:5433/eve_money_dev?schema=public pnpm -F api prisma:migrate:deploy"
+    "db:generate": "pnpm --filter @eve/prisma prisma:generate",
+    "db:migrate:dev": "cross-env DATABASE_URL=postgresql://postgres:postgres@localhost:5433/eve_money_dev?schema=public pnpm --filter @eve/prisma prisma:migrate:deploy",
+    "db:migrate:deploy": "pnpm --filter @eve/prisma prisma:migrate:deploy",
+    "db:studio": "pnpm --filter @eve/prisma prisma:studio"
   },
   "keywords": [],
   "author": "",

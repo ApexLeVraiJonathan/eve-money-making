@@ -3,8 +3,8 @@
 import * as React from "react";
 import { useEffect, useState } from "react";
 import { Copy, Lock, X, LogIn } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Badge } from "@eve/ui";
+import { Button } from "@eve/ui";
 import { toast } from "sonner";
 import { useSession, signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
@@ -15,7 +15,7 @@ import {
   EmptyHeader,
   EmptyMedia,
   EmptyTitle,
-} from "@/components/ui/empty";
+} from "@eve/ui";
 
 type Participation = {
   id: string;

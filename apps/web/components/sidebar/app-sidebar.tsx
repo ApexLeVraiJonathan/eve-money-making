@@ -16,13 +16,8 @@ import { NavMain } from "@/components/sidebar/nav-main";
 import { NavAdmin } from "@/components/sidebar/nav-admin";
 import { NavSecondary } from "@/components/sidebar/nav-secondary";
 import { NavUser } from "@/components/sidebar/nav-user";
-import {
-  Sidebar,
-  SidebarContent,
-  SidebarFooter,
-  SidebarHeader,
-} from "@/components/ui/sidebar";
-import { Button } from "@/components/ui/button";
+import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader } from "@eve/ui";
+import { Button } from "@eve/ui";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -30,7 +25,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+} from "@eve/ui";
 import { getApps, getActiveAppByPathname } from "@/app/apps.config";
 
 const data = {

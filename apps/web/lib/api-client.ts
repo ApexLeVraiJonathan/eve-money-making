@@ -42,3 +42,35 @@ export async function fetchWithAuthJson<T = unknown>(
 
   return response.json();
 }
+
+/**
+ * @deprecated Temporary stub for old proxy routes. Will be removed in Phase 6.
+ */
+export async function getApiClient() {
+  return {
+    get: async (url: string) => {
+      const response = await fetchWithAuth(url);
+      return { data: await response.json() };
+    },
+    post: async (url: string, body: unknown) => {
+      const response = await fetchWithAuth(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      return { data: await response.json() };
+    },
+    put: async (url: string, body: unknown) => {
+      const response = await fetchWithAuth(url, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      return { data: await response.json() };
+    },
+    delete: async (url: string) => {
+      const response = await fetchWithAuth(url, { method: "DELETE" });
+      return { data: await response.json() };
+    },
+  };
+}

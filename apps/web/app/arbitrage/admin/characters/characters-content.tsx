@@ -3,15 +3,15 @@
 import * as React from "react";
 import { useSession } from "next-auth/react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { Button } from "@/components/ui/button";
+import { Button } from "@eve/ui";
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+} from "@eve/ui";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@eve/ui";
 import {
   Table,
   TableBody,
@@ -19,18 +19,18 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table";
+} from "@eve/ui";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
+} from "@eve/ui";
+import { Input } from "@eve/ui";
+import { Label } from "@eve/ui";
+import { Badge } from "@eve/ui";
+import { Avatar, AvatarImage, AvatarFallback } from "@eve/ui";
 import { toast } from "sonner";
 import {
   Users,

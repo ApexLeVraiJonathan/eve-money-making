@@ -1,13 +1,13 @@
 import Link from "next/link";
 import { getApps } from "@/app/apps.config";
-import { Button } from "@/components/ui/button";
+import { Button } from "@eve/ui";
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card";
+} from "@eve/ui";
 
 const descriptions: Record<string, string> = {
   brokerage:

@@ -7,9 +7,9 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Button } from "@/components/ui/button";
+} from "@eve/ui";
+import { Skeleton } from "@eve/ui";
+import { Button } from "@eve/ui";
 import { Activity, Database, TrendingUp, Wallet } from "lucide-react";
 import {
   ChartContainer,
@@ -17,7 +17,7 @@ import {
   ChartTooltipContent,
   ChartLegend,
   ChartLegendContent,
-} from "@/components/ui/chart";
+} from "@eve/ui";
 import {
   PieChart,
   Pie,

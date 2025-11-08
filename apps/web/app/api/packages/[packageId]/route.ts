@@ -3,20 +3,18 @@ import { getApiClient } from "@/lib/api-client";
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { packageId: string } },
+  { params }: { params: Promise<{ packageId: string }> },
 ) {
   try {
+    const { packageId } = await params;
     const api = await getApiClient();
-    const response = await api.get(`/packages/${params.packageId}`);
+    const response = await api.get(`/packages/${packageId}`);
     return NextResponse.json(response.data);
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Failed to fetch package details:", error);
     return NextResponse.json(
-      {
-        error:
-          error.response?.data?.message || "Failed to fetch package details",
-      },
-      { status: error.response?.status || 500 },
+      { error: "Failed to fetch package details" },
+      { status: 500 },
     );
   }
 }

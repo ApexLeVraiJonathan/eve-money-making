@@ -1,18 +1,18 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@eve/ui";
 import { formatIsk } from "@/lib/utils";
-import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
+import { Textarea } from "@eve/ui";
+import { Label } from "@eve/ui";
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Input } from "@/components/ui/input";
+} from "@eve/ui";
+import { Checkbox } from "@eve/ui";
+import { Input } from "@eve/ui";
 import {
   Calculator,
   CheckCircle2,
@@ -22,14 +22,14 @@ import {
   Store,
   Package,
 } from "lucide-react";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Alert, AlertDescription } from "@eve/ui";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
+} from "@eve/ui";
 
 type TrackedStation = {
   id: string;

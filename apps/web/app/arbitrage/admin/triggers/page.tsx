@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsList, TabsTrigger } from "@eve/ui";
 import { toast } from "sonner";
 import { Database, PlayCircle, DollarSign, Wrench } from "lucide-react";
 import type {

@@ -1,0 +1,56 @@
+---
+description: Next.js rules for all web apps
+globs:
+  - "apps/*/web*/**/*.{ts,tsx}"
+  - "apps/web*/**/*.{ts,tsx}"
+---
+
+STRUCTURE
+
+- App Router. Keep pages in app/ ; extract UI into components/ or features/<domain>/components/.
+- Feature hooks in features/<domain>/api.ts using TanStack Query + shared client + shared query keys.
+
+API ACCESS
+
+- Use the canonical client with appId:
+  `import { clientForApp } from "@api-client"; const client = clientForApp("<this-app-id>");`
+- Never call `fetch` directly in components for backend calls; the client sets headers (Authorization) for you.
+
+TANSTACK QUERY
+
+- Keys from `@api-client/queryKeys`. Mutations must invalidate relevant keys.
+
+PERFORMANCE & UX
+
+- Use <Image>; dynamic import heavy widgets; paginate long lists.
+- Server Components by default; Client Components only for interactivity.
+- Provide loading/error states via Query status.
+
+ANTI-PATTERNS
+
+- Big monolithic page components → extract components.
+- Mixing feature concerns across folders.
+- Recreating clients or missing headers.
+
+EXAMPLE
+
+```ts
+// apps/web-portal/features/users/api.ts
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { clientForApp } from "@api-client";
+import { qk } from "@api-client/queryKeys";
+
+const client = clientForApp("web-portal");
+
+export const useUsers = () =>
+  useQuery({ queryKey: qk.users.list(), queryFn: () => client.get("/users") });
+
+export const useCreateUser = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (p: { name: string; email: string }) =>
+      client.post("/users", p),
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.users._root }),
+  });
+};
+```

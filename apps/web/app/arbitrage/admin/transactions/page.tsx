@@ -7,11 +7,11 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+} from "@eve/ui";
+import { Input } from "@eve/ui";
+import { Button } from "@eve/ui";
+import { Badge } from "@eve/ui";
+import { Alert, AlertDescription } from "@eve/ui";
 import {
   ArrowDownLeft,
   ArrowUpRight,

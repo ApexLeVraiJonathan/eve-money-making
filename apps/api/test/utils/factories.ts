@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from '@eve/prisma';
 
 export class TestFactories {
   constructor(private readonly prisma: PrismaClient) {}

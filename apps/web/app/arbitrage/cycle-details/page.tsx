@@ -16,14 +16,14 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card";
+} from "@eve/ui";
 import {
   ChartContainer,
   ChartTooltip,
   ChartTooltipContent,
   ChartLegend,
   ChartLegendContent,
-} from "@/components/ui/chart";
+} from "@eve/ui";
 import {
   PieChart,
   Pie,
@@ -36,11 +36,11 @@ import {
   ResponsiveContainer,
   ReferenceLine,
 } from "recharts";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@eve/ui";
+import { Badge } from "@eve/ui";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
-import { Button } from "@/components/ui/button";
+import { Button } from "@eve/ui";
 import { LogIn } from "lucide-react";
 import {
   Empty,
@@ -48,7 +48,7 @@ import {
   EmptyHeader,
   EmptyMedia,
   EmptyTitle,
-} from "@/components/ui/empty";
+} from "@eve/ui";
 import { CircleHelp } from "lucide-react";
 
 type CycleDetails = {

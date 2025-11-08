@@ -1,0 +1,23 @@
+---
+description: Core rules for all packages/apps in the monorepo
+globs:
+  - "**/*"
+---
+
+PRINCIPLES
+
+- KISS, DRY, YAGNI. Make minimal, on-task changes.
+- Preserve/update useful comments/docs; do not delete them.
+- Respect existing patterns (naming, folders, API client, query keys). If unsure, ask one clarifying question.
+- Use strict TypeScript; avoid `any`. Put reusable types in packages/shared.
+
+MONOREPO
+
+- Apps live in apps/_ ; shared code in packages/_ .
+- Apps must not import each other; share via packages/\* only.
+- Centralize env access in typed helpers (no scattered `process.env`).
+
+EXAMPLES
+
+- ❌ Re-declare User in an app. ✅ `import type { User } from "@shared/types"`
+- ❌ Create a new fetch wrapper. ✅ `import { clientForApp } from "@api-client"`

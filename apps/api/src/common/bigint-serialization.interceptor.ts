@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
-import { Decimal } from '@prisma/client/runtime/library';
+import { Decimal } from '@eve/prisma/runtime/library';
 
 /**
  * Global interceptor to automatically serialize BigInt and Prisma Decimal types to strings
