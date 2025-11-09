@@ -1,11 +1,29 @@
-import { z } from 'zod';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsString, IsOptional, MaxLength, IsObject } from 'class-validator';
 
-export const PlanCommitRequestSchema = z
-  .object({
-    memo: z.string().max(500).optional(),
-    request: z.any(),
-    result: z.any(),
+export class PlanCommitRequest {
+  @ApiPropertyOptional({
+    description: 'Optional memo about this commit',
+    maxLength: 500,
+    example: 'Q4 2024 arbitrage commit',
   })
-  .strict();
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  memo?: string;
 
-export type PlanCommitRequest = z.infer<typeof PlanCommitRequestSchema>;
+  @ApiProperty({
+    description: 'Original plan request data',
+    example: {},
+  })
+  @IsObject()
+  request: unknown;
+
+  @ApiProperty({
+    description: 'Plan result data',
+    example: {},
+  })
+  @IsObject()
+  result: unknown;
+}
+

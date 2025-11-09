@@ -1,20 +1,84 @@
-import { z } from 'zod';
+import { ApiPropertyOptional } from '@nestjs/swagger';
+import {
+  IsInt,
+  IsString,
+  IsBoolean,
+  IsOptional,
+  Min,
+  Max,
+  MinLength,
+  ValidateIf,
+} from 'class-validator';
+import { Type } from 'class-transformer';
 
-export const LiquidityItemStatsRequestSchema = z
-  .object({
-    itemId: z.coerce.number().int().positive().optional(),
-    itemName: z.string().min(1).optional(),
-    stationId: z.coerce.number().int().positive().optional(),
-    stationName: z.string().min(1).optional(),
-    isBuyOrder: z.coerce.boolean().optional(),
-    windowDays: z.coerce.number().int().min(1).max(30).optional(),
+export class LiquidityItemStatsRequest {
+  @ApiPropertyOptional({
+    description: 'Item type ID',
+    example: 34,
+    type: 'integer',
   })
-  .refine(
-    (v) => Boolean(v.itemId) || Boolean(v.itemName),
-    'Provide either itemId or itemName',
-  )
-  .strict();
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  itemId?: number;
 
-export type LiquidityItemStatsRequest = z.infer<
-  typeof LiquidityItemStatsRequestSchema
->;
+  @ApiPropertyOptional({
+    description: 'Item name (alternative to itemId)',
+    example: 'Tritanium',
+    minLength: 1,
+  })
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  itemName?: string;
+
+  @ApiPropertyOptional({
+    description: 'Station ID',
+    example: 60003760,
+    type: 'integer',
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  stationId?: number;
+
+  @ApiPropertyOptional({
+    description: 'Station name (alternative to stationId)',
+    example: 'Jita IV - Moon 4 - Caldari Navy Assembly Plant',
+    minLength: 1,
+  })
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  stationName?: string;
+
+  @ApiPropertyOptional({
+    description: 'Whether to check buy orders (false for sell orders)',
+    example: false,
+  })
+  @IsOptional()
+  @Type(() => Boolean)
+  @IsBoolean()
+  isBuyOrder?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'Time window in days',
+    minimum: 1,
+    maximum: 30,
+    example: 7,
+    type: 'integer',
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(30)
+  windowDays?: number;
+
+  @ValidateIf((o) => !o.itemId && !o.itemName)
+  @IsString({ message: 'Provide either itemId or itemName' })
+  _requireItemIdentifier?: never;
+}
+

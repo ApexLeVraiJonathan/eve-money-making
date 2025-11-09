@@ -6,6 +6,7 @@ import { WalletService } from '../wallet/wallet.service';
 import { AllocationService } from '../reconciliation/allocation.service';
 import { LedgerService } from '../ledger/ledger.service';
 import { EsiTokenService } from '../auth/esi-token.service';
+import { AppConfig } from '../common/config';
 
 @Injectable()
 export class JobsService {
@@ -20,11 +21,7 @@ export class JobsService {
   ) {}
 
   private jobsEnabled(): boolean {
-    const flag = process.env.ENABLE_JOBS;
-    if (flag !== undefined) {
-      return flag === 'true' || flag === '1' || flag === 'yes';
-    }
-    return process.env.NODE_ENV === 'production';
+    return AppConfig.jobs().enabled;
   }
 
   private jobFlag(key: string, fallback: boolean): boolean {

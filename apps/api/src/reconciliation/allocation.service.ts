@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { AppConfig } from '../common/config';
 
 type CharacterLocation = 'JITA' | 'DODIXIE' | 'AMARR' | 'HEK' | 'RENS' | 'CN';
 
@@ -20,8 +21,7 @@ export class AllocationService {
     private readonly logger: Logger,
   ) {}
 
-  private readonly salesTaxPct =
-    Number(process.env.DEFAULT_SALES_TAX_PCT) || 3.37;
+  private readonly salesTaxPct = AppConfig.arbitrage().fees.salesTaxPercent;
 
   /**
    * Allocate all unallocated wallet transactions to cycle lines.

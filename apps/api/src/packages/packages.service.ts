@@ -143,11 +143,39 @@ export class PackagesService {
     cycleId: string,
     planResult: PlanResult,
   ): Promise<string[]> {
+    return await this.prisma.$transaction(async (tx) => {
+      return await this._createCommittedPackagesCore(
+        tx,
+        cycleId,
+        planResult,
+      );
+    });
+  }
+
+  /**
+   * Transaction-aware version for use within existing transactions
+   */
+  async createCommittedPackagesInTransaction(
+    tx: any, // Prisma.TransactionClient
+    cycleId: string,
+    planResult: PlanResult,
+  ): Promise<string[]> {
+    return await this._createCommittedPackagesCore(tx, cycleId, planResult);
+  }
+
+  /**
+   * Core implementation that works with either prisma client or transaction client
+   */
+  private async _createCommittedPackagesCore(
+    client: any, // PrismaClient or Prisma.TransactionClient
+    cycleId: string,
+    planResult: PlanResult,
+  ): Promise<string[]> {
     const packageIds: string[] = [];
 
     for (const pkg of planResult.packages) {
       // Create the package record
-      const createdPackage = await this.prisma.committedPackage.create({
+      const createdPackage = await client.committedPackage.create({
         data: {
           cycleId,
           packageIndex: pkg.packageIndex,
@@ -172,14 +200,14 @@ export class PackagesService {
         unitProfit: item.unitProfit.toFixed(2),
       }));
 
-      await this.prisma.committedPackageItem.createMany({
+      await client.committedPackageItem.createMany({
         data: itemsData,
       });
 
       // Link to cycle lines
       // Find cycle lines for each item in this package
       for (const item of pkg.items) {
-        const cycleLine = await this.prisma.cycleLine.findFirst({
+        const cycleLine = await client.cycleLine.findFirst({
           where: {
             cycleId,
             typeId: item.typeId,
@@ -189,7 +217,7 @@ export class PackagesService {
 
         if (cycleLine) {
           // Create junction record
-          await this.prisma.packageCycleLine.create({
+          await client.packageCycleLine.create({
             data: {
               packageId: createdPackage.id,
               cycleLineId: cycleLine.id,

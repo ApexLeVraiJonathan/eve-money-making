@@ -1,15 +1,39 @@
-import { z } from 'zod';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsString, IsOptional, MaxLength, Matches } from 'class-validator';
 
-export const MarkFailedRequestSchema = z
-  .object({
-    collateralRecoveredIsk: z.string().regex(/^\d+(\.\d{1,2})?$/),
-    collateralProfitIsk: z
-      .string()
-      .regex(/^\d+(\.\d{1,2})?$/)
-      .optional()
-      .default('0'),
-    memo: z.string().max(500).optional(),
+export class MarkFailedRequest {
+  @ApiProperty({
+    description: 'Collateral recovered in ISK',
+    example: '1000000.50',
+    pattern: '^\\d+(\\.\\d{1,2})?$',
   })
-  .strict();
+  @IsString()
+  @Matches(/^\d+(\.\d{1,2})?$/, {
+    message: 'collateralRecoveredIsk must be a valid number with up to 2 decimal places',
+  })
+  collateralRecoveredIsk: string;
 
-export type MarkFailedRequest = z.infer<typeof MarkFailedRequestSchema>;
+  @ApiPropertyOptional({
+    description: 'Collateral profit in ISK',
+    example: '50000.00',
+    pattern: '^\\d+(\\.\\d{1,2})?$',
+    default: '0',
+  })
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d+(\.\d{1,2})?$/, {
+    message: 'collateralProfitIsk must be a valid number with up to 2 decimal places',
+  })
+  collateralProfitIsk?: string = '0';
+
+  @ApiPropertyOptional({
+    description: 'Optional memo about the failure',
+    maxLength: 500,
+    example: 'Package lost in transit',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  memo?: string;
+}
+

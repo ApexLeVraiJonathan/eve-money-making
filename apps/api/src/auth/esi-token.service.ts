@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CryptoUtil } from '../common/crypto.util';
 import axios from 'axios';
 import * as jwt from 'jsonwebtoken';
+import { AppConfig } from '../common/config';
 
 @Injectable()
 export class EsiTokenService {
@@ -43,16 +44,14 @@ export class EsiTokenService {
         refresh_token: refreshToken,
       });
 
-      const clientId = process.env.EVE_CLIENT_ID;
-      const clientSecret = process.env.EVE_CLIENT_SECRET;
-
-      if (!clientId || !clientSecret) {
-        throw new Error('EVE_CLIENT_ID or EVE_CLIENT_SECRET not configured');
+      const creds = AppConfig.esiTokenLegacy();
+      if (!creds.clientId || !creds.clientSecret) {
+        throw new Error('ESI token credentials not configured');
       }
 
       const authHeader =
         'Basic ' +
-        Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
+        Buffer.from(`${creds.clientId}:${creds.clientSecret}`).toString('base64');
 
       const response = await axios.post<{
         access_token: string;

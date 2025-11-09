@@ -20,16 +20,16 @@ export class AuthService {
   private readonly userAgent = AppConfig.esiSso().userAgent;
 
   // App 2: Character Linking credentials
-  private readonly linkingClientId = process.env.EVE_CLIENT_ID_LINKING ?? '';
-  private readonly linkingClientSecret =
-    process.env.EVE_CLIENT_SECRET_LINKING ?? '';
-  private readonly linkingRedirectUri = `${process.env.API_BASE_URL || 'http://localhost:3000'}/auth/link-character/callback`;
+  private readonly linkingConfig = AppConfig.esiSsoLinking();
+  private readonly linkingClientId = this.linkingConfig.clientId;
+  private readonly linkingClientSecret = this.linkingConfig.clientSecret;
+  private readonly linkingRedirectUri = this.linkingConfig.redirectUri;
 
   // App 3: Admin System Character credentials
-  private readonly systemClientId = process.env.EVE_CLIENT_ID_SYSTEM ?? '';
-  private readonly systemClientSecret =
-    process.env.EVE_CLIENT_SECRET_SYSTEM ?? '';
-  private readonly systemRedirectUri = `${process.env.API_BASE_URL || 'http://localhost:3000'}/auth/admin/system-characters/callback`;
+  private readonly systemConfig = AppConfig.esiSsoSystem();
+  private readonly systemClientId = this.systemConfig.clientId;
+  private readonly systemClientSecret = this.systemConfig.clientSecret;
+  private readonly systemRedirectUri = this.systemConfig.redirectUri;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -421,5 +421,93 @@ export class AuthService {
       await tx.eveCharacter.deleteMany({ where: { id: characterId } });
     });
     return { removed: true };
+  }
+
+  /**
+   * Link a character from NextAuth callback.
+   * Creates/updates character and token in database within a transaction.
+   */
+  async linkCharacterFromNextAuth(input: {
+    characterId: number;
+    characterName: string;
+    ownerHash: string;
+    accessToken: string;
+    refreshToken?: string;
+    expiresIn: number;
+    scopes: string;
+  }): Promise<{ success: true; characterId: number; characterName: string }> {
+    const {
+      characterId,
+      characterName,
+      ownerHash,
+      accessToken,
+      refreshToken,
+      expiresIn,
+      scopes,
+    } = input;
+
+    // Encrypt refresh token if provided
+    const refreshTokenEnc = refreshToken
+      ? await CryptoUtil.encrypt(refreshToken)
+      : '';
+
+    // Parse expiresIn safely with fallback (EVE tokens typically last 20 minutes for auth-only)
+    const expiresInSeconds = Number(expiresIn) || 1200; // 20 minutes default
+    const expiresAt = new Date(Date.now() + expiresInSeconds * 1000);
+
+    // Upsert character and token in a transaction
+    await this.prisma.$transaction(async (tx) => {
+      // Upsert character
+      const character = await tx.eveCharacter.upsert({
+        where: { id: characterId },
+        update: {
+          name: characterName,
+          ownerHash,
+        },
+        create: {
+          id: characterId,
+          name: characterName,
+          ownerHash,
+          managedBy: 'USER',
+        },
+      });
+
+      // Upsert token
+      await tx.characterToken.upsert({
+        where: { characterId },
+        update: {
+          tokenType: 'Bearer',
+          accessToken,
+          accessTokenExpiresAt: expiresAt,
+          refreshTokenEnc,
+          scopes,
+          lastRefreshAt: new Date(),
+        },
+        create: {
+          characterId,
+          tokenType: 'Bearer',
+          accessToken,
+          accessTokenExpiresAt: expiresAt,
+          refreshTokenEnc,
+          scopes,
+        },
+      });
+
+      // Ensure user exists for this character
+      if (!character.userId) {
+        const user = await tx.user.create({
+          data: {
+            role: 'USER',
+            primaryCharacterId: characterId,
+          },
+        });
+        await tx.eveCharacter.update({
+          where: { id: characterId },
+          data: { userId: user.id },
+        });
+      }
+    });
+
+    return { success: true, characterId, characterName };
   }
 }

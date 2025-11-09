@@ -6,57 +6,40 @@ import {
   Param,
   Post,
   Query,
-  UsePipes,
   Patch,
   Delete,
+  UseGuards,
 } from '@nestjs/common';
+import {
+  ApiTags,
+  ApiBearerAuth,
+  ApiOperation,
+  ApiQuery,
+  ApiParam,
+} from '@nestjs/swagger';
 import { LedgerService } from './ledger.service';
 import { WalletService } from '../wallet/wallet.service';
 import { AllocationService } from '../reconciliation/allocation.service';
-import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { CurrentUser, type RequestUser } from '../auth/current-user.decorator';
-import { z } from 'zod';
-import { UseGuards } from '@nestjs/common';
 import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
 import { Public } from '../auth/public.decorator';
+import { CreateCycleRequest } from './dto/create-cycle.dto';
+import { PlanCycleRequest } from './dto/plan-cycle.dto';
+import { OpenCycleRequest } from './dto/open-cycle.dto';
+import { AppendEntryRequest } from './dto/append-entry.dto';
+import { GetEntriesQuery } from './dto/get-entries-query.dto';
+import { CreateParticipationManualRequest } from './dto/create-participation-manual.dto';
+import { RefundParticipationRequest } from './dto/refund-participation.dto';
+import { ValidatePaymentRequest } from './dto/validate-payment.dto';
+import { GetCommitSummaryQuery } from './dto/get-commit-summary-query.dto';
+import { SuggestPayoutsRequest } from './dto/suggest-payouts.dto';
+import { CreateCycleLineManualRequest } from './dto/create-cycle-line-manual.dto';
+import { UpdateCycleLineRequest } from './dto/update-cycle-line.dto';
+import { AddFeeRequest } from './dto/add-fee.dto';
+import { AddTransportFeeRequest } from './dto/add-transport-fee.dto';
 
-const CreateCycleSchema = z.object({
-  name: z.string().min(1).optional(),
-  startedAt: z.coerce.date(),
-  // Optional in DB for back-compat; clients should provide going forward
-  initialInjectionIsk: z
-    .string()
-    .regex(/^\d+\.\d{2}$/)
-    .optional(),
-});
-type CreateCycleRequest = z.infer<typeof CreateCycleSchema>;
-
-const PlanCycleSchema = z.object({
-  name: z.string().min(1).optional(),
-  startedAt: z.coerce.date(), // should be future
-  initialInjectionIsk: z
-    .string()
-    .regex(/^\d+\.\d{2}$/)
-    .optional(),
-});
-type PlanCycleRequest = z.infer<typeof PlanCycleSchema>;
-
-const OpenCycleSchema = z.object({
-  startedAt: z.coerce.date().optional(),
-});
-type OpenCycleRequest = z.infer<typeof OpenCycleSchema>;
-
-const AppendEntrySchema = z.object({
-  cycleId: z.string().uuid(),
-  entryType: z.enum(['deposit', 'withdrawal', 'fee', 'execution']),
-  amountIsk: z.string().regex(/^\d+\.\d{2}$/),
-  occurredAt: z.coerce.date().optional(),
-  memo: z.string().optional(),
-  planCommitId: z.string().uuid().optional(),
-});
-type AppendEntryRequest = z.infer<typeof AppendEntrySchema>;
-
+@ApiTags('ledger')
 @Controller('ledger')
 export class LedgerController {
   private readonly logger = new Logger(LedgerController.name);
@@ -68,69 +51,57 @@ export class LedgerController {
   ) {}
 
   @Post('cycles')
-  @UsePipes(new ZodValidationPipe(CreateCycleSchema))
   @Roles('ADMIN')
+  @UseGuards(RolesGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Create a new arbitrage cycle' })
   async createCycle(@Body() body: CreateCycleRequest) {
     return await this.ledger.createCycle(body);
   }
 
   @Post('cycles/plan')
-  @UsePipes(new ZodValidationPipe(PlanCycleSchema))
   @Roles('ADMIN')
+  @UseGuards(RolesGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Plan a future arbitrage cycle' })
   async planCycle(@Body() body: PlanCycleRequest): Promise<unknown> {
     return await this.ledger.planCycle(body);
   }
 
   @Public()
   @Get('cycles')
+  @ApiOperation({ summary: 'List all arbitrage cycles' })
   async listCycles() {
     return await this.ledger.listCycles();
   }
 
   @Public()
   @Get('cycles/overview')
+  @ApiOperation({ summary: 'Get cycles overview' })
   async cyclesOverview(): Promise<unknown> {
     return (await this.ledger.getCycleOverview()) as unknown;
   }
 
   @Post('cycles/:id/close')
   @Roles('ADMIN')
+  @UseGuards(RolesGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Close a cycle' })
+  @ApiParam({ name: 'id', description: 'Cycle ID' })
   async closeCycle(@Param('id') id: string): Promise<unknown> {
-    this.logger.log(
-      `Closing cycle ${id} - running final wallet import and allocation`,
+    return await this.ledger.closeCycleWithFinalSettlement(
+      id,
+      this.wallet,
+      this.allocation,
     );
-
-    // Step 1: Import latest wallet transactions
-    await this.wallet.importAllLinked();
-    this.logger.log(`Wallet import completed for cycle ${id}`);
-
-    // Step 2: Run allocation to ensure all transactions are matched
-    const allocationResult = await this.allocation.allocateAll(id);
-    this.logger.log(
-      `Allocation completed for cycle ${id}: buys=${allocationResult.buysAllocated}, sells=${allocationResult.sellsAllocated}`,
-    );
-
-    // Step 3: Close the cycle
-    const closedCycle = await this.ledger.closeCycle(id, new Date());
-    this.logger.log(`Cycle ${id} closed successfully`);
-
-    // Step 4: Automatically create payouts for validated participations
-    try {
-      const payouts = await this.ledger.createPayouts(id);
-      this.logger.log(`Created ${payouts.length} payouts for cycle ${id}`);
-    } catch (error) {
-      this.logger.warn(
-        `Failed to create payouts for cycle ${id}: ${error instanceof Error ? error.message : String(error)}`,
-      );
-      // Don't fail the cycle close if payout creation fails
-    }
-
-    return closedCycle;
   }
 
   @Post('cycles/:id/open')
-  @UsePipes(new ZodValidationPipe(OpenCycleSchema))
   @Roles('ADMIN')
+  @UseGuards(RolesGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Open a planned cycle' })
+  @ApiParam({ name: 'id', description: 'Cycle ID' })
   async openCycle(
     @Param('id') id: string,
     @Body() body: OpenCycleRequest,
@@ -142,33 +113,21 @@ export class LedgerController {
   }
 
   @Post('entries')
-  @UsePipes(new ZodValidationPipe(AppendEntrySchema))
   @Roles('ADMIN')
+  @UseGuards(RolesGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Append a ledger entry' })
   async append(@Body() body: AppendEntryRequest): Promise<unknown> {
     return await this.ledger.appendEntry(body);
   }
 
   @Public()
   @Get('entries')
-  @UsePipes(
-    new ZodValidationPipe(
-      z
-        .object({
-          cycleId: z.string().uuid(),
-          limit: z.coerce.number().int().min(1).max(1000).optional(),
-          offset: z.coerce.number().int().min(0).optional(),
-        })
-        .strict(),
-    ),
-  )
-  async list(
-    @Query()
-    query: {
-      cycleId: string;
-      limit?: number;
-      offset?: number;
-    },
-  ): Promise<unknown> {
+  @ApiOperation({ summary: 'List ledger entries' })
+  @ApiQuery({ name: 'cycleId', type: String, description: 'Cycle ID' })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  @ApiQuery({ name: 'offset', required: false, type: Number })
+  async list(@Query() query: GetEntriesQuery): Promise<unknown> {
     return await this.ledger.listEntriesEnriched(
       query.cycleId,
       query.limit,
@@ -178,12 +137,17 @@ export class LedgerController {
 
   @Public()
   @Get('nav/:cycleId')
+  @ApiOperation({ summary: 'Compute Net Asset Value for a cycle' })
+  @ApiParam({ name: 'cycleId', description: 'Cycle ID' })
   async nav(@Param('cycleId') cycleId: string): Promise<unknown> {
     return await this.ledger.computeNav(cycleId);
   }
 
   @Public()
   @Get('capital/:cycleId')
+  @ApiOperation({ summary: 'Compute capital for a cycle' })
+  @ApiParam({ name: 'cycleId', description: 'Cycle ID' })
+  @ApiQuery({ name: 'force', required: false, type: String })
   async capital(
     @Param('cycleId') cycleId: string,
     @Query('force') force?: string,
@@ -194,19 +158,11 @@ export class LedgerController {
 
   // Participations
   @Post('cycles/:cycleId/participations')
-  @UsePipes(
-    new ZodValidationPipe(
-      z
-        .object({
-          characterName: z.string().min(1).optional(),
-          amountIsk: z.string().regex(/^\d+\.\d{2}$/),
-        })
-        .strict(),
-    ),
-  )
+  @ApiOperation({ summary: 'Create a participation in a cycle' })
+  @ApiParam({ name: 'cycleId', description: 'Cycle ID' })
   async createParticipation(
     @Param('cycleId') cycleId: string,
-    @Body() body: { characterName?: string; amountIsk: string },
+    @Body() body: CreateParticipationManualRequest,
     @CurrentUser() user: RequestUser | null,
   ): Promise<unknown> {
     // Prefer session identity when characterName not provided
@@ -222,6 +178,10 @@ export class LedgerController {
   @Get('cycles/:cycleId/participations')
   @Roles('ADMIN')
   @UseGuards(RolesGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'List participations for a cycle' })
+  @ApiParam({ name: 'cycleId', description: 'Cycle ID' })
+  @ApiQuery({ name: 'status', required: false, type: String })
   async listParticipations(
     @Param('cycleId') cycleId: string,
     @Query('status') status?: string,
@@ -230,6 +190,8 @@ export class LedgerController {
   }
 
   @Get('cycles/:cycleId/participations/me')
+  @ApiOperation({ summary: 'Get my participation for a cycle' })
+  @ApiParam({ name: 'cycleId', description: 'Cycle ID' })
   async myParticipation(
     @Param('cycleId') cycleId: string,
     @CurrentUser() user: RequestUser | null,
@@ -252,6 +214,8 @@ export class LedgerController {
   @Get('participations/all')
   @Roles('ADMIN')
   @UseGuards(RolesGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get all participations' })
   async allParticipations(): Promise<unknown> {
     return await this.ledger.getAllParticipations();
   }
@@ -259,6 +223,8 @@ export class LedgerController {
   @Get('participations/unmatched-donations')
   @Roles('ADMIN')
   @UseGuards(RolesGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get unmatched donations' })
   async unmatchedDonations(): Promise<unknown> {
     return await this.ledger.getUnmatchedDonations();
   }
@@ -266,11 +232,16 @@ export class LedgerController {
   @Post('participations/:id/mark-payout-sent')
   @Roles('ADMIN')
   @UseGuards(RolesGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Mark payout as sent' })
+  @ApiParam({ name: 'id', description: 'Participation ID' })
   async markPayoutSent(@Param('id') id: string): Promise<unknown> {
     return await this.ledger.markPayoutAsSent(id);
   }
 
   @Post('participations/:id/opt-out')
+  @ApiOperation({ summary: 'Opt out of a participation' })
+  @ApiParam({ name: 'id', description: 'Participation ID' })
   async optOut(@Param('id') id: string): Promise<unknown> {
     return await this.ledger.optOutParticipation(id);
   }
@@ -278,6 +249,9 @@ export class LedgerController {
   @Post('participations/match')
   @Roles('ADMIN')
   @UseGuards(RolesGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Match participation payments from wallet' })
+  @ApiQuery({ name: 'cycleId', required: false, type: String })
   async matchPayments(@Query('cycleId') cycleId?: string): Promise<unknown> {
     return await this.ledger.matchParticipationPayments(cycleId);
   }
@@ -285,24 +259,12 @@ export class LedgerController {
   @Post('participations/:id/validate')
   @Roles('ADMIN')
   @UseGuards(RolesGuard)
-  @UsePipes(
-    new ZodValidationPipe(
-      z
-        .object({
-          walletJournal: z
-            .object({
-              characterId: z.number().int(),
-              journalId: z.coerce.bigint(),
-            })
-            .optional(),
-        })
-        .strict(),
-    ),
-  )
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Validate a participation payment' })
+  @ApiParam({ name: 'id', description: 'Participation ID' })
   async validatePayment(
     @Param('id') id: string,
-    @Body()
-    body: { walletJournal?: { characterId: number; journalId: bigint } },
+    @Body() body: ValidatePaymentRequest,
   ): Promise<unknown> {
     return await this.ledger.adminValidatePayment({
       participationId: id,
@@ -313,14 +275,12 @@ export class LedgerController {
   @Post('participations/:id/refund')
   @Roles('ADMIN')
   @UseGuards(RolesGuard)
-  @UsePipes(
-    new ZodValidationPipe(
-      z.object({ amountIsk: z.string().regex(/^\d+\.\d{2}$/) }).strict(),
-    ),
-  )
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Mark participation as refunded' })
+  @ApiParam({ name: 'id', description: 'Participation ID' })
   async refund(
     @Param('id') id: string,
-    @Body() body: { amountIsk: string },
+    @Body() body: RefundParticipationRequest,
   ): Promise<unknown> {
     return await this.ledger.adminMarkRefund({
       participationId: id,
@@ -332,6 +292,10 @@ export class LedgerController {
   @Get('cycles/:cycleId/payouts/suggest')
   @Roles('ADMIN')
   @UseGuards(RolesGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Suggest payouts for a cycle' })
+  @ApiParam({ name: 'cycleId', description: 'Cycle ID' })
+  @ApiQuery({ name: 'profitSharePct', required: false, type: Number })
   async suggestPayouts(
     @Param('cycleId') cycleId: string,
     @Query('profitSharePct') pct?: string,
@@ -341,26 +305,23 @@ export class LedgerController {
   }
 
   @Get('commits/summary')
-  @UsePipes(
-    new ZodValidationPipe(z.object({ cycleId: z.string().uuid() }).strict()),
-  )
-  async commitSummaries(@Query('cycleId') cycleId: string): Promise<unknown> {
-    return (await this.ledger.getCommitSummaries(cycleId)) as unknown;
+  @ApiOperation({ summary: 'Get commit summaries for a cycle' })
+  @ApiQuery({ name: 'cycleId', type: String, description: 'Cycle ID' })
+  async commitSummaries(
+    @Query() query: GetCommitSummaryQuery,
+  ): Promise<unknown> {
+    return (await this.ledger.getCommitSummaries(query.cycleId)) as unknown;
   }
 
   @Post('cycles/:cycleId/payouts/finalize')
   @Roles('ADMIN')
   @UseGuards(RolesGuard)
-  @UsePipes(
-    new ZodValidationPipe(
-      z
-        .object({ profitSharePct: z.number().min(0).max(1).optional() })
-        .strict(),
-    ),
-  )
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Finalize payouts for a cycle' })
+  @ApiParam({ name: 'cycleId', description: 'Cycle ID' })
   async finalizePayouts(
     @Param('cycleId') cycleId: string,
-    @Body() body: { profitSharePct?: number },
+    @Body() body: SuggestPayoutsRequest,
   ): Promise<unknown> {
     return await this.ledger.finalizePayouts(
       cycleId,
@@ -372,25 +333,13 @@ export class LedgerController {
 
   @Post('cycles/:cycleId/lines')
   @Roles('ADMIN')
-  @UsePipes(
-    new ZodValidationPipe(
-      z
-        .object({
-          typeId: z.number().int(),
-          destinationStationId: z.number().int(),
-          plannedUnits: z.number().int().min(1),
-        })
-        .strict(),
-    ),
-  )
+  @UseGuards(RolesGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Create a cycle line (buy commit)' })
+  @ApiParam({ name: 'cycleId', description: 'Cycle ID' })
   async createCycleLine(
     @Param('cycleId') cycleId: string,
-    @Body()
-    body: {
-      typeId: number;
-      destinationStationId: number;
-      plannedUnits: number;
-    },
+    @Body() body: CreateCycleLineManualRequest,
   ): Promise<unknown> {
     return await this.ledger.createCycleLine({
       cycleId,
@@ -399,26 +348,31 @@ export class LedgerController {
   }
 
   @Get('cycles/:cycleId/lines')
+  @ApiOperation({ summary: 'List cycle lines' })
+  @ApiParam({ name: 'cycleId', description: 'Cycle ID' })
   async listCycleLines(@Param('cycleId') cycleId: string): Promise<unknown> {
     return await this.ledger.listCycleLines(cycleId);
   }
 
   @Patch('lines/:lineId')
   @Roles('ADMIN')
-  @UsePipes(
-    new ZodValidationPipe(
-      z.object({ plannedUnits: z.number().int().min(1).optional() }).strict(),
-    ),
-  )
+  @UseGuards(RolesGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Update a cycle line' })
+  @ApiParam({ name: 'lineId', description: 'Line ID' })
   async updateCycleLine(
     @Param('lineId') lineId: string,
-    @Body() body: { plannedUnits?: number },
+    @Body() body: UpdateCycleLineRequest,
   ): Promise<unknown> {
     return await this.ledger.updateCycleLine(lineId, body);
   }
 
   @Delete('lines/:lineId')
   @Roles('ADMIN')
+  @UseGuards(RolesGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Delete a cycle line' })
+  @ApiParam({ name: 'lineId', description: 'Line ID' })
   async deleteCycleLine(@Param('lineId') lineId: string): Promise<unknown> {
     return await this.ledger.deleteCycleLine(lineId);
   }
@@ -427,53 +381,49 @@ export class LedgerController {
 
   @Post('lines/:lineId/broker-fee')
   @Roles('ADMIN')
-  @UsePipes(
-    new ZodValidationPipe(
-      z.object({ amountIsk: z.string().regex(/^\d+\.\d{2}$/) }).strict(),
-    ),
-  )
+  @UseGuards(RolesGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Add a broker fee to a line' })
+  @ApiParam({ name: 'lineId', description: 'Line ID' })
   async addBrokerFee(
     @Param('lineId') lineId: string,
-    @Body() body: { amountIsk: string },
+    @Body() body: AddFeeRequest,
   ): Promise<unknown> {
     return await this.ledger.addBrokerFee({ lineId, ...body });
   }
 
   @Post('lines/:lineId/relist-fee')
   @Roles('ADMIN')
-  @UsePipes(
-    new ZodValidationPipe(
-      z.object({ amountIsk: z.string().regex(/^\d+\.\d{2}$/) }).strict(),
-    ),
-  )
+  @UseGuards(RolesGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Add a relist fee to a line' })
+  @ApiParam({ name: 'lineId', description: 'Line ID' })
   async addRelistFee(
     @Param('lineId') lineId: string,
-    @Body() body: { amountIsk: string },
+    @Body() body: AddFeeRequest,
   ): Promise<unknown> {
     return await this.ledger.addRelistFee({ lineId, ...body });
   }
 
   @Post('cycles/:cycleId/transport-fee')
   @Roles('ADMIN')
-  @UsePipes(
-    new ZodValidationPipe(
-      z
-        .object({
-          amountIsk: z.string().regex(/^\d+\.\d{2}$/),
-          memo: z.string().optional(),
-        })
-        .strict(),
-    ),
-  )
+  @UseGuards(RolesGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Add a transport fee to a cycle' })
+  @ApiParam({ name: 'cycleId', description: 'Cycle ID' })
   async addTransportFee(
     @Param('cycleId') cycleId: string,
-    @Body() body: { amountIsk: string; memo?: string },
+    @Body() body: AddTransportFeeRequest,
   ): Promise<unknown> {
     return await this.ledger.addTransportFee({ cycleId, ...body });
   }
 
   @Get('cycles/:cycleId/transport-fees')
   @Roles('ADMIN')
+  @UseGuards(RolesGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'List transport fees for a cycle' })
+  @ApiParam({ name: 'cycleId', description: 'Cycle ID' })
   async listTransportFees(@Param('cycleId') cycleId: string): Promise<unknown> {
     return await this.ledger.listTransportFees(cycleId);
   }
@@ -481,12 +431,16 @@ export class LedgerController {
   // ===== Cycle Profit & Snapshots =====
 
   @Get('cycles/:cycleId/profit')
+  @ApiOperation({ summary: 'Get cycle profit' })
+  @ApiParam({ name: 'cycleId', description: 'Cycle ID' })
   async getCycleProfit(@Param('cycleId') cycleId: string): Promise<unknown> {
     return await this.ledger.computeCycleProfit(cycleId);
   }
 
   @Public()
   @Get('cycles/:cycleId/profit/estimated')
+  @ApiOperation({ summary: 'Get estimated profit for a cycle' })
+  @ApiParam({ name: 'cycleId', description: 'Cycle ID' })
   async getEstimatedProfit(
     @Param('cycleId') cycleId: string,
   ): Promise<unknown> {
@@ -495,18 +449,26 @@ export class LedgerController {
 
   @Public()
   @Get('cycles/:cycleId/profit/portfolio')
+  @ApiOperation({ summary: 'Get portfolio value for a cycle' })
+  @ApiParam({ name: 'cycleId', description: 'Cycle ID' })
   async getPortfolioValue(@Param('cycleId') cycleId: string): Promise<unknown> {
     return await this.ledger.computePortfolioValue(cycleId);
   }
 
   @Post('cycles/:cycleId/snapshot')
   @Roles('ADMIN')
+  @UseGuards(RolesGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Create a cycle snapshot' })
+  @ApiParam({ name: 'cycleId', description: 'Cycle ID' })
   async createSnapshot(@Param('cycleId') cycleId: string): Promise<unknown> {
     return await this.ledger.createCycleSnapshot(cycleId);
   }
 
   @Public()
   @Get('cycles/:cycleId/snapshots')
+  @ApiOperation({ summary: 'Get cycle snapshots' })
+  @ApiParam({ name: 'cycleId', description: 'Cycle ID' })
   async getSnapshots(@Param('cycleId') cycleId: string): Promise<unknown> {
     return await this.ledger.getCycleSnapshots(cycleId);
   }

@@ -239,135 +239,138 @@ export class LedgerService {
     });
     if (!cycle) throw new Error('Cycle not found');
 
-    // Clean up unpaid and refunded participations for this cycle
-    // Remove any participations that are AWAITING_INVESTMENT or REFUNDED
-    await this.prisma.cycleParticipation.deleteMany({
-      where: {
-        cycleId: input.cycleId,
-        status: { in: ['AWAITING_INVESTMENT', 'REFUNDED'] },
-      },
-    });
-
-    // Close any existing open cycle
-    const open = await this.getCurrentOpenCycle();
-    if (open && open.id !== cycle.id) {
-      await this.prisma.cycle.update({
-        where: { id: open.id },
-        data: { closedAt: now },
-      });
-    }
-
-    // Set startedAt if provided or if cycle is still future ensure it's set now
-    const startedAt =
-      input.startedAt ?? (cycle.startedAt > now ? now : cycle.startedAt);
-    if (startedAt.getTime() !== cycle.startedAt.getTime()) {
-      await this.prisma.cycle.update({
-        where: { id: cycle.id },
-        data: { startedAt },
-      });
-    }
-
-    // Sum validated participations for this cycle
-    const validatedParticipations =
-      await this.prisma.cycleParticipation.aggregate({
+    // All database operations within a transaction
+    return await this.prisma.$transaction(async (tx) => {
+      // Clean up unpaid and refunded participations for this cycle
+      // Remove any participations that are AWAITING_INVESTMENT or REFUNDED
+      await tx.cycleParticipation.deleteMany({
         where: {
-          cycleId: cycle.id,
-          status: 'OPTED_IN',
-          validatedAt: { not: null },
+          cycleId: input.cycleId,
+          status: { in: ['AWAITING_INVESTMENT', 'REFUNDED'] },
         },
-        _sum: { amountIsk: true },
       });
-    const participationTotal = validatedParticipations._sum.amountIsk
-      ? Number(validatedParticipations._sum.amountIsk)
-      : 0;
 
-    // Compute initial capital snapshot (carryover + optional injection + validated participations)
-    const nowCap = await this.computeCurrentCapitalNow();
-    const inj = cycle.initialInjectionIsk
-      ? Number(cycle.initialInjectionIsk)
-      : 0;
-    const initialCapital =
-      nowCap.cash + nowCap.inventory + inj + participationTotal;
-    await this.prisma.cycle.update({
-      where: { id: cycle.id },
-      data: { initialCapitalIsk: initialCapital.toFixed(2) },
-    });
+      // Close any existing open cycle
+      const open = await this.getCurrentOpenCycle();
+      if (open && open.id !== cycle.id) {
+        await tx.cycle.update({
+          where: { id: open.id },
+          data: { closedAt: now },
+        });
+      }
 
-    // Create CycleLines for rollover inventory (active sell orders only)
-    // Only track items actively listed for sale, not assets (to avoid ships/modules/etc)
-    const key = (stationId: number, typeId: number) => `${stationId}:${typeId}`;
-    const qtyByTypeStation = new Map<string, number>();
-    const sellPriceByTypeStation = new Map<string, number>();
-    const trackedChars = await this.getTrackedCharacterIds();
+      // Set startedAt if provided or if cycle is still future ensure it's set now
+      const startedAt =
+        input.startedAt ?? (cycle.startedAt > now ? now : cycle.startedAt);
+      if (startedAt.getTime() !== cycle.startedAt.getTime()) {
+        await tx.cycle.update({
+          where: { id: cycle.id },
+          data: { startedAt },
+        });
+      }
 
-    // Fetch active sell orders
-    for (const cid of trackedChars) {
-      try {
-        const orders = await this.esiChars.getOrders(cid);
-        for (const o of orders) {
-          if (!o.is_buy_order) {
-            const k2 = key(o.location_id, o.type_id);
-            qtyByTypeStation.set(
-              k2,
-              (qtyByTypeStation.get(k2) ?? 0) + o.volume_remain,
-            );
-            // Store the sell price (use lowest if multiple orders for same item)
-            const existingPrice = sellPriceByTypeStation.get(k2);
-            if (!existingPrice || o.price < existingPrice) {
-              sellPriceByTypeStation.set(k2, o.price);
+      // Sum validated participations for this cycle
+      const validatedParticipations =
+        await tx.cycleParticipation.aggregate({
+          where: {
+            cycleId: cycle.id,
+            status: 'OPTED_IN',
+            validatedAt: { not: null },
+          },
+          _sum: { amountIsk: true },
+        });
+      const participationTotal = validatedParticipations._sum.amountIsk
+        ? Number(validatedParticipations._sum.amountIsk)
+        : 0;
+
+      // Compute initial capital snapshot (carryover + optional injection + validated participations)
+      const nowCap = await this.computeCurrentCapitalNow();
+      const inj = cycle.initialInjectionIsk
+        ? Number(cycle.initialInjectionIsk)
+        : 0;
+      const initialCapital =
+        nowCap.cash + nowCap.inventory + inj + participationTotal;
+      await tx.cycle.update({
+        where: { id: cycle.id },
+        data: { initialCapitalIsk: initialCapital.toFixed(2) },
+      });
+
+      // Create CycleLines for rollover inventory (active sell orders only)
+      // Only track items actively listed for sale, not assets (to avoid ships/modules/etc)
+      const key = (stationId: number, typeId: number) => `${stationId}:${typeId}`;
+      const qtyByTypeStation = new Map<string, number>();
+      const sellPriceByTypeStation = new Map<string, number>();
+      const trackedChars = await this.getTrackedCharacterIds();
+
+      // Fetch active sell orders
+      for (const cid of trackedChars) {
+        try {
+          const orders = await this.esiChars.getOrders(cid);
+          for (const o of orders) {
+            if (!o.is_buy_order) {
+              const k2 = key(o.location_id, o.type_id);
+              qtyByTypeStation.set(
+                k2,
+                (qtyByTypeStation.get(k2) ?? 0) + o.volume_remain,
+              );
+              // Store the sell price (use lowest if multiple orders for same item)
+              const existingPrice = sellPriceByTypeStation.get(k2);
+              if (!existingPrice || o.price < existingPrice) {
+                sellPriceByTypeStation.set(k2, o.price);
+              }
             }
           }
+        } catch (e) {
+          this.logger.warn(`Orders fetch failed for ${cid}: ${String(e)}`);
         }
-      } catch (e) {
-        this.logger.warn(`Orders fetch failed for ${cid}: ${String(e)}`);
       }
-    }
 
-    // Create CycleLines for rollover inventory
-    const rolloverLines: Array<{
-      typeId: number;
-      destinationStationId: number;
-      plannedUnits: number;
-      currentSellPriceIsk: number | null;
-    }> = [];
+      // Create CycleLines for rollover inventory
+      const rolloverLines: Array<{
+        typeId: number;
+        destinationStationId: number;
+        plannedUnits: number;
+        currentSellPriceIsk: number | null;
+      }> = [];
 
-    for (const [k2, qty] of qtyByTypeStation) {
-      const [sidStr, tidStr] = k2.split(':');
-      const stationId = Number(sidStr);
-      const typeId = Number(tidStr);
-      if (!Number.isFinite(qty) || qty <= 0) continue;
-      const currentSellPrice = sellPriceByTypeStation.get(k2) ?? null;
-      rolloverLines.push({
-        typeId,
-        destinationStationId: stationId,
-        plannedUnits: Math.floor(qty),
-        currentSellPriceIsk: currentSellPrice,
-      });
-      if (rolloverLines.length >= 1000) break; // avoid overly large commit
-    }
+      for (const [k2, qty] of qtyByTypeStation) {
+        const [sidStr, tidStr] = k2.split(':');
+        const stationId = Number(sidStr);
+        const typeId = Number(tidStr);
+        if (!Number.isFinite(qty) || qty <= 0) continue;
+        const currentSellPrice = sellPriceByTypeStation.get(k2) ?? null;
+        rolloverLines.push({
+          typeId,
+          destinationStationId: stationId,
+          plannedUnits: Math.floor(qty),
+          currentSellPriceIsk: currentSellPrice,
+        });
+        if (rolloverLines.length >= 1000) break; // avoid overly large commit
+      }
 
-    // Create CycleLine records for rollover inventory (if any)
-    // These items are marked as already bought with buyCostIsk = 0
-    if (rolloverLines.length) {
-      await this.prisma.cycleLine.createMany({
-        data: rolloverLines.map((l) => ({
-          cycleId: cycle.id,
-          typeId: l.typeId,
-          destinationStationId: l.destinationStationId,
-          plannedUnits: l.plannedUnits,
-          unitsBought: l.plannedUnits, // Mark as already purchased
-          buyCostIsk: '0.00', // Already paid for in previous cycles
-          currentSellPriceIsk: l.currentSellPriceIsk
-            ? l.currentSellPriceIsk.toFixed(2)
-            : null,
-        })),
-      });
-      this.logger.log(
-        `Created ${rolloverLines.length} rollover cycle lines for cycle ${cycle.id}`,
-      );
-    }
+      // Create CycleLine records for rollover inventory (if any)
+      // These items are marked as already bought with buyCostIsk = 0
+      if (rolloverLines.length) {
+        await tx.cycleLine.createMany({
+          data: rolloverLines.map((l) => ({
+            cycleId: cycle.id,
+            typeId: l.typeId,
+            destinationStationId: l.destinationStationId,
+            plannedUnits: l.plannedUnits,
+            unitsBought: l.plannedUnits, // Mark as already purchased
+            buyCostIsk: '0.00', // Already paid for in previous cycles
+            currentSellPriceIsk: l.currentSellPriceIsk
+              ? l.currentSellPriceIsk.toFixed(2)
+              : null,
+          })),
+        });
+        this.logger.log(
+          `Created ${rolloverLines.length} rollover cycle lines for cycle ${cycle.id}`,
+        );
+      }
 
-    return await this.prisma.cycle.findUnique({ where: { id: cycle.id } });
+      return await tx.cycle.findUnique({ where: { id: cycle.id } });
+    });
   }
   private async computeCurrentCapitalNow(): Promise<{
     cash: number;
@@ -669,6 +672,59 @@ export class LedgerService {
       where: { id: cycleId },
       data: { closedAt },
     });
+  }
+
+  /**
+   * Orchestrates the full cycle closing process:
+   * 1. Import latest wallet transactions
+   * 2. Run allocation to match transactions
+   * 3. Close the cycle
+   * 4. Create payouts for validated participations
+   *
+   * This is the main entry point for closing a cycle from the controller.
+   */
+  async closeCycleWithFinalSettlement(
+    cycleId: string,
+    walletService: { importAllLinked: () => Promise<unknown> },
+    allocationService: {
+      allocateAll: (cycleId?: string) => Promise<{
+        buysAllocated: number;
+        sellsAllocated: number;
+        unmatchedBuys: number;
+        unmatchedSells: number;
+      }>;
+    },
+  ): Promise<unknown> {
+    this.logger.log(
+      `Closing cycle ${cycleId} - running final wallet import and allocation`,
+    );
+
+    // Step 1: Import latest wallet transactions
+    await walletService.importAllLinked();
+    this.logger.log(`Wallet import completed for cycle ${cycleId}`);
+
+    // Step 2: Run allocation to ensure all transactions are matched
+    const allocationResult = await allocationService.allocateAll(cycleId);
+    this.logger.log(
+      `Allocation completed for cycle ${cycleId}: buys=${allocationResult.buysAllocated}, sells=${allocationResult.sellsAllocated}`,
+    );
+
+    // Step 3: Close the cycle
+    const closedCycle = await this.closeCycle(cycleId, new Date());
+    this.logger.log(`Cycle ${cycleId} closed successfully`);
+
+    // Step 4: Automatically create payouts for validated participations
+    try {
+      const payouts = await this.createPayouts(cycleId);
+      this.logger.log(`Created ${payouts.length} payouts for cycle ${cycleId}`);
+    } catch (error) {
+      this.logger.warn(
+        `Failed to create payouts for cycle ${cycleId}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      // Don't fail the cycle close if payout creation fails
+    }
+
+    return closedCycle;
   }
 
   async appendEntry(input: {

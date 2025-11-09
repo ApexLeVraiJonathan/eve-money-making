@@ -3,6 +3,7 @@ import axios, { AxiosRequestConfig } from 'axios';
 import { PrismaService } from '../prisma/prisma.service';
 import { normalizeHeaders } from '../common/http';
 import { TokenService } from '../auth/token.service';
+import { AppConfig } from '../common/config';
 
 type CacheEntry = {
   etag?: string;
@@ -36,28 +37,18 @@ type FetchOptions = {
 
 @Injectable()
 export class EsiService {
-  private readonly baseUrl =
-    process.env.ESI_BASE_URL ?? 'https://esi.evetech.net';
-  private readonly userAgent = process.env.ESI_USER_AGENT ?? '';
-  private readonly defaultTimeoutMs = Number(
-    process.env.ESI_TIMEOUT_MS ?? 15000,
-  );
-  private readonly slowDownRemainThreshold = Number(
-    process.env.ESI_ERROR_SLOWDOWN_REMAIN_THRESHOLD ?? 5,
-  );
-  private readonly slowDownDelayMs = Number(
-    process.env.ESI_ERROR_SLOWDOWN_DELAY_MS ?? 500,
-  );
-  private readonly maxConcurrency = Number(
-    process.env.ESI_MAX_CONCURRENCY ?? 4,
-  );
-  private readonly maxRetries = Number(process.env.ESI_MAX_RETRIES ?? 3);
-  private readonly retryBaseDelayMs = Number(
-    process.env.ESI_RETRY_BASE_DELAY_MS ?? 400,
-  );
+  private readonly config = AppConfig.esi();
+  private readonly baseUrl = this.config.baseUrl;
+  private readonly userAgent = this.config.userAgent;
+  private readonly defaultTimeoutMs = this.config.timeoutMs;
+  private readonly slowDownRemainThreshold = this.config.errorSlowdownRemainThreshold;
+  private readonly slowDownDelayMs = this.config.errorSlowdownDelayMs;
+  private readonly maxConcurrency = this.config.maxConcurrency;
+  private readonly maxRetries = this.config.maxRetries;
+  private readonly retryBaseDelayMs = this.config.retryBaseDelayMs;
 
   private readonly cache = new Map<string, CacheEntry>();
-  private readonly memCacheMax = Number(process.env.ESI_MEM_CACHE_MAX ?? 5000);
+  private readonly memCacheMax = this.config.memCacheMax;
   private readonly inflight = new Map<string, Promise<unknown>>();
   private readonly metrics = {
     cacheHitMem: 0,
@@ -81,12 +72,8 @@ export class EsiService {
   private active = 0;
   private waiters: Array<() => void> = [];
   private effectiveMaxConcurrency: number = this.maxConcurrency;
-  private readonly minConcurrency: number = Number(
-    process.env.ESI_MIN_CONCURRENCY ?? 2,
-  );
-  private readonly concurrencyDecayFactor: number = Number(
-    process.env.ESI_CONCURRENCY_DECAY ?? 0.5,
-  );
+  private readonly minConcurrency: number = this.config.minConcurrency;
+  private readonly concurrencyDecayFactor: number = this.config.concurrencyDecayFactor;
 
   // Error budget
   private errorRemain: number | null = null;
@@ -94,9 +81,7 @@ export class EsiService {
   private haltUntil: number | null = null; // epoch ms
   private lastHaltUntilLogged: number | null = null;
   private lastWaitLogTs: number | null = null;
-  private readonly errorLogThrottleMs: number = Number(
-    process.env.ESI_ERROR_LOG_THROTTLE_MS ?? 5000,
-  );
+  private readonly errorLogThrottleMs: number = this.config.errorLogThrottleMs;
   private lastErrorLogAt: Map<string, number> = new Map();
 
   constructor(
@@ -104,7 +89,7 @@ export class EsiService {
     private readonly prisma: PrismaService,
     private readonly tokens: TokenService,
   ) {
-    const intervalMs = Number(process.env.ESI_MEM_CACHE_SWEEP_MS ?? 300_000);
+    const intervalMs = this.config.memCacheSweepMs;
     if (intervalMs > 0) {
       setInterval(() => this.sweepExpiredFromMemCache(), intervalMs).unref?.();
     }

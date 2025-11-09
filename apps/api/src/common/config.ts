@@ -1,6 +1,7 @@
 export type FeeDefaults = {
   salesTaxPercent: number;
   brokerFeePercent: number;
+  relistFeePercent: number;
 };
 
 export type ArbitrageDefaults = {
@@ -11,6 +12,31 @@ export type ArbitrageDefaults = {
   stationConcurrency: number;
   itemConcurrency: number;
   fees: FeeDefaults;
+};
+
+export type JwtConfig = {
+  secret: string;
+  expiresIn: string;
+};
+
+export type CorsConfig = {
+  origins: string[];
+};
+
+export type EsiConfig = {
+  baseUrl: string;
+  userAgent: string;
+  timeoutMs: number;
+  maxConcurrency: number;
+  minConcurrency: number;
+  maxRetries: number;
+  retryBaseDelayMs: number;
+  errorSlowdownRemainThreshold: number;
+  errorSlowdownDelayMs: number;
+  concurrencyDecayFactor: number;
+  errorLogThrottleMs: number;
+  memCacheMax: number;
+  memCacheSweepMs: number;
 };
 
 export const AppConfig = {
@@ -27,6 +53,38 @@ export const AppConfig = {
   },
 
   /**
+   * Server port
+   */
+  port(): number {
+    return Number(process.env.PORT ?? 3000);
+  },
+
+  /**
+   * API base URL (for constructing callback URLs)
+   */
+  apiBaseUrl(): string {
+    return process.env.API_BASE_URL || 'http://localhost:3000';
+  },
+
+  /**
+   * Web app base URL
+   */
+  webBaseUrl(): string {
+    return (
+      process.env.WEB_BASE_URL ||
+      process.env.NEXT_PUBLIC_WEB_BASE_URL ||
+      'http://localhost:3001'
+    );
+  },
+
+  /**
+   * NextAuth URL (for CORS and redirects)
+   */
+  nextAuthUrl(): string {
+    return process.env.NEXTAUTH_URL || 'http://localhost:3001';
+  },
+
+  /**
    * Database URL selected by APP_ENV.
    */
   databaseUrl(): string | undefined {
@@ -40,6 +98,135 @@ export const AppConfig = {
         process.env.DATABASE_URL
       );
     return process.env.DATABASE_URL;
+  },
+
+  /**
+   * Encryption key for sensitive data
+   */
+  encryptionKey(): string {
+    const key = process.env.ENCRYPTION_KEY ?? '';
+    if (!key) throw new Error('ENCRYPTION_KEY environment variable is not set');
+    return key;
+  },
+
+  /**
+   * JWT configuration
+   */
+  jwt(): JwtConfig {
+    return {
+      secret: process.env.JWT_SECRET || 'dev-secret-change-in-production',
+      expiresIn: process.env.JWT_EXPIRES_IN || '7d',
+    };
+  },
+
+  /**
+   * CORS configuration
+   */
+  cors(): CorsConfig {
+    const origins = [
+      'http://localhost:3000',
+      'http://localhost:3001',
+      AppConfig.nextAuthUrl(),
+    ].filter(Boolean);
+
+    // Add custom origins if specified
+    const customOrigins = process.env.CORS_ORIGINS;
+    if (customOrigins) {
+      origins.push(...customOrigins.split(',').map((o) => o.trim()));
+    }
+
+    return {
+      origins: Array.from(new Set(origins)), // Remove duplicates
+    };
+  },
+
+  /**
+   * ESI API configuration
+   */
+  esi(): EsiConfig {
+    return {
+      baseUrl: process.env.ESI_BASE_URL || 'https://esi.evetech.net',
+      userAgent:
+        process.env.ESI_USER_AGENT || process.env.ESI_SSO_USER_AGENT || '',
+      timeoutMs: Number(process.env.ESI_TIMEOUT_MS ?? 15000),
+      maxConcurrency: Number(process.env.ESI_MAX_CONCURRENCY ?? 4),
+      minConcurrency: Number(process.env.ESI_MIN_CONCURRENCY ?? 2),
+      maxRetries: Number(process.env.ESI_MAX_RETRIES ?? 3),
+      retryBaseDelayMs: Number(process.env.ESI_RETRY_BASE_DELAY_MS ?? 400),
+      errorSlowdownRemainThreshold: Number(
+        process.env.ESI_ERROR_SLOWDOWN_REMAIN_THRESHOLD ?? 5,
+      ),
+      errorSlowdownDelayMs: Number(
+        process.env.ESI_ERROR_SLOWDOWN_DELAY_MS ?? 500,
+      ),
+      concurrencyDecayFactor: Number(process.env.ESI_CONCURRENCY_DECAY ?? 0.5),
+      errorLogThrottleMs: Number(process.env.ESI_ERROR_LOG_THROTTLE_MS ?? 5000),
+      memCacheMax: Number(process.env.ESI_MEM_CACHE_MAX ?? 5000),
+      memCacheSweepMs: Number(process.env.ESI_MEM_CACHE_SWEEP_MS ?? 300_000),
+    };
+  },
+
+  /**
+   * ESI SSO scopes configuration
+   */
+  esiScopes() {
+    return {
+      default: (process.env.ESI_SSO_SCOPES ?? '')
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean),
+      admin: (
+        process.env.ESI_SSO_SCOPES_ADMIN ??
+        process.env.ESI_SSO_SCOPES ??
+        ''
+      )
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean),
+      user: (process.env.ESI_SSO_SCOPES_USER ?? '')
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean),
+      system: (process.env.ESI_SSO_SCOPES_SYSTEM ?? '')
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean),
+    };
+  },
+
+  /**
+   * ESI SSO return URL allowlist
+   */
+  esiReturnUrlAllowlist(): string[] {
+    const allowFromEnv = (
+      process.env.ESI_SSO_RETURN_URL_ALLOWLIST ||
+      'http://localhost:3001,http://127.0.0.1:3001'
+    )
+      .split(',')
+      .map((o) => o.trim());
+
+    const extraOrigins: string[] = [];
+    for (const v of [
+      process.env.WEB_BASE_URL,
+      process.env.NEXT_PUBLIC_WEB_BASE_URL,
+    ]) {
+      if (v) extraOrigins.push(v);
+    }
+
+    return Array.from(new Set([...allowFromEnv, ...extraOrigins]));
+  },
+
+  /**
+   * ESI SSO default return URL
+   */
+  esiDefaultReturnUrl(): string | null {
+    const url = process.env.ESI_SSO_DEFAULT_RETURN_URL;
+    if (!url) return null;
+    try {
+      return new URL(url).toString();
+    } catch {
+      return null;
+    }
   },
 
   /**
@@ -78,11 +265,12 @@ export const AppConfig = {
    * Used for USER-managed characters linked via /auth/link-character/*.
    */
   esiSsoLinking() {
+    const esiConfig = AppConfig.esi();
     return {
       clientId: process.env.EVE_CLIENT_ID_LINKING ?? '',
       clientSecret: process.env.EVE_CLIENT_SECRET_LINKING ?? '',
-      userAgent:
-        process.env.ESI_USER_AGENT ?? process.env.ESI_SSO_USER_AGENT ?? '',
+      redirectUri: `${AppConfig.apiBaseUrl()}/auth/link-character/callback`,
+      userAgent: esiConfig.userAgent,
     } as const;
   },
 
@@ -91,14 +279,45 @@ export const AppConfig = {
    * Used for SYSTEM-managed characters (managedBy=SYSTEM, role=LOGISTICS).
    */
   esiSsoSystem() {
+    const esiConfig = AppConfig.esi();
     return {
       clientId: process.env.EVE_CLIENT_ID_SYSTEM ?? '',
       clientSecret: process.env.EVE_CLIENT_SECRET_SYSTEM ?? '',
-      userAgent:
-        process.env.ESI_USER_AGENT ?? process.env.ESI_SSO_USER_AGENT ?? '',
+      redirectUri: `${AppConfig.apiBaseUrl()}/auth/admin/system-characters/callback`,
+      userAgent: esiConfig.userAgent,
     } as const;
   },
 
+  /**
+   * Legacy ESI token credentials (App 1)
+   * @deprecated Use esiSso(), esiSsoLinking(), or esiSsoSystem() instead
+   */
+  esiTokenLegacy() {
+    return {
+      clientId: process.env.EVE_CLIENT_ID ?? '',
+      clientSecret: process.env.EVE_CLIENT_SECRET ?? '',
+    } as const;
+  },
+
+  /**
+   * Jobs/background tasks configuration
+   */
+  jobs() {
+    const flag = process.env.ENABLE_JOBS;
+    let enabled: boolean;
+    if (flag !== undefined) {
+      enabled = flag === 'true' || flag === '1' || flag === 'yes';
+    } else {
+      enabled = process.env.NODE_ENV === 'production';
+    }
+    return {
+      enabled,
+    } as const;
+  },
+
+  /**
+   * Arbitrage calculation defaults
+   */
   arbitrage(): ArbitrageDefaults {
     return {
       sourceStationId: Number(
@@ -116,6 +335,7 @@ export const AppConfig = {
       fees: {
         salesTaxPercent: Number(process.env.DEFAULT_SALES_TAX_PCT ?? 3.37),
         brokerFeePercent: Number(process.env.DEFAULT_BROKER_FEE_PCT ?? 1.5),
+        relistFeePercent: Number(process.env.DEFAULT_RELIST_FEE_PCT ?? 0.3),
       },
     };
   },

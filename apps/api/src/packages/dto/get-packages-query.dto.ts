@@ -1,11 +1,29 @@
-import { z } from 'zod';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsString, IsUUID, IsEnum, IsOptional } from 'class-validator';
 
-export const GetPackagesQuerySchema = z
-  .object({
-    cycleId: z.string().uuid(),
-    status: z.enum(['active', 'failed', 'completed']).optional(),
+enum PackageStatus {
+  ACTIVE = 'active',
+  FAILED = 'failed',
+  COMPLETED = 'completed',
+}
+
+export class GetPackagesQuery {
+  @ApiProperty({
+    description: 'Cycle ID to filter packages',
+    example: '123e4567-e89b-12d3-a456-426614174000',
+    format: 'uuid',
   })
-  .strict();
+  @IsString()
+  @IsUUID()
+  cycleId: string;
 
-export type GetPackagesQuery = z.infer<typeof GetPackagesQuerySchema>;
+  @ApiPropertyOptional({
+    description: 'Package status to filter by',
+    enum: PackageStatus,
+    example: 'active',
+  })
+  @IsOptional()
+  @IsEnum(PackageStatus)
+  status?: PackageStatus;
+}
 

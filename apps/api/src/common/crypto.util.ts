@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { AppConfig } from './config';
 
 /**
  * AES-GCM encryption helper for sensitive tokens.
@@ -13,8 +14,7 @@ export class CryptoUtil {
 
   private static async getKey(): Promise<Buffer> {
     if (this.cachedKey) return this.cachedKey;
-    const secret = process.env.ENCRYPTION_KEY ?? '';
-    if (!secret) throw new Error('ENCRYPTION_KEY not set');
+    const secret = AppConfig.encryptionKey();
     // scrypt: deterministic key from secret (salted with a constant app label)
     const salt = 'eve-money-making:v1';
     const key = await new Promise<Buffer>((resolve, reject) => {

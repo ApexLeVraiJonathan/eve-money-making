@@ -471,62 +471,66 @@ export class ArbitrageService {
       throw new Error('No open cycle found. Please create a cycle first.');
     }
 
-    // Extract plan lines and create CycleLine records
+    // Extract plan lines and create CycleLine records within a transaction
     try {
       const plan = payload.result as PlanResult;
-      const lines: Array<{
-        cycleId: string;
-        typeId: number;
-        destinationStationId: number;
-        plannedUnits: number;
-      }> = [];
+      
+      await this.prisma.$transaction(async (tx) => {
+        const lines: Array<{
+          cycleId: string;
+          typeId: number;
+          destinationStationId: number;
+          plannedUnits: number;
+        }> = [];
 
-      for (const pkg of plan.packages ?? []) {
-        const dst = pkg.destinationStationId;
-        for (const it of pkg.items ?? []) {
-          // Check if line already exists for this type+destination
-          const existing = await this.prisma.cycleLine.findFirst({
-            where: {
-              cycleId: currentOpen.id,
-              typeId: it.typeId,
-              destinationStationId: dst,
-            },
-          });
+        for (const pkg of plan.packages ?? []) {
+          const dst = pkg.destinationStationId;
+          for (const it of pkg.items ?? []) {
+            // Check if line already exists for this type+destination
+            const existing = await tx.cycleLine.findFirst({
+              where: {
+                cycleId: currentOpen.id,
+                typeId: it.typeId,
+                destinationStationId: dst,
+              },
+            });
 
-          if (existing) {
-            // Update planned units
-            await this.prisma.cycleLine.update({
-              where: { id: existing.id },
-              data: { plannedUnits: existing.plannedUnits + it.units },
-            });
-          } else {
-            // Create new line
-            lines.push({
-              cycleId: currentOpen.id,
-              typeId: it.typeId,
-              destinationStationId: dst,
-              plannedUnits: it.units,
-            });
+            if (existing) {
+              // Update planned units
+              await tx.cycleLine.update({
+                where: { id: existing.id },
+                data: { plannedUnits: existing.plannedUnits + it.units },
+              });
+            } else {
+              // Create new line
+              lines.push({
+                cycleId: currentOpen.id,
+                typeId: it.typeId,
+                destinationStationId: dst,
+                plannedUnits: it.units,
+              });
+            }
           }
         }
-      }
 
-      if (lines.length > 0) {
-        await this.prisma.cycleLine.createMany({ data: lines });
-      }
+        if (lines.length > 0) {
+          await tx.cycleLine.createMany({ data: lines });
+        }
+
+        this.logger.log(
+          `Plan committed: ${lines.length} new lines added to cycle ${currentOpen.id}`,
+        );
+
+        // Create committed package records (inside same transaction)
+        await this.packages.createCommittedPackagesInTransaction(
+          tx,
+          currentOpen.id,
+          plan,
+        );
+      });
 
       this.logger.log(
-        `Plan committed: ${lines.length} new lines added to cycle ${currentOpen.id}`,
-      );
-
-      // Create committed package records
-      const packageIds = await this.packages.createCommittedPackages(
-        currentOpen.id,
-        plan,
-      );
-
-      this.logger.log(
-        `Created ${packageIds.length} committed packages for cycle ${currentOpen.id}`,
+        `Successfully committed plan to cycle ${currentOpen.id} with packages`,
       );
 
       return { id: currentOpen.id, createdAt: new Date() };

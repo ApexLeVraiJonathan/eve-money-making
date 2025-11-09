@@ -540,7 +540,7 @@ export class PricingService {
     newUnitPrice: number;
   }) {
     // Compute 0.3% broker fee on remaining * newUnitPrice
-    const feePct = Number(process.env.DEFAULT_RELIST_FEE_PCT ?? 0.3);
+    const feePct = AppConfig.arbitrage().fees.relistFeePercent;
     const total = params.quantity * params.newUnitPrice;
     const amount = (total * (feePct / 100)).toFixed(2);
 

@@ -54,10 +54,7 @@ Create canonical monorepo structure:
 
 Create proper package metadata for `@eve/shared`, `@eve/api-client`, `@eve/ui`, `@eve/prisma`.
 
-### ✅ 1.4 Move shared UI components - COMPLETE
-
-**Status:** ✅ Complete (2025-11-08)  
-**Documentation:** [docs/PHASE_1.4_COMPLETE.md](../docs/PHASE_1.4_COMPLETE.md)
+### 1.4 Move shared UI components
 
 Move `apps/web/components/ui/*` (26 shadcn components) to `packages/ui/`. Keep app-specific components in `apps/web/components/`.
 
@@ -117,11 +114,15 @@ Create `packages/shared/env.ts` for frontend environment access.
 
 ## Phase 4: Backend - Refactor Business Logic
 
-### 4.1 Thin controllers
+### ✅ 4.1 Thin controllers - COMPLETE
+**Status:** ✅ Complete (2025-11-09)
+**Documentation:** [docs/PHASE_4_COMPLETE.md](../docs/PHASE_4_COMPLETE.md)
 
 Move `ledger.controller.ts.closeCycle()` orchestration to service. Review all controllers for business logic violations.
 
-### 4.2 Add missing transactions
+### ✅ 4.2 Add missing transactions - COMPLETE
+**Status:** ✅ Complete (2025-11-09)
+**Documentation:** [docs/PHASE_4_COMPLETE.md](../docs/PHASE_4_COMPLETE.md)
 
 Add `prisma.$transaction` to `arbitrage.service.ts.commitPlan()` and other multi-step writes.
 
@@ -441,14 +442,14 @@ After each phase:
 - [x] Create packages/ directory structure (prisma, shared, api-client, ui) with proper package.json files and TypeScript path aliases ✅ COMPLETE
 - [x] Move Prisma schema and migrations from apps/api/prisma/ to packages/prisma/ and update all references ✅ COMPLETE
 - [x] Move shadcn UI components from apps/web/components/ui/ to packages/ui/ and update imports ✅ COMPLETE
-- [ ] Install @nestjs/swagger, configure Swagger UI at /docs, add global ValidationPipe in main.ts
-- [ ] Convert arbitrage DTOs from Zod to class-validator with @ApiProperty decorators
-- [ ] Convert remaining DTOs (liquidity, packages, auth, etc.) to class-validator
-- [ ] Remove ZodValidationPipe and update controllers to use global ValidationPipe
-- [ ] Add @ApiTags, @ApiBearerAuth, and @ApiOperation decorators to all controllers
-- [ ] Extend AppConfig to cover all environment variables and replace scattered process.env usage
-- [ ] Move business logic from controllers to services (e.g., ledger.controller.ts.closeCycle)
-- [ ] Add prisma.$transaction wrappers to multi-step writes like arbitrage.service.ts.commitPlan
+- [x] Install @nestjs/swagger, configure Swagger UI at /docs, add global ValidationPipe in main.ts ✅ COMPLETE
+- [x] Convert arbitrage DTOs from Zod to class-validator with @ApiProperty decorators ✅ COMPLETE
+- [x] Convert remaining DTOs (liquidity, packages, auth, etc.) to class-validator ✅ COMPLETE
+- [x] Remove ZodValidationPipe and update controllers to use global ValidationPipe ✅ COMPLETE
+- [x] Add @ApiTags, @ApiBearerAuth, and @ApiOperation decorators to all controllers ✅ COMPLETE
+- [x] Extend AppConfig to cover all environment variables and replace scattered process.env usage ✅ COMPLETE
+- [x] Move business logic from controllers to services (e.g., ledger.controller.ts.closeCycle) ✅ COMPLETE
+- [x] Add prisma.$transaction wrappers to multi-step writes like arbitrage.service.ts.commitPlan ✅ COMPLETE
 - [ ] Implement clientForApp pattern in packages/api-client with NextAuth session support
 - [ ] Create centralized query key factories in packages/api-client/queryKeys.ts for all domains
 - [ ] Move common types (User, Cycle, Participation, etc.) to packages/shared/types/ and remove duplicates

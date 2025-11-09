@@ -1,18 +1,70 @@
-import { z } from 'zod';
+import { ApiPropertyOptional } from '@nestjs/swagger';
+import { IsInt, IsNumber, IsOptional, Min, Max } from 'class-validator';
+import { Type } from 'class-transformer';
 
 /**
- * Request schema for POST /liquidity/check
+ * Request DTO for POST /liquidity/check
  */
-export const LiquidityCheckRequestSchema = z
-  .object({
-    station_id: z.coerce.number().int().positive().optional(),
-    windowDays: z.coerce.number().int().min(1).max(30).optional(),
-    minCoverageRatio: z.coerce.number().min(0).max(1).optional(),
-    minLiquidityThresholdISK: z.coerce.number().min(0).optional(),
-    // Minimum average number of trades per day over the window
-    // Derived from market_order_trades_daily.orderNum
-    minWindowTrades: z.coerce.number().int().min(0).optional(),
+export class LiquidityCheckRequest {
+  @ApiPropertyOptional({
+    description: 'Station ID to check liquidity for',
+    example: 60003760,
+    type: 'integer',
   })
-  .strict();
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  station_id?: number;
 
-export type LiquidityCheckRequest = z.infer<typeof LiquidityCheckRequestSchema>;
+  @ApiPropertyOptional({
+    description: 'Time window in days for liquidity calculation',
+    minimum: 1,
+    maximum: 30,
+    example: 7,
+    type: 'integer',
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(30)
+  windowDays?: number;
+
+  @ApiPropertyOptional({
+    description: 'Minimum coverage ratio',
+    minimum: 0,
+    maximum: 1,
+    example: 0.8,
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  @Max(1)
+  minCoverageRatio?: number;
+
+  @ApiPropertyOptional({
+    description: 'Minimum liquidity threshold in ISK',
+    minimum: 0,
+    example: 1000000,
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  minLiquidityThresholdISK?: number;
+
+  @ApiPropertyOptional({
+    description: 'Minimum average number of trades per day over the window',
+    minimum: 0,
+    example: 10,
+    type: 'integer',
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  minWindowTrades?: number;
+}
+

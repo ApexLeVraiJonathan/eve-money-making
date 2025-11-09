@@ -9,7 +9,9 @@ import {
   Post,
   Patch,
   Body,
+  UseGuards,
 } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth, ApiOperation, ApiParam } from '@nestjs/swagger';
 import type { Response, Request } from 'express';
 import crypto from 'node:crypto';
 import * as jwt from 'jsonwebtoken';
@@ -17,13 +19,14 @@ import { AuthService } from './auth.service';
 import { CryptoUtil } from '../common/crypto.util';
 import { EsiService } from '../esi/esi.service';
 import { PrismaService } from '../prisma/prisma.service';
-import { AppConfig } from '../common/config';
-import { Public } from './public.decorator';
 import { Roles } from './roles.decorator';
 import { RolesGuard } from './roles.guard';
-import { UseGuards } from '@nestjs/common';
+import { SetCharacterProfileRequest } from './dto/set-character-profile.dto';
+import { AppConfig } from '../common/config';
+import { Public } from './public.decorator';
 import { CurrentUser, type RequestUser } from './current-user.decorator';
 
+@ApiTags('auth')
 @Controller('auth')
 export class AuthController {
   constructor(
@@ -61,28 +64,8 @@ export class AuthController {
       maxAge: 10 * 60 * 1000,
     });
     if (returnUrl) {
-      // Whitelist return URL origins via env (comma-separated), fallback to local dev
-      const allowFromEnv = (
-        process.env.ESI_SSO_RETURN_URL_ALLOWLIST ||
-        'http://localhost:3001,http://127.0.0.1:3001'
-      )
-        .split(',')
-        .map((s) => s.trim())
-        .filter(Boolean);
-      const extraOrigins: string[] = [];
-      for (const v of [
-        process.env.WEB_BASE_URL,
-        process.env.NEXT_PUBLIC_WEB_BASE_URL,
-      ]) {
-        if (!v) continue;
-        try {
-          const u = new URL(v);
-          extraOrigins.push(u.origin);
-        } catch {
-          // ignore
-        }
-      }
-      const allow = Array.from(new Set([...allowFromEnv, ...extraOrigins]));
+      // Whitelist return URL origins via centralized config
+      const allow = AppConfig.esiReturnUrlAllowlist();
       try {
         const u = new URL(returnUrl);
         if (allow.includes(u.origin)) {
@@ -97,10 +80,7 @@ export class AuthController {
       }
     }
 
-    const scopes = (process.env.ESI_SSO_SCOPES ?? '')
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean);
+    const scopes = AppConfig.esiScopes().default;
     const url = this.auth.getAuthorizeUrl(state, codeChallenge, scopes);
     res.redirect(url);
   }
@@ -407,14 +387,11 @@ export class AuthController {
     const kindCookie: string | undefined = cookies['sso_kind'];
     const scopesEnv =
       kindCookie === 'admin'
-        ? (process.env.ESI_SSO_SCOPES_ADMIN ?? process.env.ESI_SSO_SCOPES ?? '')
+        ? AppConfig.esiScopes().admin
         : kindCookie === 'user'
-          ? (process.env.ESI_SSO_SCOPES_USER ?? '')
-          : (process.env.ESI_SSO_SCOPES ?? '');
-    const scopes = scopesEnv
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean);
+          ? AppConfig.esiScopes().user
+          : AppConfig.esiScopes().default;
+    const scopes = scopesEnv;
     const linked = await this.auth.upsertCharacterWithToken(
       fakeJwt,
       token,
@@ -489,16 +466,7 @@ export class AuthController {
       }
     }
     const allow = Array.from(new Set([...allowFromEnv, ...extraOrigins]));
-    let defaultReturn: string | null = null;
-    if (process.env.ESI_SSO_DEFAULT_RETURN_URL) {
-      try {
-        defaultReturn = new URL(
-          process.env.ESI_SSO_DEFAULT_RETURN_URL,
-        ).toString();
-      } catch {
-        defaultReturn = null;
-      }
-    }
+    let defaultReturn: string | null = AppConfig.esiDefaultReturnUrl();
     if (!defaultReturn && allow.length > 0) {
       try {
         defaultReturn = new URL('/', allow[0]).toString();
@@ -630,15 +598,13 @@ export class AuthController {
    */
   @Roles('ADMIN')
   @UseGuards(RolesGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Update character profile (admin only)" })
+  @ApiParam({ name: 'id', description: 'Character ID' })
   @Patch('characters/:id')
   async setProfile(
     @Param('id') characterId: string,
-    @Body()
-    body: {
-      role?: string;
-      function?: string;
-      location?: string;
-    },
+    @Body() body: SetCharacterProfileRequest,
     @Res() res: Response,
   ) {
     const id = Number(characterId);
@@ -853,69 +819,17 @@ export class AuthController {
         return;
       }
 
-      // Encrypt refresh token if provided
-      const refreshTokenEnc = refreshToken
-        ? await CryptoUtil.encrypt(refreshToken)
-        : '';
-
-      // Parse expiresIn safely with fallback (EVE tokens typically last 20 minutes for auth-only)
-      const expiresInSeconds = Number(expiresIn) || 1200; // 20 minutes default
-      const expiresAt = new Date(Date.now() + expiresInSeconds * 1000);
-
-      // Upsert character and token in a transaction
-      await this.prisma.$transaction(async (tx) => {
-        // Upsert character
-        const character = await tx.eveCharacter.upsert({
-          where: { id: characterId },
-          update: {
-            name: characterName,
-            ownerHash,
-          },
-          create: {
-            id: characterId,
-            name: characterName,
-            ownerHash,
-            managedBy: 'USER',
-          },
-        });
-
-        // Upsert token
-        await tx.characterToken.upsert({
-          where: { characterId },
-          update: {
-            tokenType: 'Bearer',
-            accessToken,
-            accessTokenExpiresAt: expiresAt,
-            refreshTokenEnc,
-            scopes,
-            lastRefreshAt: new Date(),
-          },
-          create: {
-            characterId,
-            tokenType: 'Bearer',
-            accessToken,
-            accessTokenExpiresAt: expiresAt,
-            refreshTokenEnc,
-            scopes,
-          },
-        });
-
-        // Ensure user exists for this character
-        if (!character.userId) {
-          const user = await tx.user.create({
-            data: {
-              role: 'USER',
-              primaryCharacterId: characterId,
-            },
-          });
-          await tx.eveCharacter.update({
-            where: { id: characterId },
-            data: { userId: user.id },
-          });
-        }
+      const result = await this.auth.linkCharacterFromNextAuth({
+        characterId,
+        characterName,
+        ownerHash,
+        accessToken,
+        refreshToken,
+        expiresIn,
+        scopes,
       });
 
-      res.json({ success: true, characterId, characterName });
+      res.json(result);
     } catch (e) {
       console.error('Error linking character:', e);
       res.status(500).json({
@@ -1160,7 +1074,7 @@ export class AuthController {
         // Fallback to default admin page
         const redirectUrl = new URL(
           '/arbitrage/admin/characters',
-          process.env.NEXTAUTH_URL || 'http://localhost:3001',
+          AppConfig.nextAuthUrl(),
         );
         redirectUrl.searchParams.set('systemCharLinked', characterName);
         res.redirect(redirectUrl.toString());
