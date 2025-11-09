@@ -5,6 +5,8 @@ import {
   Controller,
   Get,
 } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { PrismaModule } from './prisma/prisma.module';
 import { DataImportModule } from '@shared/data-import';
 import { EsiModule } from './esi/esi.module';
@@ -15,9 +17,12 @@ import { CyclesModule } from './cycles/cycles.module';
 import { WalletModule } from './wallet/wallet.module';
 import { GameDataModule } from './game-data/game-data.module';
 import { MarketModule } from './market/market.module';
+import { CompositeAuthGuard } from './characters/guards/composite-auth.guard';
+import { Public } from './characters/decorators/public.decorator';
 
 @Controller('health')
 class HealthController {
+  @Public()
   @Get()
   ping() {
     return { ok: true };
@@ -26,6 +31,13 @@ class HealthController {
 
 @Module({
   imports: [
+    // Rate limiting: 100 requests per minute per IP
+    ThrottlerModule.forRoot([
+      {
+        ttl: 60000, // 60 seconds
+        limit: 100, // 100 requests
+      },
+    ]),
     PrismaModule,
     DataImportModule,
     EsiModule,
@@ -37,7 +49,17 @@ class HealthController {
     MarketModule,
   ],
   controllers: [HealthController],
-  providers: [Logger],
+  providers: [
+    Logger,
+    {
+      provide: APP_GUARD,
+      useClass: CompositeAuthGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
+  ],
 })
 export class AppModule {
   configure(consumer: MiddlewareConsumer) {

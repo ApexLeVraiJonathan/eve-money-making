@@ -36,11 +36,12 @@ export class ApiError extends Error {
 
 /**
  * Base URL configuration per app
+ * Note: NEXT_PUBLIC_API_URL should NOT include /api suffix - it's added by the backend routes
  */
 const BASES: Record<AppId, string> = {
-  api: process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001/api",
-  "web-portal": process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001/api",
-  "web-admin": process.env.NEXT_PUBLIC_ADMIN_API_URL ?? "http://localhost:3002/api",
+  api: process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001",
+  "web-portal": process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001",
+  "web-admin": process.env.NEXT_PUBLIC_ADMIN_API_URL ?? "http://localhost:3002",
 };
 
 /**
@@ -86,6 +87,7 @@ async function request<T>(
     const res = await fetch(url, {
       method,
       headers,
+      credentials: "include", // Send cookies with requests for session-based auth
       body: body ? JSON.stringify(body) : undefined,
       ...fetchOpts,
     });

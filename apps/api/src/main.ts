@@ -2,16 +2,35 @@ import { NestFactory } from '@nestjs/core';
 import { Logger, ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import cookieParser from 'cookie-parser';
+import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { LoggingInterceptor } from './common/logging.interceptor';
 import { BigIntSerializationInterceptor } from './common/bigint-serialization.interceptor';
 import { HttpExceptionFilter } from './common/http-exception.filter';
 import { AppConfig } from './common/config';
+import { validateEnvironment } from './common/env-validation';
 
 async function bootstrap() {
+  // Validate environment variables before starting the application
+  validateEnvironment();
   const app = await NestFactory.create(AppModule, { bufferLogs: true });
   const logger = app.get(Logger);
   app.useLogger(logger);
+
+  // Security: helmet for security headers
+  app.use(
+    helmet({
+      // Allow Swagger UI to work
+      contentSecurityPolicy: {
+        directives: {
+          defaultSrc: ["'self'"],
+          styleSrc: ["'self'", "'unsafe-inline'"],
+          scriptSrc: ["'self'", "'unsafe-inline'"],
+          imgSrc: ["'self'", 'data:', 'https:'],
+        },
+      },
+    }),
+  );
 
   // Enable CORS for Next.js origin with Authorization header support
   const corsConfig = AppConfig.cors();

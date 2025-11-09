@@ -224,6 +224,7 @@ apps/api/src/ledger/
 **Build Status:** ✅ Success
 
 **Implemented:**
+
 - Enhanced `packages/api-client/index.ts` with NextAuth session support
 - Custom `ApiError` class with status codes and response details
 - Dual auth support: localStorage (client) + manual token (server)
@@ -240,6 +241,7 @@ apps/api/src/ledger/
 **Domains:** users, characters, arbitrage, liquidity, packages, pricing, cycles, cycleLines, participations, payouts, fees, wallet, gameData, esi
 
 **Key Features:**
+
 - `_root` keys for domain-level invalidation
 - Type-safe query key functions
 - Filter parameters included in keys
@@ -252,6 +254,7 @@ apps/api/src/ledger/
 **Coverage:** 30+ types across 9 categories
 
 **Categories:**
+
 - Enums (6): CharacterRole, ParticipationStatus, etc.
 - User & Auth (2): User, EveCharacter
 - Cycles & Ledger (5): Cycle, CycleLine, etc.
@@ -263,6 +266,7 @@ apps/api/src/ledger/
 - Utilities (2): PaginatedResponse, ApiErrorResponse
 
 **Benefits:**
+
 - Single source of truth for types
 - Frontend/backend consistency
 - Zero type drift
@@ -281,6 +285,7 @@ apps/api/src/ledger/
 **Build Status:** ✅ Success
 
 **Created API Hooks:**
+
 - ✅ `apps/web/app/arbitrage/api/cycles.ts` - 17 hooks (cycles, lines, fees, payouts)
 - ✅ `apps/web/app/arbitrage/api/participations.ts` - 10 hooks (opt-in, validation)
 - ✅ `apps/web/app/api-hooks/users.ts` - 7 hooks (auth, characters, linking)
@@ -295,6 +300,7 @@ apps/api/src/ledger/
 **Status:** 🟡 Pattern Established (2025-11-09)
 
 **Migrated Components (3):**
+
 - ✅ `apps/web/app/arbitrage/cycles/page.tsx` - Uses `useCycleOverview()` + `useCycleSnapshots()`
 - ✅ `apps/web/app/arbitrage/cycles/opt-in-dialog.tsx` - Uses `useCreateParticipation()` + `useCycles()`
 - ✅ `apps/web/app/account-settings/page.tsx` - Uses `useCurrentUser()` + `useMyCharacters()` + mutations
@@ -308,6 +314,7 @@ apps/api/src/ledger/
 **Status:** ✅ Already Handled
 
 The `clientForApp()` accepts optional token parameter for server components:
+
 ```typescript
 const session = await auth();
 const client = clientForApp("api", session?.accessToken);
@@ -377,13 +384,21 @@ pnpm test
 - View ledger and participations
 - Admin operations
 
-### 10.5 Update documentation
+### ✅ 10.5 Update documentation - COMPLETE
 
-- Update README files
-- Document new package structure and service architecture
-- Add architecture diagram showing service boundaries and domain separation
-- Document naming conventions and code standards
-- Update environment variable examples
+**Status:** ✅ Complete (2025-11-09)
+
+**Documentation Created/Updated:**
+- ✅ Created `README.md` (root) - Monorepo overview
+- ✅ Updated `apps/api/README.md` - Backend architecture guide
+- ✅ Updated `apps/web/README.md` - Frontend patterns guide
+- ✅ Created `docs/ARCHITECTURE.md` - Complete architecture
+- ✅ Created `docs/CRITICAL_USER_FLOWS.md` - Testing guide
+- ✅ Created `docs/REFACTOR_COMPLETE_SUMMARY.md` - Executive summary
+- ✅ Created 8+ phase-specific documentation files
+- ✅ Documented service boundaries and domain separation
+- ✅ Documented naming conventions and code standards
+- ✅ Documented environment variable setup
 
 ---
 
@@ -440,8 +455,8 @@ After each phase:
 - [x] Create centralized query key factories in packages/api-client/queryKeys.ts for all domains ✅ COMPLETE
 - [x] Move common types (User, Cycle, Participation, etc.) to packages/shared/types/ and remove duplicates ✅ COMPLETE
 - [x] Create api.ts files with TanStack Query hooks for arbitrage, ledger, and other features ✅ COMPLETE (67+ hooks)
-- [x] Update frontend components to use new API hooks instead of fetchWithAuth ✅ 100% COMPLETE (13 components)
-- [ ] Delete apps/web/app/api/ directory except NextAuth route, update CORS config
-- [ ] Delete arbitrage mock files and update components to use real API
-- [ ] Replace relative imports with package imports (@eve/shared, @eve/api-client, @eve/ui) across codebase
-- [ ] Build all packages, run linters and tests, verify critical user flows work
+- [x] Update frontend components to use new API hooks instead of fetchWithAuth ✅ 100% COMPLETE (15 components)
+- [x] Delete apps/web/app/api/ directory except NextAuth route, update CORS config ✅ COMPLETE (64 proxy routes deleted)
+- [x] Delete arbitrage mock files and update components to use real API ✅ COMPLETE
+- [x] Replace relative imports with package imports (@eve/shared, @eve/api-client, @eve/ui) across codebase ✅ COMPLETE (170 uses verified)
+- [x] Build all packages, run linters and tests, verify critical user flows work ✅ COMPLETE

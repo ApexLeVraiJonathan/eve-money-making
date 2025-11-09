@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 
 import * as React from "react";
 import { useParams, useRouter } from "next/navigation";
-import { Button } from "@/components/ui/button";
+import { Button } from "@eve/ui";
 import {
   Table,
   TableBody,
@@ -13,7 +13,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table";
+} from "@eve/ui";
 import {
   Dialog,
   DialogContent,
@@ -22,21 +22,22 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+} from "@eve/ui";
+import { Input } from "@eve/ui";
+import { Label } from "@eve/ui";
 import { Plus, ArrowLeft, DollarSign } from "lucide-react";
 import { formatIsk } from "@/lib/utils";
 import {
-  listCycleLines,
-  createCycleLine,
-  deleteCycleLine,
-  addBrokerFee,
-  addRelistFee,
-  type CycleLine,
-} from "@/app/api/cycles/lines";
-import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
+  useCycleLines,
+  useCreateCycleLine,
+  useDeleteCycleLine,
+  useAddBrokerFee,
+  useAddRelistFee,
+} from "@/app/arbitrage/api";
+import type { CycleLine } from "@eve/shared";
+import { toast } from "sonner";
+import { Badge } from "@eve/ui";
+import { Skeleton } from "@eve/ui";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -46,15 +47,20 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+} from "@eve/ui";
 
 export default function CycleLinesPage() {
   const params = useParams();
   const router = useRouter();
   const cycleId = params.cycleId as string;
 
-  const [lines, setLines] = React.useState<CycleLine[]>([]);
-  const [isLoading, setIsLoading] = React.useState(true);
+  // Use new API hooks
+  const { data: lines = [], isLoading } = useCycleLines(cycleId);
+  const createLineMutation = useCreateCycleLine();
+  const deleteLineMutation = useDeleteCycleLine();
+  const addBrokerFeeMutation = useAddBrokerFee();
+  const addRelistFeeMutation = useAddRelistFee();
+
   const [showCreateDialog, setShowCreateDialog] = React.useState(false);
   const [showFeeDialog, setShowFeeDialog] = React.useState(false);
   const [selectedLine, setSelectedLine] = React.useState<CycleLine | null>(
@@ -71,65 +77,52 @@ export default function CycleLinesPage() {
   // Fee form state
   const [feeAmount, setFeeAmount] = React.useState("");
 
-  const loadLines = React.useCallback(() => {
-    setIsLoading(true);
-    listCycleLines(cycleId)
-      .then((data) => {
-        setLines(data);
-        setIsLoading(false);
-      })
-      .catch((err) => {
-        console.error("Failed to load cycle lines:", err);
-        setIsLoading(false);
-      });
-  }, [cycleId]);
-
-  React.useEffect(() => {
-    loadLines();
-  }, [loadLines]);
-
   const handleCreateLine = async () => {
     try {
-      await createCycleLine(cycleId, {
-        typeId: Number(typeId),
-        destinationStationId: Number(destinationStationId),
-        plannedUnits: Number(plannedUnits),
+      await createLineMutation.mutateAsync({
+        cycleId,
+        data: {
+          typeId: Number(typeId),
+          destinationStationId: Number(destinationStationId),
+          plannedUnits: Number(plannedUnits),
+        },
       });
       setShowCreateDialog(false);
       setTypeId("");
       setDestinationStationId("");
       setPlannedUnits("");
-      loadLines();
+      toast.success("Line created");
     } catch (err) {
-      console.error("Failed to create line:", err);
+      toast.error(err instanceof Error ? err.message : "Failed to create line");
     }
   };
 
   const handleDeleteLine = async () => {
     if (!deleteLineId) return;
     try {
-      await deleteCycleLine(deleteLineId);
+      await deleteLineMutation.mutateAsync(deleteLineId);
       setDeleteLineId(null);
-      loadLines();
+      toast.success("Line deleted");
     } catch (err) {
-      console.error("Failed to delete line:", err);
+      toast.error(err instanceof Error ? err.message : "Failed to delete line");
     }
   };
 
   const handleAddFee = async () => {
     if (!selectedLine) return;
     try {
-      if (feeType === "broker") {
-        await addBrokerFee(selectedLine.id, feeAmount);
-      } else {
-        await addRelistFee(selectedLine.id, feeAmount);
-      }
+      const mutation =
+        feeType === "broker" ? addBrokerFeeMutation : addRelistFeeMutation;
+      await mutation.mutateAsync({
+        lineId: selectedLine.id,
+        amountIsk: feeAmount,
+      });
       setShowFeeDialog(false);
       setSelectedLine(null);
       setFeeAmount("");
-      loadLines();
+      toast.success("Fee added");
     } catch (err) {
-      console.error("Failed to add fee:", err);
+      toast.error(err instanceof Error ? err.message : "Failed to add fee");
     }
   };
 
@@ -287,7 +280,7 @@ export default function CycleLinesPage() {
                       {line.unitsSold.toLocaleString()}
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
-                      {line.unitsRemaining.toLocaleString()}
+                      {(line.unitsRemaining ?? 0).toLocaleString()}
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
                       {formatIsk(Number(line.buyCostIsk))}

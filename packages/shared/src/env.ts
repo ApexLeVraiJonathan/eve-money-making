@@ -8,11 +8,11 @@
  */
 
 export function getApiBaseUrl(): string {
-  return process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3000";
+  return process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 }
 
 export function getAdminApiBaseUrl(): string {
-  return process.env.NEXT_PUBLIC_ADMIN_API_BASE_URL ?? "http://localhost:3001";
+  return process.env.NEXT_PUBLIC_ADMIN_API_URL ?? "http://localhost:3002";
 }
 
 export function getWebBaseUrl(): string {

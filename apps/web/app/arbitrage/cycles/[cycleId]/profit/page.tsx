@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useParams, useRouter } from "next/navigation";
-import { Button } from "@/components/ui/button";
+import { Button } from "@eve/ui";
 import {
   Table,
   TableBody,
@@ -10,39 +10,21 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table";
+} from "@eve/ui";
 import { ArrowLeft } from "lucide-react";
 import { formatIsk } from "@/lib/utils";
-import {
-  getCycleProfit,
-  listTransportFees,
-  type CycleProfit,
-  type TransportFee,
-} from "@/app/api/cycles/lines";
-import { Skeleton } from "@/components/ui/skeleton";
+import { useCycleProfit, useTransportFees } from "@/app/arbitrage/api";
+import type { CycleProfit } from "@eve/shared";
+import { Skeleton } from "@eve/ui";
 
 export default function CycleProfitPage() {
   const params = useParams();
   const router = useRouter();
   const cycleId = params.cycleId as string;
 
-  const [profit, setProfit] = React.useState<CycleProfit | null>(null);
-  const [transportFees, setTransportFees] = React.useState<TransportFee[]>([]);
-  const [isLoading, setIsLoading] = React.useState(true);
-
-  React.useEffect(() => {
-    setIsLoading(true);
-    Promise.all([getCycleProfit(cycleId), listTransportFees(cycleId)])
-      .then(([profitData, feesData]) => {
-        setProfit(profitData);
-        setTransportFees(feesData);
-        setIsLoading(false);
-      })
-      .catch((err) => {
-        console.error("Failed to load cycle profit:", err);
-        setIsLoading(false);
-      });
-  }, [cycleId]);
+  // Use new API hooks
+  const { data: profit, isLoading } = useCycleProfit(cycleId);
+  const { data: transportFees = [] } = useTransportFees(cycleId);
 
   if (isLoading || !profit) {
     return (

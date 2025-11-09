@@ -105,20 +105,35 @@ Notes:
 
 #### NestJS API Integration
 
-- API_URL: Internal URL where NestJS API is accessible from Next.js server-side
-  - Dev: `API_URL=http://localhost:3000`
-  - Prod: `API_URL=https://your-api-domain.railway.app` (or your internal service URL)
-  - **Critical**: This must be set in production for the web app to communicate with the API backend
-  - Used by Next.js API routes to proxy requests to the NestJS backend
-- API_BASE_URL: Public URL of your NestJS API (used for OAuth redirect URIs)
-  - Dev: `API_BASE_URL=http://localhost:3000`
-  - Prod: `API_BASE_URL=https://your-api-domain.railway.app`
+- API_URL: Internal URL where NestJS API is accessible from Next.js server-side components
+  - Dev: `API_URL=http://localhost:3001`
+  - Prod: `API_URL=https://your-api-domain.railway.app`
+  - **Note**: Do NOT include `/api` suffix - the backend routes handle the path
+  - Used by server-side Next.js code to call the NestJS backend
+- NEXT_PUBLIC_API_URL: Public URL of your NestJS API (used by browser clients)
+  - Dev: `NEXT_PUBLIC_API_URL=http://localhost:3001`
+  - Prod: `NEXT_PUBLIC_API_URL=https://your-api-domain.railway.app`
+  - **Critical**: This must be accessible from the user's browser
+  - **Note**: Do NOT include `/api` suffix
   - **Important**: This must match the callback URLs registered in your EVE SSO applications:
-    - App 2 uses: `{API_BASE_URL}/auth/link-character/callback`
-    - App 3 uses: `{API_BASE_URL}/auth/admin/system-characters/callback`
+    - App 2 uses: `{NEXT_PUBLIC_API_URL}/auth/link-character/callback`
+    - App 3 uses: `{NEXT_PUBLIC_API_URL}/auth/admin/system-characters/callback`
+- NEXT_PUBLIC_WEB_BASE_URL: Public URL of your Next.js web application
+  - Dev: `NEXT_PUBLIC_WEB_BASE_URL=http://localhost:3000`
+  - Prod: `NEXT_PUBLIC_WEB_BASE_URL=https://yourdomain.com`
 - ESI_SSO_SCOPES_USER: Comma-separated list of ESI scopes for user characters (optional, can be empty for auth-only)
   - Example: `ESI_SSO_SCOPES_USER=` (empty for authentication only)
   - With scopes: `ESI_SSO_SCOPES_USER=esi-wallet.read_character_wallet.v1,esi-assets.read_assets.v1`
+
+**Authentication Model:**
+
+The application uses a **dual authentication strategy**:
+
+1. **Cookie-based sessions (primary)**: After logging in via NextAuth, users get an encrypted session cookie that's automatically sent with all requests (`credentials: 'include'`). This is the default authentication method.
+
+2. **Bearer tokens (fallback)**: The API also accepts `Authorization: Bearer <token>` headers for programmatic access or when cookies are unavailable. NextAuth provides access tokens that can be used for server-side API calls.
+
+The backend's `CompositeAuthGuard` tries cookie-based auth first, then falls back to Bearer token validation. This provides flexibility while maintaining security.
 
 ### Jobs (optional toggles)
 

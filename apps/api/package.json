@@ -27,7 +27,8 @@
     "db:reset": "pnpm --filter @eve/prisma run prisma migrate reset",
     "db:reset-prod": "tsx scripts/reset-prod-db.ts",
     "fix:allocation": "tsx scripts/fix-allocation.ts",
-    "fix:missing-table": "tsx scripts/fix-missing-table.ts"
+    "fix:missing-table": "tsx scripts/fix-missing-table.ts",
+    "audit:endpoints": "tsx scripts/audit-endpoints.ts"
   },
   "dependencies": {
     "@eve/prisma": "workspace:*",
@@ -40,11 +41,13 @@
     "@nestjs/platform-express": "^11.0.1",
     "@nestjs/schedule": "^6.0.1",
     "@nestjs/swagger": "^11.2.1",
+    "@nestjs/throttler": "^6.4.0",
     "axios": "^1.12.2",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.2",
     "cookie-parser": "^1.4.7",
     "csv-parse": "^6.1.0",
+    "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.2",
     "jwks-rsa": "^3.2.0",
     "passport": "^0.7.0",
