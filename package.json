@@ -4,9 +4,7 @@
   "description": "",
   "main": "index.js",
   "devDependencies": {
-    "cross-env": "^7.0.3",
-    "husky": "^9.1.7",
-    "lint-staged": "^16.2.6"
+    "cross-env": "^7.0.3"
   },
   "scripts": {
     "build": "pnpm -r run build",
@@ -31,8 +29,7 @@
     "db:generate": "pnpm --filter @eve/prisma prisma:generate",
     "db:migrate:dev": "cross-env DATABASE_URL=postgresql://postgres:postgres@localhost:5433/eve_money_dev?schema=public pnpm --filter @eve/prisma prisma:migrate:deploy",
     "db:migrate:deploy": "pnpm --filter @eve/prisma prisma:migrate:deploy",
-    "db:studio": "pnpm --filter @eve/prisma prisma:studio",
-    "prepare": "husky"
+    "db:studio": "pnpm --filter @eve/prisma prisma:studio"
   },
   "keywords": [],
   "author": "",
