@@ -1,7 +1,7 @@
 import { Controller, Get, Post, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
-import { Roles } from '../auth/roles.decorator';
-import { RolesGuard } from '../auth/roles.guard';
+import { Roles } from '../characters/decorators/roles.decorator';
+import { RolesGuard } from '../characters/guards/roles.guard';
 import { JobsService } from './jobs.service';
 
 @ApiTags('jobs')

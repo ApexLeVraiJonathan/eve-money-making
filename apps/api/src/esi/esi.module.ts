@@ -2,7 +2,7 @@ import { Module, Logger } from '@nestjs/common';
 import { EsiService } from './esi.service';
 import { ESI_CLIENT_ADAPTER } from './esi.adapter';
 import { PrismaModule } from '../prisma/prisma.module';
-import { TokenService } from '../auth/token.service';
+import { TokenService } from '../characters/services/token.service';
 import { EsiController } from './esi.controller';
 import { EsiCharactersService } from './esi-characters.service';
 

@@ -1,15 +1,17 @@
 import { Module, Logger } from '@nestjs/common';
 import { PrismaModule } from '../prisma/prisma.module';
 import { EsiModule } from '../esi/esi.module';
-import { WalletService } from './wallet.service';
+import { WalletService } from './services/wallet.service';
 import { WalletController } from './wallet.controller';
+import { AllocationService } from './services/allocation.service';
+import { ReconciliationController } from './reconciliation.controller';
 import { GameDataModule } from '../game-data/game-data.module';
-import { CharacterModule } from '../characters/character.module';
+import { CharactersModule } from '../characters/characters.module';
 
 @Module({
-  imports: [PrismaModule, EsiModule, GameDataModule, CharacterModule],
-  providers: [WalletService, Logger],
-  controllers: [WalletController],
-  exports: [WalletService],
+  imports: [PrismaModule, EsiModule, GameDataModule, CharactersModule],
+  providers: [WalletService, AllocationService, Logger],
+  controllers: [WalletController, ReconciliationController],
+  exports: [WalletService, AllocationService],
 })
 export class WalletModule {}

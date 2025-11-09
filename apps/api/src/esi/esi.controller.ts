@@ -1,6 +1,6 @@
 import { Controller, Get } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
-import { Public } from '../auth/public.decorator';
+import { Public } from '../characters/decorators/public.decorator';
 import { EsiService } from './esi.service';
 
 @ApiTags('esi')

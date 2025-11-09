@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import axios, { AxiosRequestConfig } from 'axios';
 import { PrismaService } from '../prisma/prisma.service';
 import { normalizeHeaders } from '../common/http';
-import { TokenService } from '../auth/token.service';
+import { TokenService } from '../characters/services/token.service';
 import { AppConfig } from '../common/config';
 
 type CacheEntry = {

@@ -1,0 +1,537 @@
+import { Injectable, Logger } from '@nestjs/common';
+import { LiquidityService } from './liquidity.service';
+import { PrismaService } from '../../prisma/prisma.service';
+import { EsiService } from '../../esi/esi.service';
+import { fetchStationOrders } from '../../esi/market-helpers';
+import { ArbitragePackagerService } from '../../../libs/arbitrage-packager/src';
+import { PackageService } from './package.service';
+import { GameDataService } from '../../game-data/services/game-data.service';
+import type {
+  DestinationConfig,
+  MultiPlanOptions,
+  PlanResult,
+} from '../../../libs/arbitrage-packager/src/interfaces/packager.interfaces';
+import type {
+  DestinationGroup,
+  Opportunity,
+  PriceValidationSource,
+} from '../dto/opportunity.dto';
+import type { PlanPackagesRequest } from '../dto/plan-packages-request.dto';
+import type { ArbitrageCheckRequest } from '../dto/check-request.dto';
+import { getEffectiveSell, computeUnitNetProfit } from '../fees';
+import { round2 } from '../../common/money';
+import { AppConfig } from '../../common/config';
+
+@Injectable()
+export class ArbitrageService {
+  constructor(
+    private readonly liquidity: LiquidityService,
+    private readonly prisma: PrismaService,
+    private readonly esi: EsiService,
+    private readonly logger: Logger,
+    private readonly packager: ArbitragePackagerService,
+    private readonly packages: PackageService,
+    private readonly gameData: GameDataService,
+  ) {}
+
+  private async fetchCheapestSellAtStation(
+    typeId: number,
+    stationId: number,
+  ): Promise<number | null> {
+    // Resolve region to query ESI regional markets
+    const regionId = await this.gameData.getStationRegion(stationId);
+    if (!regionId) return null;
+
+    // Use shared helper to fetch station-filtered sell orders
+    const orders = await fetchStationOrders(this.esi, {
+      regionId,
+      typeId,
+      stationId,
+      side: 'sell',
+      reqId: undefined,
+    });
+    if (!orders.length) return null;
+    let cheapest: number | null = null;
+    for (const o of orders) {
+      cheapest = cheapest === null ? o.price : Math.min(cheapest, o.price);
+    }
+    return cheapest;
+  }
+
+  private async fetchStationSellOrders(
+    typeId: number,
+    stationId: number,
+  ): Promise<Array<{ price: number; volume: number }>> {
+    const regionId = await this.gameData.getStationRegion(stationId);
+    if (!regionId) return [];
+
+    const orders = await fetchStationOrders(this.esi, {
+      regionId,
+      typeId,
+      stationId,
+      side: 'sell',
+    });
+    orders.sort((a, b) => a.price - b.price);
+    return orders;
+  }
+
+  private getMarginalUnitPrice(
+    orders: Array<{ price: number; volume: number }>,
+    quantity: number,
+  ): number | null {
+    if (!orders.length) return null;
+    if (quantity <= 0) return null;
+    const required = Math.ceil(quantity);
+    let remaining = required;
+    let lastPrice: number | null = null;
+    for (const o of orders) {
+      if (o.volume <= 0) continue;
+      lastPrice = o.price;
+      if (remaining <= o.volume) {
+        return lastPrice;
+      }
+      remaining -= o.volume;
+    }
+    // Not enough depth to fully satisfy; return highest price available
+    return lastPrice;
+  }
+
+  async check(
+    params?: ArbitrageCheckRequest,
+    reqId?: string,
+  ): Promise<Record<string, DestinationGroup>> {
+    const defaults = AppConfig.arbitrage();
+    const sourceStationId = params?.sourceStationId ?? defaults.sourceStationId; // Jita IV-4
+    const arbitrageMultiplier =
+      params?.arbitrageMultiplier ?? defaults.multiplier;
+    const marginValidateThreshold =
+      params?.marginValidateThreshold ?? defaults.marginValidateThreshold; // percent
+    const minTotalProfitISK =
+      params?.minTotalProfitISK ?? defaults.minTotalProfitISK;
+    const stationConcurrency = Math.max(
+      1,
+      params?.stationConcurrency ?? defaults.stationConcurrency,
+    );
+    const itemConcurrency = Math.max(
+      1,
+      params?.itemConcurrency ?? defaults.itemConcurrency,
+    );
+    const salesTaxPercent =
+      params?.salesTaxPercent ?? defaults.fees.salesTaxPercent;
+    const brokerFeePercent =
+      params?.brokerFeePercent ?? defaults.fees.brokerFeePercent;
+    const feeInputs = { salesTaxPercent, brokerFeePercent };
+
+    // Get liquidity for all tracked stations with defaults
+    const liquidity = await this.liquidity.runCheck({
+      windowDays: params?.liquidityWindowDays,
+    });
+
+    // Get current open cycle to check for existing inventory
+    const currentCycle = await this.prisma.cycle.findFirst({
+      where: { startedAt: { lte: new Date() }, closedAt: null },
+      select: { id: true },
+    });
+
+    // Fetch all cycle lines with remaining inventory (items not fully sold)
+    const existingInventory = new Set<string>();
+    if (currentCycle) {
+      const lines = await this.prisma.cycleLine.findMany({
+        where: {
+          cycleId: currentCycle.id,
+        },
+        select: {
+          typeId: true,
+          destinationStationId: true,
+          unitsBought: true,
+          unitsSold: true,
+        },
+      });
+
+      // Build set of "typeId:destinationStationId" for items with remaining stock
+      for (const line of lines) {
+        const remaining = line.unitsBought - line.unitsSold;
+        if (remaining > 0) {
+          const key = `${line.typeId}:${line.destinationStationId}`;
+          existingInventory.add(key);
+        }
+      }
+    }
+
+    const result: Record<string, DestinationGroup> = {};
+
+    // Memoize source station sell orders by typeId; compute marginal price per quantity
+    const sourceOrdersCache = new Map<
+      number,
+      Array<{ price: number; volume: number }>
+    >();
+    const sourceOrdersInFlight = new Map<
+      number,
+      Promise<Array<{ price: number; volume: number }>>
+    >();
+    const getSourceOrders = async (
+      typeId: number,
+    ): Promise<Array<{ price: number; volume: number }>> => {
+      if (sourceOrdersCache.has(typeId)) {
+        return sourceOrdersCache.get(typeId) ?? [];
+      }
+      const inflight = sourceOrdersInFlight.get(typeId);
+      if (inflight) return inflight;
+      const promise = this.fetchStationSellOrders(typeId, sourceStationId)
+        .then((orders) => {
+          sourceOrdersCache.set(typeId, orders);
+          return orders;
+        })
+        .finally(() => {
+          sourceOrdersInFlight.delete(typeId);
+        });
+      sourceOrdersInFlight.set(typeId, promise);
+      return promise;
+    };
+
+    const startedAt = Date.now();
+    const stations = Object.entries(liquidity);
+    const desiredEsiConc =
+      params?.esiMaxConcurrency ?? Math.max(1, itemConcurrency * 4);
+    const liquidityWindowDays = params?.liquidityWindowDays ?? 30;
+    this.logger.log(
+      `[reqId=${reqId ?? '-'}] Arbitrage start src=${sourceStationId} mult=${arbitrageMultiplier} validate>${marginValidateThreshold}% minProfit=${minTotalProfitISK} stationConc=${stationConcurrency} itemConc=${itemConcurrency} stations=${stations.length} esiConc=${desiredEsiConc} liquidityDays=${liquidityWindowDays}`,
+    );
+    let sIdx = 0;
+    const stationWorkers = Array.from(
+      { length: Math.min(stationConcurrency, stations.length) },
+      async () => {
+        for (;;) {
+          const current = sIdx++;
+          if (current >= stations.length) break;
+          const [stationIdStr, group] = stations[current];
+          const destinationStationId = Number(stationIdStr);
+
+          const itemsOut: Opportunity[] = [];
+
+          // process items with concurrency
+          const list = group.items;
+          let iIdx = 0;
+          const stationStart = Date.now();
+          const itemWorker = async () => {
+            for (;;) {
+              const i = iIdx++;
+              if (i >= list.length) break;
+              const item = list[i];
+
+              // Skip items we still have in stock at this destination
+              const inventoryKey = `${item.typeId}:${destinationStationId}`;
+              if (existingInventory.has(inventoryKey)) {
+                // We still have unsold inventory for this item at this destination
+                continue;
+              }
+
+              const recentDailyVolume = item.avgDailyAmount;
+              const plannedArbitrageQuantity =
+                recentDailyVolume * arbitrageMultiplier;
+
+              const [sourceOrders, dstPriceFromEsi] = await Promise.all([
+                getSourceOrders(item.typeId),
+                this.fetchCheapestSellAtStation(
+                  item.typeId,
+                  destinationStationId,
+                ),
+              ]);
+
+              const availableAtSource = sourceOrders.reduce(
+                (acc, o) => acc + (o.volume > 0 ? o.volume : 0),
+                0,
+              );
+              const arbitrageQuantity = Math.min(
+                plannedArbitrageQuantity,
+                availableAtSource,
+              );
+
+              const srcPrice = this.getMarginalUnitPrice(
+                sourceOrders,
+                arbitrageQuantity,
+              );
+
+              let destinationPrice = dstPriceFromEsi ?? null;
+              let priceValidationSource: PriceValidationSource = 'ESI';
+
+              if (
+                srcPrice !== null &&
+                destinationPrice !== null &&
+                srcPrice > 0
+              ) {
+                const rawMargin = (destinationPrice / srcPrice) * 100;
+                if (rawMargin - 100 > marginValidateThreshold) {
+                  const liquidityavg = Number(item.latest?.avg ?? '0');
+                  const validated = Math.min(
+                    destinationPrice,
+                    liquidityavg || destinationPrice,
+                  );
+                  if (validated !== destinationPrice)
+                    priceValidationSource = 'LiquidityAvg';
+                  destinationPrice = validated;
+                }
+              }
+
+              // Apply sell-side fees to destination price only
+              const effectiveDestPrice =
+                destinationPrice !== null
+                  ? getEffectiveSell(destinationPrice, feeInputs)
+                  : null;
+
+              const netProfitISK =
+                srcPrice !== null && destinationPrice !== null
+                  ? computeUnitNetProfit(srcPrice, destinationPrice, feeInputs)
+                  : 0;
+              // Margin as percent gain over cost: ((sell_net - buy)/buy)*100
+              const margin =
+                srcPrice !== null && effectiveDestPrice !== null && srcPrice > 0
+                  ? ((effectiveDestPrice - srcPrice) / srcPrice) * 100
+                  : 0;
+              const totalCostISK =
+                srcPrice !== null ? srcPrice * arbitrageQuantity : 0;
+              const totalProfitISK = netProfitISK * arbitrageQuantity;
+
+              const opp: Opportunity = {
+                typeId: item.typeId,
+                name: item.typeName ?? String(item.typeId),
+                sourceStationId,
+                destinationStationId,
+                sourcePrice: srcPrice !== null ? round2(srcPrice) : null,
+                destinationPrice:
+                  destinationPrice !== null ? round2(destinationPrice) : null,
+                priceValidationSource,
+                netProfitISK: round2(netProfitISK),
+                margin: round2(margin),
+                recentDailyVolume,
+                arbitrageQuantity,
+                totalCostISK: round2(totalCostISK),
+                totalProfitISK: round2(totalProfitISK),
+              };
+              if (opp.totalProfitISK >= minTotalProfitISK) {
+                itemsOut.push(opp);
+              }
+            }
+          };
+
+          await Promise.all(
+            Array.from({ length: Math.min(itemConcurrency, list.length) }, () =>
+              itemWorker(),
+            ),
+          );
+
+          // Order by totalProfitISK desc
+          itemsOut.sort((a, b) => b.totalProfitISK - a.totalProfitISK);
+
+          const totals = itemsOut.reduce(
+            (acc, it) => {
+              acc.cost += it.totalCostISK;
+              acc.profit += it.totalProfitISK;
+              acc.marginSum += it.margin;
+              return acc;
+            },
+            { cost: 0, profit: 0, marginSum: 0 },
+          );
+          const averageMargin = itemsOut.length
+            ? round2(totals.marginSum / itemsOut.length)
+            : 0;
+
+          const stationName = (group as { stationName?: string }).stationName;
+
+          result[stationIdStr] = {
+            destinationStationId,
+            stationName: stationName ?? undefined,
+            totalItems: itemsOut.length,
+            totalCostISK: round2(totals.cost),
+            totalProfitISK: round2(totals.profit),
+            averageMargin,
+            items: itemsOut,
+          };
+          this.logger.log(
+            `[reqId=${reqId ?? '-'}] Arb station ${destinationStationId}: items=${itemsOut.length} cost=${round2(
+              totals.cost,
+            )} profit=${round2(totals.profit)} avgMargin=${averageMargin}% ms=${
+              Date.now() - stationStart
+            }`,
+          );
+        }
+      },
+    );
+
+    await this.esi.withMaxConcurrency(desiredEsiConc, async () => {
+      await Promise.all(stationWorkers);
+    });
+
+    this.logger.log(
+      `[reqId=${reqId ?? '-'}] Arbitrage completed in ${Date.now() - startedAt}ms (stations=${stations.length})`,
+    );
+    return result;
+  }
+
+  async planPackages(
+    params: PlanPackagesRequest,
+    reqId?: string,
+  ): Promise<PlanResult> {
+    // Build DestinationConfig[] from arbitrage check results
+    const arbitrage = await this.check(
+      {
+        liquidityWindowDays: params.liquidityWindowDays,
+      },
+      reqId,
+    );
+    // Fetch volumes (m3) for all needed typeIds from DB (TypeId.volume)
+    const typeIds = Array.from(
+      new Set(
+        Object.values(arbitrage).flatMap((g) => g.items.map((it) => it.typeId)),
+      ),
+    );
+    const volumeData = await this.gameData.getTypesWithVolumes(typeIds);
+    const volByType = new Map<number, number>();
+    for (const [id, data] of volumeData.entries()) {
+      volByType.set(id, data.volume ?? 0);
+    }
+
+    const destinations: DestinationConfig[] = Object.values(arbitrage).map(
+      (group) => ({
+        destinationStationId: group.destinationStationId,
+        shippingCostISK:
+          params.shippingCostByStation[group.destinationStationId] ?? 0,
+        items: group.items.map((it) => ({
+          typeId: it.typeId,
+          name: it.name,
+          sourceStationId: it.sourceStationId,
+          destinationStationId: it.destinationStationId,
+          sourcePrice: it.sourcePrice ?? 0,
+          destinationPrice: it.destinationPrice ?? 0,
+          netProfitISK: it.netProfitISK, // already per-unit
+          arbitrageQuantity: Math.max(0, Math.floor(it.arbitrageQuantity)),
+          m3: volByType.get(it.typeId) ?? 0,
+        })),
+      }),
+    );
+
+    const opts: MultiPlanOptions = {
+      packageCapacityM3: params.packageCapacityM3,
+      investmentISK: params.investmentISK,
+      perDestinationMaxBudgetSharePerItem:
+        params.perDestinationMaxBudgetSharePerItem ?? 0.2,
+      maxPackagesHint: params.maxPackagesHint ?? 30,
+      maxPackageCollateralISK: params.maxPackageCollateralISK,
+      destinationCaps: params.destinationCaps,
+      allocation: params.allocation,
+    };
+
+    const plan = this.packager.planMultiDestination(destinations, opts);
+
+    // Attach destination names to packages when available
+    const nameByDest = new Map<number, string | undefined>();
+    for (const group of Object.values(arbitrage)) {
+      const id = group.destinationStationId;
+      const name = (group as { stationName?: string }).stationName;
+      if (!nameByDest.has(id)) nameByDest.set(id, name);
+    }
+
+    for (const pkg of plan.packages) {
+      const n = nameByDest.get(pkg.destinationStationId);
+      if (n) (pkg as { destinationName?: string }).destinationName = n;
+    }
+
+    return plan;
+  }
+
+  async commitPlan(payload: {
+    request: unknown;
+    result: unknown;
+    memo?: string;
+  }): Promise<{ id: string; createdAt: Date }> {
+    // Find the current open cycle
+    const currentOpen = await this.prisma.cycle.findFirst({
+      where: { startedAt: { lte: new Date() }, closedAt: null },
+      select: { id: true },
+    });
+
+    if (!currentOpen) {
+      throw new Error('No open cycle found. Please create a cycle first.');
+    }
+
+    // Extract plan lines and create CycleLine records within a transaction
+    try {
+      const plan = payload.result as PlanResult;
+
+      await this.prisma.$transaction(async (tx) => {
+        const lines: Array<{
+          cycleId: string;
+          typeId: number;
+          destinationStationId: number;
+          plannedUnits: number;
+        }> = [];
+
+        for (const pkg of plan.packages ?? []) {
+          const dst = pkg.destinationStationId;
+          for (const it of pkg.items ?? []) {
+            // Check if line already exists for this type+destination
+            const existing = await tx.cycleLine.findFirst({
+              where: {
+                cycleId: currentOpen.id,
+                typeId: it.typeId,
+                destinationStationId: dst,
+              },
+            });
+
+            if (existing) {
+              // Update planned units
+              await tx.cycleLine.update({
+                where: { id: existing.id },
+                data: { plannedUnits: existing.plannedUnits + it.units },
+              });
+            } else {
+              // Create new line
+              lines.push({
+                cycleId: currentOpen.id,
+                typeId: it.typeId,
+                destinationStationId: dst,
+                plannedUnits: it.units,
+              });
+            }
+          }
+        }
+
+        if (lines.length > 0) {
+          await tx.cycleLine.createMany({ data: lines });
+        }
+
+        this.logger.log(
+          `Plan committed: ${lines.length} new lines added to cycle ${currentOpen.id}`,
+        );
+
+        // Create committed package records (inside same transaction)
+        await this.packages.createCommittedPackagesInTransaction(
+          tx,
+          currentOpen.id,
+          plan,
+        );
+      });
+
+      this.logger.log(
+        `Successfully committed plan to cycle ${currentOpen.id} with packages`,
+      );
+
+      return { id: currentOpen.id, createdAt: new Date() };
+    } catch (e) {
+      this.logger.error(`Failed to commit plan to cycle lines: ${String(e)}`);
+      throw e;
+    }
+  }
+
+  async listCommits(params?: { limit?: number; offset?: number }) {
+    // Return open cycles instead of commits
+    const take = Math.min(Math.max(params?.limit ?? 25, 1), 200);
+    const skip = Math.max(params?.offset ?? 0, 0);
+    return await this.prisma.cycle.findMany({
+      select: { id: true, createdAt: true, name: true, closedAt: true },
+      orderBy: { createdAt: 'desc' },
+      take,
+      skip,
+    });
+  }
+}

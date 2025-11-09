@@ -126,6 +126,17 @@ Add `prisma.$transaction` to `arbitrage.service.ts.commitPlan()` and other multi
 
 ## Phase 5: Backend - Domain Separation & Service Refactoring
 
+### ✅ 5.1 Domain Consolidation & Service Splitting - COMPLETE
+**Status:** ✅ Complete (2025-11-09)
+**Documentation:** [docs/PHASE_5_COMPLETE.md](../docs/PHASE_5_COMPLETE.md), [docs/PHASE_5.1_SERVICE_EXTRACTION_STATUS.md](../docs/PHASE_5.1_SERVICE_EXTRACTION_STATUS.md)
+**Build Status:** ✅ Success
+
+**Reorganized:** 18 modules → 6 domains + 1 legacy
+**Split:** ledger.service.ts (2308 lines) → 8 focused services + legacy service (11 complex methods)
+**Controller Migration:** 25/36 endpoints (69%) use new services
+
+**Note:** 11 complex orchestration methods remain in legacy ledger.service for gradual extraction
+
 ### 5.1 Split LedgerService (2493 lines)
 
 **Problem:** Single service handling 8+ responsibilities
@@ -431,6 +442,9 @@ After each phase:
 - [x] Extend AppConfig to cover all environment variables and replace scattered process.env usage ✅ COMPLETE
 - [x] Move business logic from controllers to services (e.g., ledger.controller.ts.closeCycle) ✅ COMPLETE
 - [x] Add prisma.$transaction wrappers to multi-step writes like arbitrage.service.ts.commitPlan ✅ COMPLETE
+- [x] Create domain services (CharacterService, GameDataService, MarketDataService) and eliminate cross-domain access ✅ COMPLETE
+- [x] Consolidate 18 modules into 6 clear domains ✅ COMPLETE
+- [x] Split ledger.service.ts into 8 focused services (69% of controller migrated) ✅ COMPLETE
 - [ ] Implement clientForApp pattern in packages/api-client with NextAuth session support
 - [ ] Create centralized query key factories in packages/api-client/queryKeys.ts for all domains
 - [ ] Move common types (User, Cycle, Participation, etc.) to packages/shared/types/ and remove duplicates

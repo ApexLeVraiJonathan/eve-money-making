@@ -1,13 +1,14 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
-import { ImportService } from '../import/import.service';
-import { WalletService } from '../wallet/wallet.service';
-import { AllocationService } from '../reconciliation/allocation.service';
-import { LedgerService } from '../ledger/ledger.service';
-import { EsiTokenService } from '../auth/esi-token.service';
+import { ImportService } from '../game-data/services/import.service';
+import { WalletService } from '../wallet/services/wallet.service';
+import { AllocationService } from '../wallet/services/allocation.service';
+import { SnapshotService } from '../cycles/services/snapshot.service';
+import { CapitalService } from '../cycles/services/capital.service';
+import { EsiTokenService } from '../characters/services/esi-token.service';
 import { AppConfig } from '../common/config';
-import { CharacterService } from '../characters/character.service';
+import { CharacterService } from '../characters/services/character.service';
 
 @Injectable()
 export class JobsService {
@@ -17,7 +18,8 @@ export class JobsService {
     private readonly imports: ImportService,
     private readonly wallets: WalletService,
     private readonly allocation: AllocationService,
-    private readonly ledger: LedgerService,
+    private readonly snapshotService: SnapshotService,
+    private readonly capitalService: CapitalService,
     private readonly esiToken: EsiTokenService,
     private readonly characterService: CharacterService,
   ) {}
@@ -108,7 +110,7 @@ export class JobsService {
         select: { id: true },
       });
       for (const c of openCycles) {
-        await this.ledger.createCycleSnapshot(c.id);
+        await this.snapshotService.createCycleSnapshot(c.id);
       }
       this.logger.log(
         `Cycle snapshots created for ${openCycles.length} open cycles`,
@@ -132,7 +134,7 @@ export class JobsService {
         select: { id: true },
       });
       for (const c of openCycles) {
-        await this.ledger.computeCapital(c.id, { force: true });
+        await this.capitalService.computeCapital(c.id, { force: true });
       }
       this.logger.log(
         `Capital recompute completed for ${openCycles.length} open cycles`,

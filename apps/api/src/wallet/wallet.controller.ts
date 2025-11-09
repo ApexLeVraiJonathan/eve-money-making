@@ -5,9 +5,9 @@ import {
   ApiBearerAuth,
   ApiQuery,
 } from '@nestjs/swagger';
-import { Roles } from '../auth/roles.decorator';
-import { RolesGuard } from '../auth/roles.guard';
-import { WalletService } from './wallet.service';
+import { Roles } from '../characters/decorators/roles.decorator';
+import { RolesGuard } from '../characters/guards/roles.guard';
+import { WalletService } from './services/wallet.service';
 import { WalletQueryDto } from './dto/wallet-query.dto';
 
 @ApiTags('wallet')

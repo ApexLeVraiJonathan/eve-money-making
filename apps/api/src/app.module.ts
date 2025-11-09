@@ -5,25 +5,16 @@ import {
   Controller,
   Get,
 } from '@nestjs/common';
-import { ImportModule } from './import/import.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { DataImportModule } from '@shared/data-import';
-import { TrackedStationsModule } from './tracked-stations/tracked-stations.module';
-import { LiquidityModule } from './liquidity/liquidity.module';
-import { ArbitrageModule } from './arbitrage/arbitrage.module';
 import { EsiModule } from './esi/esi.module';
 import { JobsModule } from './jobs/jobs.module';
 import { RequestIdMiddleware } from './common/request-id.middleware';
-import { AuthModule } from './auth/auth.module';
-import { LedgerModule } from './ledger/ledger.module';
-import { ReconciliationModule } from './reconciliation/reconciliation.module';
+import { CharactersModule } from './characters/characters.module';
+import { CyclesModule } from './cycles/cycles.module';
 import { WalletModule } from './wallet/wallet.module';
-import { PricingModule } from './pricing/pricing.module';
-import { UsersModule } from './users/users.module';
-import { PackagesModule } from './packages/packages.module';
 import { GameDataModule } from './game-data/game-data.module';
-import { CharacterModule } from './characters/character.module';
-import { MarketDataModule } from './market-data/market-data.module';
+import { MarketModule } from './market/market.module';
 
 @Controller('health')
 class HealthController {
@@ -35,24 +26,15 @@ class HealthController {
 
 @Module({
   imports: [
-    ImportModule,
     PrismaModule,
     DataImportModule,
-    TrackedStationsModule,
-    LiquidityModule,
-    ArbitrageModule,
     EsiModule,
     JobsModule,
-    AuthModule,
-    LedgerModule,
-    ReconciliationModule,
+    CharactersModule,
+    CyclesModule,
     WalletModule,
-    PricingModule,
-    UsersModule,
-    PackagesModule,
     GameDataModule,
-    CharacterModule,
-    MarketDataModule,
+    MarketModule,
   ],
   controllers: [HealthController],
   providers: [Logger],
