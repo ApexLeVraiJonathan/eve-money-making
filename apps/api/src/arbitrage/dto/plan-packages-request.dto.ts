@@ -1,7 +1,4 @@
-import {
-  ApiProperty,
-  ApiPropertyOptional,
-} from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsNumber,
   IsOptional,
@@ -57,7 +54,8 @@ export class AllocationConfig {
   mode?: 'best' | 'targetWeighted' | 'roundRobin';
 
   @ApiPropertyOptional({
-    description: 'Target allocation weights by destination (station ID -> weight)',
+    description:
+      'Target allocation weights by destination (station ID -> weight)',
     example: { '60003760': 0.6, '60008494': 0.4 },
   })
   @IsOptional()
@@ -181,4 +179,3 @@ export class PlanPackagesRequest {
   @Max(90)
   liquidityWindowDays?: number;
 }
-

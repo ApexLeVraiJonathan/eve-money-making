@@ -5,6 +5,7 @@ import { EsiService } from '../esi/esi.service';
 import { fetchStationOrders } from '../esi/market-helpers';
 import { ArbitragePackagerService } from '../../libs/arbitrage-packager/src';
 import { PackagesService } from '../packages/packages.service';
+import { GameDataService } from '../game-data/game-data.service';
 import type {
   DestinationConfig,
   MultiPlanOptions,
@@ -30,6 +31,7 @@ export class ArbitrageService {
     private readonly logger: Logger,
     private readonly packager: ArbitragePackagerService,
     private readonly packages: PackagesService,
+    private readonly gameData: GameDataService,
   ) {}
 
   private async fetchCheapestSellAtStation(
@@ -37,17 +39,8 @@ export class ArbitrageService {
     stationId: number,
   ): Promise<number | null> {
     // Resolve region to query ESI regional markets
-    const station = await this.prisma.stationId.findUnique({
-      where: { id: stationId },
-      select: { solarSystemId: true },
-    });
-    if (!station) return null;
-    const system = await this.prisma.solarSystemId.findUnique({
-      where: { id: station.solarSystemId },
-      select: { regionId: true },
-    });
-    if (!system) return null;
-    const regionId = system.regionId;
+    const regionId = await this.gameData.getStationRegion(stationId);
+    if (!regionId) return null;
 
     // Use shared helper to fetch station-filtered sell orders
     const orders = await fetchStationOrders(this.esi, {
@@ -69,17 +62,8 @@ export class ArbitrageService {
     typeId: number,
     stationId: number,
   ): Promise<Array<{ price: number; volume: number }>> {
-    const station = await this.prisma.stationId.findUnique({
-      where: { id: stationId },
-      select: { solarSystemId: true },
-    });
-    if (!station) return [];
-    const system = await this.prisma.solarSystemId.findUnique({
-      where: { id: station.solarSystemId },
-      select: { regionId: true },
-    });
-    if (!system) return [];
-    const regionId = system.regionId;
+    const regionId = await this.gameData.getStationRegion(stationId);
+    if (!regionId) return [];
 
     const orders = await fetchStationOrders(this.esi, {
       regionId,
@@ -401,12 +385,11 @@ export class ArbitrageService {
         Object.values(arbitrage).flatMap((g) => g.items.map((it) => it.typeId)),
       ),
     );
-    const volumes = await this.prisma.typeId.findMany({
-      where: { id: { in: typeIds } },
-      select: { id: true, volume: true },
-    });
+    const volumeData = await this.gameData.getTypesWithVolumes(typeIds);
     const volByType = new Map<number, number>();
-    for (const v of volumes) volByType.set(v.id, Number(v.volume ?? 0));
+    for (const [id, data] of volumeData.entries()) {
+      volByType.set(id, data.volume ?? 0);
+    }
 
     const destinations: DestinationConfig[] = Object.values(arbitrage).map(
       (group) => ({
@@ -474,7 +457,7 @@ export class ArbitrageService {
     // Extract plan lines and create CycleLine records within a transaction
     try {
       const plan = payload.result as PlanResult;
-      
+
       await this.prisma.$transaction(async (tx) => {
         const lines: Array<{
           cycleId: string;

@@ -2,9 +2,10 @@ import { Module, Logger } from '@nestjs/common';
 import { PrismaModule } from '../prisma/prisma.module';
 import { ReconciliationController } from './reconciliation.controller';
 import { AllocationService } from './allocation.service';
+import { CharacterModule } from '../characters/character.module';
 
 @Module({
-  imports: [PrismaModule],
+  imports: [PrismaModule, CharacterModule],
   providers: [AllocationService, Logger],
   controllers: [ReconciliationController],
   exports: [AllocationService],

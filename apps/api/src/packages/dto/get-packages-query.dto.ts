@@ -26,4 +26,3 @@ export class GetPackagesQuery {
   @IsEnum(PackageStatus)
   status?: PackageStatus;
 }
-

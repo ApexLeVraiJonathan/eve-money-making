@@ -26,4 +26,3 @@ export class PlanCommitRequest {
   @IsObject()
   result: unknown;
 }
-

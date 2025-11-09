@@ -7,6 +7,7 @@ import { AllocationService } from '../reconciliation/allocation.service';
 import { LedgerService } from '../ledger/ledger.service';
 import { EsiTokenService } from '../auth/esi-token.service';
 import { AppConfig } from '../common/config';
+import { CharacterService } from '../characters/character.service';
 
 @Injectable()
 export class JobsService {
@@ -18,6 +19,7 @@ export class JobsService {
     private readonly allocation: AllocationService,
     private readonly ledger: LedgerService,
     private readonly esiToken: EsiTokenService,
+    private readonly characterService: CharacterService,
   ) {}
 
   private jobsEnabled(): boolean {
@@ -156,10 +158,8 @@ export class JobsService {
       return;
     }
     try {
-      const systemChars = await this.prisma.eveCharacter.findMany({
-        where: { managedBy: 'SYSTEM' },
-        select: { id: true, name: true },
-      });
+      const systemChars =
+        await this.characterService.getSystemManagedCharacters();
 
       let successCount = 0;
       let failCount = 0;

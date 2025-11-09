@@ -23,4 +23,3 @@ export class SellAppraiseRequest {
   @IsString({ each: true })
   lines: string[];
 }
-

@@ -16,4 +16,3 @@ export class SuggestPayoutsRequest {
   @Max(1)
   profitSharePct?: number;
 }
-

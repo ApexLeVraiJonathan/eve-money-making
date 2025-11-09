@@ -6,6 +6,8 @@ import { EsiModule } from '../esi/esi.module';
 import { WalletModule } from '../wallet/wallet.module';
 import { ReconciliationModule } from '../reconciliation/reconciliation.module';
 import { PackagesModule } from '../packages/packages.module';
+import { GameDataModule } from '../game-data/game-data.module';
+import { CharacterModule } from '../characters/character.module';
 
 @Module({
   imports: [
@@ -14,6 +16,8 @@ import { PackagesModule } from '../packages/packages.module';
     WalletModule,
     ReconciliationModule,
     PackagesModule,
+    GameDataModule,
+    CharacterModule,
   ],
   providers: [LedgerService, Logger],
   controllers: [LedgerController],

@@ -44,7 +44,9 @@ async function bootstrap() {
   // Swagger/OpenAPI documentation
   const config = new DocumentBuilder()
     .setTitle('EVE Money Making API')
-    .setDescription('API for EVE Online arbitrage tracking and profit optimization')
+    .setDescription(
+      'API for EVE Online arbitrage tracking and profit optimization',
+    )
     .setVersion('1.0')
     .addBearerAuth()
     .addTag('arbitrage', 'Arbitrage cycle and commitment endpoints')
@@ -62,6 +64,9 @@ async function bootstrap() {
   const port = AppConfig.port();
   await app.listen(port);
   logger.log(`API listening on port ${port}`, 'Bootstrap');
-  logger.log(`Swagger documentation available at http://localhost:${port}/docs`, 'Bootstrap');
+  logger.log(
+    `Swagger documentation available at http://localhost:${port}/docs`,
+    'Bootstrap',
+  );
 }
 void bootstrap();

@@ -23,4 +23,3 @@ export class AddTransportFeeRequest {
   @MinLength(1)
   memo?: string;
 }
-

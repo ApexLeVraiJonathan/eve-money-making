@@ -13,4 +13,3 @@ export class LinkCharacterRequest {
   @Min(1)
   characterId!: number;
 }
-

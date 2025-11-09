@@ -10,4 +10,3 @@ export class SellAppraiseByCommitRequest {
   @IsUUID()
   cycleId: string;
 }
-

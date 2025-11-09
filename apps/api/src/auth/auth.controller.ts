@@ -11,7 +11,12 @@ import {
   Body,
   UseGuards,
 } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth, ApiOperation, ApiParam } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiBearerAuth,
+  ApiOperation,
+  ApiParam,
+} from '@nestjs/swagger';
 import type { Response, Request } from 'express';
 import crypto from 'node:crypto';
 import * as jwt from 'jsonwebtoken';
@@ -599,7 +604,7 @@ export class AuthController {
   @Roles('ADMIN')
   @UseGuards(RolesGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: "Update character profile (admin only)" })
+  @ApiOperation({ summary: 'Update character profile (admin only)' })
   @ApiParam({ name: 'id', description: 'Character ID' })
   @Patch('characters/:id')
   async setProfile(

@@ -1,5 +1,12 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsInt, IsOptional, Min, Max, Matches } from 'class-validator';
+import {
+  IsString,
+  IsInt,
+  IsOptional,
+  Min,
+  Max,
+  Matches,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class ImportDayDto {
@@ -28,4 +35,3 @@ export class ImportDayDto {
   @Max(50000)
   batchSize?: number;
 }
-

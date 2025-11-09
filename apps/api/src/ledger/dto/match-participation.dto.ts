@@ -4,7 +4,8 @@ import { Type } from 'class-transformer';
 
 export class MatchParticipationRequest {
   @ApiProperty({
-    description: 'Whether this is from wallet journal (true) or transaction (false)',
+    description:
+      'Whether this is from wallet journal (true) or transaction (false)',
     example: true,
   })
   @Type(() => Boolean)
@@ -30,4 +31,3 @@ export class MatchParticipationRequest {
   })
   amountIsk?: string;
 }
-

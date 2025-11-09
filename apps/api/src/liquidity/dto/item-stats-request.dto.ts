@@ -81,4 +81,3 @@ export class LiquidityItemStatsRequest {
   @IsString({ message: 'Provide either itemId or itemName' })
   _requireItemIdentifier?: never;
 }
-

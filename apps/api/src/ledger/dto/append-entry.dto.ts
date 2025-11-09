@@ -1,5 +1,12 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsUUID, IsEnum, IsOptional, Matches, IsDateString } from 'class-validator';
+import {
+  IsString,
+  IsUUID,
+  IsEnum,
+  IsOptional,
+  Matches,
+  IsDateString,
+} from 'class-validator';
 import { Transform } from 'class-transformer';
 
 enum EntryType {
@@ -63,4 +70,3 @@ export class AppendEntryRequest {
   @IsUUID()
   planCommitId?: string;
 }
-

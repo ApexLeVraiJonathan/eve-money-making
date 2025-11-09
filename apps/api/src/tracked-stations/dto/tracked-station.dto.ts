@@ -13,4 +13,3 @@ export class TrackedStationCreate {
   @Min(1)
   stationId: number;
 }
-

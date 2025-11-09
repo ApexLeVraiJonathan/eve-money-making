@@ -10,4 +10,3 @@ export class SetRoleRequest {
   @IsEnum(['ADMIN', 'USER'])
   role!: 'ADMIN' | 'USER';
 }
-

@@ -67,4 +67,3 @@ export class LiquidityCheckRequest {
   @Min(0)
   minWindowTrades?: number;
 }
-

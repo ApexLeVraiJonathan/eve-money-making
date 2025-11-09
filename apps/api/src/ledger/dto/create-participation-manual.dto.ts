@@ -23,4 +23,3 @@ export class CreateParticipationManualRequest {
   })
   amountIsk: string;
 }
-

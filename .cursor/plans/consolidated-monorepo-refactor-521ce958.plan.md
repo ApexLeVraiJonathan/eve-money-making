@@ -114,15 +114,11 @@ Create `packages/shared/env.ts` for frontend environment access.
 
 ## Phase 4: Backend - Refactor Business Logic
 
-### ✅ 4.1 Thin controllers - COMPLETE
-**Status:** ✅ Complete (2025-11-09)
-**Documentation:** [docs/PHASE_4_COMPLETE.md](../docs/PHASE_4_COMPLETE.md)
+### 4.1 Thin controllers
 
 Move `ledger.controller.ts.closeCycle()` orchestration to service. Review all controllers for business logic violations.
 
-### ✅ 4.2 Add missing transactions - COMPLETE
-**Status:** ✅ Complete (2025-11-09)
-**Documentation:** [docs/PHASE_4_COMPLETE.md](../docs/PHASE_4_COMPLETE.md)
+### 4.2 Add missing transactions
 
 Add `prisma.$transaction` to `arbitrage.service.ts.commitPlan()` and other multi-step writes.
 
@@ -150,7 +146,10 @@ apps/api/src/ledger/
 
 **Example:** `ParticipationService` handles: createParticipation, listParticipations, optOutParticipation, adminValidatePayment, markPayoutAsSent, computePayouts, createPayouts.
 
-### 5.2 Create domain services to prevent cross-domain access
+### ✅ 5.2 Create domain services to prevent cross-domain access - COMPLETE
+**Status:** ✅ Complete (2025-11-09)
+**Documentation:** [docs/PHASE_5.2_COMPLETE.md](../docs/PHASE_5.2_COMPLETE.md)
+**Build Status:** ✅ Success
 
 **Problem:** Services directly query other domains' Prisma models
 
@@ -160,30 +159,12 @@ apps/api/src/ledger/
 - `ledger.service.ts` line 42: queries `eveCharacter` (character domain)
 - `ledger.service.ts` line 181: queries `stationId/solarSystemId` (game data domain)
 
-**Solution:** Create domain services:
+**Solution:** Created 3 domain services with 29 methods:
+- CharacterService - Character domain (10 methods)
+- GameDataService - Static game data (12 methods)
+- MarketDataService - Market data (7 methods)
 
-```typescript
-// apps/api/src/characters/character.service.ts
-export class CharacterService {
-  async getTrackedSellerIds(): Promise<number[]> {
-    return this.prisma.eveCharacter.findMany({...}).then(r => r.map(x => x.id));
-  }
-}
-
-// apps/api/src/game-data/game-data.service.ts
-export class GameDataService {
-  async getStationRegion(stationId: number): Promise<number | null> {
-    const station = await this.prisma.stationId.findUnique({...});
-    const system = await this.prisma.solarSystemId.findUnique({...});
-    return system?.regionId ?? null;
-  }
-  
-  async getTypeNames(typeIds: number[]): Promise<Map<number, string>> {...}
-  async getStationNames(stationIds: number[]): Promise<Map<number, string>> {...}
-}
-```
-
-Inject these services instead of calling Prisma directly.
+**Services Refactored:** 8 services, 55+ cross-domain queries eliminated
 
 ### 5.3 Remove unused/dead code
 

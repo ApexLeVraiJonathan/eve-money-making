@@ -54,4 +54,3 @@ export class WalletQueryDto {
   @Min(0)
   offset?: number;
 }
-

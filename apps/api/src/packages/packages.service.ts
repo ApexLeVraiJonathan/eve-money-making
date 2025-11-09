@@ -144,11 +144,7 @@ export class PackagesService {
     planResult: PlanResult,
   ): Promise<string[]> {
     return await this.prisma.$transaction(async (tx) => {
-      return await this._createCommittedPackagesCore(
-        tx,
-        cycleId,
-        planResult,
-      );
+      return await this._createCommittedPackagesCore(tx, cycleId, planResult);
     });
   }
 

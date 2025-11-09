@@ -21,6 +21,9 @@ import { WalletModule } from './wallet/wallet.module';
 import { PricingModule } from './pricing/pricing.module';
 import { UsersModule } from './users/users.module';
 import { PackagesModule } from './packages/packages.module';
+import { GameDataModule } from './game-data/game-data.module';
+import { CharacterModule } from './characters/character.module';
+import { MarketDataModule } from './market-data/market-data.module';
 
 @Controller('health')
 class HealthController {
@@ -47,6 +50,9 @@ class HealthController {
     PricingModule,
     UsersModule,
     PackagesModule,
+    GameDataModule,
+    CharacterModule,
+    MarketDataModule,
   ],
   controllers: [HealthController],
   providers: [Logger],

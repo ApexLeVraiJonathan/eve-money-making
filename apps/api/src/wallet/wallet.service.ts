@@ -1,6 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { EsiCharactersService } from '../esi/esi-characters.service';
+import { GameDataService } from '../game-data/game-data.service';
+import { CharacterService } from '../characters/character.service';
 
 @Injectable()
 export class WalletService {
@@ -8,6 +10,8 @@ export class WalletService {
     private readonly prisma: PrismaService,
     private readonly esiChars: EsiCharactersService,
     private readonly logger: Logger,
+    private readonly gameData: GameDataService,
+    private readonly characterService: CharacterService,
   ) {}
 
   async importForCharacter(characterId: number, reqId?: string) {
@@ -93,10 +97,7 @@ export class WalletService {
   }
 
   async importAllLinked(reqId?: string) {
-    const chars = await this.prisma.eveCharacter.findMany({
-      where: { role: 'LOGISTICS' },
-      select: { id: true },
-    });
+    const chars = await this.characterService.getLogisticsCharacters();
     for (const c of chars) {
       try {
         await this.importForCharacter(c.id, reqId);
@@ -150,41 +151,31 @@ export class WalletService {
     const stationIds = Array.from(new Set(rows.map((r) => r.locationId)));
     const charIds = Array.from(new Set(rows.map((r) => r.characterId)));
 
-    const typesPromise: Promise<Array<{ id: number; name: string }>> =
-      typeIds.length
-        ? this.prisma.typeId.findMany({
-            where: { id: { in: typeIds } },
-            select: { id: true, name: true },
-          })
-        : Promise.resolve<Array<{ id: number; name: string }>>([]);
-    const stationsPromise: Promise<Array<{ id: number; name: string }>> =
-      stationIds.length
-        ? this.prisma.stationId.findMany({
-            where: { id: { in: stationIds } },
-            select: { id: true, name: true },
-          })
-        : Promise.resolve<Array<{ id: number; name: string }>>([]);
+    const typesPromise: Promise<Map<number, string>> = typeIds.length
+      ? this.gameData.getTypeNames(typeIds)
+      : Promise.resolve(new Map());
+    const stationsPromise: Promise<Map<number, string>> = stationIds.length
+      ? this.gameData.getStationNames(stationIds)
+      : Promise.resolve(new Map());
     const charsPromise: Promise<Array<{ id: number; name: string }>> =
       charIds.length
-        ? this.prisma.eveCharacter.findMany({
-            where: { id: { in: charIds } },
-            select: { id: true, name: true },
-          })
+        ? (async () => {
+            const chars: Array<{ id: number; name: string }> = [];
+            for (const id of charIds) {
+              const name = await this.characterService.getCharacterName(id);
+              if (name) chars.push({ id, name });
+            }
+            return chars;
+          })()
         : Promise.resolve<Array<{ id: number; name: string }>>([]);
-    const [types, stations, chars] = await Promise.all([
+    const [typeNameById, stationNameById, charList] = await Promise.all([
       typesPromise,
       stationsPromise,
       charsPromise,
     ]);
 
-    const typeNameById = new Map<number, string>(
-      types.map((t) => [t.id, t.name] as [number, string]),
-    );
-    const stationNameById = new Map<number, string>(
-      stations.map((s) => [s.id, s.name] as [number, string]),
-    );
     const charNameById = new Map<number, string>(
-      chars.map((c) => [c.id, c.name] as [number, string]),
+      charList.map((c) => [c.id, c.name] as [number, string]),
     );
 
     return rows.map((r) => ({

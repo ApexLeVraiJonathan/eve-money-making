@@ -25,11 +25,10 @@ export class ConfirmListingRequest {
   @ApiProperty({
     description: 'Unit price in ISK',
     minimum: 0,
-    example: 5.50,
+    example: 5.5,
   })
   @Type(() => Number)
   @IsNumber()
   @Min(0.01)
   unitPrice: number;
 }
-

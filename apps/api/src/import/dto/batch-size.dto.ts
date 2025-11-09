@@ -17,4 +17,3 @@ export class BatchSizeDto {
   @Max(50000)
   batchSize?: number;
 }
-

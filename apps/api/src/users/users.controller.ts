@@ -9,7 +9,13 @@ import {
   Delete,
   UseGuards,
 } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth, ApiOperation, ApiQuery, ApiParam } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiBearerAuth,
+  ApiOperation,
+  ApiQuery,
+  ApiParam,
+} from '@nestjs/swagger';
 import { CurrentUser, type RequestUser } from '../auth/current-user.decorator';
 import { UsersService } from './users.service';
 import { Roles } from '../auth/roles.decorator';
@@ -46,10 +52,7 @@ export class UsersController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Change user role (admin only)' })
   @ApiParam({ name: 'id', description: 'User ID' })
-  async setRole(
-    @Param('id') id: string,
-    @Body() body: SetRoleRequest,
-  ) {
+  async setRole(@Param('id') id: string, @Body() body: SetRoleRequest) {
     return await this.users.setRole(id, body.role);
   }
 
@@ -60,10 +63,7 @@ export class UsersController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Force link a character to a user (admin only)' })
   @ApiParam({ name: 'id', description: 'User ID' })
-  async forceLink(
-    @Param('id') id: string,
-    @Body() body: LinkCharacterRequest,
-  ) {
+  async forceLink(@Param('id') id: string, @Body() body: LinkCharacterRequest) {
     return await this.users.forceLink(id, body.characterId);
   }
 
@@ -113,10 +113,7 @@ export class UsersController {
   ) {
     const userId = user?.userId ?? null;
     if (!userId) return { ok: false } as const;
-    return await this.users.setPrimaryCharacter(
-      userId,
-      body.characterId,
-    );
+    return await this.users.setPrimaryCharacter(userId, body.characterId);
   }
 
   @Delete('users/me/characters/:characterId')

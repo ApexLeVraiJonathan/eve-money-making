@@ -29,4 +29,3 @@ export class ValidatePaymentRequest {
   @Type(() => WalletJournalValidation)
   walletJournal?: WalletJournalValidation;
 }
-

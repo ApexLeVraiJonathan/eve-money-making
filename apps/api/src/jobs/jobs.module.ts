@@ -8,6 +8,7 @@ import { WalletModule } from '../wallet/wallet.module';
 import { ReconciliationModule } from '../reconciliation/reconciliation.module';
 import { LedgerModule } from '../ledger/ledger.module';
 import { AuthModule } from '../auth/auth.module';
+import { CharacterModule } from '../characters/character.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { AuthModule } from '../auth/auth.module';
     ScheduleModule.forRoot(),
     LedgerModule,
     AuthModule,
+    CharacterModule,
   ],
   providers: [JobsService, Logger],
   controllers: [JobsController],

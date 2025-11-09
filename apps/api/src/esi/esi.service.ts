@@ -41,7 +41,8 @@ export class EsiService {
   private readonly baseUrl = this.config.baseUrl;
   private readonly userAgent = this.config.userAgent;
   private readonly defaultTimeoutMs = this.config.timeoutMs;
-  private readonly slowDownRemainThreshold = this.config.errorSlowdownRemainThreshold;
+  private readonly slowDownRemainThreshold =
+    this.config.errorSlowdownRemainThreshold;
   private readonly slowDownDelayMs = this.config.errorSlowdownDelayMs;
   private readonly maxConcurrency = this.config.maxConcurrency;
   private readonly maxRetries = this.config.maxRetries;
@@ -73,7 +74,8 @@ export class EsiService {
   private waiters: Array<() => void> = [];
   private effectiveMaxConcurrency: number = this.maxConcurrency;
   private readonly minConcurrency: number = this.config.minConcurrency;
-  private readonly concurrencyDecayFactor: number = this.config.concurrencyDecayFactor;
+  private readonly concurrencyDecayFactor: number =
+    this.config.concurrencyDecayFactor;
 
   // Error budget
   private errorRemain: number | null = null;

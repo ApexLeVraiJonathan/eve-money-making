@@ -15,4 +15,3 @@ export class UpdateCycleLineRequest {
   @Min(1)
   plannedUnits?: number;
 }
-

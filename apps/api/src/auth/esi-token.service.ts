@@ -51,7 +51,9 @@ export class EsiTokenService {
 
       const authHeader =
         'Basic ' +
-        Buffer.from(`${creds.clientId}:${creds.clientSecret}`).toString('base64');
+        Buffer.from(`${creds.clientId}:${creds.clientSecret}`).toString(
+          'base64',
+        );
 
       const response = await axios.post<{
         access_token: string;

@@ -1,5 +1,11 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsOptional, MinLength, Matches, IsDateString } from 'class-validator';
+import {
+  IsString,
+  IsOptional,
+  MinLength,
+  Matches,
+  IsDateString,
+} from 'class-validator';
 import { Transform } from 'class-transformer';
 
 export class CreateCycleRequest {
@@ -33,4 +39,3 @@ export class CreateCycleRequest {
   })
   initialInjectionIsk?: string;
 }
-

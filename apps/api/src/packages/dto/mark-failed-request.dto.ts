@@ -9,7 +9,8 @@ export class MarkFailedRequest {
   })
   @IsString()
   @Matches(/^\d+(\.\d{1,2})?$/, {
-    message: 'collateralRecoveredIsk must be a valid number with up to 2 decimal places',
+    message:
+      'collateralRecoveredIsk must be a valid number with up to 2 decimal places',
   })
   collateralRecoveredIsk: string;
 
@@ -22,7 +23,8 @@ export class MarkFailedRequest {
   @IsOptional()
   @IsString()
   @Matches(/^\d+(\.\d{1,2})?$/, {
-    message: 'collateralProfitIsk must be a valid number with up to 2 decimal places',
+    message:
+      'collateralProfitIsk must be a valid number with up to 2 decimal places',
   })
   collateralProfitIsk?: string = '0';
 
@@ -36,4 +38,3 @@ export class MarkFailedRequest {
   @MaxLength(500)
   memo?: string;
 }
-

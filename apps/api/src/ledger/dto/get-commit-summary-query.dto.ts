@@ -10,4 +10,3 @@ export class GetCommitSummaryQuery {
   @IsUUID()
   cycleId: string;
 }
-

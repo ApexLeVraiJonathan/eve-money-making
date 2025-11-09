@@ -35,4 +35,3 @@ export class GetEntriesQuery {
   @Min(0)
   offset?: number;
 }
-

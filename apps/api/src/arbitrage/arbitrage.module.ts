@@ -6,6 +6,7 @@ import { EsiModule } from '../esi/esi.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { ArbitragePackagerModule } from '../../libs/arbitrage-packager/src';
 import { PackagesModule } from '../packages/packages.module';
+import { GameDataModule } from '../game-data/game-data.module';
 
 @Module({
   controllers: [ArbitrageController],
@@ -16,6 +17,7 @@ import { PackagesModule } from '../packages/packages.module';
     PrismaModule,
     ArbitragePackagerModule,
     PackagesModule,
+    GameDataModule,
   ],
 })
 export class ArbitrageModule {}

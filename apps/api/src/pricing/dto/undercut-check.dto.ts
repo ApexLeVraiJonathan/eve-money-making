@@ -4,7 +4,8 @@ import { Type } from 'class-transformer';
 
 export class UndercutCheckRequest {
   @ApiPropertyOptional({
-    description: 'Character IDs to check (if not provided, uses all linked characters)',
+    description:
+      'Character IDs to check (if not provided, uses all linked characters)',
     example: [123456789, 987654321],
     type: [Number],
   })
@@ -16,7 +17,8 @@ export class UndercutCheckRequest {
   characterIds?: number[];
 
   @ApiPropertyOptional({
-    description: 'Station IDs to check (if not provided, uses tracked stations)',
+    description:
+      'Station IDs to check (if not provided, uses tracked stations)',
     example: [60003760, 60008494],
     type: [Number],
   })
@@ -36,4 +38,3 @@ export class UndercutCheckRequest {
   @IsUUID()
   cycleId?: string;
 }
-

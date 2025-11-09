@@ -12,4 +12,3 @@ export class OpenCycleRequest {
   @Transform(({ value }) => (value ? new Date(value) : value))
   startedAt?: Date;
 }
-

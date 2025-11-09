@@ -7,6 +7,9 @@ import { fetchStationOrders } from '../esi/market-helpers';
 import { nextCheaperTick } from '../common/money';
 import { getEffectiveSell } from '../arbitrage/fees';
 import { AppConfig } from '../common/config';
+import { GameDataService } from '../game-data/game-data.service';
+import { CharacterService } from '../characters/character.service';
+import { MarketDataService } from '../market-data/market-data.service';
 
 @Injectable()
 export class PricingService {
@@ -15,6 +18,9 @@ export class PricingService {
     private readonly esi: EsiService,
     private readonly esiChars: EsiCharactersService,
     private readonly ledger: LedgerService,
+    private readonly gameData: GameDataService,
+    private readonly characterService: CharacterService,
+    private readonly marketData: MarketDataService,
   ) {}
 
   private parseLines(lines: string[]): Array<{ name: string; qty: number }> {
@@ -36,25 +42,7 @@ export class PricingService {
   private async resolveTypeIdsByNames(
     names: string[],
   ): Promise<Map<string, number>> {
-    const map = new Map<string, number>();
-    if (!names.length) return map;
-    // First, try exact matches in a single query
-    const rows = await this.prisma.typeId.findMany({
-      where: { name: { in: names } },
-      select: { id: true, name: true },
-    });
-    for (const r of rows) map.set(r.name, r.id);
-
-    // For any names not found, try case-insensitive lookup one by one
-    const missing = names.filter((n) => !map.has(n));
-    for (const n of missing) {
-      const r = await this.prisma.typeId.findFirst({
-        where: { name: { equals: n, mode: 'insensitive' } },
-        select: { id: true, name: true },
-      });
-      if (r) map.set(n, r.id);
-    }
-    return map;
+    return await this.gameData.resolveTypeIdsByNames(names);
   }
 
   async sellAppraise(params: {
@@ -76,11 +64,10 @@ export class PricingService {
     const nameToType = await this.resolveTypeIdsByNames(uniqueNames);
 
     // Resolve region for the destination
-    const station = await this.prisma.stationId.findUnique({
-      where: { id: params.destinationStationId },
-      select: { solarSystemId: true },
-    });
-    if (!station)
+    const regionId = await this.gameData.getStationRegion(
+      params.destinationStationId,
+    );
+    if (!regionId)
       return parsed.map((p) => ({
         itemName: p.name,
         quantity: p.qty,
@@ -88,11 +75,6 @@ export class PricingService {
         lowestSell: null,
         suggestedSellPriceTicked: null,
       }));
-    const system = await this.prisma.solarSystemId.findUnique({
-      where: { id: station.solarSystemId },
-      select: { regionId: true },
-    });
-    const regionId = system?.regionId ?? null;
 
     // Fetch all market data in parallel for speed
     const fetchPromises = parsed.map(async (p) => {
@@ -126,16 +108,11 @@ export class PricingService {
 
       // Fallback to latest high from market_order_trades_daily
       if (lowest === null) {
-        const latest = await this.prisma.marketOrderTradeDaily.findFirst({
-          where: {
-            locationId: params.destinationStationId,
-            typeId,
-            isBuyOrder: false,
-          },
-          orderBy: { scanDate: 'desc' },
-          select: { high: true },
-        });
-        if (latest?.high) lowest = Number(latest.high);
+        const latest = await this.marketData.getLatestMarketTrade(
+          typeId,
+          params.destinationStationId,
+        );
+        if (latest) lowest = latest.high;
       }
 
       const suggested = lowest !== null ? nextCheaperTick(lowest) : null;
@@ -173,16 +150,16 @@ export class PricingService {
     }>
   > {
     // Determine characters to check - default to logistics sellers
-    const characters = await this.prisma.eveCharacter.findMany({
-      where: params.characterIds?.length
-        ? {
-            id: { in: params.characterIds },
-            role: 'LOGISTICS',
-            function: 'SELLER',
-          }
-        : { role: 'LOGISTICS', function: 'SELLER' },
-      select: { id: true, name: true },
-    });
+    const characters = params.characterIds?.length
+      ? await Promise.all(
+          params.characterIds.map(async (id) => {
+            const name = await this.characterService.getCharacterName(id);
+            return name ? { id, name } : null;
+          }),
+        ).then((chars) =>
+          chars.filter((c): c is { id: number; name: string } => c !== null),
+        )
+      : await this.characterService.getSellerCharacters();
 
     const characterNameById = new Map<number, string>();
     for (const c of characters) characterNameById.set(c.id, c.name);
@@ -190,32 +167,19 @@ export class PricingService {
     // Stations default to tracked stations
     const stationIds: number[] = params.stationIds?.length
       ? params.stationIds
-      : (
-          await this.prisma.trackedStation.findMany({
-            select: { stationId: true },
-          })
-        ).map((t) => t.stationId);
+      : await this.marketData.getTrackedStationIds();
 
-    // Preload region per station
-    const stationRows = await this.prisma.stationId.findMany({
-      where: { id: { in: stationIds } },
-      select: { id: true, solarSystemId: true, name: true },
-    });
-    const systemIds = Array.from(
-      new Set(stationRows.map((s) => s.solarSystemId)),
-    );
-    const systems = await this.prisma.solarSystemId.findMany({
-      where: { id: { in: systemIds } },
-      select: { id: true, regionId: true },
-    });
-    const regionBySystem = new Map<number, number>();
-    for (const sys of systems) regionBySystem.set(sys.id, sys.regionId);
+    // Preload regions per station using GameDataService
+    const stationsWithRegions =
+      await this.gameData.getStationsWithRegions(stationIds);
     const regionByStation = new Map<number, number>();
-    for (const s of stationRows)
-      regionByStation.set(s.id, regionBySystem.get(s.solarSystemId)!);
-
     const stationNameById = new Map<number, string>();
-    for (const s of stationRows) stationNameById.set(s.id, s.name);
+    for (const [stationId, data] of stationsWithRegions.entries()) {
+      stationNameById.set(stationId, data.name);
+      if (data.regionId) {
+        regionByStation.set(stationId, data.regionId);
+      }
+    }
 
     // Collect our own active sell orders per station and per type
     const ourOrders: Array<{
@@ -246,10 +210,7 @@ export class PricingService {
 
     // Optional: filter orders to those belonging to a specific cycle scope
     if (params.cycleId) {
-      const lines = await this.prisma.cycleLine.findMany({
-        where: { cycleId: params.cycleId },
-        select: { typeId: true, destinationStationId: true },
-      });
+      const lines = await this.ledger.getCycleLinesForCycle(params.cycleId);
 
       if (lines.length > 0) {
         // Only check orders for items/stations in the cycle
@@ -294,14 +255,9 @@ export class PricingService {
 
     // Map type id to name for output
     const typeIds = Array.from(new Set(ourOrders.map((o) => o.type_id)));
-    const typeRows = typeIds.length
-      ? await this.prisma.typeId.findMany({
-          where: { id: { in: typeIds } },
-          select: { id: true, name: true },
-        })
-      : [];
-    const typeNameById = new Map<number, string>();
-    for (const t of typeRows) typeNameById.set(t.id, t.name);
+    const typeNameById = typeIds.length
+      ? await this.gameData.getTypeNames(typeIds)
+      : new Map<number, string>();
 
     // For each station/type, check if any of our orders is not the lowest
     const updatesByCharStation = new Map<
@@ -402,19 +358,7 @@ export class PricingService {
     }>
   > {
     // Get cycle lines that haven't been listed yet (no currentSellPriceIsk set)
-    const lines = await this.prisma.cycleLine.findMany({
-      where: {
-        cycleId: params.cycleId,
-        currentSellPriceIsk: null, // Only show items not yet listed
-      },
-      select: {
-        typeId: true,
-        destinationStationId: true,
-        plannedUnits: true,
-        unitsBought: true,
-        unitsSold: true,
-      },
-    });
+    const lines = await this.ledger.getUnlistedCycleLines(params.cycleId);
 
     // Calculate remaining units (bought - sold, or fall back to planned if nothing bought yet)
     const remainingMap = new Map<string, number>();
@@ -432,14 +376,9 @@ export class PricingService {
     }
 
     const typeIds = Array.from(new Set(lines.map((l) => l.typeId)));
-    const typeRows = typeIds.length
-      ? await this.prisma.typeId.findMany({
-          where: { id: { in: typeIds } },
-          select: { id: true, name: true },
-        })
-      : [];
-    const typeNameById = new Map<number, string>();
-    for (const t of typeRows) typeNameById.set(t.id, t.name);
+    const typeNameById = typeIds.length
+      ? await this.gameData.getTypeNames(typeIds)
+      : new Map<number, string>();
 
     const feeDefaults = AppConfig.arbitrage().fees;
 
@@ -456,21 +395,14 @@ export class PricingService {
     const stationIds = Array.from(
       new Set(lines.map((l) => l.destinationStationId)),
     );
-    const stations = await this.prisma.stationId.findMany({
-      where: { id: { in: stationIds } },
-      select: { id: true, solarSystemId: true },
-    });
-    const systems = await this.prisma.solarSystemId.findMany({
-      where: {
-        id: { in: Array.from(new Set(stations.map((s) => s.solarSystemId))) },
-      },
-      select: { id: true, regionId: true },
-    });
-    const regionBySystem = new Map<number, number>();
-    for (const sys of systems) regionBySystem.set(sys.id, sys.regionId);
+    const stationsWithRegions =
+      await this.gameData.getStationsWithRegions(stationIds);
     const regionByStation = new Map<number, number>();
-    for (const s of stations)
-      regionByStation.set(s.id, regionBySystem.get(s.solarSystemId)!);
+    for (const [stationId, data] of stationsWithRegions.entries()) {
+      if (data.regionId) {
+        regionByStation.set(stationId, data.regionId);
+      }
+    }
 
     // Fetch all market data in parallel for speed
     const fetchPromises = lines.map(async (l) => {
@@ -560,38 +492,12 @@ export class PricingService {
   }
 
   private async getOpenCycleIdFor(date: Date): Promise<string> {
-    const cycle = await this.prisma.cycle.findFirst({
-      where: {
-        startedAt: { lte: date },
-        OR: [{ closedAt: null }, { closedAt: { gte: date } }],
-      },
-      orderBy: { startedAt: 'desc' },
-      select: { id: true },
-    });
-    if (!cycle) {
-      const latest = await this.prisma.cycle.findFirst({
-        orderBy: { startedAt: 'desc' },
-        select: { id: true },
-      });
-      if (!latest) throw new Error('No cycle found. Create a Cycle first.');
-      return latest.id;
-    }
-    return cycle.id;
+    return await this.ledger.getOpenCycleIdForDate(date);
   }
 
   async getRemainingLines(cycleId: string) {
     // Get actual remaining units from cycle lines
-    const lines = await this.prisma.cycleLine.findMany({
-      where: { cycleId },
-      select: {
-        id: true,
-        typeId: true,
-        destinationStationId: true,
-        unitsBought: true,
-        unitsSold: true,
-        buyCostIsk: true,
-      },
-    });
+    const lines = await this.ledger.getCycleLinesWithRemaining(cycleId);
     return lines.map((l) => ({
       lineId: l.id,
       typeId: l.typeId,

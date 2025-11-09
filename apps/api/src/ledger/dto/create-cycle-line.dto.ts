@@ -26,7 +26,7 @@ export class CreateCycleLineRequest {
   @ApiProperty({
     description: 'Unit cost in ISK',
     minimum: 0,
-    example: 5.50,
+    example: 5.5,
   })
   @Type(() => Number)
   @IsNumber()
@@ -54,4 +54,3 @@ export class CreateCycleLineRequest {
   @Min(1)
   destinationStationId?: number;
 }
-

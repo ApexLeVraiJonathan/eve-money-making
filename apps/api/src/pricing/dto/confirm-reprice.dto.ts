@@ -32,4 +32,3 @@ export class ConfirmRepriceRequest {
   @Min(0.01)
   newUnitPrice: number;
 }
-

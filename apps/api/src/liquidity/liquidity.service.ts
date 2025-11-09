@@ -3,12 +3,16 @@ import { PrismaService } from '../prisma/prisma.service';
 import { DataImportService } from '@shared/data-import';
 import type { Prisma } from '@eve/prisma';
 import type { LiquidityItemDto } from './dto/liquidity-item.dto';
+import { GameDataService } from '../game-data/game-data.service';
+import { MarketDataService } from '../market-data/market-data.service';
 
 @Injectable()
 export class LiquidityService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly dataImport: DataImportService,
+    private readonly gameData: GameDataService,
+    private readonly marketData: MarketDataService,
   ) {}
 
   async runCheck(
@@ -39,18 +43,13 @@ export class LiquidityService {
 
     if (stationId) {
       stationIds = [stationId];
-      const s = await this.prisma.stationId.findUnique({
-        where: { id: stationId },
-        select: { name: true },
-      });
+      const s = await this.gameData.getStation(stationId);
       if (s?.name) stationIdToName.set(stationId, s.name);
     } else {
-      const tracked = await this.prisma.trackedStation.findMany({
-        select: { stationId: true, station: { select: { name: true } } },
-      });
+      const tracked = await this.marketData.getTrackedStationsWithDetails();
       stationIds = tracked.map((t) => t.stationId);
       for (const t of tracked) {
-        if (t.station?.name) stationIdToName.set(t.stationId, t.station.name);
+        stationIdToName.set(t.stationId, t.stationName);
       }
     }
 
@@ -236,11 +235,10 @@ export class LiquidityService {
     // Resolve typeId
     let typeId = params.itemId;
     if (!typeId && params.itemName) {
-      const t = await this.prisma.typeId.findFirst({
-        where: { name: params.itemName },
-        select: { id: true },
-      });
-      typeId = t?.id;
+      const typesMap = await this.gameData.resolveTypeIdsByNames([
+        params.itemName,
+      ]);
+      typeId = typesMap.get(params.itemName);
     }
     if (!typeId) return {};
 
@@ -249,27 +247,19 @@ export class LiquidityService {
     const stationIdToName = new Map<number, string>();
     if (params.stationId) {
       stationIds = [params.stationId];
-      const s = await this.prisma.stationId.findUnique({
-        where: { id: params.stationId },
-        select: { name: true },
-      });
+      const s = await this.gameData.getStation(params.stationId);
       if (s?.name) stationIdToName.set(params.stationId, s.name);
     } else if (params.stationName) {
-      const s = await this.prisma.stationId.findFirst({
-        where: { name: params.stationName },
-        select: { id: true, name: true },
-      });
+      const s = await this.gameData.getStationByName(params.stationName);
       if (s) {
         stationIds = [s.id];
         stationIdToName.set(s.id, s.name);
       }
     } else {
-      const tracked = await this.prisma.trackedStation.findMany({
-        select: { stationId: true, station: { select: { name: true } } },
-      });
+      const tracked = await this.marketData.getTrackedStationsWithDetails();
       stationIds = tracked.map((t) => t.stationId);
       for (const t of tracked) {
-        if (t.station?.name) stationIdToName.set(t.stationId, t.station.name);
+        stationIdToName.set(t.stationId, t.stationName);
       }
     }
     if (stationIds.length === 0) return {};

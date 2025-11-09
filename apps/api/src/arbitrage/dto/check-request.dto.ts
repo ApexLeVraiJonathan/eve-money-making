@@ -140,4 +140,3 @@ export class ArbitrageCheckRequest {
   @Max(90)
   liquidityWindowDays?: number;
 }
-

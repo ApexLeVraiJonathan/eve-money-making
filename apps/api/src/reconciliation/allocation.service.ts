@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AppConfig } from '../common/config';
+import { CharacterService } from '../characters/character.service';
 
 type CharacterLocation = 'JITA' | 'DODIXIE' | 'AMARR' | 'HEK' | 'RENS' | 'CN';
 
@@ -19,6 +20,7 @@ export class AllocationService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly logger: Logger,
+    private readonly characterService: CharacterService,
   ) {}
 
   private readonly salesTaxPct = AppConfig.arbitrage().fees.salesTaxPercent;
@@ -236,10 +238,7 @@ export class AllocationService {
     }
 
     // Get SELLER characters with locations
-    const sellers = await this.prisma.eveCharacter.findMany({
-      where: { function: 'SELLER' },
-      select: { id: true, location: true },
-    });
+    const sellers = await this.characterService.getSellerCharacters();
     const charToStation = new Map<number, number>();
     for (const s of sellers) {
       if (s.location) {

@@ -18,7 +18,9 @@ export class LiquidityController {
   @Roles('ADMIN')
   @UseGuards(RolesGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Check liquidity for items across tracked stations' })
+  @ApiOperation({
+    summary: 'Check liquidity for items across tracked stations',
+  })
   async check(
     @Body()
     body: LiquidityCheckRequest,

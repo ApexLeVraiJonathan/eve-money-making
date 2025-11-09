@@ -32,4 +32,3 @@ export class CreateCycleLineManualRequest {
   @Min(1)
   plannedUnits!: number;
 }
-
