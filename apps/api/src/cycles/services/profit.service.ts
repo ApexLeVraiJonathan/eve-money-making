@@ -5,7 +5,16 @@ import { AppConfig } from '../../common/config';
 
 /**
  * ProfitService handles all profit calculation logic.
- * Responsibilities: Cycle profit, estimated profit, portfolio valuation.
+ *
+ * Responsibilities:
+ * - Compute realized cycle profit from completed sales
+ * - Estimate unrealized profit from current inventory
+ * - Calculate portfolio valuations
+ *
+ * Profit Formulas:
+ * - Line Profit = SalesNet - BuyCost - BrokerFees - RelistFees
+ * - Cycle Profit = Sum(Line Profits) - Transport Fees
+ * - Estimated Profit = Realized + (CurrentValue - CostBasis) for unsold inventory
  */
 @Injectable()
 export class ProfitService {
@@ -17,7 +26,14 @@ export class ProfitService {
   ) {}
 
   /**
-   * Compute realized profit for a cycle
+   * Compute realized profit for a cycle from completed sales.
+   *
+   * Formula:
+   * - Per-line: SalesNet - BuyCost - BrokerFees - RelistFees
+   * - Cycle Total: Sum(Line Profits) - Transport Fees
+   *
+   * @param cycleId - Cycle to compute profit for
+   * @returns Profit breakdown with line-level details
    */
   async computeCycleProfit(cycleId: string): Promise<{
     lineProfitExclTransport: string;
@@ -335,4 +351,3 @@ export class ProfitService {
     };
   }
 }
-

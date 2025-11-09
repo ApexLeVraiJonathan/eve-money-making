@@ -21,6 +21,13 @@ import {
   Copy,
   Check,
 } from "lucide-react";
+import {
+  useAllParticipations,
+  useUnmatchedDonations,
+  useValidateParticipationPayment,
+  useRefundParticipation,
+  useMarkPayoutSent,
+} from "../../api";
 
 type Participation = {
   id: string;
@@ -56,20 +63,21 @@ type UnmatchedDonation = {
 };
 
 export default function ParticipationsPage() {
-  const [participations, setParticipations] = React.useState<Participation[]>(
-    [],
-  );
-  const [unmatchedDonations, setUnmatchedDonations] = React.useState<
-    UnmatchedDonation[]
-  >([]);
+  // Use new API hooks
+  const { data: participations = [], isLoading: loading } =
+    useAllParticipations();
+  const { data: unmatchedDonations = [] } = useUnmatchedDonations();
+
+  const validatePayment = useValidateParticipationPayment();
+  const refundParticipation = useRefundParticipation();
+  const markPayoutSent = useMarkPayoutSent();
+
   const [selectedParticipation, setSelectedParticipation] = React.useState<
     string | null
   >(null);
   const [selectedDonation, setSelectedDonation] = React.useState<string | null>(
     null,
   );
-  const [loading, setLoading] = React.useState(true);
-  const [matching, setMatching] = React.useState(false);
   const [copiedText, setCopiedText] = React.useState<string | null>(null);
 
   const handleCopy = async (text: string, label: string) => {
@@ -78,53 +86,8 @@ export default function ParticipationsPage() {
       setCopiedText(label);
       toast.success(`Copied ${label}!`);
       setTimeout(() => setCopiedText(null), 2000);
-    } catch (error) {
+    } catch {
       toast.error("Failed to copy");
-    }
-  };
-
-  React.useEffect(() => {
-    void loadData();
-  }, []);
-
-  const loadData = async () => {
-    setLoading(true);
-    try {
-      // Load all participations (AWAITING_INVESTMENT + OPTED_OUT with no refund)
-      const pRes = await fetch("/api/ledger/participations/all");
-      if (pRes.ok) {
-        const data = await pRes.json();
-        setParticipations(data);
-      } else if (pRes.status === 401) {
-        toast.error("Please sign in to access this page");
-        return;
-      } else {
-        const error = await pRes
-          .json()
-          .catch(() => ({ error: "Unknown error" }));
-        console.error("Failed to load participations:", error);
-        toast.error("Failed to load participations");
-      }
-
-      // Load unmatched donations
-      const dRes = await fetch(
-        "/api/ledger/participations/unmatched-donations",
-      );
-      if (dRes.ok) {
-        const data = await dRes.json();
-        setUnmatchedDonations(data);
-      } else if (dRes.status !== 401) {
-        // Don't show error if already showed auth error above
-        const error = await dRes
-          .json()
-          .catch(() => ({ error: "Unknown error" }));
-        console.error("Failed to load unmatched donations:", error);
-      }
-    } catch (error) {
-      console.error("Error loading data:", error);
-      toast.error("Failed to load data");
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -134,44 +97,18 @@ export default function ParticipationsPage() {
       return;
     }
 
-    setMatching(true);
     try {
-      const donation = unmatchedDonations.find(
-        (d) => d.journalId === selectedDonation,
-      );
-      if (!donation) throw new Error("Donation not found");
-
-      const res = await fetch(
-        `/api/ledger/participations/${selectedParticipation}/validate`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            walletJournal: {
-              characterId: donation.characterId,
-              journalId: donation.journalId, // Send as string, backend will convert
-            },
-          }),
-        },
-      );
-
-      if (!res.ok) {
-        const error = await res
-          .json()
-          .catch(() => ({ error: "Unknown error" }));
-        throw new Error(error.error || error.message || "Failed to match");
-      }
-
+      await validatePayment.mutateAsync({
+        participationId: selectedParticipation,
+        walletJournalId: selectedDonation,
+      });
       toast.success("Payment matched successfully!");
       setSelectedParticipation(null);
       setSelectedDonation(null);
-      await loadData();
     } catch (error) {
       const msg =
         error instanceof Error ? error.message : "Failed to match payment";
       toast.error(msg);
-    } finally {
-      setMatching(false);
     }
   };
 
@@ -220,11 +157,7 @@ export default function ParticipationsPage() {
     (p) => p.status === "OPTED_OUT" && !p.refundedAt,
   );
   const needsPayout = participations.filter(
-    (p) =>
-      p.status === "OPTED_IN" &&
-      p.cycle.closedAt &&
-      !p.payoutPaidAt &&
-      p.payoutAmountIsk,
+    (p) => p.status === "OPTED_IN" && !p.payoutSentAt && p.payoutIsk,
   );
 
   if (loading) {
@@ -369,7 +302,7 @@ export default function ParticipationsPage() {
                         <td className="p-3 font-medium">{p.characterName}</td>
                         <td className="p-3">
                           <div className="text-xs text-muted-foreground">
-                            {p.cycle.name || p.cycleId.substring(0, 8)}
+                            {p.cycleId.substring(0, 8)}
                           </div>
                         </td>
                         <td className="p-3 text-right font-mono text-xs">
@@ -521,11 +454,15 @@ export default function ParticipationsPage() {
           <div className="mt-6 flex items-center justify-center">
             <Button
               onClick={handleManualMatch}
-              disabled={!selectedParticipation || !selectedDonation || matching}
+              disabled={
+                !selectedParticipation ||
+                !selectedDonation ||
+                validatePayment.isPending
+              }
               size="lg"
               className="gap-2"
             >
-              {matching ? (
+              {validatePayment.isPending ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
                   Matching...
@@ -586,10 +523,10 @@ export default function ParticipationsPage() {
                           {formatIsk(p.amountIsk)} ISK
                         </td>
                         <td className="p-3 text-xs text-muted-foreground">
-                          {p.cycle.name || p.cycle.id}
+                          {p.cycleId.substring(0, 8)}
                         </td>
                         <td className="p-3 text-xs text-muted-foreground">
-                          {new Date(p.optedOutAt!).toLocaleString()}
+                          {new Date(p.updatedAt).toLocaleString()}
                         </td>
                         <td className="p-3 text-right">
                           <Button
@@ -603,32 +540,14 @@ export default function ParticipationsPage() {
                               if (!confirmed) return;
 
                               try {
-                                // Ensure amountIsk has exactly 2 decimal places for backend validation
                                 const amount = parseFloat(p.amountIsk).toFixed(
                                   2,
                                 );
-                                const res = await fetch(
-                                  `/api/ledger/participations/${p.id}/refund`,
-                                  {
-                                    method: "POST",
-                                    headers: {
-                                      "Content-Type": "application/json",
-                                    },
-                                    body: JSON.stringify({
-                                      amountIsk: amount,
-                                    }),
-                                  },
-                                );
-                                if (!res.ok) {
-                                  const error = await res
-                                    .json()
-                                    .catch(() => ({ error: "Unknown error" }));
-                                  throw new Error(
-                                    error.error || error.message || "Failed",
-                                  );
-                                }
+                                await refundParticipation.mutateAsync({
+                                  participationId: p.id,
+                                  amountIsk: amount,
+                                });
                                 toast.success("Refund marked as sent!");
-                                await loadData();
                               } catch (error) {
                                 const msg =
                                   error instanceof Error
@@ -690,7 +609,7 @@ export default function ParticipationsPage() {
                   <tbody className="divide-y">
                     {needsPayout.map((p) => {
                       const investment = parseFloat(p.amountIsk);
-                      const profitShare = parseFloat(p.payoutAmountIsk!);
+                      const profitShare = parseFloat(p.payoutIsk ?? "0");
                       // Total payout = investment + profit (so user gets their money back plus profit)
                       const totalPayout = investment + profitShare;
                       const returnPct = (profitShare / investment) * 100;
@@ -755,7 +674,7 @@ export default function ParticipationsPage() {
                             </div>
                           </td>
                           <td className="p-3 text-xs text-muted-foreground">
-                            {p.cycle.name || p.cycle.id}
+                            {p.cycleId.substring(0, 8)}
                           </td>
                           <td className="p-3 text-right">
                             <Button
@@ -769,24 +688,8 @@ export default function ParticipationsPage() {
                                 if (!confirmed) return;
 
                                 try {
-                                  const res = await fetch(
-                                    `/api/ledger/participations/${p.id}/mark-payout-sent`,
-                                    {
-                                      method: "POST",
-                                    },
-                                  );
-                                  if (!res.ok) {
-                                    const error = await res
-                                      .json()
-                                      .catch(() => ({
-                                        error: "Unknown error",
-                                      }));
-                                    throw new Error(
-                                      error.error || error.message || "Failed",
-                                    );
-                                  }
+                                  await markPayoutSent.mutateAsync(p.id);
                                   toast.success("Payout marked as sent!");
-                                  await loadData();
                                 } catch (error) {
                                   const msg =
                                     error instanceof Error

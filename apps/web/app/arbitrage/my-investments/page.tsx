@@ -30,6 +30,7 @@ import { UserRound, LogIn, Wallet, TrendingUp, DollarSign } from "lucide-react";
 import { Button } from "@eve/ui";
 import { Badge } from "@eve/ui";
 import { Skeleton } from "@eve/ui";
+import { useAllParticipations } from "../api";
 
 type ParticipationHistory = {
   cycleId: string;
@@ -50,56 +51,15 @@ type ParticipationHistory = {
 export default function MyInvestmentsPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
-  const [participations, setParticipations] = React.useState<
-    ParticipationHistory[]
-  >([]);
-  const [loading, setLoading] = React.useState(true);
-  const [authRequired, setAuthRequired] = React.useState(false);
 
-  React.useEffect(() => {
-    // Don't do anything until we have a definitive auth status
-    if (status === "loading") {
-      return;
-    }
+  // Use new API hook
+  const {
+    data: participations = [],
+    isLoading: loading,
+    error,
+  } = useAllParticipations();
 
-    // If not authenticated, stop loading and don't fetch
-    if (status === "unauthenticated") {
-      setLoading(false);
-      return;
-    }
-
-    // Only fetch if we're authenticated AND have a session with access token
-    if (status === "authenticated" && session?.accessToken) {
-      async function loadParticipations() {
-        try {
-          // Fetch all participations for the current user
-          const res = await fetch("/api/ledger/participations/all");
-          if (!res.ok) {
-            // Don't throw error, just log and set loading to false
-            if (res.status === 401) {
-              // Session exists but backend rejected the token: treat as unauthenticated for UX
-              setAuthRequired(true);
-            } else {
-              console.error("Failed to fetch participations:", res.status);
-            }
-            setLoading(false);
-            return;
-          }
-          const data = await res.json();
-          setParticipations(data);
-        } catch (error) {
-          console.error("Failed to load participations:", error);
-        } finally {
-          setLoading(false);
-        }
-      }
-
-      loadParticipations();
-    } else if (status === "authenticated" && !session?.accessToken) {
-      // Authenticated but no access token yet, keep loading
-      return;
-    }
-  }, [status, session]);
+  const authRequired = status === "unauthenticated" || error;
 
   // Calculate summary statistics
   const totalInvested = participations.reduce(
@@ -108,9 +68,9 @@ export default function MyInvestmentsPage() {
   );
   // Total returned = investment + profit for all completed payouts
   const totalReturned = participations.reduce((sum, p) => {
-    if (p.payoutAmountIsk && p.payoutPaidAt) {
+    if (p.payoutIsk && p.payoutSentAt) {
       const investment = Number(p.amountIsk);
-      const profitShare = Number(p.payoutAmountIsk);
+      const profitShare = Number(p.payoutIsk);
       return sum + investment + profitShare;
     }
     return sum;
@@ -341,8 +301,8 @@ export default function MyInvestmentsPage() {
               <TableBody>
                 {participations.map((p) => {
                   const invested = Number(p.amountIsk);
-                  // payoutAmountIsk is the profit share, total payout = investment + profit
-                  const profitShare = Number(p.payoutAmountIsk || 0);
+                  // payoutIsk is the profit share, total payout = investment + profit
+                  const profitShare = Number(p.payoutIsk || 0);
                   const totalPayout =
                     profitShare > 0 ? invested + profitShare : 0;
                   const roi = invested > 0 ? (profitShare / invested) * 100 : 0;
@@ -350,7 +310,7 @@ export default function MyInvestmentsPage() {
                   return (
                     <TableRow key={p.cycleId}>
                       <TableCell className="font-medium">
-                        {p.cycle.name || p.cycleId.slice(0, 8)}
+                        {p.cycleId.slice(0, 8)}
                       </TableCell>
                       <TableCell className="text-right tabular-nums">
                         {formatIsk(invested)}
@@ -361,7 +321,7 @@ export default function MyInvestmentsPage() {
                             <div className="font-semibold">
                               {formatIsk(totalPayout)}
                             </div>
-                            {!p.payoutPaidAt && (
+                            {!p.payoutSentAt && (
                               <div className="text-xs text-amber-600">
                                 Pending
                               </div>

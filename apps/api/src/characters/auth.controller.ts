@@ -29,7 +29,10 @@ import { RolesGuard } from './guards/roles.guard';
 import { SetCharacterProfileRequest } from './dto/set-character-profile.dto';
 import { AppConfig } from '../common/config';
 import { Public } from './decorators/public.decorator';
-import { CurrentUser, type RequestUser } from './decorators/current-user.decorator';
+import {
+  CurrentUser,
+  type RequestUser,
+} from './decorators/current-user.decorator';
 
 @ApiTags('auth')
 @Controller('auth')

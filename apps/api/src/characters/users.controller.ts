@@ -16,7 +16,10 @@ import {
   ApiQuery,
   ApiParam,
 } from '@nestjs/swagger';
-import { CurrentUser, type RequestUser } from './decorators/current-user.decorator';
+import {
+  CurrentUser,
+  type RequestUser,
+} from './decorators/current-user.decorator';
 import { UserService } from './services/user.service';
 import { Roles } from './decorators/roles.decorator';
 import { RolesGuard } from './guards/roles.guard';

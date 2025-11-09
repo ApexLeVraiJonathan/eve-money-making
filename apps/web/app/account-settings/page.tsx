@@ -22,89 +22,51 @@ import {
   LogOut,
   AlertCircle,
 } from "lucide-react";
+import {
+  useCurrentUser,
+  useMyCharacters,
+  useSetPrimaryCharacter,
+  useUnlinkCharacter,
+  startCharacterLink,
+  logout,
+} from "../api-hooks/users";
 
 export default function AccountSettingsPage() {
-  const [me, setMe] = React.useState<null | {
-    userId: string | null;
-    role: string;
-    characterId: number;
-    characterName: string;
-  }>(null);
-  const [chars, setChars] = React.useState<
-    Array<{ id: number; name: string; isPrimary: boolean }>
-  >([]);
-  const [error, setError] = React.useState<string | null>(null);
+  const { data: me, error, isLoading } = useCurrentUser();
+  const { data: chars = [] } = useMyCharacters();
 
-  const load = async () => {
-    setError(null);
-    try {
-      const m = await fetch("/api/auth/me", { cache: "no-store" }).then((r) =>
-        r.json(),
-      );
-      setMe(m);
-      const cs = await fetch("/api/users/me/characters", {
-        cache: "no-store",
-      }).then((r) => r.json());
-      setChars(Array.isArray(cs) ? cs : []);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    }
-  };
-
-  React.useEffect(() => {
-    void load();
-  }, []);
-
-  const [busyPrimaryId, setBusyPrimaryId] = React.useState<number | null>(null);
-  const [busyUnlinkId, setBusyUnlinkId] = React.useState<number | null>(null);
+  const setPrimaryMutation = useSetPrimaryCharacter();
+  const unlinkMutation = useUnlinkCharacter();
 
   const setPrimary = async (id: number) => {
     try {
-      setBusyPrimaryId(id);
-      const res = await fetch("/api/users/me/primary-character", {
-        method: "PATCH",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ characterId: id }),
-      });
-      if (!res.ok) throw new Error((await res.json())?.error || res.statusText);
+      await setPrimaryMutation.mutateAsync(id);
       toast.success("Primary character updated");
-      await load();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusyPrimaryId(null);
     }
   };
 
   const unlink = async (id: number) => {
     try {
-      setBusyUnlinkId(id);
-      const res = await fetch(`/api/users/me/characters/${id}`, {
-        method: "DELETE",
-      });
-      if (!res.ok) throw new Error((await res.json())?.error || res.statusText);
+      await unlinkMutation.mutateAsync(id);
       toast.success("Character unlinked");
-      await load();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusyUnlinkId(null);
     }
   };
 
-  const startLink = async () => {
+  const startLink = () => {
+    startCharacterLink(window.location.href);
+  };
+
+  const handleLogout = async () => {
     try {
-      const returnUrl = encodeURIComponent(window.location.href);
-      window.location.href = `/api/auth/link-character/start?returnUrl=${returnUrl}`;
-    } catch {
-      // ignore
+      await logout();
+      toast.success("Logged out");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e));
     }
-  };
-
-  const logout = async () => {
-    const res = await fetch("/api/auth/logout");
-    if (res.ok) toast.success("Logged out");
-    window.location.href = "/";
   };
 
   const primaryChar = chars.find((c) => c.isPrimary);
@@ -123,7 +85,9 @@ export default function AccountSettingsPage() {
         <Card className="border-destructive">
           <CardContent className="flex items-center gap-3 pt-6">
             <AlertCircle className="h-5 w-5 text-destructive" />
-            <p className="text-sm text-destructive">{error}</p>
+            <p className="text-sm text-destructive">
+              {error instanceof Error ? error.message : String(error)}
+            </p>
           </CardContent>
         </Card>
       )}
@@ -192,7 +156,7 @@ export default function AccountSettingsPage() {
                   </Button>
                   <Button
                     variant="outline"
-                    onClick={logout}
+                    onClick={handleLogout}
                     className="w-full sm:w-auto"
                   >
                     <LogOut className="mr-2 h-4 w-4" />
@@ -276,10 +240,10 @@ export default function AccountSettingsPage() {
                           size="sm"
                           variant="outline"
                           onClick={() => void setPrimary(char.id)}
-                          disabled={busyPrimaryId === char.id}
+                          disabled={setPrimaryMutation.isPending}
                         >
                           <Star className="mr-2 h-3 w-3" />
-                          {busyPrimaryId === char.id
+                          {setPrimaryMutation.isPending
                             ? "Setting…"
                             : "Set Primary"}
                         </Button>
@@ -287,10 +251,10 @@ export default function AccountSettingsPage() {
                           size="sm"
                           variant="ghost"
                           onClick={() => void unlink(char.id)}
-                          disabled={busyUnlinkId === char.id}
+                          disabled={unlinkMutation.isPending}
                         >
                           <Unlink className="mr-2 h-3 w-3" />
-                          {busyUnlinkId === char.id ? "Unlinking…" : "Unlink"}
+                          {unlinkMutation.isPending ? "Unlinking…" : "Unlink"}
                         </Button>
                       </div>
                     )}

@@ -505,9 +505,8 @@ export class PricingService {
 
   async getRemainingLines(cycleId: string) {
     // Get actual remaining units from cycle lines
-    const lines = await this.cycleLineService.getCycleLinesWithRemaining(
-      cycleId,
-    );
+    const lines =
+      await this.cycleLineService.getCycleLinesWithRemaining(cycleId);
     return lines.map((l) => ({
       lineId: l.id,
       typeId: l.typeId,

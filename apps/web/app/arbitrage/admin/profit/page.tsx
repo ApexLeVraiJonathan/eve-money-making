@@ -29,6 +29,13 @@ import { Textarea } from "@eve/ui";
 import { ArrowLeft, Plus } from "lucide-react";
 import { formatIsk } from "@/lib/utils";
 import { Skeleton } from "@eve/ui";
+import {
+  useCycles,
+  useCycleProfit,
+  useTransportFees,
+  useAddTransportFee,
+} from "../../api";
+import { toast } from "sonner";
 
 type CycleProfit = {
   lineProfitExclTransport: string;
@@ -64,149 +71,56 @@ function CycleProfitContent() {
   const queryParamCycleId = searchParams.get("cycleId");
 
   const [cycleId, setCycleId] = React.useState<string>("");
-  const [profit, setProfit] = React.useState<CycleProfit | null>(null);
-  const [transportFees, setTransportFees] = React.useState<TransportFee[]>([]);
-  const [isLoading, setIsLoading] = React.useState(true);
-  const [error, setError] = React.useState<string | null>(null);
+
+  // Auto-load latest cycle
+  const { data: cycles = [] } = useCycles();
+
+  React.useEffect(() => {
+    if (queryParamCycleId) {
+      setCycleId(queryParamCycleId);
+    } else if (cycles.length > 0 && !cycleId) {
+      setCycleId(cycles[0].id);
+    }
+  }, [queryParamCycleId, cycles, cycleId]);
+
+  // Use new API hooks
+  const { data: profit, isLoading, error } = useCycleProfit(cycleId);
+  const { data: transportFees = [] } = useTransportFees(cycleId);
 
   // Transport fee dialog state
   const [isDialogOpen, setIsDialogOpen] = React.useState(false);
   const [feeAmount, setFeeAmount] = React.useState("");
   const [feeMemo, setFeeMemo] = React.useState("");
-  const [isSubmitting, setIsSubmitting] = React.useState(false);
-  const [submitError, setSubmitError] = React.useState<string | null>(null);
 
-  // Fetch latest open cycle if no cycleId provided
-  React.useEffect(() => {
-    const fetchLatestCycle = async () => {
-      if (queryParamCycleId) {
-        setCycleId(queryParamCycleId);
-        return;
-      }
-
-      try {
-        const resp = await fetch("/api/arbitrage/commits?limit=1");
-        if (!resp.ok) return;
-        const rows: Array<{
-          id: string;
-          createdAt: string;
-          name?: string | null;
-          closedAt?: Date | null;
-        }> = await resp.json();
-        // Get the first open cycle (not closed)
-        const openCycle = rows.find((r) => !r.closedAt);
-        if (openCycle) {
-          setCycleId(openCycle.id);
-        } else if (rows.length > 0) {
-          // Fallback to most recent cycle if no open one
-          setCycleId(rows[0].id);
-        }
-      } catch {
-        // ignore
-      }
-    };
-    fetchLatestCycle();
-  }, [queryParamCycleId]);
-
-  // Load profit data when cycleId changes
-  React.useEffect(() => {
-    if (!cycleId) return;
-
-    setIsLoading(true);
-    setError(null);
-    Promise.all([
-      fetch(`/api/ledger/cycles/${cycleId}/profit`).then(async (r) => {
-        if (!r.ok) throw new Error(`Profit API error: ${r.status}`);
-        return r.json();
-      }),
-      fetch(`/api/ledger/cycles/${cycleId}/transport-fees`).then(async (r) => {
-        if (!r.ok) throw new Error(`Transport fees API error: ${r.status}`);
-        return r.json();
-      }),
-    ])
-      .then(([profitData, feesData]) => {
-        setProfit(profitData);
-        setTransportFees(feesData || []);
-        setIsLoading(false);
-      })
-      .catch((err) => {
-        console.error("Failed to load cycle profit:", err);
-        setError(err instanceof Error ? err.message : "Failed to load data");
-        setIsLoading(false);
-      });
-  }, [cycleId]);
-
-  const loadData = React.useCallback(async () => {
-    if (!cycleId) return;
-
-    setIsLoading(true);
-    setError(null);
-    try {
-      const [profitData, feesData] = await Promise.all([
-        fetch(`/api/ledger/cycles/${cycleId}/profit`).then(async (r) => {
-          if (!r.ok) throw new Error(`Profit API error: ${r.status}`);
-          return r.json();
-        }),
-        fetch(`/api/ledger/cycles/${cycleId}/transport-fees`).then(
-          async (r) => {
-            if (!r.ok) throw new Error(`Transport fees API error: ${r.status}`);
-            return r.json();
-          },
-        ),
-      ]);
-      setProfit(profitData);
-      setTransportFees(feesData || []);
-    } catch (err) {
-      console.error("Failed to load cycle profit:", err);
-      setError(err instanceof Error ? err.message : "Failed to load data");
-    } finally {
-      setIsLoading(false);
-    }
-  }, [cycleId]);
+  const addTransportFeeMutation = useAddTransportFee();
 
   const handleAddTransportFee = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!cycleId || !feeAmount) return;
 
-    // Validate amount format (must be decimal with 2 places)
+    // Validate amount format
     const amountNum = Number(feeAmount);
     if (isNaN(amountNum) || amountNum <= 0) {
-      setSubmitError("Please enter a valid amount greater than 0");
+      toast.error("Please enter a valid amount greater than 0");
       return;
     }
-    const amountIsk = amountNum.toFixed(2);
-
-    setIsSubmitting(true);
-    setSubmitError(null);
 
     try {
-      const resp = await fetch(`/api/ledger/cycles/${cycleId}/transport-fee`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          amountIsk,
+      await addTransportFeeMutation.mutateAsync({
+        cycleId,
+        data: {
+          amountIsk: amountNum.toFixed(2),
           memo: feeMemo.trim() || undefined,
-        }),
+        },
       });
-
-      if (!resp.ok) {
-        const errorData = await resp
-          .json()
-          .catch(() => ({ error: "Unknown error" }));
-        throw new Error(errorData.error || "Failed to add transport fee");
-      }
-
-      // Success - reload data and close dialog
-      await loadData();
       setIsDialogOpen(false);
       setFeeAmount("");
       setFeeMemo("");
+      toast.success("Transport fee added");
     } catch (err) {
-      setSubmitError(
+      toast.error(
         err instanceof Error ? err.message : "Failed to add transport fee",
       );
-    } finally {
-      setIsSubmitting(false);
     }
   };
 
@@ -229,7 +143,9 @@ function CycleProfitContent() {
           </div>
         </div>
         <div className="rounded-lg border border-red-500/50 bg-red-500/10 p-4">
-          <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
+          <p className="text-sm text-red-600 dark:text-red-400">
+            {error instanceof Error ? error.message : String(error)}
+          </p>
         </div>
       </div>
     );
@@ -415,7 +331,7 @@ function CycleProfitContent() {
                       value={feeAmount}
                       onChange={(e) => setFeeAmount(e.target.value)}
                       required
-                      disabled={isSubmitting}
+                      disabled={addTransportFeeMutation.isPending}
                     />
                   </div>
                   <div className="grid gap-2">
@@ -426,16 +342,9 @@ function CycleProfitContent() {
                       value={feeMemo}
                       onChange={(e) => setFeeMemo(e.target.value)}
                       rows={3}
-                      disabled={isSubmitting}
+                      disabled={addTransportFeeMutation.isPending}
                     />
                   </div>
-                  {submitError && (
-                    <div className="rounded-lg border border-red-500/50 bg-red-500/10 p-3">
-                      <p className="text-sm text-red-600 dark:text-red-400">
-                        {submitError}
-                      </p>
-                    </div>
-                  )}
                 </div>
                 <DialogFooter>
                   <Button
@@ -443,14 +352,18 @@ function CycleProfitContent() {
                     variant="outline"
                     onClick={() => {
                       setIsDialogOpen(false);
-                      setSubmitError(null);
                     }}
-                    disabled={isSubmitting}
+                    disabled={addTransportFeeMutation.isPending}
                   >
                     Cancel
                   </Button>
-                  <Button type="submit" disabled={isSubmitting || !feeAmount}>
-                    {isSubmitting ? "Adding..." : "Add Fee"}
+                  <Button
+                    type="submit"
+                    disabled={addTransportFeeMutation.isPending || !feeAmount}
+                  >
+                    {addTransportFeeMutation.isPending
+                      ? "Adding..."
+                      : "Add Fee"}
                   </Button>
                 </DialogFooter>
               </form>

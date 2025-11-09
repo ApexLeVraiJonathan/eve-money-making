@@ -1,13 +1,11 @@
 "use client";
 
 import * as React from "react";
-import { useEffect, useState } from "react";
 import { Copy, Lock, X, LogIn } from "lucide-react";
 import { Badge } from "@eve/ui";
 import { Button } from "@eve/ui";
 import { toast } from "sonner";
 import { useSession, signIn } from "next-auth/react";
-import { useRouter } from "next/navigation";
 import OptInDialog from "./opt-in-dialog";
 import {
   Empty,
@@ -16,6 +14,7 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@eve/ui";
+import { useMyParticipation, useOptOutParticipation } from "../api";
 
 type Participation = {
   id: string;
@@ -38,41 +37,13 @@ type NextCycle = {
 };
 
 export default function NextCycleSection({ next }: { next: NextCycle | null }) {
-  const { data: session, status } = useSession();
-  const router = useRouter();
-  const [participation, setParticipation] = useState<Participation | null>(
-    null,
+  const { status } = useSession();
+
+  // Use new API hook
+  const { data: participation, isLoading: loading } = useMyParticipation(
+    next?.id ?? "",
   );
-  const [loading, setLoading] = useState(true);
-  const [optingOut, setOptingOut] = useState(false);
-
-  useEffect(() => {
-    if (!next) {
-      setLoading(false);
-      return;
-    }
-
-    // Only fetch participation if user is authenticated
-    if (status === "unauthenticated") {
-      setLoading(false);
-      return;
-    }
-
-    if (status === "loading") {
-      return; // Wait for session to load
-    }
-
-    // Fetch user's participation for this cycle
-    fetch(`/api/ledger/cycles/${next.id}/participations/me`)
-      .then((r) => r.json())
-      .then((data) => {
-        setParticipation(data);
-        setLoading(false);
-      })
-      .catch(() => {
-        setLoading(false);
-      });
-  }, [next, status]);
+  const optOutMutation = useOptOutParticipation();
 
   const handleOptOut = async () => {
     if (!participation) return;
@@ -85,45 +56,17 @@ export default function NextCycleSection({ next }: { next: NextCycle | null }) {
 
     if (!confirmed) return;
 
-    setOptingOut(true);
     try {
-      const res = await fetch(
-        `/api/ledger/participations/${participation.id}/opt-out`,
-        {
-          method: "POST",
-        },
-      );
-
-      if (!res.ok) {
-        throw new Error("Failed to opt out");
-      }
-
+      await optOutMutation.mutateAsync(participation.id);
       const wasAwaitingInvestment =
         participation.status === "AWAITING_INVESTMENT";
-
       toast.success(
         wasAwaitingInvestment
           ? "Participation cancelled successfully"
           : "Participation cancelled. A refund will be processed by an admin.",
       );
-
-      // If it was AWAITING_INVESTMENT, it's deleted - clear the state
-      // If it was OPTED_IN, it's marked OPTED_OUT - refetch to show updated status
-      if (wasAwaitingInvestment) {
-        setParticipation(null);
-      } else {
-        // Refetch participation to show OPTED_OUT status
-        if (next) {
-          fetch(`/api/ledger/cycles/${next.id}/participations/me`)
-            .then((r) => r.json())
-            .then((data) => setParticipation(data))
-            .catch(() => {});
-        }
-      }
     } catch (error) {
       toast.error("Failed to cancel participation. Please try again.");
-    } finally {
-      setOptingOut(false);
     }
   };
 
@@ -269,7 +212,7 @@ export default function NextCycleSection({ next }: { next: NextCycle | null }) {
                           variant="ghost"
                           className="h-7 px-2 text-xs hover:bg-amber-500/20 flex-shrink-0"
                           onClick={() =>
-                            copyToClipboard(participation.memo, "Memo")
+                            copyToClipboard(participation.memo ?? "", "Memo")
                           }
                         >
                           <Copy className="h-3.5 w-3.5" />
@@ -296,10 +239,10 @@ export default function NextCycleSection({ next }: { next: NextCycle | null }) {
                 variant="outline"
                 size="sm"
                 onClick={handleOptOut}
-                disabled={optingOut}
+                disabled={optOutMutation.isPending}
                 className="gap-2 text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950"
               >
-                {optingOut ? (
+                {optOutMutation.isPending ? (
                   <>
                     <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
                     Cancelling...
@@ -356,10 +299,7 @@ export default function NextCycleSection({ next }: { next: NextCycle | null }) {
             triggerClassName="inline-flex h-9 items-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground shadow hover:opacity-90"
             onSuccess={() => {
               // Refresh participation status
-              fetch(`/api/ledger/cycles/${next.id}/participations/me`)
-                .then((r) => r.json())
-                .then((data) => setParticipation(data))
-                .catch(() => {});
+              window.location.reload();
             }}
           />
         </div>

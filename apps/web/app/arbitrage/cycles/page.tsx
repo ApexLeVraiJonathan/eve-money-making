@@ -1,9 +1,7 @@
 "use client";
 
-import * as React from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Recycle, Users, Wallet, TrendingUp } from "lucide-react";
+import { Recycle, TrendingUp } from "lucide-react";
 import { Badge } from "@eve/ui";
 import { Button } from "@eve/ui";
 import { formatIsk } from "@/lib/utils";
@@ -24,111 +22,17 @@ import {
   CardHeader,
   CardTitle,
 } from "@eve/ui";
-import {
-  ChartContainer,
-  ChartTooltip,
-  ChartTooltipContent,
-  ChartLegend,
-  ChartLegendContent,
-} from "@eve/ui";
-import {
-  PieChart,
-  Pie,
-  Cell,
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  ResponsiveContainer,
-  ReferenceLine,
-} from "recharts";
-
-type CycleOverviewData = {
-  current: null | {
-    id: string;
-    name: string | null;
-    startedAt: string;
-    endsAt: string | null;
-    status: string;
-    profit: {
-      current: number;
-      estimated: number;
-      portfolioValue: number;
-    };
-    capital: {
-      cash: number;
-      inventory: number;
-      total: number;
-    };
-    initialCapitalIsk: number;
-    participantCount?: number;
-    totalInvestorCapital?: number;
-  };
-  next: null | {
-    id: string;
-    name: string | null;
-    startedAt: string;
-    status: string;
-  };
-};
-
-type CycleSnapshot = {
-  id: string;
-  cycleId: string;
-  snapshotAt: string;
-  walletCashIsk: string;
-  inventoryIsk: string;
-  cycleProfitIsk: string;
-};
-
-const chartConfig = {
-  cash: {
-    label: "Cash",
-    color: "#d97706", // Amber-600
-  },
-  inventory: {
-    label: "Inventory",
-    color: "#92400e", // Amber-800
-  },
-  profit: {
-    label: "Profit",
-    color: "#059669", // Emerald-600
-  },
-};
+import { useCycleOverview, useCycleSnapshots } from "../api";
 
 export default function CyclesOverviewPage() {
   const router = useRouter();
-  const [data, setData] = React.useState<CycleOverviewData | null>(null);
-  const [snapshots, setSnapshots] = React.useState<CycleSnapshot[]>([]);
-  const [isLoading, setIsLoading] = React.useState(true);
 
-  React.useEffect(() => {
-    async function loadData() {
-      try {
-        const overviewRes = await fetch("/api/ledger/cycles/overview");
-        const overviewData = await overviewRes.json();
-        setData(overviewData);
-
-        // Fetch snapshots if there's a current cycle
-        if (overviewData.current?.id) {
-          const snapshotsRes = await fetch(
-            `/api/ledger/cycles/${overviewData.current.id}/snapshots?limit=10`,
-          );
-          if (snapshotsRes.ok) {
-            const snapshotsData = await snapshotsRes.json();
-            setSnapshots(snapshotsData);
-          }
-        }
-      } catch (error) {
-        console.error("Failed to load cycle data:", error);
-      } finally {
-        setIsLoading(false);
-      }
-    }
-
-    loadData();
-  }, []);
+  // Use new API hooks instead of manual fetch
+  const { data, isLoading } = useCycleOverview();
+  const { data: snapshots = [] } = useCycleSnapshots(
+    data?.current?.id ?? "",
+    10,
+  );
 
   const formatTimeLeft = (end: string | number | Date) => {
     const endMs = new Date(end).getTime();
@@ -366,7 +270,7 @@ export default function CyclesOverviewPage() {
               <Skeleton className="h-4 w-3/4" />
             </div>
           ) : (
-            <NextCycleSection next={data?.next || null} />
+            <NextCycleSection next={data?.next ?? null} />
           )}
         </CardContent>
       </Card>

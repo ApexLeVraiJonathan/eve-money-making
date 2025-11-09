@@ -1,14 +1,7 @@
 "use client";
 
 import * as React from "react";
-import {
-  Activity,
-  TrendingUp,
-  Wallet,
-  Package,
-  DollarSign,
-  Users,
-} from "lucide-react";
+import { Activity, TrendingUp, Wallet, Users } from "lucide-react";
 import { formatIsk } from "@/lib/utils";
 import {
   Card,
@@ -39,9 +32,6 @@ import {
 import { Skeleton } from "@eve/ui";
 import { Badge } from "@eve/ui";
 import { useSession } from "next-auth/react";
-import { useRouter } from "next/navigation";
-import { Button } from "@eve/ui";
-import { LogIn } from "lucide-react";
 import {
   Empty,
   EmptyDescription,
@@ -50,6 +40,11 @@ import {
   EmptyTitle,
 } from "@eve/ui";
 import { CircleHelp } from "lucide-react";
+import {
+  useCycleOverview,
+  useCycleSnapshots,
+  useMyParticipation,
+} from "../api";
 
 type CycleDetails = {
   id: string;
@@ -72,7 +67,7 @@ type CycleDetails = {
   totalInvestorCapital: number;
   myParticipation?: {
     amountIsk: string;
-    estimatedPayoutIsk: string | null;
+    payoutIsk: string | null;
     status: string;
   };
 };
@@ -102,69 +97,21 @@ const chartConfig = {
 };
 
 export default function CycleDetailsPage() {
-  const { data: session, status } = useSession();
-  const router = useRouter();
-  const [cycle, setCycle] = React.useState<CycleDetails | null>(null);
-  const [snapshots, setSnapshots] = React.useState<CycleSnapshot[]>([]);
-  const [loading, setLoading] = React.useState(true);
+  const { status } = useSession();
 
-  React.useEffect(() => {
-    async function loadData() {
-      try {
-        // Fetch current cycle overview
-        const overviewRes = await fetch("/api/ledger/cycles/overview");
-        const overviewData = await overviewRes.json();
+  // Use new API hooks
+  const { data: overview, isLoading: loading } = useCycleOverview();
+  const { data: snapshots = [] } = useCycleSnapshots(
+    overview?.current?.id ?? "",
+    20,
+  );
+  const { data: myParticipation } = useMyParticipation(
+    overview?.current?.id ?? "",
+  );
 
-        if (!overviewData.current) {
-          setLoading(false);
-          return;
-        }
-
-        const currentCycleId = overviewData.current.id;
-
-        // Fetch detailed cycle data
-        const capitalRes = await fetch(
-          `/api/ledger/cycles/${currentCycleId}/capital`,
-        );
-        const capitalData = await capitalRes.json();
-
-        // Fetch snapshots for history chart
-        const snapshotsRes = await fetch(
-          `/api/ledger/cycles/${currentCycleId}/snapshots?limit=20`,
-        );
-        const snapshotsData = await snapshotsRes.json();
-
-        // Fetch user's participation if authenticated
-        let myParticipation = undefined;
-        if (status === "authenticated") {
-          try {
-            const partRes = await fetch(
-              `/api/ledger/cycles/${currentCycleId}/participations/me`,
-            );
-            if (partRes.ok) {
-              const partData = await partRes.json();
-              myParticipation = partData;
-            }
-          } catch {
-            // User not participating or error fetching
-          }
-        }
-
-        setCycle({
-          ...overviewData.current,
-          myParticipation,
-        });
-
-        setSnapshots(snapshotsData);
-      } catch (error) {
-        console.error("Failed to load cycle details:", error);
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    loadData();
-  }, [status]);
+  const cycle = overview?.current
+    ? { ...overview.current, myParticipation }
+    : null;
 
   // Prepare pie chart data
   const pieData = cycle
@@ -296,19 +243,17 @@ export default function CycleDetailsPage() {
                   Estimated Payout
                 </p>
                 <p className="text-xl font-semibold tabular-nums">
-                  {cycle.myParticipation.estimatedPayoutIsk
-                    ? formatIsk(
-                        Number(cycle.myParticipation.estimatedPayoutIsk),
-                      )
+                  {cycle.myParticipation.payoutIsk
+                    ? formatIsk(Number(cycle.myParticipation.payoutIsk))
                     : "—"}
                 </p>
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Expected Return</p>
                 <p className="text-xl font-semibold tabular-nums text-emerald-600">
-                  {cycle.myParticipation.estimatedPayoutIsk &&
+                  {cycle.myParticipation.payoutIsk &&
                   Number(cycle.myParticipation.amountIsk) > 0
-                    ? `${((Number(cycle.myParticipation.estimatedPayoutIsk) / Number(cycle.myParticipation.amountIsk)) * 100).toFixed(2)}%`
+                    ? `${((Number(cycle.myParticipation.payoutIsk) / Number(cycle.myParticipation.amountIsk)) * 100).toFixed(2)}%`
                     : "—"}
                 </p>
               </div>

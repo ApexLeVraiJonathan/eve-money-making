@@ -57,4 +57,3 @@ import { RolesGuard } from './guards/roles.guard';
   ],
 })
 export class CharactersModule {}
-

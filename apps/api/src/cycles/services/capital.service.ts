@@ -4,7 +4,12 @@ import { EsiCharactersService } from '../../esi/esi-characters.service';
 import { EsiService } from '../../esi/esi.service';
 import { GameDataService } from '../../game-data/services/game-data.service';
 import { CharacterService } from '../../characters/services/character.service';
-import { fetchStationOrders } from '../../esi/market-helpers';
+import {
+  CAPITAL_CONSTANTS,
+  computeCostBasisPositions,
+  createJitaPriceFetcher,
+  getInventoryUnitValue,
+} from '../utils/capital-helpers';
 
 type CapitalResponse = {
   cycleId: string;
@@ -26,12 +31,20 @@ type CapitalResponse = {
 
 /**
  * CapitalService handles capital and NAV (Net Asset Value) computations.
- * Responsibilities: Computing current capital, NAV totals, capital snapshots.
+ *
+ * Responsibilities:
+ * - Compute current capital (cash + inventory)
+ * - Calculate NAV from ledger entries
+ * - Generate detailed capital snapshots with station breakdowns
+ * - Cache capital computations with 1-hour TTL
+ *
+ * Valuation Strategy:
+ * 1. Inventory: Cost basis (WAC) from transactions, fallback to Jita lowest sell
+ * 2. Cash: Character wallets minus base reserve
  */
 @Injectable()
 export class CapitalService {
   private readonly logger = new Logger(CapitalService.name);
-  private readonly jitaStationId = 60003760;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -42,13 +55,20 @@ export class CapitalService {
   ) {}
 
   /**
-   * Compute current capital (cash + inventory value)
+   * Compute current capital (cash + inventory value).
+   *
+   * Process:
+   * 1. Sum wallet balances from tracked characters
+   * 2. Subtract cash reserve (100M ISK per character)
+   * 3. Compute inventory value using cost basis + Jita fallback
+   *
+   * @returns Cash and inventory values in ISK
    */
   async computeCurrentCapitalNow(): Promise<{
     cash: number;
     inventory: number;
   }> {
-    // Cash from tracked characters minus base reserve
+    // 1) Cash from tracked characters minus base reserve
     let cashSum = 0;
     const tracked = await this.characterService.getTrackedSellerIds();
     for (const cid of tracked) {
@@ -59,44 +79,18 @@ export class CapitalService {
         this.logger.warn(`Wallet fetch failed for ${cid}: ${String(e)}`);
       }
     }
-    const reserve = 100_000_000 * tracked.length;
+    const reserve =
+      CAPITAL_CONSTANTS.CASH_RESERVE_PER_CHARACTER_ISK * tracked.length;
     const cash = Math.max(0, cashSum - reserve);
 
-    // Build weighted-average cost positions by station/type from wallet transactions
-    type Position = { quantity: number; totalCost: number };
-    const byTypeStation = new Map<string, Position>();
-    const txs = await this.prisma.walletTransaction.findMany({
-      select: {
-        isBuy: true,
-        locationId: true,
-        typeId: true,
-        quantity: true,
-        unitPrice: true,
-      },
-      orderBy: { date: 'asc' },
-    });
-    const key = (stationId: number, typeId: number) =>
-      `${stationId}:${typeId}`;
-    for (const t of txs) {
-      const k = key(t.locationId, t.typeId);
-      const pos = byTypeStation.get(k) ?? { quantity: 0, totalCost: 0 };
-      if (t.isBuy) {
-        pos.quantity += t.quantity;
-        pos.totalCost += Number(t.unitPrice) * t.quantity;
-      } else {
-        const sellQty = Math.min(pos.quantity, t.quantity);
-        if (sellQty > 0 && pos.quantity > 0) {
-          const avg = pos.totalCost / pos.quantity;
-          pos.quantity -= sellQty;
-          pos.totalCost -= avg * sellQty;
-        }
-      }
-      byTypeStation.set(k, pos);
-    }
+    // 2) Compute weighted-average cost positions from transactions
+    const byTypeStation = await computeCostBasisPositions(this.prisma);
+    const key = (stationId: number, typeId: number) => `${stationId}:${typeId}`;
 
-    // Merge quantities from our active sell orders and assets
+    // 3) Merge quantities from active sell orders and assets
     const qtyByTypeStation = new Map<string, number>();
-    // Assets (items on market are not in assets)
+
+    // Assets (items not on market)
     for (const cid of tracked) {
       try {
         const assets = await this.esiChars.getAssetsAll(cid);
@@ -111,6 +105,7 @@ export class CapitalService {
         this.logger.warn(`Assets fetch failed for ${cid}: ${String(e)}`);
       }
     }
+
     // Active sell orders (on market)
     for (const cid of tracked) {
       try {
@@ -129,34 +124,18 @@ export class CapitalService {
       }
     }
 
-    // Resolve Jita region once
+    // 4) Setup Jita price fallback
     const jitaRegionId = await this.gameData.getJitaRegionId();
+    const getJitaPrice = createJitaPriceFetcher(this.esi, jitaRegionId);
 
-    const getJitaLowest = async (typeId: number): Promise<number | null> => {
-      if (!jitaRegionId) return null;
-      try {
-        const orders = await fetchStationOrders(this.esi, {
-          regionId: jitaRegionId,
-          typeId,
-          stationId: this.jitaStationId,
-          side: 'sell',
-        });
-        orders.sort((a, b) => a.price - b.price);
-        return orders.length ? orders[0].price : null;
-      } catch {
-        return null;
-      }
-    };
-
-    // Value inventory using cost basis fallback to Jita
+    // 5) Value inventory using cost basis with Jita fallback
     let inventoryTotal = 0;
     for (const [k2, qty] of qtyByTypeStation) {
-      const [, tidStr] = k2.split(':');
-      const typeId = Number(tidStr);
-      const pos = byTypeStation.get(k2);
-      let unitValue: number | null = null;
-      if (pos && pos.quantity > 0) unitValue = pos.totalCost / pos.quantity;
-      else unitValue = await getJitaLowest(typeId);
+      const unitValue = await getInventoryUnitValue(
+        k2,
+        byTypeStation,
+        getJitaPrice,
+      );
       if (!unitValue) continue;
       inventoryTotal += unitValue * qty;
     }
@@ -234,7 +213,7 @@ export class CapitalService {
       })) as { snapshot: unknown; updatedAt: Date } | null;
       if (cache?.updatedAt) {
         const ageMs = now.getTime() - cache.updatedAt.getTime();
-        if (ageMs < 60 * 60 * 1000) {
+        if (ageMs < CAPITAL_CONSTANTS.CACHE_TTL_MS) {
           return cache.snapshot as CapitalResponse;
         }
       }
@@ -259,40 +238,13 @@ export class CapitalService {
       }
     });
 
-    const reserve = 100_000_000 * tracked.length;
+    const reserve =
+      CAPITAL_CONSTANTS.CASH_RESERVE_PER_CHARACTER_ISK * tracked.length;
     const cash = Math.max(0, cashSum - reserve);
 
     // 2) Inventory valuation: cost basis preferred, fallback to Jita lowest sell
-    // Build cost basis by type and station from wallet transactions
-    type Position = { quantity: number; totalCost: number };
-    const byTypeStation = new Map<string, Position>();
-    const txs = await this.prisma.walletTransaction.findMany({
-      select: {
-        isBuy: true,
-        locationId: true,
-        typeId: true,
-        quantity: true,
-        unitPrice: true,
-      },
-      orderBy: { date: 'asc' },
-    });
+    const byTypeStation = await computeCostBasisPositions(this.prisma);
     const key = (stationId: number, typeId: number) => `${stationId}:${typeId}`;
-    for (const t of txs) {
-      const k = key(t.locationId, t.typeId);
-      const pos = byTypeStation.get(k) ?? { quantity: 0, totalCost: 0 };
-      if (t.isBuy) {
-        pos.quantity += t.quantity;
-        pos.totalCost += Number(t.unitPrice) * t.quantity;
-      } else {
-        const sellQty = Math.min(pos.quantity, t.quantity);
-        if (sellQty > 0 && pos.quantity > 0) {
-          const avg = pos.totalCost / pos.quantity;
-          pos.quantity -= sellQty;
-          pos.totalCost -= avg * sellQty;
-        }
-      }
-      byTypeStation.set(k, pos);
-    }
 
     // Query our active sell orders and assets in parallel
     const chars = await this.characterService.getTrackedSellerIds();
@@ -373,27 +325,9 @@ export class CapitalService {
       }
     }
 
-    // Price fallback helper
-    const getJitaLowest = async (typeId: number): Promise<number | null> => {
-      const regionId = regionByStation.get(this.jitaStationId);
-      if (!regionId) {
-        const jitaRegionId = await this.gameData.getJitaRegionId();
-        if (!jitaRegionId) return null;
-        regionByStation.set(this.jitaStationId, jitaRegionId);
-      }
-      try {
-        const orders = await fetchStationOrders(this.esi, {
-          regionId: regionId as number,
-          typeId,
-          stationId: this.jitaStationId,
-          side: 'sell',
-        });
-        orders.sort((a, b) => a.price - b.price);
-        return orders.length ? orders[0].price : null;
-      } catch {
-        return null;
-      }
-    };
+    // Price fallback helper (uses region cache for optimization)
+    const jitaRegionId = await this.gameData.getJitaRegionId();
+    const getJitaPrice = createJitaPriceFetcher(this.esi, jitaRegionId);
 
     // Compute inventory value per station
     const itemsNeedingPricing: Array<{
@@ -424,7 +358,7 @@ export class CapitalService {
 
     // Fetch all Jita prices in parallel
     const jitaPriceResults = await Promise.allSettled(
-      itemsNeedingPricing.map((item) => getJitaLowest(item.typeId)),
+      itemsNeedingPricing.map((item) => getJitaPrice(item.typeId)),
     );
 
     // Compute totals
@@ -496,4 +430,3 @@ export class CapitalService {
     return out;
   }
 }
-

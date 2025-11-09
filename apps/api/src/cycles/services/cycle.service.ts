@@ -8,11 +8,27 @@ import { EsiCharactersService } from '../../esi/esi-characters.service';
 import { EsiService } from '../../esi/esi.service';
 import { GameDataService } from '../../game-data/services/game-data.service';
 import { CharacterService } from '../../characters/services/character.service';
-import { fetchStationOrders } from '../../esi/market-helpers';
+import {
+  CAPITAL_CONSTANTS,
+  computeCostBasisPositions,
+  createJitaPriceFetcher,
+} from '../utils/capital-helpers';
 
 /**
  * CycleService handles core cycle lifecycle management.
- * Responsibilities: CRUD, opening, closing, planning cycles.
+ *
+ * Responsibilities:
+ * - Cycle CRUD operations (create, plan, list)
+ * - Cycle state transitions (open, close)
+ * - Ledger entry management
+ * - Cycle overview and enrichment
+ * - Opening balance line creation from carryover inventory
+ *
+ * Orchestrates:
+ * - Capital computation (via CapitalService)
+ * - Payout creation (via PayoutService)
+ * - Profit calculations (via ProfitService)
+ * - Package completion (via PackageService)
  */
 @Injectable()
 export class CycleService {
@@ -32,8 +48,6 @@ export class CycleService {
     private readonly gameData: GameDataService,
     private readonly characterService: CharacterService,
   ) {}
-
-  private readonly jitaStationId = 60003760;
 
   /**
    * Get the current open cycle
@@ -175,19 +189,30 @@ export class CycleService {
   }
 
   /**
-   * Create a new cycle with initial capital computation and opening balance lines
+   * Create a new cycle with initial capital computation and opening balance lines.
+   *
+   * Process:
+   * 1. Compute initial capital (current capital + injection)
+   * 2. Create cycle record
+   * 3. Build cost basis positions from wallet transactions
+   * 4. Query active sell orders for current inventory
+   * 5. Create opening balance cycle lines for carryover items
+   *
+   * @param input - Cycle creation parameters
+   * @returns Created cycle
    */
   async createCycle(input: {
     name?: string | null;
     startedAt: Date;
     initialInjectionIsk?: string;
   }) {
-    // Compute current capital (carryover) and store initial total capital
+    // 1) Compute current capital (carryover) and store initial total capital
     const nowCap = await this.capitalService.computeCurrentCapitalNow();
     const inj = input.initialInjectionIsk
       ? Number(input.initialInjectionIsk)
       : 0;
     const initialCapital = nowCap.cash + nowCap.inventory + inj;
+
     const cycle = await this.prisma.cycle.create({
       data: {
         name: input.name ?? null,
@@ -200,41 +225,15 @@ export class CycleService {
       select: { id: true },
     });
 
-    // Build weighted-average cost positions by station/type from wallet transactions
-    type Position = { quantity: number; totalCost: number };
-    const byTypeStation = new Map<string, Position>();
-    const txs = await this.prisma.walletTransaction.findMany({
-      select: {
-        isBuy: true,
-        locationId: true,
-        typeId: true,
-        quantity: true,
-        unitPrice: true,
-      },
-      orderBy: { date: 'asc' },
-    });
+    // 2) Build weighted-average cost positions from transactions
+    const byTypeStation = await computeCostBasisPositions(this.prisma);
     const key = (stationId: number, typeId: number) => `${stationId}:${typeId}`;
-    for (const t of txs) {
-      const k = key(t.locationId, t.typeId);
-      const pos = byTypeStation.get(k) ?? { quantity: 0, totalCost: 0 };
-      if (t.isBuy) {
-        pos.quantity += t.quantity;
-        pos.totalCost += Number(t.unitPrice) * t.quantity;
-      } else {
-        const sellQty = Math.min(pos.quantity, t.quantity);
-        if (sellQty > 0 && pos.quantity > 0) {
-          const avg = pos.totalCost / pos.quantity;
-          pos.quantity -= sellQty;
-          pos.totalCost -= avg * sellQty;
-        }
-      }
-      byTypeStation.set(k, pos);
-    }
 
-    // Quantities and prices from active sell orders only
+    // 3) Query active sell orders for current inventory quantities and prices
     const qtyByTypeStation = new Map<string, number>();
     const sellPriceByTypeStation = new Map<string, number>();
     const tracked = await this.characterService.getTrackedSellerIds();
+
     for (const cid of tracked) {
       try {
         const orders = await this.esiChars.getOrders(cid);
@@ -245,6 +244,7 @@ export class CycleService {
               k2,
               (qtyByTypeStation.get(k2) ?? 0) + o.volume_remain,
             );
+            // Track lowest sell price per type/station
             const existingPrice = sellPriceByTypeStation.get(k2);
             if (!existingPrice || o.price < existingPrice) {
               sellPriceByTypeStation.set(k2, o.price);
@@ -256,25 +256,11 @@ export class CycleService {
       }
     }
 
-    // Jita region for fallback pricing
+    // 4) Setup Jita price fallback (for items without sell orders)
     const jitaRegionId = await this.gameData.getJitaRegionId();
-    const getJitaLowest = async (typeId: number): Promise<number | null> => {
-      if (!jitaRegionId) return null;
-      try {
-        const orders = await fetchStationOrders(this.esi, {
-          regionId: jitaRegionId,
-          typeId,
-          stationId: this.jitaStationId,
-          side: 'sell',
-        });
-        orders.sort((a, b) => a.price - b.price);
-        return orders.length ? orders[0].price : null;
-      } catch {
-        return null;
-      }
-    };
+    const getJitaPrice = createJitaPriceFetcher(this.esi, jitaRegionId);
 
-    // Create Opening Balance cycle lines with carryover items
+    // 5) Create Opening Balance cycle lines with carryover items
     const lines: Array<{
       typeId: number;
       sourceStationId: number;
@@ -282,11 +268,14 @@ export class CycleService {
       plannedUnits: number;
       currentSellPriceIsk: number | null;
     }> = [];
+
     for (const [k2, qty] of qtyByTypeStation) {
       const [sidStr, tidStr] = k2.split(':');
       const stationId = Number(sidStr);
       const typeId = Number(tidStr);
+
       if (!Number.isFinite(qty) || qty <= 0) continue;
+
       const currentSellPrice = sellPriceByTypeStation.get(k2) ?? null;
       lines.push({
         typeId,
@@ -295,7 +284,9 @@ export class CycleService {
         plannedUnits: Math.floor(qty),
         currentSellPriceIsk: currentSellPrice,
       });
-      if (lines.length >= 1000) break;
+
+      // Limit to prevent excessive database operations
+      if (lines.length >= CAPITAL_CONSTANTS.MAX_ROLLOVER_LINES) break;
     }
 
     if (lines.length) {
@@ -321,7 +312,18 @@ export class CycleService {
   }
 
   /**
-   * Open a planned cycle (with transaction)
+   * Open a planned cycle for active trading.
+   *
+   * Process (within transaction):
+   * 1. Clean up unpaid/refunded participations
+   * 2. Close any existing open cycle
+   * 3. Set startedAt to now if in future
+   * 4. Compute initial capital (carryover + injection + validated participations)
+   * 5. Create rollover cycle lines from active sell orders
+   *
+   * @param input - Cycle ID and optional start date override
+   * @returns Opened cycle with initial capital set
+   * @throws Error if cycle not found
    */
   async openPlannedCycle(input: { cycleId: string; startedAt?: Date }) {
     const now = new Date();
@@ -431,7 +433,8 @@ export class CycleService {
           plannedUnits: Math.floor(qty),
           currentSellPriceIsk: currentSellPrice,
         });
-        if (rolloverLines.length >= 1000) break;
+        // Limit to prevent excessive database operations
+        if (rolloverLines.length >= CAPITAL_CONSTANTS.MAX_ROLLOVER_LINES) break;
       }
 
       if (rolloverLines.length) {
@@ -458,7 +461,18 @@ export class CycleService {
   }
 
   /**
-   * Orchestrate full cycle closing: wallet import → allocation → close → payouts
+   * Orchestrate full cycle closing with final settlement.
+   *
+   * Steps:
+   * 1. Import all linked wallet transactions
+   * 2. Allocate transactions to cycle lines
+   * 3. Close the cycle
+   * 4. Create payouts for participants
+   *
+   * @param cycleId - Cycle to close
+   * @param walletService - Wallet service for transaction import
+   * @param allocationService - Allocation service for transaction matching
+   * @returns Closed cycle
    */
   async closeCycleWithFinalSettlement(
     cycleId: string,
@@ -580,7 +594,8 @@ export class CycleService {
       const endsAt = next
         ? next.startedAt.toISOString()
         : new Date(
-            current.startedAt.getTime() + 14 * 24 * 60 * 60 * 1000,
+            current.startedAt.getTime() +
+              CAPITAL_CONSTANTS.DEFAULT_CYCLE_DURATION_MS,
           ).toISOString();
 
       const participations = await this.prisma.cycleParticipation.findMany({
@@ -654,7 +669,10 @@ export class CycleService {
     const rows = await this.prisma.cycleLedgerEntry.findMany({
       where: { cycleId },
       orderBy: { occurredAt: 'desc' },
-      take: Math.min(Math.max(limit ?? 500, 1), 1000),
+      take: Math.min(
+        Math.max(limit ?? CAPITAL_CONSTANTS.DEFAULT_ENTRIES_PER_PAGE, 1),
+        CAPITAL_CONSTANTS.MAX_ENTRIES_PER_PAGE,
+      ),
       skip: Math.max(offset ?? 0, 0),
     });
 
@@ -668,4 +686,3 @@ export class CycleService {
     }));
   }
 }
-

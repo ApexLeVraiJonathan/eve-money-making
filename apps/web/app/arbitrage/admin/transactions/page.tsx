@@ -21,6 +21,7 @@ import {
   AlertCircle,
   Filter,
 } from "lucide-react";
+import { useWalletTransactions } from "../../api";
 
 type Tx = {
   characterId: number;
@@ -37,33 +38,26 @@ type Tx = {
 };
 
 export default function TransactionsPage() {
-  const [rows, setRows] = React.useState<Tx[]>([]);
   const [charId, setCharId] = React.useState("");
-  const [error, setError] = React.useState<string | null>(null);
-  const [loading, setLoading] = React.useState(false);
+  const [filterCharId, setFilterCharId] = React.useState<number | undefined>(
+    undefined,
+  );
 
-  const load = async () => {
-    setError(null);
-    setLoading(true);
-    try {
-      const qs = charId ? `?characterId=${encodeURIComponent(charId)}` : "";
-      const res = await fetch(`/api/wallet-import/transactions${qs}`, {
-        cache: "no-store",
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || res.statusText);
-      setRows(data as Tx[]);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setLoading(false);
+  // Use new API hook
+  const {
+    data: rows = [],
+    isLoading: loading,
+    error,
+    refetch,
+  } = useWalletTransactions(filterCharId);
+
+  const load = () => {
+    // Update filter to trigger refetch
+    const numCharId = charId ? Number(charId) : undefined;
+    if ((numCharId !== undefined && !isNaN(numCharId)) || charId === "") {
+      setFilterCharId(charId === "" ? undefined : numCharId);
     }
   };
-
-  React.useEffect(() => {
-    void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   const formatIsk = (value: string) => {
     return new Intl.NumberFormat("en-US", {
@@ -225,7 +219,9 @@ export default function TransactionsPage() {
           {error && (
             <Alert variant="destructive">
               <AlertCircle className="h-4 w-4" />
-              <AlertDescription>{error}</AlertDescription>
+              <AlertDescription>
+                {error instanceof Error ? error.message : String(error)}
+              </AlertDescription>
             </Alert>
           )}
 

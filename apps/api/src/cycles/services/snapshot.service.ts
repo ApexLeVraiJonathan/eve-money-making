@@ -21,14 +21,22 @@ export class SnapshotService {
   ) {}
 
   /**
-   * Create a cycle snapshot with profit calculation
+   * Create a cycle snapshot with profit calculation.
+   *
+   * Snapshot captures:
+   * - Cash position (initial capital + realized profit)
+   * - Inventory value (unsold items at WAC)
+   * - Cycle profit (from completed sales)
+   *
+   * @param cycleId - Cycle to snapshot
+   * @returns Snapshot data
    */
   async createCycleSnapshot(cycleId: string): Promise<{
     walletCashIsk: string;
     inventoryIsk: string;
     cycleProfitIsk: string;
   }> {
-    // Get cycle's initial capital
+    // 1) Get cycle's initial capital
     const cycle = await this.prisma.cycle.findUnique({
       where: { id: cycleId },
       select: { initialCapitalIsk: true },
@@ -37,14 +45,14 @@ export class SnapshotService {
       ? Number(cycle.initialCapitalIsk)
       : 0;
 
-    // Compute cycle profit
+    // 2) Compute realized cycle profit from completed sales
     const profit = await this.profitService.computeCycleProfit(cycleId);
     const currentProfit = Number(profit.cycleProfitCash);
 
-    // Calculate cash: Initial Capital + Current Profit
+    // 3) Calculate cash position: Initial Capital + Realized Profit
     const walletCash = initialCapital + currentProfit;
 
-    // Compute inventory from cycle lines
+    // 4) Compute inventory value using weighted-average cost (WAC)
     const lines = await this.prisma.cycleLine.findMany({
       where: { cycleId },
       select: { unitsBought: true, unitsSold: true, buyCostIsk: true },
@@ -53,6 +61,7 @@ export class SnapshotService {
     for (const line of lines) {
       const unitsRemaining = Math.max(0, line.unitsBought - line.unitsSold);
       if (unitsRemaining > 0 && line.unitsBought > 0) {
+        // WAC = Total Cost / Total Units Bought
         const wac = Number(line.buyCostIsk) / line.unitsBought;
         inventoryTotal += wac * unitsRemaining;
       }
@@ -86,4 +95,3 @@ export class SnapshotService {
     });
   }
 }
-

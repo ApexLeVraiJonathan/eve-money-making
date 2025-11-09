@@ -50,34 +50,16 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@eve/ui";
-
-type CycleLine = {
-  id: string;
-  cycleId: string;
-  typeId: number;
-  typeName: string;
-  destinationStationId: number;
-  destinationStationName: string;
-  plannedUnits: number;
-  unitsBought: number;
-  buyCostIsk: string;
-  unitsSold: number;
-  salesGrossIsk: string;
-  salesTaxIsk: string;
-  salesNetIsk: string;
-  brokerFeesIsk: string;
-  relistFeesIsk: string;
-  unitsRemaining: number;
-  wacUnitCost: string;
-  lineProfitExclTransport: string;
-  createdAt: string;
-  updatedAt: string;
-  packages: Array<{
-    id: string;
-    index: number;
-    destinationName: string | null;
-  }>;
-};
+import {
+  useCycles,
+  useCycleLines,
+  useCreateCycleLine,
+  useDeleteCycleLine,
+  useAddBrokerFee,
+  useAddRelistFee,
+} from "../../api";
+import { toast } from "sonner";
+import type { CycleLine } from "@eve/shared";
 
 export default function CycleLinesPage() {
   return (
@@ -93,8 +75,25 @@ function CycleLinesContent() {
   const queryParamCycleId = searchParams.get("cycleId");
 
   const [cycleId, setCycleId] = React.useState<string>("");
-  const [lines, setLines] = React.useState<CycleLine[]>([]);
-  const [isLoading, setIsLoading] = React.useState(true);
+
+  // Use new API hooks
+  const { data: cycles = [] } = useCycles();
+  const { data: lines = [], isLoading } = useCycleLines(cycleId);
+
+  const createLineMutation = useCreateCycleLine();
+  const deleteLineMutation = useDeleteCycleLine();
+  const addBrokerFeeMutation = useAddBrokerFee();
+  const addRelistFeeMutation = useAddRelistFee();
+
+  // Auto-select latest cycle
+  React.useEffect(() => {
+    if (queryParamCycleId) {
+      setCycleId(queryParamCycleId);
+    } else if (cycles.length > 0 && !cycleId) {
+      setCycleId(cycles[0].id);
+    }
+  }, [queryParamCycleId, cycles, cycleId]);
+
   const [showCreateDialog, setShowCreateDialog] = React.useState(false);
   const [showFeeDialog, setShowFeeDialog] = React.useState(false);
   const [selectedLine, setSelectedLine] = React.useState<CycleLine | null>(
@@ -111,114 +110,53 @@ function CycleLinesContent() {
   // Fee form state
   const [feeAmount, setFeeAmount] = React.useState("");
 
-  // Fetch latest open cycle if no cycleId provided
-  React.useEffect(() => {
-    const fetchLatestCycle = async () => {
-      if (queryParamCycleId) {
-        setCycleId(queryParamCycleId);
-        return;
-      }
-
-      try {
-        const resp = await fetch("/api/arbitrage/commits?limit=1");
-        if (!resp.ok) return;
-        const rows: Array<{
-          id: string;
-          createdAt: string;
-          name?: string | null;
-          closedAt?: Date | null;
-        }> = await resp.json();
-        // Get the first open cycle (not closed)
-        const openCycle = rows.find((r) => !r.closedAt);
-        if (openCycle) {
-          setCycleId(openCycle.id);
-        } else if (rows.length > 0) {
-          // Fallback to most recent cycle if no open one
-          setCycleId(rows[0].id);
-        }
-      } catch {
-        // ignore
-      }
-    };
-    fetchLatestCycle();
-  }, [queryParamCycleId]);
-
-  const loadLines = React.useCallback(async () => {
-    if (!cycleId) return;
-    setIsLoading(true);
-    try {
-      const res = await fetch(`/api/ledger/cycles/${cycleId}/lines`);
-      if (!res.ok) throw new Error("Failed to load cycle lines");
-      const data = await res.json();
-      setLines(data);
-    } catch (err) {
-      console.error("Failed to load cycle lines:", err);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [cycleId]);
-
-  React.useEffect(() => {
-    loadLines();
-  }, [loadLines]);
-
   const handleCreateLine = async () => {
     if (!cycleId) return;
     try {
-      const res = await fetch(`/api/ledger/cycles/${cycleId}/lines`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      await createLineMutation.mutateAsync({
+        cycleId,
+        data: {
           typeId: Number(typeId),
           destinationStationId: Number(destinationStationId),
           plannedUnits: Number(plannedUnits),
-        }),
+        },
       });
-      if (!res.ok) throw new Error("Failed to create line");
       setShowCreateDialog(false);
       setTypeId("");
       setDestinationStationId("");
       setPlannedUnits("");
-      loadLines();
+      toast.success("Line created");
     } catch (err) {
-      console.error("Failed to create line:", err);
+      toast.error(err instanceof Error ? err.message : "Failed to create line");
     }
   };
 
   const handleDeleteLine = async () => {
     if (!deleteLineId) return;
     try {
-      const res = await fetch(`/api/ledger/lines/${deleteLineId}`, {
-        method: "DELETE",
-      });
-      if (!res.ok) throw new Error("Failed to delete line");
+      await deleteLineMutation.mutateAsync(deleteLineId);
       setDeleteLineId(null);
-      loadLines();
+      toast.success("Line deleted");
     } catch (err) {
-      console.error("Failed to delete line:", err);
+      toast.error(err instanceof Error ? err.message : "Failed to delete line");
     }
   };
 
   const handleAddFee = async () => {
     if (!selectedLine) return;
     try {
-      const endpoint =
-        feeType === "broker"
-          ? `/api/ledger/lines/${selectedLine.id}/broker-fee`
-          : `/api/ledger/lines/${selectedLine.id}/relist-fee`;
-
-      const res = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ amountIsk: feeAmount }),
+      const mutation =
+        feeType === "broker" ? addBrokerFeeMutation : addRelistFeeMutation;
+      await mutation.mutateAsync({
+        lineId: selectedLine.id,
+        amountIsk: feeAmount,
       });
-      if (!res.ok) throw new Error("Failed to add fee");
       setShowFeeDialog(false);
       setSelectedLine(null);
       setFeeAmount("");
-      loadLines();
+      toast.success("Fee added");
     } catch (err) {
-      console.error("Failed to add fee:", err);
+      toast.error(err instanceof Error ? err.message : "Failed to add fee");
     }
   };
 
@@ -340,7 +278,6 @@ function CycleLinesContent() {
               <TableRow>
                 <TableHead>Item</TableHead>
                 <TableHead>Destination</TableHead>
-                <TableHead>Packages</TableHead>
                 <TableHead className="text-right">Planned</TableHead>
                 <TableHead className="text-right">Bought</TableHead>
                 <TableHead className="text-right">Sold</TableHead>
@@ -355,7 +292,7 @@ function CycleLinesContent() {
             </TableHeader>
             <TableBody>
               {lines.map((line) => {
-                const profit = Number(line.lineProfitExclTransport);
+                const profit = Number(line.lineProfitExclTransport ?? 0);
                 const isNegative = profit < 0;
 
                 return (
@@ -370,26 +307,9 @@ function CycleLinesContent() {
                     </TableCell>
                     <TableCell>
                       <div className="text-sm">
-                        {line.destinationStationName.split(" ")[0]}
+                        {line.destinationStationName?.split(" ")[0] ??
+                          `Station ${line.destinationStationId}`}
                       </div>
-                    </TableCell>
-                    <TableCell>
-                      {line.packages.length > 0 ? (
-                        <div className="flex gap-1 flex-wrap">
-                          {line.packages.map((pkg) => (
-                            <a
-                              key={pkg.id}
-                              href={`/arbitrage/admin/packages?cycleId=${line.cycleId}`}
-                              className="inline-flex items-center text-xs px-2 py-0.5 rounded-md bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
-                              title={`Package #${pkg.index}`}
-                            >
-                              #{pkg.index}
-                            </a>
-                          ))}
-                        </div>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">—</span>
-                      )}
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
                       {line.plannedUnits.toLocaleString()}
@@ -401,7 +321,7 @@ function CycleLinesContent() {
                       {line.unitsSold.toLocaleString()}
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
-                      {line.unitsRemaining.toLocaleString()}
+                      {(line.unitsRemaining ?? 0).toLocaleString()}
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
                       {formatIsk(Number(line.buyCostIsk))}

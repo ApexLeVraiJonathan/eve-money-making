@@ -27,84 +27,35 @@ import {
   ArrowDownLeft,
   DollarSign,
 } from "lucide-react";
+import { useCycles, useCycleEntries } from "../../api";
 
-type Entry = {
-  id: string;
-  occurredAt: string;
-  entryType: string;
-  amount: string;
-  memo: string | null;
-  planCommitId: string | null;
-  characterName: string | null;
-  stationName: string | null;
-  typeName: string | null;
-  source: string;
-  matchStatus: string | null;
-};
+// Using CycleLedgerEntry from shared types
+// Fields available: id, cycleId, occurredAt, entryType, amount, memo, participationId
 
 export default function LedgerPage() {
   const [cycleId, setCycleId] = React.useState("");
-  const [rows, setRows] = React.useState<Entry[]>([]);
-  const [error, setError] = React.useState<string | null>(null);
-  const [loading, setLoading] = React.useState(false);
-  const [cycles, setCycles] = React.useState<
-    Array<{ id: string; name: string | null }>
-  >([]);
 
-  const loadEntriesForCycle = async (targetCycleId: string) => {
-    if (!targetCycleId) {
-      setError("Please select a cycle");
-      return;
-    }
-    setError(null);
-    setLoading(true);
-    try {
-      const res = await fetch(
-        `/api/ledger/entries?cycleId=${encodeURIComponent(targetCycleId)}`,
-        {
-          cache: "no-store",
-        },
-      );
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || res.statusText);
-      setRows(data as Entry[]);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setLoading(false);
-    }
-  };
+  // Use new API hooks
+  const { data: cycles = [] } = useCycles();
+  const {
+    data: rows = [],
+    isLoading: loading,
+    error,
+    refetch,
+  } = useCycleEntries(cycleId, { limit: 500 });
 
-  const load = async () => {
-    await loadEntriesForCycle(cycleId);
-  };
-
-  const loadCycles = async () => {
-    try {
-      const res = await fetch("/api/ledger/cycles", { cache: "no-store" });
-      const data = (await res.json()) as Array<{
-        id: string;
-        name: string | null;
-        startedAt: string;
-        closedAt: string | null;
-      }>;
-      if (res.ok) {
-        setCycles(data);
-        // Auto-select the latest cycle (first in the list)
-        if (data.length > 0 && !cycleId) {
-          const latestCycle = data[0];
-          setCycleId(latestCycle.id);
-          // Auto-load the entries for the latest cycle
-          loadEntriesForCycle(latestCycle.id);
-        }
-      }
-    } catch {}
-  };
-
+  // Auto-select latest cycle
   React.useEffect(() => {
-    void loadCycles();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    if (cycles.length > 0 && !cycleId) {
+      setCycleId(cycles[0].id);
+    }
+  }, [cycles, cycleId]);
+
+  const load = () => {
+    if (cycleId) {
+      void refetch();
+    }
+  };
 
   const formatIsk = (value: string) => {
     return new Intl.NumberFormat("en-US", {
@@ -323,7 +274,9 @@ export default function LedgerPage() {
           {error && (
             <Alert variant="destructive">
               <AlertCircle className="h-4 w-4" />
-              <AlertDescription>{error}</AlertDescription>
+              <AlertDescription>
+                {error instanceof Error ? error.message : String(error)}
+              </AlertDescription>
             </Alert>
           )}
 
@@ -351,11 +304,10 @@ export default function LedgerPage() {
                       <th className="text-left p-3 font-medium">Date</th>
                       <th className="text-left p-3 font-medium">Type</th>
                       <th className="text-right p-3 font-medium">Amount</th>
-                      <th className="text-left p-3 font-medium">Character</th>
-                      <th className="text-left p-3 font-medium">Station</th>
-                      <th className="text-left p-3 font-medium">Item</th>
-                      <th className="text-left p-3 font-medium">Source</th>
-                      <th className="text-left p-3 font-medium">Status</th>
+                      <th className="text-left p-3 font-medium">Memo</th>
+                      <th className="text-left p-3 font-medium">
+                        Participation
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y">
@@ -387,42 +339,15 @@ export default function LedgerPage() {
                             {amount > 0 ? "+" : ""}
                             {formatIsk(r.amount)} ISK
                           </td>
-                          <td className="p-3 font-medium">
-                            {r.characterName ?? "-"}
-                          </td>
-                          <td
-                            className="p-3 text-xs text-muted-foreground"
-                            title={r.stationName || undefined}
-                          >
-                            {(r.stationName
-                              ? r.stationName.split(" ")[0]
-                              : null) || "-"}
-                          </td>
                           <td className="p-3">
-                            <div className="max-w-[150px] truncate">
-                              {r.typeName ?? "-"}
+                            <div className="max-w-[200px] truncate text-xs">
+                              {r.memo ?? "-"}
                             </div>
                           </td>
                           <td className="p-3 text-xs text-muted-foreground">
-                            {r.source}
-                          </td>
-                          <td className="p-3">
-                            {r.matchStatus ? (
-                              <Badge variant="secondary" className="text-xs">
-                                {r.matchStatus}
-                              </Badge>
-                            ) : r.planCommitId ? (
-                              <Badge
-                                variant="outline"
-                                className="bg-green-500/10 text-green-600 text-xs"
-                              >
-                                Linked
-                              </Badge>
-                            ) : (
-                              <span className="text-xs text-muted-foreground">
-                                -
-                              </span>
-                            )}
+                            {r.participationId
+                              ? r.participationId.substring(0, 8)
+                              : "-"}
                           </td>
                         </tr>
                       );

@@ -5,6 +5,14 @@ import { Button } from "@eve/ui";
 import { Card, CardContent, CardHeader, CardTitle } from "@eve/ui";
 import { Input } from "@eve/ui";
 import { Badge } from "@eve/ui";
+import {
+  useCycles,
+  useCreateCycle,
+  usePlanCycle,
+  useOpenCycle,
+  useCloseCycle,
+  useCycleCapital,
+} from "../../api";
 
 type Cycle = {
   id: string;
@@ -14,152 +22,95 @@ type Cycle = {
 };
 
 export default function CyclesPage() {
-  const [cycles, setCycles] = React.useState<Cycle[]>([]);
+  // Use new API hooks
+  const { data: cycles = [] } = useCycles();
+
+  const createCycleMutation = useCreateCycle();
+  const planCycleMutation = usePlanCycle();
+  const openCycleMutation = useOpenCycle();
+  const closeCycleMutation = useCloseCycle();
+
   const [name, setName] = React.useState("");
   const [initialInjection, setInitialInjection] = React.useState<string>("");
   const [planStart, setPlanStart] = React.useState<string>("");
-  const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
-  const [capital, setCapital] = React.useState<null | {
-    cycleId: string;
-    asOf: string;
-    capital: {
-      total: string;
-      cash: string;
-      inventory: string;
-      percentSplit: { cash: number; inventory: number };
-    };
-    initialInvestment: string | null;
-    inventoryBreakdown: Array<{
-      stationId: number;
-      stationName: string;
-      value: string;
-    }>;
-    notes: string[];
-  }>(null);
+  const [viewingCapitalFor, setViewingCapitalFor] = React.useState<string>("");
 
-  const load = async () => {
-    setError(null);
-    try {
-      const res = await fetch("/api/ledger/cycles", { cache: "no-store" });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || res.statusText);
-      setCycles(data as Cycle[]);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    }
-  };
+  const { data: capital, refetch: refetchCapital } = useCycleCapital(
+    viewingCapitalFor,
+    false,
+  );
 
-  React.useEffect(() => {
-    void load();
-  }, []);
-
-  const loadCapital = async (cycleId: string, force?: boolean) => {
-    try {
-      const res = await fetch(
-        `/api/ledger/cycles/${cycleId}/capital${force ? `?force=true` : ""}`,
-        { cache: "no-store" },
-      );
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || res.statusText);
-      setCapital(data);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    }
-  };
+  const loading =
+    createCycleMutation.isPending ||
+    planCycleMutation.isPending ||
+    openCycleMutation.isPending ||
+    closeCycleMutation.isPending;
 
   const startCycle = async () => {
-    setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/ledger/cycles", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          name: name || undefined,
-          startedAt: new Date().toISOString(),
-          initialInjectionIsk:
-            initialInjection && !Number.isNaN(Number(initialInjection))
-              ? Number(initialInjection).toFixed(2)
-              : undefined,
-        }),
+      await createCycleMutation.mutateAsync({
+        name: name || undefined,
+        startedAt: new Date().toISOString(),
+        initialInjectionIsk:
+          initialInjection && !Number.isNaN(Number(initialInjection))
+            ? Number(initialInjection).toFixed(2)
+            : undefined,
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || res.statusText);
       setName("");
       setInitialInjection("");
-      await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setLoading(false);
     }
   };
 
   const planCycle = async () => {
-    setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/ledger/cycles/plan", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          name: name || undefined,
-          startedAt: planStart
-            ? new Date(planStart).toISOString()
-            : new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-          initialInjectionIsk:
-            initialInjection && !Number.isNaN(Number(initialInjection))
-              ? Number(initialInjection).toFixed(2)
-              : undefined,
-        }),
+      await planCycleMutation.mutateAsync({
+        name: name || undefined,
+        startedAt: planStart
+          ? new Date(planStart).toISOString()
+          : new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+        initialInjectionIsk:
+          initialInjection && !Number.isNaN(Number(initialInjection))
+            ? Number(initialInjection).toFixed(2)
+            : undefined,
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || res.statusText);
       setName("");
       setInitialInjection("");
       setPlanStart("");
-      await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setLoading(false);
     }
   };
 
   const closeCycle = async (id: string) => {
-    setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/ledger/cycles/${id}/close`, {
-        method: "POST",
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || res.statusText);
-      await load();
+      await closeCycleMutation.mutateAsync(id);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setLoading(false);
     }
   };
 
   const openPlanned = async (id: string) => {
-    setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/ledger/cycles/${id}/open`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({}),
+      await openCycleMutation.mutateAsync({
+        cycleId: id,
+        startedAt: undefined,
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || res.statusText);
-      await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setLoading(false);
+    }
+  };
+
+  const loadCapital = (cycleId: string, force?: boolean) => {
+    setViewingCapitalFor(cycleId);
+    if (force) {
+      void refetchCapital();
     }
   };
 

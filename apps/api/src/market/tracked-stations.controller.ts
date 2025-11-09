@@ -22,9 +22,7 @@ import { Public } from '../characters/decorators/public.decorator';
 @ApiTags('admin')
 @Controller('tracked-stations')
 export class TrackedStationsController {
-  constructor(
-    private readonly trackedStationsService: TrackedStationService,
-  ) {}
+  constructor(private readonly trackedStationsService: TrackedStationService) {}
 
   @Post()
   @Roles('ADMIN')

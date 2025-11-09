@@ -15,6 +15,8 @@ import {
 import { ClipboardCopy, Coins, User, ArrowRight, Check } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@eve/ui";
+import { useCycles, useCreateParticipation } from "../api";
+import { useCurrentUser } from "@/app/api-hooks/users";
 
 type OptInDialogProps = {
   nextCycleName: string;
@@ -39,8 +41,6 @@ export default function OptInDialog(props: OptInDialogProps) {
   const [character, setCharacter] = React.useState<string>("YourName");
   const [submitting, setSubmitting] = React.useState(false);
   const [memo, setMemo] = React.useState<string>("");
-  const [charLoading, setCharLoading] = React.useState<boolean>(false);
-  const [charAutoError, setCharAutoError] = React.useState<string | null>(null);
   const [participationCreated, setParticipationCreated] = React.useState(false);
 
   // Format number with commas for display
@@ -69,73 +69,48 @@ export default function OptInDialog(props: OptInDialogProps) {
     { label: "5B", value: 5_000_000_000 },
   ];
 
+  // Auto-load character name when dialog opens
+  const { data: me } = useCurrentUser();
+
   React.useEffect(() => {
-    if (open) {
-      // Try to auto-resolve the current user's character name for participation
-      const load = async () => {
-        setCharLoading(true);
-        setCharAutoError(null);
-        try {
-          // Prefer direct identity endpoint
-          const meRes = await fetch("/api/auth/me", { cache: "no-store" });
-          if (meRes.ok) {
-            const me = await meRes.json();
-            if (
-              me &&
-              typeof me.characterName === "string" &&
-              me.characterName.length > 0
-            ) {
-              setCharacter(me.characterName);
-            }
-          }
-        } catch (e) {
-          setCharAutoError(e instanceof Error ? e.message : String(e));
-        } finally {
-          setCharLoading(false);
-        }
-      };
-      void load();
+    if (open && me?.characterName) {
+      setCharacter(me.characterName);
     }
-  }, [open]);
+  }, [open, me]);
+
+  const { data: cycles } = useCycles();
+  const createParticipation = useCreateParticipation();
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
     try {
       const amt = Math.max(0, amount);
-      // Resolve next planned cycle from backend
-      const cyclesRes = await fetch(`/api/ledger/cycles`, {
-        cache: "no-store",
-      });
-      const cycles = (await cyclesRes.json()) as Array<{
-        id: string;
-        name?: string | null;
-        startedAt: string;
-        closedAt?: string | null;
-      }>;
-      if (!cyclesRes.ok) throw new Error("Failed to load cycles");
+
+      // Find next planned cycle
       const now = Date.now();
-      const next = cycles
+      const next = (cycles ?? [])
         .filter((c) => new Date(c.startedAt).getTime() > now)
         .sort(
           (a, b) =>
             new Date(a.startedAt).getTime() - new Date(b.startedAt).getTime(),
         )[0];
+
       if (!next) throw new Error("No planned cycle available");
 
-      const res = await fetch(`/api/ledger/cycles/${next.id}/participations`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
+      const participation = await createParticipation.mutateAsync({
+        cycleId: next.id,
+        data: {
           characterName: character,
-          amountIsk: String(amt.toFixed(2)),
-        }),
+          amountIsk: amt.toFixed(2),
+        },
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || res.statusText);
-      setMemo(String(data.memo ?? `ARB ${next.id} ${character}`));
+
+      setMemo(participation.memo ?? `ARB ${next.id} ${character}`);
       setParticipationCreated(true);
       setStep("confirm");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e));
     } finally {
       setSubmitting(false);
     }
@@ -232,20 +207,8 @@ export default function OptInDialog(props: OptInDialogProps) {
                 <div className="rounded-lg border bg-muted/50 p-3">
                   <div className="flex items-center gap-2">
                     <User className="h-4 w-4 text-muted-foreground" />
-                    {charLoading ? (
-                      <span className="text-sm text-muted-foreground">
-                        Loading character…
-                      </span>
-                    ) : (
-                      <span className="font-medium">{character}</span>
-                    )}
+                    <span className="font-medium">{character}</span>
                   </div>
-                  {charAutoError && (
-                    <p className="mt-2 text-xs text-muted-foreground">
-                      Could not auto-detect character. Please ensure you&apos;re
-                      logged in.
-                    </p>
-                  )}
                 </div>
               </div>
 
@@ -260,7 +223,7 @@ export default function OptInDialog(props: OptInDialogProps) {
                 </Button>
                 <Button
                   type="submit"
-                  disabled={submitting || charLoading || amount <= 0}
+                  disabled={submitting || amount <= 0}
                   className="gap-2"
                 >
                   {submitting ? (

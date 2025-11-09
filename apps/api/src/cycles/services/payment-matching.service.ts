@@ -91,8 +91,7 @@ export class PaymentMatchingService {
     }
 
     // Get logistics character IDs for filtering donations
-    const logisticsIds =
-      await this.characterService.getLogisticsCharacterIds();
+    const logisticsIds = await this.characterService.getLogisticsCharacterIds();
 
     // Get all player_donation journal entries that aren't already linked
     const journals = await this.prisma.walletJournalEntry.findMany({
@@ -252,9 +251,7 @@ export class PaymentMatchingService {
     const logisticsCharacterIds =
       await this.characterService.getLogisticsCharacters();
 
-    const charIdMap = new Map(
-      logisticsCharacterIds.map((c) => [c.id, c.name]),
-    );
+    const charIdMap = new Map(logisticsCharacterIds.map((c) => [c.id, c.name]));
     const charIds = logisticsCharacterIds.map((c) => c.id);
 
     // Get all linked journal IDs
@@ -294,4 +291,3 @@ export class PaymentMatchingService {
     }));
   }
 }
-

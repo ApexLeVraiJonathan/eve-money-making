@@ -28,7 +28,10 @@ import { CapitalService } from './services/capital.service';
 import { ProfitService } from './services/profit.service';
 import { WalletService } from '../wallet/services/wallet.service';
 import { AllocationService } from '../wallet/services/allocation.service';
-import { CurrentUser, type RequestUser } from '../characters/decorators/current-user.decorator';
+import {
+  CurrentUser,
+  type RequestUser,
+} from '../characters/decorators/current-user.decorator';
 import { Roles } from '../characters/decorators/roles.decorator';
 import { RolesGuard } from '../characters/guards/roles.guard';
 import { Public } from '../characters/decorators/public.decorator';
@@ -169,7 +172,9 @@ export class CyclesController {
     @Query('force') force?: string,
   ): Promise<unknown> {
     const shouldForce = force === 'true' || force === '1' || force === 'yes';
-    return await this.capitalService.computeCapital(cycleId, { force: shouldForce });
+    return await this.capitalService.computeCapital(cycleId, {
+      force: shouldForce,
+    });
   }
 
   // Participations
@@ -220,7 +225,10 @@ export class CyclesController {
       this.logger.warn('[GET /participations/me] No userId, returning null');
       return null;
     }
-    const result = await this.participationService.getMyParticipation(cycleId, uid);
+    const result = await this.participationService.getMyParticipation(
+      cycleId,
+      uid,
+    );
     this.logger.log(
       `[GET /participations/me] Found participation: ${result ? `id=${result.id}, status=${result.status}` : 'null'}`,
     );
@@ -330,7 +338,9 @@ export class CyclesController {
   async commitSummaries(
     @Query() query: GetCommitSummaryQuery,
   ): Promise<unknown> {
-    return (await this.cycleLineService.listCycleLines(query.cycleId)) as unknown;
+    return (await this.cycleLineService.listCycleLines(
+      query.cycleId,
+    )) as unknown;
   }
 
   @Post('cycles/:cycleId/payouts/finalize')
