@@ -13,6 +13,7 @@ import { TabsContent } from "@eve/ui";
 import { toast } from "sonner";
 import { Loader2, RefreshCw, Calendar, FileCheck } from "lucide-react";
 import type { TriggerState, CycleSnapshot } from "./types";
+import { useRunWalletsJob, useReconcileWallet } from "../../api";
 
 type FinancialTabProps = {
   loading: TriggerState;
@@ -29,6 +30,9 @@ export function FinancialTab({
   snapshots,
   createSnapshot,
 }: FinancialTabProps) {
+  const runWalletsJobMutation = useRunWalletsJob();
+  const reconcileWalletMutation = useReconcileWallet();
+
   return (
     <TabsContent value="financial" className="space-y-6">
       {/* Wallet Import + Reconciliation */}
@@ -56,18 +60,8 @@ export function FinancialTab({
 
           <Button
             onClick={async () => {
-              setLoading((prev) => ({ ...prev, ["wallet-recon"]: true }));
               try {
-                const res = await fetch("/api/jobs/wallets/run", {
-                  method: "POST",
-                });
-                if (!res.ok) {
-                  const error = await res
-                    .json()
-                    .catch(() => ({ error: "Unknown error" }));
-                  throw new Error(error.error || res.statusText);
-                }
-                await res.json();
+                await runWalletsJobMutation.mutateAsync();
                 toast.success(
                   "Wallet import and reconciliation completed successfully",
                 );
@@ -77,17 +71,12 @@ export function FinancialTab({
                     ? error.message
                     : "Failed to run wallet import and reconciliation";
                 toast.error(errorMessage);
-              } finally {
-                setLoading((prev) => ({
-                  ...prev,
-                  ["wallet-recon"]: false,
-                }));
               }
             }}
-            disabled={loading["wallet-recon"]}
+            disabled={runWalletsJobMutation.isPending}
             className="w-full"
           >
-            {loading["wallet-recon"] ? (
+            {runWalletsJobMutation.isPending ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 Running...
@@ -126,18 +115,10 @@ export function FinancialTab({
 
           <Button
             onClick={async () => {
-              setLoading((prev) => ({ ...prev, ["reconcile-only"]: true }));
               try {
-                const res = await fetch("/api/recon/reconcile", {
-                  method: "POST",
+                const data = await reconcileWalletMutation.mutateAsync({
+                  cycleId: currentCycleId,
                 });
-                if (!res.ok) {
-                  const error = await res
-                    .json()
-                    .catch(() => ({ error: "Unknown error" }));
-                  throw new Error(error.error || res.statusText);
-                }
-                const data = await res.json();
                 toast.success(
                   `Reconciliation completed: ${data.created || 0} ledger entries created`,
                 );
@@ -147,18 +128,13 @@ export function FinancialTab({
                     ? error.message
                     : "Failed to run reconciliation";
                 toast.error(errorMessage);
-              } finally {
-                setLoading((prev) => ({
-                  ...prev,
-                  ["reconcile-only"]: false,
-                }));
               }
             }}
-            disabled={loading["reconcile-only"]}
+            disabled={reconcileWalletMutation.isPending}
             variant="secondary"
             className="w-full"
           >
-            {loading["reconcile-only"] ? (
+            {reconcileWalletMutation.isPending ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 Reconciling...

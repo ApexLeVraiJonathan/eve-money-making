@@ -20,7 +20,7 @@ import {
   useSidebar,
 } from "@eve/ui";
 import { Button } from "@eve/ui";
-import { useMyCharacters } from "@/app/api-hooks/users";
+import { useMyCharacters } from "@/app/arbitrage/api/characters";
 
 export function NavUser() {
   const { isMobile } = useSidebar();

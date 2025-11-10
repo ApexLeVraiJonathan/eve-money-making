@@ -39,24 +39,10 @@ import {
 } from "lucide-react";
 import { Alert, AlertDescription } from "@eve/ui";
 import { formatIsk } from "@/lib/utils";
-
-type CommittedPackage = {
-  id: string;
-  cycleId: string;
-  packageIndex: number;
-  destinationStationId: number;
-  destinationName: string | null;
-  collateralIsk: string;
-  shippingCostIsk: string;
-  estimatedProfitIsk: string;
-  status: string;
-  committedAt: string;
-  failedAt: string | null;
-  collateralRecoveredIsk: string | null;
-  failureMemo: string | null;
-  itemCount: number;
-  totalUnits: number;
-};
+import { useArbitrageCommits } from "../../api/market";
+import { usePackages, useMarkPackageFailed } from "../../api";
+import { useApiClient } from "@/app/api-hooks/useApiClient";
+import type { CommittedPackage } from "@eve/shared";
 
 type PackageDetails = {
   id: string;
@@ -94,15 +80,28 @@ function PackagesContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const initialCycleId = searchParams.get("cycleId");
+  const client = useApiClient();
 
-  const [cycles, setCycles] = React.useState<
-    Array<{ id: string; name: string | null; closedAt: Date | null }>
-  >([]);
+  // Use React Query hooks
+  const { data: cycles = [], isLoading: cyclesLoading } = useArbitrageCommits({
+    limit: 100,
+  });
+
   const [selectedCycleId, setSelectedCycleId] = React.useState<string>("");
   const [statusFilter, setStatusFilter] = React.useState<string>("all");
-  const [packages, setPackages] = React.useState<CommittedPackage[]>([]);
-  const [isLoading, setIsLoading] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
+
+  // Fetch packages with filters
+  const {
+    data: packages = [],
+    isLoading: packagesLoading,
+    error: packagesError,
+  } = usePackages({
+    cycleId: selectedCycleId,
+    status: statusFilter !== "all" ? statusFilter : undefined,
+  });
+
+  const isLoading = cyclesLoading || packagesLoading;
+  const error = packagesError ? String(packagesError) : null;
 
   // Mark failed dialog state
   const [selectedPackage, setSelectedPackage] =
@@ -111,7 +110,9 @@ function PackagesContent() {
   const [collateralRecovered, setCollateralRecovered] = React.useState("");
   const [collateralProfit, setCollateralProfit] = React.useState("");
   const [failureMemo, setFailureMemo] = React.useState("");
-  const [isSubmitting, setIsSubmitting] = React.useState(false);
+
+  const markFailedMutation = useMarkPackageFailed();
+  const isSubmitting = markFailedMutation.isPending;
 
   // Calculate total item costs for the selected package
   const totalItemCosts = React.useMemo(() => {
@@ -122,68 +123,22 @@ function PackagesContent() {
     );
   }, [selectedPackage]);
 
-  // Fetch cycles on mount
+  // Set initial cycle when cycles load
   React.useEffect(() => {
-    const loadCycles = async () => {
-      try {
-        const res = await fetch("/api/arbitrage/commits?limit=100");
-        if (!res.ok) throw new Error("Failed to load cycles");
-        const data = await res.json();
-        setCycles(data);
-
-        // Set initial cycle
-        if (initialCycleId) {
-          setSelectedCycleId(initialCycleId);
-        } else if (data.length > 0) {
-          // Default to first open cycle or most recent
-          const openCycle = data.find(
-            (c: { id: string; name: string | null; closedAt: Date | null }) =>
-              !c.closedAt,
-          );
-          setSelectedCycleId(openCycle?.id || data[0].id);
-        }
-      } catch (err) {
-        console.error("Failed to load cycles:", err);
+    if (cycles.length > 0 && !selectedCycleId) {
+      if (initialCycleId) {
+        setSelectedCycleId(initialCycleId);
+      } else {
+        const openCycle = cycles.find((c) => !c.closedAt);
+        setSelectedCycleId(openCycle?.id || cycles[0].id);
       }
-    };
-    loadCycles();
-  }, [initialCycleId]);
-
-  // Fetch packages when cycle or filter changes
-  React.useEffect(() => {
-    if (!selectedCycleId) return;
-
-    const loadPackages = async () => {
-      setIsLoading(true);
-      setError(null);
-      try {
-        const params = new URLSearchParams({ cycleId: selectedCycleId });
-        if (statusFilter !== "all") {
-          params.set("status", statusFilter);
-        }
-        const res = await fetch(`/api/packages?${params.toString()}`);
-        if (!res.ok) throw new Error("Failed to load packages");
-        const data = await res.json();
-        setPackages(data);
-      } catch (err: unknown) {
-        setError(
-          err instanceof Error ? err.message : "Failed to load packages",
-        );
-        console.error("Failed to load packages:", err);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    loadPackages();
-  }, [selectedCycleId, statusFilter]);
+    }
+  }, [cycles, initialCycleId, selectedCycleId]);
 
   const handleOpenFailedDialog = async (pkg: CommittedPackage) => {
     try {
       // Fetch package details
-      const res = await fetch(`/api/packages/${pkg.id}`);
-      if (!res.ok) throw new Error("Failed to load package details");
-      const details: PackageDetails = await res.json();
+      const details = await client.get<PackageDetails>(`/packages/${pkg.id}`);
 
       setSelectedPackage(details);
       setCollateralRecovered(pkg.collateralIsk);
@@ -199,39 +154,15 @@ function PackagesContent() {
   const handleMarkFailed = async () => {
     if (!selectedPackage) return;
 
-    setIsSubmitting(true);
     try {
-      const res = await fetch(
-        `/api/packages/${selectedPackage.id}/mark-failed`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            collateralRecoveredIsk: collateralRecovered,
-            collateralProfitIsk: collateralProfit || undefined,
-            memo: failureMemo || undefined,
-          }),
-        },
-      );
+      await markFailedMutation.mutateAsync({
+        packageId: selectedPackage.id,
+        reason: failureMemo || undefined,
+      });
 
-      if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.error || "Failed to mark package as failed");
-      }
-
-      // Reload packages
+      // Close dialog and reset
       setShowFailedDialog(false);
       setSelectedPackage(null);
-      // Refresh the list
-      const params = new URLSearchParams({ cycleId: selectedCycleId });
-      if (statusFilter !== "all") {
-        params.set("status", statusFilter);
-      }
-      const refreshRes = await fetch(`/api/packages?${params.toString()}`);
-      if (refreshRes.ok) {
-        const data = await refreshRes.json();
-        setPackages(data);
-      }
 
       alert("Package marked as failed successfully");
     } catch (err: unknown) {
@@ -239,8 +170,6 @@ function PackagesContent() {
       alert(
         err instanceof Error ? err.message : "Failed to mark package as failed",
       );
-    } finally {
-      setIsSubmitting(false);
     }
   };
 

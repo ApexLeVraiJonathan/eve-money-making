@@ -31,51 +31,10 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import { formatIsk } from "@/lib/utils";
-
-type Metrics = {
-  cacheHitMem: number;
-  cacheHitDb: number;
-  cacheMiss: number;
-  http200: number;
-  http304: number;
-  http401: number;
-  http420: number;
-  memCacheSize: number;
-  inflightSize: number;
-  effectiveMaxConcurrency: number;
-  errorRemain: number | null;
-  errorResetAt: number | null;
-};
-
-type Staleness = { missing: string[] };
-
-type Cycle = {
-  id: string;
-  name?: string | null;
-  startedAt: string;
-  closedAt?: string | null;
-};
-
-type CapitalSnapshot = {
-  cycleId: string;
-  asOf: string;
-  capital: {
-    total: string;
-    cash: string;
-    inventory: string;
-    percentSplit: { cash: number; inventory: number };
-  };
-};
-
-type CycleSnapshot = {
-  id: string;
-  cycleId: string;
-  snapshotAt: string;
-  walletCashIsk: string;
-  inventoryIsk: string;
-  cycleProfitIsk: string;
-  createdAt: string;
-};
+import { useCycles, useCycleCapital, useCycleSnapshots } from "../api";
+import { useMarketStaleness } from "../api/jobs";
+import { useEsiMetrics } from "../api/esi";
+import type { Cycle, CycleSnapshot } from "@eve/shared";
 
 const chartConfig = {
   cash: {
@@ -93,65 +52,30 @@ const chartConfig = {
 };
 
 export default function AdminPage() {
-  const [metrics, setMetrics] = React.useState<Metrics | null>(null);
-  const [staleness, setStaleness] = React.useState<Staleness | null>(null);
-  const [error, setError] = React.useState<string | null>(null);
-  const [loading, setLoading] = React.useState(false);
-  const [latestCycle, setLatestCycle] = React.useState<Cycle | null>(null);
-  const [capital, setCapital] = React.useState<CapitalSnapshot | null>(null);
-  const [snapshots, setSnapshots] = React.useState<CycleSnapshot[]>([]);
+  // Use React Query hooks for data fetching
+  const { data: cycles = [], isLoading: cyclesLoading } = useCycles();
+  const latestCycle = cycles[0] || null;
 
-  const load = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      // Load metrics
-      const res = await fetch("/api/metrics", { cache: "no-store" });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || res.statusText);
-      setMetrics(data as Metrics);
+  const { data: capital, isLoading: capitalLoading } = useCycleCapital(
+    latestCycle?.id || "",
+  );
 
-      // Load staleness
-      const sRes = await fetch("/api/jobs/staleness", { cache: "no-store" });
-      const sData = await sRes.json();
-      if (sRes.ok) setStaleness(sData as Staleness);
+  const { data: snapshots = [], isLoading: snapshotsLoading } =
+    useCycleSnapshots(latestCycle?.id || "", 10);
 
-      // Load latest cycle and its capital snapshot
-      const cyclesRes = await fetch("/api/ledger/cycles", {
-        cache: "no-store",
-      });
-      const cyclesData = (await cyclesRes.json()) as Cycle[];
-      if (cyclesRes.ok && Array.isArray(cyclesData) && cyclesData.length > 0) {
-        const latest = cyclesData[0];
-        setLatestCycle(latest);
+  const { data: stalenessData } = useMarketStaleness();
 
-        // Load current capital
-        const capRes = await fetch(`/api/ledger/cycles/${latest.id}/capital`, {
-          cache: "no-store",
-        });
-        const capData = (await capRes.json()) as CapitalSnapshot;
-        if (capRes.ok) setCapital(capData);
+  const {
+    data: metrics,
+    isLoading: metricsLoading,
+    error: metricsError,
+  } = useEsiMetrics();
 
-        // Load historical snapshots (last 10)
-        const snapsRes = await fetch(
-          `/api/ledger/cycles/${latest.id}/snapshots?limit=10`,
-          {
-            cache: "no-store",
-          },
-        );
-        const snapsData = (await snapsRes.json()) as CycleSnapshot[];
-        if (snapsRes.ok) setSnapshots(snapsData); // Keep in ascending order (oldest to newest)
-      }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setLoading(false);
-    }
-  };
+  const loading =
+    cyclesLoading || capitalLoading || snapshotsLoading || metricsLoading;
+  const error = metricsError ? String(metricsError) : null;
 
-  React.useEffect(() => {
-    void load();
-  }, []);
+  const staleness = stalenessData?.stations?.length || 0;
 
   // Prepare data for pie chart
   // Use darker, more muted colors for a professional look
@@ -240,10 +164,10 @@ export default function AdminPage() {
             ) : (
               <>
                 <div className="text-2xl font-bold tabular-nums">
-                  {staleness ? staleness.missing.length : 0}
+                  {staleness}
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  {staleness && staleness.missing.length === 1 ? "day" : "days"}
+                  {staleness === 1 ? "station" : "stations"} stale
                 </p>
               </>
             )}

@@ -13,6 +13,7 @@ import { TabsContent } from "@eve/ui";
 import { toast } from "sonner";
 import { Loader2, Trash2, Shield } from "lucide-react";
 import type { TriggerState } from "./types";
+import { useCleanupEsiCache, useCleanupOAuthState } from "../../api";
 
 type SystemCleanupTabProps = {
   loading: TriggerState;
@@ -23,6 +24,9 @@ export function SystemCleanupTab({
   loading,
   setLoading,
 }: SystemCleanupTabProps) {
+  const cleanupEsiCacheMutation = useCleanupEsiCache();
+  const cleanupOAuthStateMutation = useCleanupOAuthState();
+
   return (
     <TabsContent value="system-cleanup" className="space-y-6">
       {/* ESI Cache Cleanup */}
@@ -61,20 +65,10 @@ export function SystemCleanupTab({
 
           <Button
             onClick={async () => {
-              setLoading((prev) => ({ ...prev, ["cleanup-cache"]: true }));
               try {
-                const res = await fetch("/api/jobs/esi-cache/cleanup", {
-                  method: "POST",
-                });
-                if (!res.ok) {
-                  const error = await res
-                    .json()
-                    .catch(() => ({ error: "Unknown error" }));
-                  throw new Error(error.error || res.statusText);
-                }
-                const data = await res.json();
+                const data = await cleanupEsiCacheMutation.mutateAsync();
                 toast.success(
-                  `Cleaned up ${data.deleted || 0} expired cache entries`,
+                  `Cleaned up ${data.cleaned || 0} expired cache entries`,
                 );
               } catch (error) {
                 const errorMessage =
@@ -82,18 +76,13 @@ export function SystemCleanupTab({
                     ? error.message
                     : "Failed to cleanup cache";
                 toast.error(errorMessage);
-              } finally {
-                setLoading((prev) => ({
-                  ...prev,
-                  ["cleanup-cache"]: false,
-                }));
               }
             }}
-            disabled={loading["cleanup-cache"]}
+            disabled={cleanupEsiCacheMutation.isPending}
             className="gap-2 w-full sm:w-auto"
             variant="outline"
           >
-            {loading["cleanup-cache"] ? (
+            {cleanupEsiCacheMutation.isPending ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
               <Trash2 className="h-4 w-4" />
@@ -126,23 +115,10 @@ export function SystemCleanupTab({
 
           <Button
             onClick={async () => {
-              setLoading((prev) => ({
-                ...prev,
-                ["cleanup-oauth"]: true,
-              }));
               try {
-                const res = await fetch("/api/jobs/oauth-state/cleanup", {
-                  method: "POST",
-                });
-                if (!res.ok) {
-                  const error = await res
-                    .json()
-                    .catch(() => ({ error: "Unknown error" }));
-                  throw new Error(error.error || res.statusText);
-                }
-                const data = await res.json();
+                const data = await cleanupOAuthStateMutation.mutateAsync();
                 toast.success(
-                  `Cleaned up ${data.deleted || 0} expired OAuth states`,
+                  `Cleaned up ${data.cleaned || 0} expired OAuth states`,
                 );
               } catch (error) {
                 const errorMessage =
@@ -150,18 +126,13 @@ export function SystemCleanupTab({
                     ? error.message
                     : "Failed to cleanup OAuth states";
                 toast.error(errorMessage);
-              } finally {
-                setLoading((prev) => ({
-                  ...prev,
-                  ["cleanup-oauth"]: false,
-                }));
               }
             }}
-            disabled={loading["cleanup-oauth"]}
+            disabled={cleanupOAuthStateMutation.isPending}
             className="gap-2 w-full sm:w-auto"
             variant="outline"
           >
-            {loading["cleanup-oauth"] ? (
+            {cleanupOAuthStateMutation.isPending ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
               <Shield className="h-4 w-4" />

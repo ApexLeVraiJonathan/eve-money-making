@@ -1,14 +1,14 @@
 "use client";
 
-import { useMutation, useQueryClient } from "@tanstack/react-query";;
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useApiClient } from "@/app/api-hooks/useApiClient";
-import { useAuthenticatedQuery } from "@/app/api-hooks/useAuthenticatedQuery";
 import { qk } from "@eve/api-client/queryKeys";
 
 /**
  * API hooks for pricing operations
+ * 
+ * Backend: apps/api/src/market/pricing.controller.ts
  */
-
 
 // ============================================================================
 // Mutations
@@ -111,3 +111,4 @@ export function useConfirmReprice() {
     },
   });
 }
+

@@ -18,7 +18,9 @@ import type {
 
 /**
  * API hooks for cycle management
- *
+ * 
+ * Backend: apps/api/src/cycles/cycles.controller.ts
+ * 
  * Uses useApiClient() for authenticated API calls with Bearer tokens
  * and centralized query keys from @eve/api-client/queryKeys
  */
@@ -198,6 +200,23 @@ export function useTransportFees(cycleId: string) {
     queryKey: qk.fees.transport(cycleId),
     queryFn: () =>
       client.get<CycleFeeEvent[]>(`/ledger/cycles/${cycleId}/transport-fees`),
+    enabled: !!cycleId,
+  });
+}
+
+/**
+ * Suggest payouts for a cycle
+ */
+export function useSuggestPayouts(cycleId: string, profitSharePct?: number) {
+  const client = useApiClient();
+  return useAuthenticatedQuery({
+    queryKey: qk.payouts.suggest(cycleId, profitSharePct),
+    queryFn: () => {
+      const params = profitSharePct ? `?profitSharePct=${profitSharePct}` : "";
+      return client.get<PayoutSuggestion>(
+        `/ledger/cycles/${cycleId}/payouts/suggest${params}`,
+      );
+    },
     enabled: !!cycleId,
   });
 }
@@ -385,23 +404,6 @@ export function useAddTransportFee() {
 }
 
 /**
- * Suggest payouts for a cycle
- */
-export function useSuggestPayouts(cycleId: string, profitSharePct?: number) {
-  const client = useApiClient();
-  return useAuthenticatedQuery({
-    queryKey: qk.payouts.suggest(cycleId, profitSharePct),
-    queryFn: () => {
-      const params = profitSharePct ? `?profitSharePct=${profitSharePct}` : "";
-      return client.get<PayoutSuggestion>(
-        `/ledger/cycles/${cycleId}/payouts/suggest${params}`,
-      );
-    },
-    enabled: !!cycleId,
-  });
-}
-
-/**
  * Finalize payouts for a cycle
  */
 export function useFinalizePayouts() {
@@ -470,3 +472,4 @@ export function useAddRelistFee() {
     },
   });
 }
+

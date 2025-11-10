@@ -30,6 +30,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@eve/ui";
+import {
+  useTrackedStations,
+  useArbitrageCommits,
+  useSellAppraise,
+  useSellAppraiseByCommit,
+  useConfirmListing,
+} from "../../api";
 
 type TrackedStation = {
   id: string;
@@ -76,7 +83,6 @@ function isCommitRow(row: PasteRow | CommitRow): row is CommitRow {
 }
 
 export default function SellAppraiserPage() {
-  const [stations, setStations] = useState<TrackedStation[]>([]);
   const [destinationId, setDestinationId] = useState<number | null>(null);
   const [useCommit, setUseCommit] = useState<boolean>(true);
   const [cycleId, setCycleId] = useState<string>("");
@@ -84,12 +90,20 @@ export default function SellAppraiserPage() {
   const [result, setResult] = useState<Array<PasteRow | CommitRow> | null>(
     null,
   );
-  const [loading, setLoading] = useState(false);
-  const [confirmLoading, setConfirmLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Record<string, boolean>>({});
 
   const BROKER_FEE_PCT = Number(process.env.NEXT_PUBLIC_BROKER_FEE_PCT ?? 1.5);
+
+  // React Query hooks
+  const { data: stations = [] } = useTrackedStations();
+  const { data: latestCycles = [] } = useArbitrageCommits(
+    { limit: 1 },
+    { enabled: useCommit },
+  );
+  const sellAppraiseMutation = useSellAppraise();
+  const sellAppraiseByCommitMutation = useSellAppraiseByCommit();
+  const confirmListingMutation = useConfirmListing();
 
   // Sort items alphabetically with EVE convention: numbers before letters
   const sortItems = (items: Array<PasteRow | CommitRow>) => {
@@ -134,59 +148,35 @@ export default function SellAppraiserPage() {
     return groups;
   }, [result, stations]);
 
+  // Auto-set destination ID when stations load
   useEffect(() => {
-    fetch("/api/tracked-stations")
-      .then((r) => r.json())
-      .then((data) => {
-        setStations(data ?? []);
-        if (data?.length) {
-          setDestinationId((prev) =>
-            prev === null ? data[0].stationId : prev,
-          );
-        }
-      })
-      .catch(() => {});
-  }, []);
+    if (stations.length > 0 && destinationId === null) {
+      setDestinationId(stations[0].stationId);
+    }
+  }, [stations, destinationId]);
 
+  // Auto-set cycle ID from latest cycles
   useEffect(() => {
-    const fetchLatestCycle = async () => {
-      try {
-        const resp = await fetch("/api/arbitrage/commits?limit=1");
-        if (!resp.ok) return;
-        const rows: Array<{
-          id: string;
-          createdAt: string;
-          name?: string | null;
-          closedAt?: Date | null;
-        }> = await resp.json();
-        const openCycle = rows.find((r) => !r.closedAt);
-        if (openCycle) {
-          setCycleId(openCycle.id);
-        } else if (rows.length > 0) {
-          setCycleId(rows[0].id);
-        }
-      } catch {
-        // ignore
+    if (useCommit && latestCycles.length > 0) {
+      const openCycle = latestCycles.find((r) => !r.closedAt);
+      if (openCycle) {
+        setCycleId(openCycle.id);
+      } else {
+        setCycleId(latestCycles[0].id);
       }
-    };
-    if (useCommit) fetchLatestCycle();
-  }, [useCommit]);
+    }
+  }, [useCommit, latestCycles]);
 
   const lines = useMemo(() => paste.split(/\r?\n/).filter(Boolean), [paste]);
 
   const onSubmit = async () => {
-    if (useCommit) {
-      setLoading(true);
-      setError(null);
-      setResult(null);
-      try {
-        const resp = await fetch("/api/pricing/sell-appraise-by-commit", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ cycleId: cycleId || undefined }),
+    setError(null);
+    setResult(null);
+    try {
+      if (useCommit) {
+        const data = await sellAppraiseByCommitMutation.mutateAsync({
+          cycleId: cycleId || undefined,
         });
-        if (!resp.ok) throw new Error(await resp.text());
-        const data = await resp.json();
         setResult(data);
         // Default select all
         const allKeys = data.map(
@@ -196,37 +186,23 @@ export default function SellAppraiserPage() {
         const initial: Record<string, boolean> = {};
         for (const k of allKeys) initial[k] = true;
         setSelected(initial);
-      } catch (e: unknown) {
-        setError(e instanceof Error ? e.message : "Request failed");
-      } finally {
-        setLoading(false);
+      } else {
+        if (!destinationId) return;
+        const data = await sellAppraiseMutation.mutateAsync({
+          destinationStationId: destinationId,
+          lines,
+        });
+        setResult(data);
+        // Default select all
+        const allKeys = data.map(
+          (r) => `${r.destinationStationId}:${r.itemName}`,
+        );
+        const initial: Record<string, boolean> = {};
+        for (const k of allKeys) initial[k] = true;
+        setSelected(initial);
       }
-      return;
-    }
-    if (!destinationId) return;
-    setLoading(true);
-    setError(null);
-    setResult(null);
-    try {
-      const resp = await fetch("/api/pricing/sell-appraise", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ destinationStationId: destinationId, lines }),
-      });
-      if (!resp.ok) throw new Error(await resp.text());
-      const data = (await resp.json()) as Array<PasteRow>;
-      setResult(data);
-      // Default select all
-      const allKeys = data.map(
-        (r) => `${r.destinationStationId}:${r.itemName}`,
-      );
-      const initial: Record<string, boolean> = {};
-      for (const k of allKeys) initial[k] = true;
-      setSelected(initial);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Request failed");
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -248,22 +224,20 @@ export default function SellAppraiserPage() {
   const onConfirmListed = async () => {
     if (!useCommit || !cycleId || !result) return;
 
-    setConfirmLoading(true);
     setError(null);
 
-    // Need to get cycle lines to match typeIds to lineIds
+    // Fetch cycle lines (TODO: create a hook for this in a future refactor)
     let cycleLines: CycleLine[];
     try {
-      const resp = await fetch(`/api/ledger/cycles/${cycleId}/lines`);
-      if (!resp.ok) {
-        throw new Error(`Failed to fetch cycle lines: ${resp.statusText}`);
+      const response = await fetch(`/api/ledger/cycles/${cycleId}/lines`);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch cycle lines: ${response.statusText}`);
       }
-      cycleLines = await resp.json();
+      cycleLines = await response.json();
     } catch (e) {
       setError(
         `Failed to fetch cycle lines: ${e instanceof Error ? e.message : String(e)}`,
       );
-      setConfirmLoading(false);
       return;
     }
 
@@ -293,22 +267,13 @@ export default function SellAppraiserPage() {
         continue;
       }
 
-      // Execute all API calls in parallel
+      // Execute all API calls in parallel using the mutation
       promises.push(
-        fetch("/api/pricing/confirm-listing", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
+        confirmListingMutation
+          .mutateAsync({
             lineId: line.id,
             quantity: r.quantityRemaining,
             unitPrice: r.suggestedSellPriceTicked,
-          }),
-        })
-          .then(async (resp) => {
-            if (!resp.ok) {
-              const text = await resp.text();
-              errors.push(`${r.itemName}: ${text}`);
-            }
           })
           .catch((e) => {
             errors.push(
@@ -320,8 +285,6 @@ export default function SellAppraiserPage() {
 
     // Wait for all requests to complete
     await Promise.all(promises);
-
-    setConfirmLoading(false);
 
     if (errors.length) {
       setError(errors.join("\n"));
@@ -429,10 +392,15 @@ export default function SellAppraiserPage() {
 
           <Button
             onClick={onSubmit}
-            disabled={loading || (useCommit ? !cycleId : !destinationId)}
+            disabled={
+              sellAppraiseMutation.isPending ||
+              sellAppraiseByCommitMutation.isPending ||
+              (useCommit ? !cycleId : !destinationId)
+            }
             className="gap-2"
           >
-            {loading ? (
+            {sellAppraiseMutation.isPending ||
+            sellAppraiseByCommitMutation.isPending ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin" />
                 Computing...
@@ -463,10 +431,10 @@ export default function SellAppraiserPage() {
             {useCommit && (
               <Button
                 onClick={onConfirmListed}
-                disabled={confirmLoading || !cycleId}
+                disabled={confirmListingMutation.isPending || !cycleId}
                 className="gap-2"
               >
-                {confirmLoading ? (
+                {confirmListingMutation.isPending ? (
                   <>
                     <Loader2 className="h-4 w-4 animate-spin" />
                     Confirming...

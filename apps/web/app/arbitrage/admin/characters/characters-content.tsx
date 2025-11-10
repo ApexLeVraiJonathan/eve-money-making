@@ -41,6 +41,18 @@ import {
   UserCog,
   Ship,
 } from "lucide-react";
+import {
+  useAdminCharacters,
+  useAllUsers,
+  useRefreshCharacterToken,
+  useAdminDeleteCharacter,
+  useUpdateCharacterProfile,
+  useSetUserRole,
+  useGetSystemCharacterLinkUrl,
+  useLinkCharacterToUser,
+  useAdminSetPrimaryCharacter,
+  useAdminUnlinkCharacter,
+} from "../../api";
 
 type LinkedCharacter = {
   characterId: number;
@@ -63,59 +75,41 @@ type AdminUserRow = {
   characters: Array<{ id: number; name: string }>;
 };
 
-async function fetchCharacters(): Promise<LinkedCharacter[]> {
-  const res = await fetch("/api/admin/characters", { cache: "no-store" });
-  if (!res.ok) return [];
-  return (await res.json()) as LinkedCharacter[];
-}
-
-async function fetchAdminUsers(): Promise<AdminUserRow[]> {
-  const res = await fetch("/api/admin/users", { cache: "no-store" });
-  if (!res.ok) return [];
-  return (await res.json()) as AdminUserRow[];
-}
-
-async function getSystemCharacterLinkUrl(
-  accessToken: string,
-  notes?: string,
-  returnUrl?: string,
-): Promise<string> {
-  // Route through Next.js API to avoid relying on public env/base URLs
-  const params = new URLSearchParams();
-  if (notes) params.set("notes", notes);
-  if (returnUrl) params.set("returnUrl", returnUrl);
-
-  const res = await fetch(
-    `/api/auth/admin/system-characters/link/url${params.toString() ? `?${params.toString()}` : ""}`,
-    {
-      // Authorization handled server-side via session in the API route
-      cache: "no-store",
-    },
-  );
-
-  if (!res.ok) {
-    throw new Error("Failed to get link URL");
-  }
-
-  const data = (await res.json()) as { url: string };
-  return data.url;
-}
+// Removed fetch functions - now using React Query hooks
 
 export default function CharactersPageContent() {
   const { data: session } = useSession();
   const searchParams = useSearchParams();
   const router = useRouter();
-  const [items, setItems] = React.useState<LinkedCharacter[]>([]);
-  const [users, setUsers] = React.useState<AdminUserRow[]>([]);
-  const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState<string | null>(null);
-  const [forceLinkBusy, setForceLinkBusy] = React.useState(false);
-  const [roleBusyId, setRoleBusyId] = React.useState<string | null>(null);
-  const [setPrimaryBusyId, setSetPrimaryBusyId] = React.useState<number | null>(
-    null,
-  );
-  const [unlinkBusyId, setUnlinkBusyId] = React.useState<number | null>(null);
-  const [systemLinkBusy, setSystemLinkBusy] = React.useState(false);
+
+  // React Query hooks
+  const {
+    data: items = [],
+    isLoading: itemsLoading,
+    error: itemsError,
+  } = useAdminCharacters();
+  const {
+    data: users = [],
+    isLoading: usersLoading,
+    error: usersError,
+  } = useAllUsers();
+
+  const loading = itemsLoading || usersLoading;
+  const error = itemsError
+    ? String(itemsError)
+    : usersError
+      ? String(usersError)
+      : null;
+
+  // Mutations
+  const refreshTokenMutation = useRefreshCharacterToken();
+  const deleteCharacterMutation = useAdminDeleteCharacter();
+  const updateProfileMutation = useUpdateCharacterProfile();
+  const setUserRoleMutation = useSetUserRole();
+  const getSystemLinkUrlMutation = useGetSystemCharacterLinkUrl();
+  const linkCharacterToUserMutation = useLinkCharacterToUser();
+  const adminSetPrimaryMutation = useAdminSetPrimaryCharacter();
+  const adminUnlinkMutation = useAdminUnlinkCharacter();
 
   // Tab state management with URL sync
   const [activeTab, setActiveTab] = React.useState(
@@ -128,27 +122,6 @@ export default function CharactersPageContent() {
     params.set("tab", value);
     router.push(`?${params.toString()}`, { scroll: false });
   };
-
-  const load = React.useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const [list, adminUsers] = await Promise.all([
-        fetchCharacters(),
-        fetchAdminUsers(),
-      ]);
-      setItems(list);
-      setUsers(adminUsers);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  React.useEffect(() => {
-    void load();
-  }, [load]);
 
   // Show success toast after system character linking
   React.useEffect(() => {
@@ -164,14 +137,9 @@ export default function CharactersPageContent() {
 
   const handleUnlink = async (id: number) => {
     try {
-      const res = await fetch(`/api/auth/characters/${id}`, {
-        method: "DELETE",
-      });
-      if (!res.ok) throw new Error("Failed to unlink");
-      await load();
+      await deleteCharacterMutation.mutateAsync(id);
       toast.success("Character removed");
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
       toast.error(e instanceof Error ? e.message : String(e));
     }
   };
@@ -189,47 +157,33 @@ export default function CharactersPageContent() {
       return;
     }
     try {
-      const res = await fetch(`/api/auth/characters/${id}`, {
-        method: "PATCH",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          role: "LOGISTICS",
-          function: newFunction,
-          location: newLocation,
-        }),
+      await updateProfileMutation.mutateAsync({
+        characterId: id,
+        role: "LOGISTICS",
+        function: newFunction,
+        location: newLocation,
       });
-      if (!res.ok) throw new Error((await res.json())?.error || res.statusText);
-      await load();
       setNewCharId("");
       toast.success("Profile saved");
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
       toast.error(e instanceof Error ? e.message : String(e));
     }
   };
 
   const handleLinkSystemCharacter = async () => {
-    if (!session?.accessToken) {
-      toast.error("Not authenticated");
-      return;
-    }
-
     try {
-      setSystemLinkBusy(true);
       // Build return URL with current tab
       const returnParams = new URLSearchParams();
       returnParams.set("tab", activeTab);
       const returnUrl = `${window.location.origin}${window.location.pathname}?${returnParams.toString()}`;
 
-      const url = await getSystemCharacterLinkUrl(
-        session.accessToken,
-        systemCharNotes || undefined,
+      const { url } = await getSystemLinkUrlMutation.mutateAsync({
+        notes: systemCharNotes || undefined,
         returnUrl,
-      );
+      });
       window.location.href = url;
     } catch (e) {
       toast.error(e instanceof Error ? e.message : String(e));
-      setSystemLinkBusy(false);
     }
   };
 
@@ -255,42 +209,26 @@ export default function CharactersPageContent() {
   const adminSetPrimary = async (characterId: number) => {
     if (!selectedUserId) return;
     try {
-      setSetPrimaryBusyId(characterId);
-      const res = await fetch(
-        `/api/admin/users/${selectedUserId}/primary-character`,
-        {
-          method: "PATCH",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ characterId }),
-        },
-      );
-      if (!res.ok) throw new Error((await res.json())?.error || res.statusText);
-      await load();
+      await adminSetPrimaryMutation.mutateAsync({
+        userId: selectedUserId,
+        characterId,
+      });
       toast.success("Primary character updated");
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
       toast.error(e instanceof Error ? e.message : String(e));
-    } finally {
-      setSetPrimaryBusyId(null);
     }
   };
 
   const adminUnlink = async (characterId: number) => {
     if (!selectedUserId) return;
     try {
-      setUnlinkBusyId(characterId);
-      const res = await fetch(
-        `/api/admin/users/${selectedUserId}/characters/${characterId}`,
-        { method: "DELETE" },
-      );
-      if (!res.ok) throw new Error((await res.json())?.error || res.statusText);
-      await load();
+      await adminUnlinkMutation.mutateAsync({
+        userId: selectedUserId,
+        characterId,
+      });
       toast.success("Character unlinked");
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
       toast.error(e instanceof Error ? e.message : String(e));
-    } finally {
-      setUnlinkBusyId(null);
     }
   };
 
@@ -299,44 +237,27 @@ export default function CharactersPageContent() {
     newRole: "USER" | "ADMIN",
   ) => {
     try {
-      setRoleBusyId(userId);
-      const res = await fetch(`/api/admin/users/${userId}/role`, {
-        method: "PATCH",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ role: newRole }),
+      await setUserRoleMutation.mutateAsync({
+        userId,
+        role: newRole,
       });
-      if (!res.ok) throw new Error((await res.json())?.error || res.statusText);
-      await load();
       toast.success(`User role changed to ${newRole}`);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
       toast.error(e instanceof Error ? e.message : String(e));
-    } finally {
-      setRoleBusyId(null);
     }
   };
 
   const handleForceLink = async () => {
     if (!selectedUserId || !forceLinkCharId) return;
     try {
-      setForceLinkBusy(true);
-      const res = await fetch(
-        `/api/admin/users/${selectedUserId}/link-character`,
-        {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ characterId: Number(forceLinkCharId) }),
-        },
-      );
-      if (!res.ok) throw new Error((await res.json())?.error || res.statusText);
+      await linkCharacterToUserMutation.mutateAsync({
+        userId: selectedUserId,
+        characterId: Number(forceLinkCharId),
+      });
       setForceLinkCharId("");
-      await load();
       toast.success("Character force-linked");
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
       toast.error(e instanceof Error ? e.message : String(e));
-    } finally {
-      setForceLinkBusy(false);
     }
   };
 

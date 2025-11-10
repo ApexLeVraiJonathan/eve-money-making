@@ -13,6 +13,7 @@ import { TabsContent } from "@eve/ui";
 import { toast } from "sonner";
 import { Loader2, Download, PlayCircle } from "lucide-react";
 import type { TriggerState, MatchResult } from "./types";
+import { useImportWallet } from "../../api";
 
 type ParticipationsTabProps = {
   loading: TriggerState;
@@ -27,6 +28,8 @@ export function ParticipationsTab({
   matchResult,
   matchParticipationPayments,
 }: ParticipationsTabProps) {
+  const importWalletMutation = useImportWallet();
+
   return (
     <TabsContent value="participations" className="space-y-6">
       {/* Wallet Journal Import */}
@@ -52,18 +55,8 @@ export function ParticipationsTab({
 
           <Button
             onClick={async () => {
-              setLoading((prev) => ({ ...prev, ["import-wallets"]: true }));
               try {
-                const res = await fetch("/api/wallet/import-all", {
-                  method: "POST",
-                });
-                if (!res.ok) {
-                  const error = await res
-                    .json()
-                    .catch(() => ({ error: "Unknown error" }));
-                  throw new Error(error.error || res.statusText);
-                }
-                const data = await res.json();
+                const data = await importWalletMutation.mutateAsync();
                 toast.success(
                   `Wallet journals imported for ${data.count || "all"} LOGISTICS characters`,
                 );
@@ -73,17 +66,12 @@ export function ParticipationsTab({
                     ? error.message
                     : "Failed to import wallet journals";
                 toast.error(errorMessage);
-              } finally {
-                setLoading((prev) => ({
-                  ...prev,
-                  ["import-wallets"]: false,
-                }));
               }
             }}
-            disabled={loading["import-wallets"]}
+            disabled={importWalletMutation.isPending}
             className="gap-2 w-full sm:w-auto"
           >
-            {loading["import-wallets"] ? (
+            {importWalletMutation.isPending ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
               <Download className="h-4 w-4" />

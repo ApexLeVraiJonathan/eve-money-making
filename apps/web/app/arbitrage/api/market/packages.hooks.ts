@@ -1,22 +1,23 @@
 "use client";
 
-import { useMutation, useQueryClient } from "@tanstack/react-query";;
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useApiClient } from "@/app/api-hooks/useApiClient";
 import { useAuthenticatedQuery } from "@/app/api-hooks/useAuthenticatedQuery";
 import { qk } from "@eve/api-client/queryKeys";
-import type { Package } from "@eve/shared";
+import type { CommittedPackage } from "@eve/shared";
 
 /**
  * API hooks for package management
+ *
+ * Backend: apps/api/src/market/packages.controller.ts
  */
-
 
 // ============================================================================
 // Queries
 // ============================================================================
 
 /**
- * List packages with optional filters
+ * List committed packages with optional filters
  */
 export function usePackages(filters?: { cycleId?: string; status?: string }) {
   const client = useApiClient();
@@ -27,7 +28,7 @@ export function usePackages(filters?: { cycleId?: string; status?: string }) {
       if (filters?.cycleId) params.set("cycleId", filters.cycleId);
       if (filters?.status) params.set("status", filters.status);
       const query = params.toString() ? `?${params.toString()}` : "";
-      return client.get<Package[]>(`/packages${query}`);
+      return client.get<CommittedPackage[]>(`/packages${query}`);
     },
   });
 }
@@ -39,7 +40,7 @@ export function usePackage(packageId: string) {
   const client = useApiClient();
   return useAuthenticatedQuery({
     queryKey: qk.packages.byId(packageId),
-    queryFn: () => client.get<Package>(`/packages/${packageId}`),
+    queryFn: () => client.get<CommittedPackage>(`/packages/${packageId}`),
     enabled: !!packageId,
   });
 }
@@ -51,7 +52,7 @@ export function useActivePackages() {
   const client = useApiClient();
   return useAuthenticatedQuery({
     queryKey: qk.packages.active(),
-    queryFn: () => client.get<Package[]>("/packages?status=ACTIVE"),
+    queryFn: () => client.get<CommittedPackage[]>("/packages?status=ACTIVE"),
   });
 }
 
@@ -105,3 +106,4 @@ export function useMarkPackageFailed() {
     },
   });
 }
+

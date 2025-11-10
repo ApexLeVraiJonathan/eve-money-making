@@ -1,14 +1,41 @@
 "use client";
 
-import { useMutation, useQueryClient } from "@tanstack/react-query";;
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useApiClient } from "@/app/api-hooks/useApiClient";
 import { useAuthenticatedQuery } from "@/app/api-hooks/useAuthenticatedQuery";
 import { qk } from "@eve/api-client/queryKeys";
 
 /**
  * API hooks for arbitrage opportunities and commitments
+ *
+ * Backend: apps/api/src/market/arbitrage.controller.ts
  */
 
+// ============================================================================
+// Queries
+// ============================================================================
+
+/**
+ * List arbitrage commits (cycles with commit data)
+ */
+export function useArbitrageCommits(options?: {
+  limit?: number;
+  offset?: number;
+}) {
+  const client = useApiClient();
+  return useAuthenticatedQuery({
+    queryKey: ["arbitrage", "commits", options],
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (options?.limit) params.set("limit", String(options.limit));
+      if (options?.offset) params.set("offset", String(options.offset));
+      const query = params.toString() ? `?${params.toString()}` : "";
+      return client.get<
+        Array<{ id: string; name: string | null; closedAt: Date | null }>
+      >(`/arbitrage/commits${query}`);
+    },
+  });
+}
 
 // ============================================================================
 // Mutations

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation, useQueryClient } from "@tanstack/react-query";;
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useApiClient } from "@/app/api-hooks/useApiClient";
 import { useAuthenticatedQuery } from "@/app/api-hooks/useAuthenticatedQuery";
 import { qk } from "@eve/api-client/queryKeys";
@@ -8,8 +8,10 @@ import type { CycleParticipation } from "@eve/shared";
 
 /**
  * API hooks for cycle participations (investor investments)
+ * 
+ * These hooks are related to the cycles domain but live in the API structure
+ * Backend: apps/api/src/cycles/cycles.controller.ts (participations endpoints)
  */
-
 
 // ============================================================================
 // Queries
@@ -227,3 +229,4 @@ export function useRefundParticipation() {
     },
   });
 }
+

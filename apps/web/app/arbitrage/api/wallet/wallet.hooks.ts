@@ -1,14 +1,15 @@
 "use client";
 
-import { useMutation, useQueryClient } from "@tanstack/react-query";;
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useApiClient } from "@/app/api-hooks/useApiClient";
 import { useAuthenticatedQuery } from "@/app/api-hooks/useAuthenticatedQuery";
 import { qk } from "@eve/api-client/queryKeys";
 
 /**
  * API hooks for wallet operations
+ * 
+ * Backend: apps/api/src/wallet/wallet.controller.ts
  */
-
 
 // ============================================================================
 // Queries
@@ -89,3 +90,4 @@ export function useReconcileWallet() {
     },
   });
 }
+

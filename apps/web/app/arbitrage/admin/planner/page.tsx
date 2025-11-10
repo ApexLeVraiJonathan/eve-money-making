@@ -29,6 +29,7 @@ import { Alert, AlertDescription } from "@eve/ui";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@eve/ui";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@eve/ui";
 import { ChevronDown } from "lucide-react";
+import { usePlanPackages, useCommitArbitrage } from "../../api";
 
 type PlanItem = {
   typeId: number;
@@ -100,7 +101,6 @@ export default function PlannerPage() {
   const [json, setJson] = React.useState(
     JSON.stringify(defaultPayload, null, 2),
   );
-  const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [data, setData] = React.useState<PlanResult | null>(null);
   const [memo, setMemo] = React.useState("");
@@ -109,6 +109,12 @@ export default function PlannerPage() {
     cycleId: string;
     packageCount: number;
   } | null>(null);
+
+  // React Query mutations
+  const planPackagesMutation = usePlanPackages();
+  const commitArbitrageMutation = useCommitArbitrage();
+
+  const loading = planPackagesMutation.isPending;
 
   // Display values for form inputs (formatted)
   const [capacityDisplay, setCapacityDisplay] = React.useState(
@@ -237,34 +243,13 @@ export default function PlannerPage() {
 
   const handleSubmit = async () => {
     setError(null);
-    setLoading(true);
     setData(null);
     try {
       const payload = JSON.parse(json);
-      const res = await fetch("/api/plan-packages", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      const body = await res.json();
-      if (!res.ok) {
-        // Try to get detailed validation error info
-        const errorMsg = body?.error || body?.message || res.statusText;
-        const details = body?.issues
-          ? body.issues
-              .map(
-                (i: { path: string; message: string }) =>
-                  `${i.path}: ${i.message}`,
-              )
-              .join(", ")
-          : "";
-        throw new Error(details ? `${errorMsg}: ${details}` : errorMsg);
-      }
-      setData(body as PlanResult);
+      const result = await planPackagesMutation.mutateAsync(payload);
+      setData(result as PlanResult);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -507,23 +492,17 @@ export default function PlannerPage() {
             />
             <Button
               variant="secondary"
-              disabled={!data}
+              disabled={!data || commitArbitrageMutation.isPending}
               onClick={async () => {
                 if (!data) return;
                 try {
                   setError(null);
                   const payload = JSON.parse(json);
-                  const res = await fetch("/api/arbitrage/commit", {
-                    method: "POST",
-                    headers: { "content-type": "application/json" },
-                    body: JSON.stringify({
-                      request: payload,
-                      result: data,
-                      memo: memo || undefined,
-                    }),
+                  const body = await commitArbitrageMutation.mutateAsync({
+                    request: payload,
+                    result: data,
+                    memo: memo || undefined,
                   });
-                  const body = await res.json();
-                  if (!res.ok) throw new Error(body?.error || res.statusText);
                   setCommitSuccess({
                     cycleId: body.id,
                     packageCount: data.packages.length,
@@ -534,8 +513,17 @@ export default function PlannerPage() {
               }}
               className="gap-2"
             >
-              <Check className="h-4 w-4" />
-              Commit Plan
+              {commitArbitrageMutation.isPending ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Committing...
+                </>
+              ) : (
+                <>
+                  <Check className="h-4 w-4" />
+                  Commit Plan
+                </>
+              )}
             </Button>
           </div>
         )}

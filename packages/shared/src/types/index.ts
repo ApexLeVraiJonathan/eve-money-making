@@ -174,6 +174,28 @@ export interface Package {
   completedAt: string | null;
 }
 
+/**
+ * Committed package with full details (from committedPackage table)
+ * Backend: apps/api/src/market/services/package.service.ts
+ */
+export interface CommittedPackage {
+  id: string;
+  cycleId: string;
+  packageIndex: number;
+  destinationStationId: number;
+  destinationName: string | null;
+  collateralIsk: string;
+  shippingCostIsk: string;
+  estimatedProfitIsk: string;
+  status: string;
+  committedAt: string;
+  failedAt: string | null;
+  collateralRecoveredIsk: string | null;
+  failureMemo: string | null;
+  itemCount: number;
+  totalUnits: number;
+}
+
 export interface PackageItem {
   id: string;
   packageId: string;

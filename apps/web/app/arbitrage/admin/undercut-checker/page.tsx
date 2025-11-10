@@ -22,6 +22,13 @@ import {
   Store,
 } from "lucide-react";
 import { Alert, AlertDescription } from "@eve/ui";
+import {
+  useTrackedStations,
+  useArbitrageCommits,
+  useUndercutCheck,
+  useCycleLines,
+  useConfirmReprice,
+} from "../../api";
 
 type Group = {
   characterId: number;
@@ -54,15 +61,22 @@ type CycleLine = {
 };
 
 export default function UndercutCheckerPage() {
-  const [stations, setStations] = useState<TrackedStation[]>([]);
   const [selectedStations, setSelectedStations] = useState<number[]>([]);
   const [result, setResult] = useState<Group[] | null>(null);
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [useCommit, setUseCommit] = useState<boolean>(true);
   const [cycleId, setCycleId] = useState<string>("");
   const [selected, setSelected] = useState<Record<string, boolean>>({});
   const RELIST_PCT = Number(process.env.NEXT_PUBLIC_BROKER_RELIST_PCT ?? 0.3);
+
+  // React Query hooks
+  const { data: stations = [] } = useTrackedStations();
+  const { data: latestCycles = [] } = useArbitrageCommits(
+    { limit: 1 },
+    { enabled: useCommit },
+  );
+  const undercutCheckMutation = useUndercutCheck();
+  const confirmRepriceMutation = useConfirmReprice();
 
   const buildKeys = (rows: Group[] | null): string[] => {
     if (!Array.isArray(rows)) return [];
@@ -75,78 +89,30 @@ export default function UndercutCheckerPage() {
     return keys;
   };
 
+  // Auto-set cycle ID from latest cycles
   useEffect(() => {
-    fetch("/api/tracked-stations")
-      .then((r) => r.json())
-      .then((data) => setStations(data ?? []))
-      .catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    const fetchLatestCycle = async () => {
-      try {
-        const resp = await fetch("/api/arbitrage/commits?limit=1");
-        if (!resp.ok) return;
-        const rows: Array<{
-          id: string;
-          createdAt: string;
-          name?: string | null;
-          closedAt?: Date | null;
-        }> = await resp.json();
-        // Get the first open cycle (not closed)
-        const openCycle = rows.find((r) => !r.closedAt);
-        if (openCycle) {
-          setCycleId(openCycle.id);
-        } else if (rows.length > 0) {
-          // Fallback to most recent cycle if no open one
-          setCycleId(rows[0].id);
-        }
-      } catch {
-        // ignore
+    if (useCommit && latestCycles.length > 0) {
+      const openCycle = latestCycles.find((r) => !r.closedAt);
+      if (openCycle) {
+        setCycleId(openCycle.id);
+      } else {
+        setCycleId(latestCycles[0].id);
       }
-    };
-    if (useCommit) fetchLatestCycle();
-  }, [useCommit]);
+    }
+  }, [useCommit, latestCycles]);
 
   const onRun = async () => {
-    setLoading(true);
     setError(null);
     setResult(null);
     try {
-      let cid = cycleId;
-      if (useCommit && !cid) {
-        try {
-          const respLatest = await fetch("/api/arbitrage/commits?limit=1");
-          if (respLatest.ok) {
-            const rows: Array<{ id: string; closedAt?: Date | null }> =
-              await respLatest.json();
-            const openCycle = rows.find((r) => !r.closedAt);
-            if (openCycle) {
-              cid = openCycle.id;
-              setCycleId(cid);
-            } else if (rows.length > 0) {
-              cid = rows[0].id;
-              setCycleId(cid);
-            }
-          }
-        } catch {
-          // ignore
-        }
-      }
-      const resp = await fetch("/api/pricing/undercut-check", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          stationIds: useCommit
-            ? undefined
-            : selectedStations.length
-              ? selectedStations
-              : undefined,
-          cycleId: useCommit ? cid || undefined : undefined,
-        }),
+      const data = await undercutCheckMutation.mutateAsync({
+        stationIds: useCommit
+          ? undefined
+          : selectedStations.length
+            ? selectedStations
+            : undefined,
+        cycleId: useCommit ? cycleId || undefined : undefined,
       });
-      if (!resp.ok) throw new Error(await resp.text());
-      const data = (await resp.json()) as Group[];
       setResult(data);
       // Default select all items
       const allKeys = buildKeys(data);
@@ -155,8 +121,6 @@ export default function UndercutCheckerPage() {
       setSelected(initial);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Request failed");
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -166,14 +130,16 @@ export default function UndercutCheckerPage() {
   const onConfirmReprice = async () => {
     if (!cycleId || !result) return;
 
-    // Need to get cycle lines to match typeIds to lineIds
+    setError(null);
+
+    // Fetch cycle lines (TODO: create a hook for this in a future refactor)
     let cycleLines: CycleLine[];
     try {
-      const resp = await fetch(`/api/ledger/cycles/${cycleId}/lines`);
-      if (!resp.ok) {
-        throw new Error(`Failed to fetch cycle lines: ${resp.statusText}`);
+      const response = await fetch(`/api/ledger/cycles/${cycleId}/lines`);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch cycle lines: ${response.statusText}`);
       }
-      cycleLines = await resp.json();
+      cycleLines = await response.json();
     } catch (e) {
       setError(
         `Failed to fetch cycle lines: ${e instanceof Error ? e.message : String(e)}`,
@@ -203,21 +169,13 @@ export default function UndercutCheckerPage() {
           continue;
         }
 
-        // Execute all API calls in parallel
+        // Execute all API calls in parallel using the mutation
         promises.push(
-          fetch("/api/pricing/confirm-reprice", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
+          confirmRepriceMutation
+            .mutateAsync({
               lineId: line.id,
               quantity: u.remaining,
               newUnitPrice: u.suggestedNewPriceTicked,
-            }),
-          })
-            .then(async (resp) => {
-              if (!resp.ok) {
-                errors.push(`${u.itemName}: ${await resp.text()}`);
-              }
             })
             .catch((e) => {
               errors.push(
@@ -334,10 +292,10 @@ export default function UndercutCheckerPage() {
 
           <Button
             onClick={onRun}
-            disabled={loading || (useCommit && !cycleId)}
+            disabled={undercutCheckMutation.isPending || (useCommit && !cycleId)}
             className="gap-2"
           >
-            {loading ? (
+            {undercutCheckMutation.isPending ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin" />
                 Checking...

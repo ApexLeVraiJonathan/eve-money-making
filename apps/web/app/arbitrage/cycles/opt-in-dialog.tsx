@@ -15,8 +15,7 @@ import {
 import { ClipboardCopy, Coins, User, ArrowRight, Check } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@eve/ui";
-import { useCycles, useCreateParticipation } from "../api";
-import { useCurrentUser } from "@/app/api-hooks/users";
+import { useCycles, useCreateParticipation, useCurrentUser } from "../api";
 
 type OptInDialogProps = {
   nextCycleName: string;

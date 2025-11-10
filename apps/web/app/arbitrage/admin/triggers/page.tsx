@@ -4,6 +4,7 @@ import * as React from "react";
 import { Tabs, TabsList, TabsTrigger } from "@eve/ui";
 import { toast } from "sonner";
 import { Database, PlayCircle, DollarSign, Wrench } from "lucide-react";
+import { useApiClient } from "@/app/api-hooks/useApiClient";
 import type {
   TriggerState,
   TrackedStation,
@@ -18,6 +19,7 @@ import { FinancialTab } from "./financial-tab";
 import { SystemCleanupTab } from "./system-cleanup-tab";
 
 export default function TriggersPage() {
+  const client = useApiClient();
   const [loading, setLoading] = React.useState<TriggerState>({});
   const [batchSize, setBatchSize] = React.useState("5000");
   const [tradeDate, setTradeDate] = React.useState("");
@@ -45,20 +47,10 @@ export default function TriggersPage() {
     setLoading((prev) => ({ ...prev, [loadingKey]: true }));
 
     try {
-      const res = await fetch(`/api/import/${endpoint}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: body ? JSON.stringify(body) : undefined,
-      });
-
-      if (!res.ok) {
-        const error = await res
-          .json()
-          .catch(() => ({ error: "Unknown error" }));
-        throw new Error(error.error || res.statusText);
-      }
-
-      const data = await res.json();
+      const data = await client.post<{ message?: string }>(
+        `/import/${endpoint}`,
+        body,
+      );
       toast.success(
         `Import triggered successfully: ${data.message || "Completed"}`,
       );
@@ -85,9 +77,7 @@ export default function TriggersPage() {
 
   const loadTrackedStations = async () => {
     try {
-      const res = await fetch("/api/tracked-stations");
-      if (!res.ok) throw new Error("Failed to load tracked stations");
-      const data = (await res.json()) as TrackedStation[];
+      const data = await client.get<TrackedStation[]>("/tracked-stations");
       setTrackedStations(data);
     } catch (error) {
       toast.error(
@@ -103,19 +93,9 @@ export default function TriggersPage() {
 
     setLoading((prev) => ({ ...prev, ["add-station"]: true }));
     try {
-      const res = await fetch("/api/tracked-stations", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ stationId: Number(stationId) }),
+      await client.post("/tracked-stations", {
+        stationId: Number(stationId),
       });
-
-      if (!res.ok) {
-        const error = await res
-          .json()
-          .catch(() => ({ error: "Unknown error" }));
-        throw new Error(error.error || res.statusText);
-      }
-
       toast.success("Station added successfully");
       setStationId("");
       await loadTrackedStations();
@@ -131,17 +111,7 @@ export default function TriggersPage() {
   const removeTrackedStation = async (id: string) => {
     setLoading((prev) => ({ ...prev, [`remove-${id}`]: true }));
     try {
-      const res = await fetch(`/api/tracked-stations/${id}`, {
-        method: "DELETE",
-      });
-
-      if (!res.ok) {
-        const error = await res
-          .json()
-          .catch(() => ({ error: "Unknown error" }));
-        throw new Error(error.error || res.statusText);
-      }
-
+      await client.delete(`/tracked-stations/${id}`);
       toast.success("Station removed successfully");
       await loadTrackedStations();
     } catch (error) {
@@ -155,9 +125,7 @@ export default function TriggersPage() {
 
   const loadImportSummary = async () => {
     try {
-      const res = await fetch("/api/admin/import-summary");
-      if (!res.ok) throw new Error("Failed to load import summary");
-      const data = (await res.json()) as ImportSummary;
+      const data = await client.get<ImportSummary>("/import/summary");
       setImportSummary(data);
     } catch (error) {
       console.error("Error loading import summary:", error);
@@ -166,9 +134,7 @@ export default function TriggersPage() {
 
   const loadMarketStaleness = async () => {
     try {
-      const res = await fetch("/api/jobs/staleness");
-      if (!res.ok) throw new Error("Failed to load market staleness");
-      const data = (await res.json()) as MarketStaleness;
+      const data = await client.get<MarketStaleness>("/jobs/staleness");
       setMarketStaleness(data);
     } catch (error) {
       console.error("Error loading market staleness:", error);
@@ -177,12 +143,12 @@ export default function TriggersPage() {
 
   const loadLatestCycle = async () => {
     try {
-      const resp = await fetch("/api/arbitrage/commits?limit=1");
-      if (!resp.ok) return;
-      const rows: Array<{
-        id: string;
-        closedAt?: Date | null;
-      }> = await resp.json();
+      const rows = await client.get<
+        Array<{
+          id: string;
+          closedAt?: Date | null;
+        }>
+      >("/ledger/cycles?limit=1");
       const openCycle = rows.find((r) => !r.closedAt);
       if (openCycle) {
         setCurrentCycleId(openCycle.id);
@@ -198,9 +164,9 @@ export default function TriggersPage() {
 
   const loadSnapshots = async (cycleId: string) => {
     try {
-      const res = await fetch(`/api/ledger/cycles/${cycleId}/snapshots`);
-      if (!res.ok) throw new Error("Failed to load snapshots");
-      const data = (await res.json()) as CycleSnapshot[];
+      const data = await client.get<CycleSnapshot[]>(
+        `/ledger/cycles/${cycleId}/snapshots`,
+      );
       setSnapshots(data.slice(0, 10));
     } catch (error) {
       console.error("Failed to load snapshots:", error);
@@ -216,15 +182,7 @@ export default function TriggersPage() {
 
     setLoading((prev) => ({ ...prev, ["create-snapshot"]: true }));
     try {
-      const res = await fetch(`/api/ledger/cycles/${currentCycleId}/snapshot`, {
-        method: "POST",
-      });
-      if (!res.ok) {
-        const error = await res
-          .json()
-          .catch(() => ({ error: "Unknown error" }));
-        throw new Error(error.error || res.statusText);
-      }
+      await client.post(`/ledger/cycles/${currentCycleId}/snapshot`, {});
       toast.success("Snapshot created successfully");
       await loadSnapshots(currentCycleId);
     } catch (error) {
@@ -240,18 +198,9 @@ export default function TriggersPage() {
     setLoading((prev) => ({ ...prev, ["match-payments"]: true }));
     try {
       const url = cycleId
-        ? `/api/ledger/participations/match?cycleId=${encodeURIComponent(cycleId)}`
-        : "/api/ledger/participations/match";
-      const res = await fetch(url, { method: "POST" });
-
-      if (!res.ok) {
-        const error = await res
-          .json()
-          .catch(() => ({ error: "Unknown error" }));
-        throw new Error(error.error || res.statusText);
-      }
-
-      const data = (await res.json()) as MatchResult;
+        ? `/ledger/participations/match?cycleId=${encodeURIComponent(cycleId)}`
+        : "/ledger/participations/match";
+      const data = await client.post<MatchResult>(url, {});
       setMatchResult(data);
       toast.success(
         `Matched ${data.matched} payments, ${data.partial} adjusted, ${data.unmatched.length} unmatched`,

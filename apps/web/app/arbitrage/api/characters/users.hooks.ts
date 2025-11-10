@@ -4,11 +4,13 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ApiError } from "@eve/api-client";
 import { qk } from "@eve/api-client/queryKeys";
 import type { User, EveCharacter } from "@eve/shared";
-import { useApiClient } from "./useApiClient";
-import { useAuthenticatedQuery } from "./useAuthenticatedQuery";
+import { useApiClient } from "@/app/api-hooks/useApiClient";
+import { useAuthenticatedQuery } from "@/app/api-hooks/useAuthenticatedQuery";
 
 /**
  * API hooks for user and character management
+ *
+ * Backend: apps/api/src/characters/users.controller.ts
  */
 
 // ============================================================================
@@ -21,7 +23,7 @@ import { useAuthenticatedQuery } from "./useAuthenticatedQuery";
  */
 export function useCurrentUser() {
   const client = useApiClient();
-  
+
   return useAuthenticatedQuery({
     queryKey: qk.users.me(),
     queryFn: async () => {
@@ -50,7 +52,7 @@ export function useCurrentUser() {
  */
 export function useMyCharacters() {
   const client = useApiClient();
-  
+
   return useAuthenticatedQuery({
     queryKey: qk.characters.linked(),
     queryFn: async () => {
@@ -122,7 +124,7 @@ export function startCharacterLink(returnUrl?: string) {
  * Logout user
  */
 export async function logout() {
-  const client = useApiClient();
-  await client.get("/auth/logout");
-  window.location.href = "/";
+  // Can't use hook here since it's not a React component
+  // This is a helper function, not a hook
+  window.location.href = "/api/auth/signout";
 }
