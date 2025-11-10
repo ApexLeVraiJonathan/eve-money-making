@@ -518,20 +518,18 @@ export class AuthController {
 
   /**
    * Returns current user identity from validated EVE Bearer token.
+   * Requires authentication - guard ensures user is present.
    */
   @Get('me')
-  me(@CurrentUser() user: RequestUser | null, @Res() res: Response) {
-    if (!user) {
-      res.status(401).json({ error: 'Not authenticated' });
-      return;
-    }
-    res.json({
+  @ApiOperation({ summary: 'Get current user identity' })
+  me(@CurrentUser() user: RequestUser) {
+    return {
       userId: user.userId,
       characterId: user.characterId,
       characterName: user.name,
       role: user.role,
       primaryCharacterId: user.primaryCharacterId,
-    });
+    };
   }
 
   /**

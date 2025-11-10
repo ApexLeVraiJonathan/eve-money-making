@@ -3,12 +3,16 @@ import { Logger, ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
+import { config as dotenvConfig } from 'dotenv';
 import { AppModule } from './app.module';
 import { LoggingInterceptor } from './common/logging.interceptor';
 import { BigIntSerializationInterceptor } from './common/bigint-serialization.interceptor';
 import { HttpExceptionFilter } from './common/http-exception.filter';
 import { AppConfig } from './common/config';
 import { validateEnvironment } from './common/env-validation';
+
+// Load .env file before anything else
+dotenvConfig();
 
 async function bootstrap() {
   // Validate environment variables before starting the application

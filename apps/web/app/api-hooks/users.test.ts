@@ -46,7 +46,7 @@ describe('useCurrentUser', () => {
   it('should handle authentication errors', async () => {
     // Override handler to return 401
     server.use(
-      http.get('http://localhost:3001/auth/me', () => {
+      http.get('http://localhost:3000/auth/me', () => {
         return new HttpResponse(null, { status: 401 });
       }),
     );
@@ -75,7 +75,7 @@ describe('useMyCharacters', () => {
 
   it('should return empty array when no characters', async () => {
     server.use(
-      http.get('http://localhost:3001/users/me/characters', () => {
+      http.get('http://localhost:3000/users/me/characters', () => {
         return HttpResponse.json([]);
       }),
     );

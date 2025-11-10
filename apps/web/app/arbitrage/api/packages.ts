@@ -1,7 +1,8 @@
 "use client";
 
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { clientForApp } from "@eve/api-client";
+import { useMutation, useQueryClient } from "@tanstack/react-query";;
+import { useApiClient } from "@/app/api-hooks/useApiClient";
+import { useAuthenticatedQuery } from "@/app/api-hooks/useAuthenticatedQuery";
 import { qk } from "@eve/api-client/queryKeys";
 import type { Package } from "@eve/shared";
 
@@ -9,7 +10,6 @@ import type { Package } from "@eve/shared";
  * API hooks for package management
  */
 
-const client = clientForApp("api");
 
 // ============================================================================
 // Queries
@@ -19,7 +19,8 @@ const client = clientForApp("api");
  * List packages with optional filters
  */
 export function usePackages(filters?: { cycleId?: string; status?: string }) {
-  return useQuery({
+  const client = useApiClient();
+  return useAuthenticatedQuery({
     queryKey: qk.packages.list(filters),
     queryFn: () => {
       const params = new URLSearchParams();
@@ -35,7 +36,8 @@ export function usePackages(filters?: { cycleId?: string; status?: string }) {
  * Get package by ID
  */
 export function usePackage(packageId: string) {
-  return useQuery({
+  const client = useApiClient();
+  return useAuthenticatedQuery({
     queryKey: qk.packages.byId(packageId),
     queryFn: () => client.get<Package>(`/packages/${packageId}`),
     enabled: !!packageId,
@@ -46,7 +48,8 @@ export function usePackage(packageId: string) {
  * Get active packages
  */
 export function useActivePackages() {
-  return useQuery({
+  const client = useApiClient();
+  return useAuthenticatedQuery({
     queryKey: qk.packages.active(),
     queryFn: () => client.get<Package[]>("/packages?status=ACTIVE"),
   });
@@ -60,6 +63,7 @@ export function useActivePackages() {
  * Plan packages from arbitrage opportunities
  */
 export function usePlanPackages() {
+  const client = useApiClient();
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -85,6 +89,7 @@ export function usePlanPackages() {
  * Mark package as failed
  */
 export function useMarkPackageFailed() {
+  const client = useApiClient();
   const queryClient = useQueryClient();
 
   return useMutation({

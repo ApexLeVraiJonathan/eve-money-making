@@ -20,6 +20,7 @@ import { clientForApp } from "@eve/api-client";
  */
 export function useApiClient() {
   const { data: session } = useSession();
-  return clientForApp("api", session?.accessToken as string | undefined);
+  const token = session?.accessToken as string | undefined;
+  return clientForApp("api", token);
 }
 

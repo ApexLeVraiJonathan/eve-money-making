@@ -1,7 +1,8 @@
 "use client";
 
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { clientForApp } from "@eve/api-client";
+import { useMutation, useQueryClient } from "@tanstack/react-query";;
+import { useApiClient } from "@/app/api-hooks/useApiClient";
+import { useAuthenticatedQuery } from "@/app/api-hooks/useAuthenticatedQuery";
 import { qk } from "@eve/api-client/queryKeys";
 import type { CycleParticipation } from "@eve/shared";
 
@@ -9,7 +10,6 @@ import type { CycleParticipation } from "@eve/shared";
  * API hooks for cycle participations (investor investments)
  */
 
-const client = clientForApp("api");
 
 // ============================================================================
 // Queries
@@ -19,7 +19,8 @@ const client = clientForApp("api");
  * Get all participations (admin only)
  */
 export function useAllParticipations() {
-  return useQuery({
+  const client = useApiClient();
+  return useAuthenticatedQuery({
     queryKey: qk.participations.all(),
     queryFn: () =>
       client.get<CycleParticipation[]>("/ledger/participations/all"),
@@ -30,7 +31,8 @@ export function useAllParticipations() {
  * List participations for a specific cycle
  */
 export function useParticipations(cycleId: string, status?: string) {
-  return useQuery({
+  const client = useApiClient();
+  return useAuthenticatedQuery({
     queryKey: qk.participations.list(cycleId, status),
     queryFn: () => {
       const params = status ? `?status=${status}` : "";
@@ -46,7 +48,8 @@ export function useParticipations(cycleId: string, status?: string) {
  * Get current user's participation for a cycle
  */
 export function useMyParticipation(cycleId: string) {
-  return useQuery({
+  const client = useApiClient();
+  return useAuthenticatedQuery({
     queryKey: qk.participations.me(cycleId),
     queryFn: () =>
       client.get<CycleParticipation | null>(
@@ -60,7 +63,8 @@ export function useMyParticipation(cycleId: string) {
  * Get unmatched donation journal entries
  */
 export function useUnmatchedDonations() {
-  return useQuery({
+  const client = useApiClient();
+  return useAuthenticatedQuery({
     queryKey: qk.participations.unmatchedDonations(),
     queryFn: () =>
       client.get<
@@ -85,6 +89,7 @@ export function useUnmatchedDonations() {
  * Create a participation (opt-in to a cycle)
  */
 export function useCreateParticipation() {
+  const client = useApiClient();
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -117,6 +122,7 @@ export function useCreateParticipation() {
  * Opt out of a participation
  */
 export function useOptOutParticipation() {
+  const client = useApiClient();
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -135,6 +141,7 @@ export function useOptOutParticipation() {
  * Validate a participation payment (admin only)
  */
 export function useValidateParticipationPayment() {
+  const client = useApiClient();
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -159,6 +166,7 @@ export function useValidateParticipationPayment() {
  * Match participation payments from wallet (admin only)
  */
 export function useMatchParticipationPayments() {
+  const client = useApiClient();
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -180,6 +188,7 @@ export function useMatchParticipationPayments() {
  * Mark payout as sent (admin only)
  */
 export function useMarkPayoutSent() {
+  const client = useApiClient();
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -198,6 +207,7 @@ export function useMarkPayoutSent() {
  * Mark participation as refunded (admin only)
  */
 export function useRefundParticipation() {
+  const client = useApiClient();
   const queryClient = useQueryClient();
 
   return useMutation({

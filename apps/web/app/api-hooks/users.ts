@@ -1,15 +1,15 @@
 "use client";
 
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { clientForApp } from "@eve/api-client";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { ApiError } from "@eve/api-client";
 import { qk } from "@eve/api-client/queryKeys";
 import type { User, EveCharacter } from "@eve/shared";
+import { useApiClient } from "./useApiClient";
+import { useAuthenticatedQuery } from "./useAuthenticatedQuery";
 
 /**
  * API hooks for user and character management
  */
-
-const client = clientForApp("api");
 
 // ============================================================================
 // Queries
@@ -17,31 +17,56 @@ const client = clientForApp("api");
 
 /**
  * Get current authenticated user
+ * Returns null when not authenticated (401/403)
  */
 export function useCurrentUser() {
-  return useQuery({
+  const client = useApiClient();
+  
+  return useAuthenticatedQuery({
     queryKey: qk.users.me(),
-    queryFn: () =>
-      client.get<{
-        userId: string | null;
-        role: string;
-        characterId: number;
-        characterName: string;
-      }>("/auth/me"),
+    queryFn: async () => {
+      try {
+        return await client.get<{
+          userId: string | null;
+          role: string;
+          characterId: number;
+          characterName: string;
+        }>("/auth/me");
+      } catch (e) {
+        // Gracefully handle unauthenticated state - return null (not undefined)
+        if (e instanceof ApiError && (e.status === 401 || e.status === 403)) {
+          return null;
+        }
+        throw e;
+      }
+    },
     retry: false, // Don't retry on 401
   });
 }
 
 /**
  * Get current user's linked characters
+ * Returns empty array when not authenticated
  */
 export function useMyCharacters() {
-  return useQuery({
+  const client = useApiClient();
+  
+  return useAuthenticatedQuery({
     queryKey: qk.characters.linked(),
-    queryFn: () =>
-      client.get<Array<{ id: number; name: string; isPrimary: boolean }>>(
-        "/users/me/characters",
-      ),
+    queryFn: async () => {
+      try {
+        return await client.get<
+          Array<{ id: number; name: string; isPrimary: boolean }>
+        >("/users/me/characters");
+      } catch (e) {
+        // Return empty list when unauthenticated
+        if (e instanceof ApiError && (e.status === 401 || e.status === 403)) {
+          return [];
+        }
+        throw e;
+      }
+    },
+    retry: false,
   });
 }
 
@@ -53,6 +78,7 @@ export function useMyCharacters() {
  * Set primary character
  */
 export function useSetPrimaryCharacter() {
+  const client = useApiClient();
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -69,6 +95,7 @@ export function useSetPrimaryCharacter() {
  * Unlink a character
  */
 export function useUnlinkCharacter() {
+  const client = useApiClient();
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -95,6 +122,7 @@ export function startCharacterLink(returnUrl?: string) {
  * Logout user
  */
 export async function logout() {
+  const client = useApiClient();
   await client.get("/auth/logout");
   window.location.href = "/";
 }

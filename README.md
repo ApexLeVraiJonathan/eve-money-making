@@ -68,13 +68,13 @@ pnpm run migrate:deploy
 # Terminal 1: Start backend
 cd apps/api
 pnpm run dev
-# API: http://localhost:3001/api
-# Swagger: http://localhost:3001/docs
+# API: http://localhost:3000
+# Swagger: http://localhost:3000/docs
 
 # Terminal 2: Start frontend
 cd apps/web
 pnpm run dev
-# Web: http://localhost:3000
+# Web: http://localhost:3001
 ```
 
 ### Build All
@@ -198,16 +198,16 @@ pnpm run test
 DATABASE_URL="postgresql://..."
 ESI_CLIENT_ID="..."
 ESI_CLIENT_SECRET="..."
-ESI_CALLBACK_URL="http://localhost:3000/api/auth/callback/eveonline"
+ESI_CALLBACK_URL="http://localhost:3000/auth/callback/eveonline"
 JWT_SECRET="..."
-PORT=3001
-CORS_ORIGINS="http://localhost:3000"
+PORT=3000
+CORS_ORIGINS="http://localhost:3001"
 ```
 
 ### Frontend (.env.local)
 ```bash
-NEXT_PUBLIC_API_URL="http://localhost:3001/api"
-NEXTAUTH_URL="http://localhost:3000"
+NEXT_PUBLIC_API_URL="http://localhost:3000"
+NEXTAUTH_URL="http://localhost:3001"
 NEXTAUTH_SECRET="..."
 EVE_CLIENT_ID="..." # Same as backend
 EVE_CLIENT_SECRET="..." # Same as backend

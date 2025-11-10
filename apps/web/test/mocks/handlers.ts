@@ -10,7 +10,7 @@ import { http, HttpResponse } from 'msw';
  * ```
  */
 
-const API_URL = 'http://localhost:3001';
+const API_URL = 'http://localhost:3000'; // API is on port 3000
 
 export const handlers = [
   // Auth endpoints

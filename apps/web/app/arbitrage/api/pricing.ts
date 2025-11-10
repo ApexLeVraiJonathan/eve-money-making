@@ -1,14 +1,14 @@
 "use client";
 
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { clientForApp } from "@eve/api-client";
+import { useMutation, useQueryClient } from "@tanstack/react-query";;
+import { useApiClient } from "@/app/api-hooks/useApiClient";
+import { useAuthenticatedQuery } from "@/app/api-hooks/useAuthenticatedQuery";
 import { qk } from "@eve/api-client/queryKeys";
 
 /**
  * API hooks for pricing operations
  */
 
-const client = clientForApp("api");
 
 // ============================================================================
 // Mutations
@@ -18,6 +18,7 @@ const client = clientForApp("api");
  * Sell appraise - Get sell estimates for items
  */
 export function useSellAppraise() {
+  const client = useApiClient();
   return useMutation({
     mutationFn: (items: Array<{ typeId: number; quantity: number }>) =>
       client.post<{
@@ -39,6 +40,7 @@ export function useSellAppraise() {
  * Sell appraise by commit ID
  */
 export function useSellAppraiseByCommit() {
+  const client = useApiClient();
   return useMutation({
     mutationFn: (commitId: string) =>
       client.post<{
@@ -58,6 +60,7 @@ export function useSellAppraiseByCommit() {
  * Undercut check - Check if current listings need repricing
  */
 export function useUndercutCheck() {
+  const client = useApiClient();
   return useMutation({
     mutationFn: (data?: { cycleId?: string }) =>
       client.post<{
@@ -78,6 +81,7 @@ export function useUndercutCheck() {
  * Confirm listing - Confirm items have been listed
  */
 export function useConfirmListing() {
+  const client = useApiClient();
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -96,6 +100,7 @@ export function useConfirmListing() {
  * Confirm reprice - Confirm items have been repriced
  */
 export function useConfirmReprice() {
+  const client = useApiClient();
   const queryClient = useQueryClient();
 
   return useMutation({

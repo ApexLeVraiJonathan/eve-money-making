@@ -27,6 +27,7 @@ import {
   DropdownMenuTrigger,
 } from "@eve/ui";
 import { getApps, getActiveAppByPathname } from "@/app/apps.config";
+import { useCurrentUser } from "@/app/api-hooks/users";
 
 const data = {
   navSecondary: [
@@ -52,23 +53,8 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const pathname = usePathname();
   const apps = getApps();
   const activeApp = getActiveAppByPathname(pathname ?? "/");
-  const [isAdmin, setIsAdmin] = React.useState<boolean>(false);
-
-  React.useEffect(() => {
-    let cancel = false;
-    (async () => {
-      try {
-        const res = await fetch("/api/auth/me", { cache: "no-store" });
-        const body = (await res.json()) as { role?: string };
-        if (!cancel) setIsAdmin((body.role ?? "USER") === "ADMIN");
-      } catch {
-        if (!cancel) setIsAdmin(false);
-      }
-    })();
-    return () => {
-      cancel = true;
-    };
-  }, []);
+  const { data: currentUser } = useCurrentUser();
+  const isAdmin = currentUser?.role === "ADMIN" || false;
 
   return (
     <Sidebar variant="inset" {...props}>

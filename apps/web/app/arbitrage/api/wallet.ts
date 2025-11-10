@@ -1,14 +1,14 @@
 "use client";
 
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { clientForApp } from "@eve/api-client";
+import { useMutation, useQueryClient } from "@tanstack/react-query";;
+import { useApiClient } from "@/app/api-hooks/useApiClient";
+import { useAuthenticatedQuery } from "@/app/api-hooks/useAuthenticatedQuery";
 import { qk } from "@eve/api-client/queryKeys";
 
 /**
  * API hooks for wallet operations
  */
 
-const client = clientForApp("api");
 
 // ============================================================================
 // Queries
@@ -18,7 +18,8 @@ const client = clientForApp("api");
  * Get wallet transactions (last 14 days)
  */
 export function useWalletTransactions(characterId?: number) {
-  return useQuery({
+  const client = useApiClient();
+  return useAuthenticatedQuery({
     queryKey: qk.wallet.transactions(characterId),
     queryFn: () => {
       const params = characterId ? `?characterId=${characterId}` : "";
@@ -49,6 +50,7 @@ export function useWalletTransactions(characterId?: number) {
  * Import wallet transactions for all linked characters
  */
 export function useImportWallet() {
+  const client = useApiClient();
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -68,6 +70,7 @@ export function useImportWallet() {
  * Reconcile and allocate wallet transactions to cycle lines
  */
 export function useReconcileWallet() {
+  const client = useApiClient();
   const queryClient = useQueryClient();
 
   return useMutation({

@@ -102,10 +102,9 @@ export class UsersController {
   // User: list my linked characters
   @Get('users/me/characters')
   @ApiOperation({ summary: 'List my linked characters' })
-  async myCharacters(@CurrentUser() user: RequestUser | null) {
-    const userId = user?.userId ?? null;
-    if (!userId) return [];
-    return await this.users.listMyCharacters(userId);
+  async myCharacters(@CurrentUser() user: RequestUser) {
+    if (!user.userId) return [];
+    return await this.users.listMyCharacters(user.userId);
   }
 
   @Patch('users/me/primary-character')

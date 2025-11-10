@@ -1,4 +1,4 @@
-import { Module, Logger } from '@nestjs/common';
+import { Module, Logger, forwardRef } from '@nestjs/common';
 import { PrismaModule } from '../prisma/prisma.module';
 import { EsiModule } from '../esi/esi.module';
 import { GameDataModule } from '../game-data/game-data.module';
@@ -24,9 +24,9 @@ import { WalletModule } from '../wallet/wallet.module';
   imports: [
     PrismaModule,
     EsiModule,
-    GameDataModule,
+    forwardRef(() => GameDataModule),
     CharactersModule,
-    MarketModule,
+    forwardRef(() => MarketModule),
     WalletModule,
   ],
   providers: [

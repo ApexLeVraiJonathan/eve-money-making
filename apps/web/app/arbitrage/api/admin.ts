@@ -1,7 +1,8 @@
 "use client";
 
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { clientForApp } from "@eve/api-client";
+import { useMutation, useQueryClient } from "@tanstack/react-query";;
+import { useApiClient } from "@/app/api-hooks/useApiClient";
+import { useAuthenticatedQuery } from "@/app/api-hooks/useAuthenticatedQuery";
 import { qk } from "@eve/api-client/queryKeys";
 import type { User, EveCharacter } from "@eve/shared";
 
@@ -9,7 +10,7 @@ import type { User, EveCharacter } from "@eve/shared";
  * API hooks for admin operations
  */
 
-const client = clientForApp("api");
+
 
 // ============================================================================
 // Queries
@@ -19,7 +20,7 @@ const client = clientForApp("api");
  * Get all users (admin only)
  */
 export function useAdminUsers() {
-  return useQuery({
+  return useAuthenticatedQuery({
     queryKey: qk.users.list(),
     queryFn: () => client.get<User[]>("/admin/users"),
   });
@@ -29,7 +30,7 @@ export function useAdminUsers() {
  * Get all characters (admin only)
  */
 export function useAdminCharacters() {
-  return useQuery({
+  return useAuthenticatedQuery({
     queryKey: qk.characters.list(),
     queryFn: () =>
       client.get<
@@ -48,7 +49,7 @@ export function useAdminCharacters() {
  * Get import summary
  */
 export function useImportSummary() {
-  return useQuery({
+  return useAuthenticatedQuery({
     queryKey: ["admin", "importSummary"],
     queryFn: () =>
       client.get<{
@@ -256,7 +257,7 @@ export function useCleanupWalletJournals() {
  * List all tracked stations
  */
 export function useTrackedStations() {
-  return useQuery({
+  return useAuthenticatedQuery({
     queryKey: ["trackedStations", "list"],
     queryFn: () =>
       client.get<
@@ -274,7 +275,7 @@ export function useTrackedStations() {
  * Get tracked station by ID
  */
 export function useTrackedStation(id: string | null) {
-  return useQuery({
+  return useAuthenticatedQuery({
     queryKey: ["trackedStations", id],
     queryFn: () =>
       client.get<{
@@ -351,7 +352,7 @@ export function useWalletTransactions(params: {
   limit?: number;
   offset?: number;
 }) {
-  return useQuery({
+  return useAuthenticatedQuery({
     queryKey: ["wallet", "transactions", params],
     queryFn: () => {
       const query = new URLSearchParams();
@@ -385,7 +386,7 @@ export function useWalletJournal(params: {
   limit?: number;
   offset?: number;
 }) {
-  return useQuery({
+  return useAuthenticatedQuery({
     queryKey: ["wallet", "journal", params],
     queryFn: () => {
       const query = new URLSearchParams();

@@ -1,14 +1,14 @@
 "use client";
 
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { clientForApp } from "@eve/api-client";
+import { useMutation, useQueryClient } from "@tanstack/react-query";;
+import { useApiClient } from "@/app/api-hooks/useApiClient";
+import { useAuthenticatedQuery } from "@/app/api-hooks/useAuthenticatedQuery";
 import { qk } from "@eve/api-client/queryKeys";
 
 /**
  * API hooks for arbitrage opportunities and commitments
  */
 
-const client = clientForApp("api");
 
 // ============================================================================
 // Mutations
@@ -18,6 +18,7 @@ const client = clientForApp("api");
  * Commit to arbitrage plan
  */
 export function useCommitArbitrage() {
+  const client = useApiClient();
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -47,6 +48,7 @@ export function useCommitArbitrage() {
  * Get commit summaries (moved to cycles)
  */
 export function useCommitSummaries(cycleId: string) {
+  const client = useApiClient();
   return useMutation({
     mutationFn: () =>
       client.get<

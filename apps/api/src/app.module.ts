@@ -22,7 +22,7 @@ import { Public } from './characters/decorators/public.decorator';
 
 @Controller('health')
 class HealthController {
-  @Public()
+  @Public() // Health check should remain public for monitoring
   @Get()
   ping() {
     return { ok: true };

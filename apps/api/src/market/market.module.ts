@@ -1,4 +1,4 @@
-import { Module, Logger } from '@nestjs/common';
+import { Module, Logger, forwardRef } from '@nestjs/common';
 import { PrismaModule } from '../prisma/prisma.module';
 import { EsiModule } from '../esi/esi.module';
 import { CyclesModule } from '../cycles/cycles.module';
@@ -26,8 +26,8 @@ import { TrackedStationsController } from './tracked-stations.controller';
   imports: [
     PrismaModule,
     EsiModule,
-    CyclesModule,
-    GameDataModule,
+    forwardRef(() => CyclesModule),
+    forwardRef(() => GameDataModule),
     CharactersModule,
     DataImportModule,
     ArbitragePackagerModule,

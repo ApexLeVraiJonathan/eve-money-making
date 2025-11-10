@@ -1,4 +1,4 @@
-import { Module, Logger } from '@nestjs/common';
+import { Module, Logger, forwardRef } from '@nestjs/common';
 import { ScheduleModule } from '@nestjs/schedule';
 import { PrismaModule } from '../prisma/prisma.module';
 import { JobsService } from './jobs.service';
@@ -11,10 +11,10 @@ import { CharactersModule } from '../characters/characters.module';
 @Module({
   imports: [
     PrismaModule,
-    GameDataModule,
+    forwardRef(() => GameDataModule),
     WalletModule,
     ScheduleModule.forRoot(),
-    CyclesModule,
+    forwardRef(() => CyclesModule),
     CharactersModule,
   ],
   providers: [JobsService, Logger],

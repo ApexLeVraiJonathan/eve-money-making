@@ -1,8 +1,9 @@
 "use client";
 
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { clientForApp } from "@eve/api-client";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { qk } from "@eve/api-client/queryKeys";
+import { useApiClient } from "@/app/api-hooks/useApiClient";
+import { useAuthenticatedQuery } from "@/app/api-hooks/useAuthenticatedQuery";
 import type {
   Cycle,
   CycleOverview,
@@ -18,11 +19,9 @@ import type {
 /**
  * API hooks for cycle management
  *
- * Uses @eve/api-client for direct API calls (no proxy routes)
+ * Uses useApiClient() for authenticated API calls with Bearer tokens
  * and centralized query keys from @eve/api-client/queryKeys
  */
-
-const client = clientForApp("api");
 
 // ============================================================================
 // Queries
@@ -32,7 +31,8 @@ const client = clientForApp("api");
  * Get cycle overview (current + next cycle with stats)
  */
 export function useCycleOverview() {
-  return useQuery({
+  const client = useApiClient();
+  return useAuthenticatedQuery({
     queryKey: qk.cycles.overview(),
     queryFn: () => client.get<CycleOverview>("/ledger/cycles/overview"),
   });
@@ -42,7 +42,8 @@ export function useCycleOverview() {
  * List all cycles
  */
 export function useCycles() {
-  return useQuery({
+  const client = useApiClient();
+  return useAuthenticatedQuery({
     queryKey: qk.cycles.list(),
     queryFn: () => client.get<Cycle[]>("/ledger/cycles"),
   });
@@ -52,7 +53,8 @@ export function useCycles() {
  * Get specific cycle by ID
  */
 export function useCycle(cycleId: string) {
-  return useQuery({
+  const client = useApiClient();
+  return useAuthenticatedQuery({
     queryKey: qk.cycles.byId(cycleId),
     queryFn: () => client.get<Cycle>(`/ledger/cycles/${cycleId}`),
     enabled: !!cycleId,
@@ -63,7 +65,8 @@ export function useCycle(cycleId: string) {
  * Get cycle snapshots
  */
 export function useCycleSnapshots(cycleId: string, limit?: number) {
-  return useQuery({
+  const client = useApiClient();
+  return useAuthenticatedQuery({
     queryKey: qk.cycles.snapshots(cycleId),
     queryFn: () => {
       const params = limit ? `?limit=${limit}` : "";
@@ -79,7 +82,8 @@ export function useCycleSnapshots(cycleId: string, limit?: number) {
  * Get cycle profit breakdown
  */
 export function useCycleProfit(cycleId: string) {
-  return useQuery({
+  const client = useApiClient();
+  return useAuthenticatedQuery({
     queryKey: qk.cycles.profit(cycleId),
     queryFn: () => client.get<CycleProfit>(`/ledger/cycles/${cycleId}/profit`),
     enabled: !!cycleId,
@@ -90,7 +94,8 @@ export function useCycleProfit(cycleId: string) {
  * Get estimated profit for cycle
  */
 export function useCycleEstimatedProfit(cycleId: string) {
-  return useQuery({
+  const client = useApiClient();
+  return useAuthenticatedQuery({
     queryKey: qk.cycles.estimatedProfit(cycleId),
     queryFn: () =>
       client.get<{ estimatedTotalProfit: string; breakdown: unknown[] }>(
@@ -104,7 +109,8 @@ export function useCycleEstimatedProfit(cycleId: string) {
  * Get portfolio value for cycle
  */
 export function useCyclePortfolioValue(cycleId: string) {
-  return useQuery({
+  const client = useApiClient();
+  return useAuthenticatedQuery({
     queryKey: qk.cycles.portfolioValue(cycleId),
     queryFn: () =>
       client.get<{ totalValue: string; items: unknown[] }>(
@@ -118,7 +124,8 @@ export function useCyclePortfolioValue(cycleId: string) {
  * Get cycle capital breakdown
  */
 export function useCycleCapital(cycleId: string, force?: boolean) {
-  return useQuery({
+  const client = useApiClient();
+  return useAuthenticatedQuery({
     queryKey: qk.cycles.capital(cycleId, force),
     queryFn: () => {
       const params = force ? "?force=true" : "";
@@ -132,7 +139,8 @@ export function useCycleCapital(cycleId: string, force?: boolean) {
  * Get cycle NAV (Net Asset Value)
  */
 export function useCycleNav(cycleId: string) {
-  return useQuery({
+  const client = useApiClient();
+  return useAuthenticatedQuery({
     queryKey: qk.cycles.nav(cycleId),
     queryFn: () =>
       client.get<{
@@ -153,7 +161,8 @@ export function useCycleEntries(
   cycleId: string,
   options?: { limit?: number; offset?: number },
 ) {
-  return useQuery({
+  const client = useApiClient();
+  return useAuthenticatedQuery({
     queryKey: qk.cycles.entries(cycleId, options),
     queryFn: () => {
       const params = new URLSearchParams();
@@ -172,7 +181,8 @@ export function useCycleEntries(
  * List cycle lines (item tracking)
  */
 export function useCycleLines(cycleId: string) {
-  return useQuery({
+  const client = useApiClient();
+  return useAuthenticatedQuery({
     queryKey: qk.cycleLines.list(cycleId),
     queryFn: () => client.get<CycleLine[]>(`/ledger/cycles/${cycleId}/lines`),
     enabled: !!cycleId,
@@ -183,7 +193,8 @@ export function useCycleLines(cycleId: string) {
  * Get transport fees for a cycle
  */
 export function useTransportFees(cycleId: string) {
-  return useQuery({
+  const client = useApiClient();
+  return useAuthenticatedQuery({
     queryKey: qk.fees.transport(cycleId),
     queryFn: () =>
       client.get<CycleFeeEvent[]>(`/ledger/cycles/${cycleId}/transport-fees`),
@@ -199,6 +210,7 @@ export function useTransportFees(cycleId: string) {
  * Create and start a new cycle immediately
  */
 export function useCreateCycle() {
+  const client = useApiClient();
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -217,6 +229,7 @@ export function useCreateCycle() {
  * Plan a new cycle for future start
  */
 export function usePlanCycle() {
+  const client = useApiClient();
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -235,6 +248,7 @@ export function usePlanCycle() {
  * Open a planned cycle
  */
 export function useOpenCycle() {
+  const client = useApiClient();
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -255,6 +269,7 @@ export function useOpenCycle() {
  * Close a cycle
  */
 export function useCloseCycle() {
+  const client = useApiClient();
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -270,6 +285,7 @@ export function useCloseCycle() {
  * Create a cycle snapshot
  */
 export function useCreateCycleSnapshot() {
+  const client = useApiClient();
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -285,6 +301,7 @@ export function useCreateCycleSnapshot() {
  * Create a cycle line
  */
 export function useCreateCycleLine() {
+  const client = useApiClient();
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -309,6 +326,7 @@ export function useCreateCycleLine() {
  * Update a cycle line
  */
 export function useUpdateCycleLine() {
+  const client = useApiClient();
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -329,6 +347,7 @@ export function useUpdateCycleLine() {
  * Delete a cycle line
  */
 export function useDeleteCycleLine() {
+  const client = useApiClient();
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -344,6 +363,7 @@ export function useDeleteCycleLine() {
  * Add transport fee to cycle
  */
 export function useAddTransportFee() {
+  const client = useApiClient();
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -368,7 +388,8 @@ export function useAddTransportFee() {
  * Suggest payouts for a cycle
  */
 export function useSuggestPayouts(cycleId: string, profitSharePct?: number) {
-  return useQuery({
+  const client = useApiClient();
+  return useAuthenticatedQuery({
     queryKey: qk.payouts.suggest(cycleId, profitSharePct),
     queryFn: () => {
       const params = profitSharePct ? `?profitSharePct=${profitSharePct}` : "";
@@ -384,6 +405,7 @@ export function useSuggestPayouts(cycleId: string, profitSharePct?: number) {
  * Finalize payouts for a cycle
  */
 export function useFinalizePayouts() {
+  const client = useApiClient();
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -409,6 +431,7 @@ export function useFinalizePayouts() {
  * Add broker fee to cycle line
  */
 export function useAddBrokerFee() {
+  const client = useApiClient();
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -430,6 +453,7 @@ export function useAddBrokerFee() {
  * Add relist fee to cycle line
  */
 export function useAddRelistFee() {
+  const client = useApiClient();
   const queryClient = useQueryClient();
 
   return useMutation({

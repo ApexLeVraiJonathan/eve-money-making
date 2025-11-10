@@ -1,4 +1,4 @@
-import { Module, Logger } from '@nestjs/common';
+import { Module, Logger, forwardRef } from '@nestjs/common';
 import { PrismaModule } from '../prisma/prisma.module';
 import { EsiModule } from '../esi/esi.module';
 import { WalletService } from './services/wallet.service';
@@ -9,7 +9,7 @@ import { GameDataModule } from '../game-data/game-data.module';
 import { CharactersModule } from '../characters/characters.module';
 
 @Module({
-  imports: [PrismaModule, EsiModule, GameDataModule, CharactersModule],
+  imports: [PrismaModule, EsiModule, forwardRef(() => GameDataModule), CharactersModule],
   providers: [WalletService, AllocationService, Logger],
   controllers: [WalletController, ReconciliationController],
   exports: [WalletService, AllocationService],

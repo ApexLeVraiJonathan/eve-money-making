@@ -70,14 +70,14 @@ DATABASE_URL="postgresql://user:password@localhost:5432/eve_money"
 # EVE SSO
 ESI_CLIENT_ID="your_client_id"
 ESI_CLIENT_SECRET="your_client_secret"
-ESI_CALLBACK_URL="http://localhost:3000/api/auth/callback/eveonline"
+ESI_CALLBACK_URL="http://localhost:3000/auth/callback/eveonline"
 
 # Auth
 JWT_SECRET="your_secret_key_here"
 
 # Server
-PORT=3001
-CORS_ORIGINS="http://localhost:3000"
+PORT=3000
+CORS_ORIGINS="http://localhost:3001"
 ```
 
 ### Database Setup
@@ -95,13 +95,13 @@ cd apps/api
 pnpm run start:dev
 ```
 
-API will be available at `http://localhost:3001/api`
+API will be available at `http://localhost:3000`
 
 ### Swagger Documentation
 
 Interactive API documentation available at:
 ```
-http://localhost:3001/docs
+http://localhost:3000/docs
 ```
 
 ---

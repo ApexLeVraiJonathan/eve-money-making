@@ -109,8 +109,12 @@ export class HttpExceptionFilter implements ExceptionFilter {
       requestId,
       timestamp: new Date().toISOString(),
       path,
-      ...(details && { details }),
     };
+
+    // Add details if present
+    if (details) {
+      errorResponse.details = details;
+    }
 
     response.status(status).json(errorResponse);
   }

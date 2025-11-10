@@ -106,12 +106,12 @@ Notes:
 #### NestJS API Integration
 
 - API_URL: Internal URL where NestJS API is accessible from Next.js server-side components
-  - Dev: `API_URL=http://localhost:3001`
+  - Dev: `API_URL=http://localhost:3000`
   - Prod: `API_URL=https://your-api-domain.railway.app`
   - **Note**: Do NOT include `/api` suffix - the backend routes handle the path
   - Used by server-side Next.js code to call the NestJS backend
 - NEXT_PUBLIC_API_URL: Public URL of your NestJS API (used by browser clients)
-  - Dev: `NEXT_PUBLIC_API_URL=http://localhost:3001`
+  - Dev: `NEXT_PUBLIC_API_URL=http://localhost:3000`
   - Prod: `NEXT_PUBLIC_API_URL=https://your-api-domain.railway.app`
   - **Critical**: This must be accessible from the user's browser
   - **Note**: Do NOT include `/api` suffix
@@ -119,7 +119,7 @@ Notes:
     - App 2 uses: `{NEXT_PUBLIC_API_URL}/auth/link-character/callback`
     - App 3 uses: `{NEXT_PUBLIC_API_URL}/auth/admin/system-characters/callback`
 - NEXT_PUBLIC_WEB_BASE_URL: Public URL of your Next.js web application
-  - Dev: `NEXT_PUBLIC_WEB_BASE_URL=http://localhost:3000`
+  - Dev: `NEXT_PUBLIC_WEB_BASE_URL=http://localhost:3001`
   - Prod: `NEXT_PUBLIC_WEB_BASE_URL=https://yourdomain.com`
 - ESI_SSO_SCOPES_USER: Comma-separated list of ESI scopes for user characters (optional, can be empty for auth-only)
   - Example: `ESI_SSO_SCOPES_USER=` (empty for authentication only)

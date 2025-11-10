@@ -39,9 +39,9 @@ export class ApiError extends Error {
  * Note: NEXT_PUBLIC_API_URL should NOT include /api suffix - it's added by the backend routes
  */
 const BASES: Record<AppId, string> = {
-  api: process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001",
-  "web-portal": process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001",
-  "web-admin": process.env.NEXT_PUBLIC_ADMIN_API_URL ?? "http://localhost:3002",
+  api: process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000",
+  "web-portal": process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000",
+  "web-admin": process.env.NEXT_PUBLIC_ADMIN_API_URL || "http://localhost:3002",
 };
 
 /**
@@ -163,7 +163,7 @@ export interface ApiClient {
  */
 export function clientForApp(appId: AppId = "api", token?: string): ApiClient {
   const base = getBase(appId);
-  const tokenOpt = token ? { token } : undefined;
+  const tokenOpt = token ? { token } : {};
 
   return {
     get: <T>(path: string, opts?: ApiClientOptions) =>

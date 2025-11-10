@@ -16,7 +16,7 @@ export async function fetchWithAuthJson<T = unknown>(
     throw new Error("Not authenticated");
   }
 
-  const apiUrl = process.env.API_URL || "http://localhost:3001";
+  const apiUrl = process.env.API_URL || "http://localhost:3000";
   const url = `${apiUrl}${endpoint.startsWith("/") ? endpoint : `/${endpoint}`}`;
 
   const response = await fetch(url, {

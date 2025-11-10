@@ -69,12 +69,12 @@ Create `.env.local` file:
 
 ```bash
 # API URLs (no /api suffix)
-NEXT_PUBLIC_API_URL="http://localhost:3001"
-API_URL="http://localhost:3001"  # Server-side only
-NEXT_PUBLIC_WEB_BASE_URL="http://localhost:3000"
+NEXT_PUBLIC_API_URL="http://localhost:3000"  # API is on port 3000
+API_URL="http://localhost:3000"              # Server-side only
+NEXT_PUBLIC_WEB_BASE_URL="http://localhost:3001"  # Web is on port 3001
 
 # NextAuth
-NEXTAUTH_URL="http://localhost:3000"
+NEXTAUTH_URL="http://localhost:3001"
 NEXTAUTH_SECRET="your_secret_here"
 
 # EVE SSO (same as backend)

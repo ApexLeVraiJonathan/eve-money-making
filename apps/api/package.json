@@ -28,7 +28,8 @@
     "db:reset-prod": "tsx scripts/reset-prod-db.ts",
     "fix:allocation": "tsx scripts/fix-allocation.ts",
     "fix:missing-table": "tsx scripts/fix-missing-table.ts",
-    "audit:endpoints": "tsx scripts/audit-endpoints.ts"
+    "audit:endpoints": "tsx scripts/audit-endpoints.ts",
+    "check:env": "tsx scripts/check-env.ts"
   },
   "dependencies": {
     "@eve/prisma": "workspace:*",
@@ -47,6 +48,7 @@
     "class-validator": "^0.14.2",
     "cookie-parser": "^1.4.7",
     "csv-parse": "^6.1.0",
+    "dotenv": "^17.2.3",
     "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.2",
     "jwks-rsa": "^3.2.0",

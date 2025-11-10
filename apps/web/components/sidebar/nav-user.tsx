@@ -1,8 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { ChevronsUpDown, LogIn } from "lucide-react";
-import { signIn } from "next-auth/react";
+import { ChevronsUpDown, LogIn, LogOut } from "lucide-react";
+import { signIn, signOut } from "next-auth/react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@eve/ui";
 import {
@@ -20,38 +20,11 @@ import {
   useSidebar,
 } from "@eve/ui";
 import { Button } from "@eve/ui";
-
-type LinkedCharacter = {
-  id: number;
-  name: string;
-  isPrimary: boolean;
-};
+import { useMyCharacters } from "@/app/api-hooks/users";
 
 export function NavUser() {
   const { isMobile } = useSidebar();
-  const [characters, setCharacters] = React.useState<LinkedCharacter[] | null>(
-    null,
-  );
-  const [loading, setLoading] = React.useState(false);
-
-  React.useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        setLoading(true);
-        const res = await fetch("/api/auth/characters", { cache: "no-store" });
-        const body = (await res.json()) as { characters?: LinkedCharacter[] };
-        if (!cancelled) setCharacters(body.characters ?? []);
-      } catch {
-        if (!cancelled) setCharacters([]);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const { data: characters, isLoading: loading } = useMyCharacters();
 
   const handleLogin = () => {
     // Use NextAuth to sign in with EVE Online
@@ -61,7 +34,7 @@ export function NavUser() {
   };
 
   // Not linked yet → show sign-in button
-  if (!loading && (characters == null || characters.length === 0)) {
+  if (!loading && (!characters || characters.length === 0)) {
     return (
       <SidebarMenu>
         <SidebarMenuItem>
@@ -88,7 +61,11 @@ export function NavUser() {
   }
 
   // Use primary character if available, otherwise first character
-  const primary = characters!.find((c) => c.isPrimary) ?? characters![0];
+  const primary = characters?.find((c) => c.isPrimary) ?? characters?.[0];
+  
+  if (!primary) {
+    return null; // Safety check
+  }
   const initials = primary.name
     .split(" ")
     .map((s) => s[0])
@@ -147,6 +124,14 @@ export function NavUser() {
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={handleLogin}>
               Link another character
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onClick={() => signOut({ callbackUrl: "/" })}
+              className="text-destructive focus:text-destructive"
+            >
+              <LogOut className="mr-2 h-4 w-4" />
+              Log out
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
