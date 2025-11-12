@@ -83,8 +83,12 @@ describe('ProfitService', () => {
         },
       ];
 
-      jest.spyOn(prisma.cycle, 'findUniqueOrThrow').mockResolvedValue(mockCycle as any);
-      jest.spyOn(prisma.cycleLine, 'findMany').mockResolvedValue(mockLines as any);
+      jest
+        .spyOn(prisma.cycle, 'findUniqueOrThrow')
+        .mockResolvedValue(mockCycle as any);
+      jest
+        .spyOn(prisma.cycleLine, 'findMany')
+        .mockResolvedValue(mockLines as any);
 
       const result = await service.computeProfitForCycle('cycle-1');
 
@@ -114,7 +118,9 @@ describe('ProfitService', () => {
         totalFees: null,
       };
 
-      jest.spyOn(prisma.cycle, 'findUniqueOrThrow').mockResolvedValue(mockCycle as any);
+      jest
+        .spyOn(prisma.cycle, 'findUniqueOrThrow')
+        .mockResolvedValue(mockCycle as any);
       jest.spyOn(prisma.cycleLine, 'findMany').mockResolvedValue([]);
 
       const result = await service.computeProfitForCycle('cycle-2');
@@ -164,15 +170,19 @@ describe('ProfitService', () => {
         },
       ];
 
-      jest.spyOn(prisma.cycle, 'findUniqueOrThrow').mockResolvedValue(mockCycle as any);
-      jest.spyOn(prisma.cycleLine, 'findMany').mockResolvedValue(mockLines as any);
+      jest
+        .spyOn(prisma.cycle, 'findUniqueOrThrow')
+        .mockResolvedValue(mockCycle as any);
+      jest
+        .spyOn(prisma.cycleLine, 'findMany')
+        .mockResolvedValue(mockLines as any);
 
       const result = await service.computeProfitForCycle('cycle-3');
 
       // Unrealized = (currentSellPrice * remaining) - (buyPrice * remaining)
       // = (7 * 400) - (5 * 400) = 2800 - 2000 = 800
       expect(result.profitUnrealized).toBeCloseTo(800, 1);
-      
+
       // Total = realized + unrealized = -900 + 800 = -100
       expect(result.profitTotal).toBeCloseTo(-100, 1);
     });
@@ -195,4 +205,3 @@ describe('ProfitService', () => {
     });
   });
 });
-

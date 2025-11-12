@@ -2,7 +2,7 @@ import { Logger } from '@nestjs/common';
 
 /**
  * Environment variable validation at startup
- * 
+ *
  * Validates that all required environment variables are set before the app starts.
  * Fails fast with clear error messages if any required variables are missing.
  */
@@ -43,7 +43,7 @@ const RECOMMENDED_VARS = [
 
 /**
  * Validate environment variables at startup
- * 
+ *
  * @throws Error if required variables are missing
  */
 export function validateEnvironment(): void {
@@ -71,11 +71,13 @@ export function validateEnvironment(): void {
   }
 
   logger.log('✅ Environment validation passed');
-  
+
   // Log environment info (without sensitive values)
   logger.log(`NODE_ENV: ${process.env.NODE_ENV ?? 'development'}`);
   logger.log(`PORT: ${process.env.PORT ?? '3000'}`);
-  logger.log(`Database: ${maskConnectionString(process.env.DATABASE_URL ?? '')}`);
+  logger.log(
+    `Database: ${maskConnectionString(process.env.DATABASE_URL ?? '')}`,
+  );
 }
 
 /**
@@ -112,10 +114,7 @@ function checkEnvironment(): EnvValidationResult {
 function maskConnectionString(connectionString: string): string {
   try {
     // Mask password in connection strings
-    return connectionString.replace(
-      /(:\/\/[^:]+:)[^@]+(@)/,
-      '$1****$2',
-    );
+    return connectionString.replace(/(:\/\/[^:]+:)[^@]+(@)/, '$1****$2');
   } catch {
     return '****';
   }
@@ -138,4 +137,3 @@ export function getRequiredEnv(key: string, defaultValue?: string): string {
 export function getOptionalEnv(key: string, defaultValue: string): string {
   return process.env[key] ?? defaultValue;
 }
-

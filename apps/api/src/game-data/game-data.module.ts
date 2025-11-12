@@ -8,7 +8,12 @@ import { EsiModule } from '../esi/esi.module';
 import { MarketModule } from '../market/market.module';
 
 @Module({
-  imports: [PrismaModule, DataImportModule, EsiModule, forwardRef(() => MarketModule)],
+  imports: [
+    PrismaModule,
+    DataImportModule,
+    EsiModule,
+    forwardRef(() => MarketModule),
+  ],
   providers: [GameDataService, ImportService, Logger],
   controllers: [ImportController],
   exports: [GameDataService, ImportService],

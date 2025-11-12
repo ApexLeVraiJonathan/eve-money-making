@@ -68,11 +68,23 @@ export default function CyclesPage() {
   const planCycle = async () => {
     setError(null);
     try {
+      // Convert datetime-local input to ISO string
+      let startDate: Date;
+      if (planStart && planStart.trim() !== "") {
+        startDate = new Date(planStart);
+        // Validate the date is valid
+        if (isNaN(startDate.getTime())) {
+          setError("Invalid date format");
+          return;
+        }
+      } else {
+        // Default to tomorrow if no date specified
+        startDate = new Date(Date.now() + 24 * 60 * 60 * 1000);
+      }
+
       await planCycleMutation.mutateAsync({
         name: name || undefined,
-        startedAt: planStart
-          ? new Date(planStart).toISOString()
-          : new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+        startedAt: startDate.toISOString(),
         initialInjectionIsk:
           initialInjection && !Number.isNaN(Number(initialInjection))
             ? Number(initialInjection).toFixed(2)

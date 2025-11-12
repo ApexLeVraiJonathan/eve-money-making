@@ -18,7 +18,7 @@ import { UsersController } from './users.controller';
 
 // Guards & Strategy
 import { EveJwtStrategy } from './guards/jwt.strategy';
-import { AuthGuard } from './guards/auth.guard';
+import { CompositeAuthGuard } from './guards/composite-auth.guard';
 import { RolesGuard } from './guards/roles.guard';
 
 @Module({
@@ -40,7 +40,7 @@ import { RolesGuard } from './guards/roles.guard';
     EsiTokenService,
     // Guards & Strategy
     EveJwtStrategy,
-    AuthGuard,
+    CompositeAuthGuard,
     RolesGuard,
     Logger,
   ],
@@ -52,7 +52,7 @@ import { RolesGuard } from './guards/roles.guard';
     TokenService,
     EsiTokenService,
     EveJwtStrategy,
-    AuthGuard,
+    CompositeAuthGuard,
     RolesGuard,
   ],
 })

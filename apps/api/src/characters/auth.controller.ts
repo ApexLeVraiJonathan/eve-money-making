@@ -98,6 +98,7 @@ export class AuthController {
    * Requires authentication via JWT Bearer token
    */
   @Get('link-character/start')
+  @ApiBearerAuth()
   async linkCharacterStart(
     @CurrentUser() user: RequestUser | null,
     @Res() res: Response,
@@ -521,6 +522,7 @@ export class AuthController {
    * Requires authentication - guard ensures user is present.
    */
   @Get('me')
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Get current user identity' })
   me(@CurrentUser() user: RequestUser) {
     return {
@@ -701,6 +703,7 @@ export class AuthController {
    * Requires authentication via JWT Bearer token from the EXISTING session
    */
   @Post('link-additional-character')
+  @ApiBearerAuth()
   async linkAdditionalCharacter(
     @CurrentUser() user: RequestUser | null,
     @Req() req: Request,

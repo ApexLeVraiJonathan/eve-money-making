@@ -6,7 +6,6 @@ import {
   Matches,
   IsDateString,
 } from 'class-validator';
-import { Transform } from 'class-transformer';
 
 export class PlanCycleRequest {
   @ApiPropertyOptional({
@@ -24,8 +23,7 @@ export class PlanCycleRequest {
     example: '2025-01-15T00:00:00Z',
   })
   @IsDateString()
-  @Transform(({ value }) => (value ? new Date(value) : value))
-  startedAt!: Date;
+  startedAt!: string | Date;
 
   @ApiPropertyOptional({
     description: 'Initial injection amount in ISK (format: XXXXX.XX)',

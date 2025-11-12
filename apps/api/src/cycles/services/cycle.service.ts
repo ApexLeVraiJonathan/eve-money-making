@@ -318,8 +318,11 @@ export class CycleService {
    * 1. Clean up unpaid/refunded participations
    * 2. Close any existing open cycle
    * 3. Set startedAt to now if in future
-   * 4. Compute initial capital (carryover + injection + validated participations)
-   * 5. Create rollover cycle lines from active sell orders
+   * 4. Compute initial capital from investor participations only (no wallet ISK)
+   * 5. Create rollover cycle lines from active sell orders with linkage to previous cycle
+   *
+   * After transaction:
+   * 6. Process rollover purchase (synthetic buy allocations at cost basis)
    *
    * @param input - Cycle ID and optional start date override
    * @returns Opened cycle with initial capital set
@@ -332,8 +335,40 @@ export class CycleService {
     });
     if (!cycle) throw new Error('Cycle not found');
 
+    // Get previous closed cycle for rollover linkage
+    const prevCycle = await this.prisma.cycle.findFirst({
+      where: { closedAt: { not: null } },
+      orderBy: { closedAt: 'desc' },
+      select: { id: true },
+    });
+
+    // Build map of previous cycle lines for reference (including current sell prices)
+    const prevCycleLines = prevCycle
+      ? await this.prisma.cycleLine.findMany({
+          where: { cycleId: prevCycle.id },
+          select: {
+            id: true,
+            typeId: true,
+            destinationStationId: true,
+            currentSellPriceIsk: true,
+          },
+        })
+      : [];
+
+    const prevLineMap = new Map(
+      prevCycleLines.map((l) => [
+        `${l.destinationStationId}:${l.typeId}`,
+        {
+          lineId: l.id,
+          currentSellPrice: l.currentSellPriceIsk
+            ? Number(l.currentSellPriceIsk)
+            : null,
+        },
+      ]),
+    );
+
     // All database operations within a transaction
-    return await this.prisma.$transaction(async (tx) => {
+    const openedCycle = await this.prisma.$transaction(async (tx) => {
       // Clean up unpaid and refunded participations
       await tx.cycleParticipation.deleteMany({
         where: {
@@ -374,13 +409,12 @@ export class CycleService {
         ? Number(validatedParticipations._sum.amountIsk)
         : 0;
 
-      // Compute initial capital
-      const nowCap = await this.capitalService.computeCurrentCapitalNow();
+      // NEW: Initial capital = investor participations ONLY (no wallet ISK)
+      // Rollover purchase cost will be deducted from this capital after transaction
       const inj = cycle.initialInjectionIsk
         ? Number(cycle.initialInjectionIsk)
         : 0;
-      const initialCapital =
-        nowCap.cash + nowCap.inventory + inj + participationTotal;
+      const initialCapital = participationTotal + inj;
       await tx.cycle.update({
         where: { id: cycle.id },
         data: { initialCapitalIsk: initialCapital.toFixed(2) },
@@ -419,6 +453,7 @@ export class CycleService {
         destinationStationId: number;
         plannedUnits: number;
         currentSellPriceIsk: number | null;
+        rolloverFromLineId: string | null;
       }> = [];
 
       for (const [k2, qty] of qtyByTypeStation) {
@@ -426,13 +461,23 @@ export class CycleService {
         const stationId = Number(sidStr);
         const typeId = Number(tidStr);
         if (!Number.isFinite(qty) || qty <= 0) continue;
+
+        // Get current sell price from ESI orders (active price)
         const currentSellPrice = sellPriceByTypeStation.get(k2) ?? null;
+
+        // Get previous line info for linkage
+        const prevLineInfo = prevLineMap.get(k2);
+
         rolloverLines.push({
           typeId,
           destinationStationId: stationId,
           plannedUnits: Math.floor(qty),
-          currentSellPriceIsk: currentSellPrice,
+          // Use ESI sell price if available, otherwise use previous cycle's price
+          currentSellPriceIsk:
+            currentSellPrice ?? prevLineInfo?.currentSellPrice ?? null,
+          rolloverFromLineId: prevLineInfo?.lineId ?? null,
         });
+
         // Limit to prevent excessive database operations
         if (rolloverLines.length >= CAPITAL_CONSTANTS.MAX_ROLLOVER_LINES) break;
       }
@@ -445,10 +490,14 @@ export class CycleService {
             destinationStationId: l.destinationStationId,
             plannedUnits: l.plannedUnits,
             unitsBought: l.plannedUnits,
-            buyCostIsk: '0.00',
+            buyCostIsk: '0.00', // Will be set by processRolloverPurchase
             currentSellPriceIsk: l.currentSellPriceIsk
               ? l.currentSellPriceIsk.toFixed(2)
               : null,
+            // NEW: Mark as rollover and link to previous cycle
+            isRollover: true,
+            rolloverFromCycleId: prevCycle?.id ?? null,
+            rolloverFromLineId: l.rolloverFromLineId,
           })),
         });
         this.logger.log(
@@ -458,6 +507,198 @@ export class CycleService {
 
       return await tx.cycle.findUnique({ where: { id: cycle.id } });
     });
+
+    // After transaction: Process rollover purchase (synthetic buy allocations)
+    if (prevCycle) {
+      const rolloverResult = await this.processRolloverPurchase(
+        cycle.id,
+        prevCycle.id,
+      );
+      this.logger.log(
+        `Rollover purchase completed: ${rolloverResult.itemsRolledOver} items, ` +
+          `${rolloverResult.totalRolloverCostIsk.toFixed(2)} ISK deducted from capital`,
+      );
+    }
+
+    return openedCycle;
+  }
+
+  /**
+   * Process rollover buyback: "Buy back" all remaining inventory at cost basis
+   * to realize profit and prepare for next cycle rollover.
+   *
+   * This allows cycles to close with all units accounted for (unitsSold = unitsBought)
+   * and enables full profit realization without locking capital in inventory.
+   *
+   * Admin pays for remaining inventory at cost, then receives it back when next cycle opens.
+   *
+   * @param cycleId - Cycle to process buyback for
+   * @returns Buyback summary (items count and total ISK)
+   */
+  private async processRolloverBuyback(cycleId: string): Promise<{
+    itemsBoughtBack: number;
+    totalBuybackIsk: number;
+  }> {
+    const lines = await this.prisma.cycleLine.findMany({
+      where: { cycleId },
+      select: {
+        id: true,
+        typeId: true,
+        destinationStationId: true,
+        unitsBought: true,
+        unitsSold: true,
+        buyCostIsk: true,
+      },
+    });
+
+    let totalBuyback = 0;
+    let itemsProcessed = 0;
+
+    for (const line of lines) {
+      const remainingUnits = line.unitsBought - line.unitsSold;
+      if (remainingUnits <= 0) continue;
+
+      const wac =
+        line.unitsBought > 0 ? Number(line.buyCostIsk) / line.unitsBought : 0;
+      const buybackAmount = wac * remainingUnits;
+
+      // Create synthetic sell allocation for buyback (no wallet transaction)
+      await this.prisma.sellAllocation.create({
+        data: {
+          lineId: line.id,
+          walletCharacterId: null,
+          walletTransactionId: null,
+          isRollover: true,
+          quantity: remainingUnits,
+          unitPrice: wac,
+          revenueIsk: buybackAmount,
+          taxIsk: 0, // No tax on admin buyback
+        },
+      });
+
+      // Update cycle line with buyback "sale"
+      await this.prisma.cycleLine.update({
+        where: { id: line.id },
+        data: {
+          unitsSold: { increment: remainingUnits },
+          salesGrossIsk: { increment: buybackAmount },
+          salesNetIsk: { increment: buybackAmount }, // No tax
+        },
+      });
+
+      totalBuyback += buybackAmount;
+      itemsProcessed++;
+    }
+
+    this.logger.log(
+      `[Rollover Buyback] Processed ${itemsProcessed} line items, ${totalBuyback.toFixed(2)} ISK`,
+    );
+
+    return {
+      itemsBoughtBack: itemsProcessed,
+      totalBuybackIsk: totalBuyback,
+    };
+  }
+
+  /**
+   * Process rollover purchase: "Buy" inventory from previous cycle
+   * at the buyback price (original cost basis).
+   *
+   * This creates synthetic buy allocations for rollover items, allowing
+   * the new cycle to start with inventory at proper cost basis.
+   *
+   * The rollover cost is deducted from investor capital (cycle "spends" ISK
+   * to acquire inventory from admin who held it between cycles).
+   *
+   * @param newCycleId - New cycle receiving rollover inventory
+   * @param previousCycleId - Previous cycle that was closed
+   * @returns Rollover summary (items count and total cost ISK)
+   */
+  private async processRolloverPurchase(
+    newCycleId: string,
+    previousCycleId: string,
+  ): Promise<{
+    itemsRolledOver: number;
+    totalRolloverCostIsk: number;
+  }> {
+    // Get rollover lines from new cycle (created in openPlannedCycle)
+    const rolloverLines = await this.prisma.cycleLine.findMany({
+      where: {
+        cycleId: newCycleId,
+        isRollover: true,
+        rolloverFromCycleId: previousCycleId,
+      },
+      select: {
+        id: true,
+        typeId: true,
+        destinationStationId: true,
+        unitsBought: true, // Set from active sell orders
+        rolloverFromLineId: true,
+      },
+    });
+
+    let totalCost = 0;
+    let itemsProcessed = 0;
+
+    for (const line of rolloverLines) {
+      if (!line.rolloverFromLineId) {
+        this.logger.warn(
+          `[Rollover Purchase] Line ${line.id} has no rolloverFromLineId, skipping`,
+        );
+        continue;
+      }
+
+      // Get original cost basis from previous cycle line
+      const prevLine = await this.prisma.cycleLine.findUnique({
+        where: { id: line.rolloverFromLineId },
+        select: { unitsBought: true, buyCostIsk: true },
+      });
+
+      if (!prevLine) {
+        this.logger.warn(
+          `[Rollover Purchase] Previous line ${line.rolloverFromLineId} not found, skipping`,
+        );
+        continue;
+      }
+
+      const wac =
+        prevLine.unitsBought > 0
+          ? Number(prevLine.buyCostIsk) / prevLine.unitsBought
+          : 0;
+      const rolloverCost = wac * line.unitsBought;
+
+      // Create synthetic buy allocation (no wallet transaction)
+      await this.prisma.buyAllocation.create({
+        data: {
+          lineId: line.id,
+          walletCharacterId: null,
+          walletTransactionId: null,
+          isRollover: true,
+          quantity: line.unitsBought,
+          unitPrice: wac,
+        },
+      });
+
+      // Update cycle line with rollover "purchase" cost
+      await this.prisma.cycleLine.update({
+        where: { id: line.id },
+        data: {
+          buyCostIsk: rolloverCost,
+        },
+      });
+
+      totalCost += rolloverCost;
+      itemsProcessed++;
+    }
+
+    this.logger.log(
+      `[Rollover Purchase] Processed ${itemsProcessed} items, ${totalCost.toFixed(2)} ISK cost`,
+    );
+
+    return {
+      itemsRolledOver: itemsProcessed,
+      totalRolloverCostIsk: totalCost,
+    };
   }
 
   /**
@@ -466,8 +707,9 @@ export class CycleService {
    * Steps:
    * 1. Import all linked wallet transactions
    * 2. Allocate transactions to cycle lines
-   * 3. Close the cycle
-   * 4. Create payouts for participants
+   * 3. Process rollover buyback (admin buys remaining inventory)
+   * 4. Close the cycle
+   * 5. Create payouts for participants
    *
    * @param cycleId - Cycle to close
    * @param walletService - Wallet service for transaction import
@@ -496,6 +738,12 @@ export class CycleService {
     const allocationResult = await allocationService.allocateAll(cycleId);
     this.logger.log(
       `Allocation completed for cycle ${cycleId}: buys=${allocationResult.buysAllocated}, sells=${allocationResult.sellsAllocated}`,
+    );
+
+    // Process rollover buyback BEFORE closing cycle
+    const buybackResult = await this.processRolloverBuyback(cycleId);
+    this.logger.log(
+      `Buyback completed: ${buybackResult.itemsBoughtBack} items, ${buybackResult.totalBuybackIsk.toFixed(2)} ISK`,
     );
 
     const closedCycle = await this.closeCycle(cycleId, new Date());

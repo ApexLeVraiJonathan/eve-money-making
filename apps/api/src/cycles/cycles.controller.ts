@@ -75,7 +75,10 @@ export class CyclesController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create a new arbitrage cycle' })
   async createCycle(@Body() body: CreateCycleRequest) {
-    return await this.cycleService.createCycle(body);
+    return await this.cycleService.createCycle({
+      ...body,
+      startedAt: new Date(body.startedAt),
+    });
   }
 
   @Post('cycles/plan')
@@ -84,7 +87,10 @@ export class CyclesController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Plan a future arbitrage cycle' })
   async planCycle(@Body() body: PlanCycleRequest): Promise<unknown> {
-    return await this.cycleService.planCycle(body);
+    return await this.cycleService.planCycle({
+      ...body,
+      startedAt: new Date(body.startedAt),
+    });
   }
 
   @Public()
@@ -127,7 +133,7 @@ export class CyclesController {
   ): Promise<unknown> {
     return await this.cycleService.openPlannedCycle({
       cycleId: id,
-      startedAt: body.startedAt,
+      startedAt: body.startedAt ? new Date(body.startedAt) : undefined,
     });
   }
 
@@ -179,6 +185,7 @@ export class CyclesController {
 
   // Participations
   @Post('cycles/:cycleId/participations')
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Create a participation in a cycle' })
   @ApiParam({ name: 'cycleId', description: 'Cycle ID' })
   async createParticipation(
@@ -211,6 +218,7 @@ export class CyclesController {
   }
 
   @Get('cycles/:cycleId/participations/me')
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Get my participation for a cycle' })
   @ApiParam({ name: 'cycleId', description: 'Cycle ID' })
   async myParticipation(
@@ -264,6 +272,7 @@ export class CyclesController {
   }
 
   @Post('participations/:id/opt-out')
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Opt out of a participation' })
   @ApiParam({ name: 'id', description: 'Participation ID' })
   async optOut(@Param('id') id: string): Promise<unknown> {

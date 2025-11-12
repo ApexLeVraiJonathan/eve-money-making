@@ -1,6 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { IsOptional, IsDateString } from 'class-validator';
-import { Transform } from 'class-transformer';
 
 export class OpenCycleRequest {
   @ApiPropertyOptional({
@@ -9,6 +8,5 @@ export class OpenCycleRequest {
   })
   @IsOptional()
   @IsDateString()
-  @Transform(({ value }) => (value ? new Date(value) : value))
-  startedAt?: Date;
+  startedAt?: string | Date;
 }

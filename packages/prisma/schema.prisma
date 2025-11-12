@@ -382,6 +382,11 @@ model CycleLine {
   createdAt            DateTime @default(now()) @map("created_at")
   updatedAt            DateTime @updatedAt @map("updated_at")
 
+  /// Rollover tracking from previous cycle
+  isRollover          Boolean @default(false) @map("is_rollover")
+  rolloverFromCycleId String? @map("rollover_from_cycle_id")
+  rolloverFromLineId  String? @map("rollover_from_line_id")
+
   buyAllocations  BuyAllocation[]
   sellAllocations SellAllocation[]
   packageLinks    PackageCycleLine[]
@@ -390,19 +395,23 @@ model CycleLine {
   @@index([typeId])
   @@index([destinationStationId])
   @@index([cycleId, typeId])
+  @@index([rolloverFromCycleId])
   @@map("cycle_lines")
 }
 
 /// Links a wallet buy transaction to a cycle line with quantity allocated
 model BuyAllocation {
   id                  String    @id @default(uuid()) @map("id")
-  walletCharacterId   Int       @map("wallet_character_id")
-  walletTransactionId BigInt    @map("wallet_transaction_id")
+  walletCharacterId   Int?      @map("wallet_character_id")
+  walletTransactionId BigInt?   @map("wallet_transaction_id")
   lineId              String    @map("line_id")
   line                CycleLine @relation(fields: [lineId], references: [id], onDelete: Cascade)
   quantity            Int       @map("quantity")
   unitPrice           Decimal   @map("unit_price") @db.Decimal(28, 2)
   createdAt           DateTime  @default(now()) @map("created_at")
+
+  /// Marks synthetic allocations for cycle rollovers (no real wallet transaction)
+  isRollover Boolean @default(false) @map("is_rollover")
 
   @@unique([walletCharacterId, walletTransactionId, lineId])
   @@index([lineId])
@@ -413,8 +422,8 @@ model BuyAllocation {
 /// Links a wallet sell transaction to a cycle line with quantity allocated
 model SellAllocation {
   id                  String    @id @default(uuid()) @map("id")
-  walletCharacterId   Int       @map("wallet_character_id")
-  walletTransactionId BigInt    @map("wallet_transaction_id")
+  walletCharacterId   Int?      @map("wallet_character_id")
+  walletTransactionId BigInt?   @map("wallet_transaction_id")
   lineId              String    @map("line_id")
   line                CycleLine @relation(fields: [lineId], references: [id], onDelete: Cascade)
   quantity            Int       @map("quantity")
@@ -422,6 +431,9 @@ model SellAllocation {
   revenueIsk          Decimal   @map("revenue_isk") @db.Decimal(28, 2)
   taxIsk              Decimal   @map("tax_isk") @db.Decimal(28, 2)
   createdAt           DateTime  @default(now()) @map("created_at")
+
+  /// Marks synthetic allocations for cycle rollovers (no real wallet transaction)
+  isRollover Boolean @default(false) @map("is_rollover")
 
   @@unique([walletCharacterId, walletTransactionId, lineId])
   @@index([lineId])

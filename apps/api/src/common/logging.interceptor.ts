@@ -10,7 +10,7 @@ import { Observable, tap } from 'rxjs';
 
 /**
  * Enhanced HTTP request/response logging interceptor
- * 
+ *
  * Features:
  * - Request timing (ms)
  * - User ID tracking (when authenticated)
@@ -27,7 +27,7 @@ export class LoggingInterceptor implements NestInterceptor {
     const req = context
       .switchToHttp()
       .getRequest<Request & { reqId?: string; user?: { userId: string } }>();
-    
+
     const method = req.method ?? '-';
     const url = this.sanitizeUrl(req.url ?? '-');
     const reqId = req.reqId ?? '-';
@@ -64,14 +64,14 @@ export class LoggingInterceptor implements NestInterceptor {
   private sanitizeUrl(url: string): string {
     // Mask JWT tokens in query params
     let sanitized = url.replace(/([?&]token=)[^&]*/gi, '$1[REDACTED]');
-    
+
     // Mask passwords in query params
     sanitized = sanitized.replace(/([?&]password=)[^&]*/gi, '$1[REDACTED]');
-    
+
     // Mask API keys in query params
     sanitized = sanitized.replace(/([?&]apiKey=)[^&]*/gi, '$1[REDACTED]');
     sanitized = sanitized.replace(/([?&]api_key=)[^&]*/gi, '$1[REDACTED]');
-    
+
     return sanitized;
   }
 }

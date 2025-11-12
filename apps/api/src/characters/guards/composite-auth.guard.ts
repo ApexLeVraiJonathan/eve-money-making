@@ -4,7 +4,7 @@ import { EveAuthGuard } from './eve-auth.guard';
 
 /**
  * Global authentication guard using EVE SSO Bearer tokens.
- * 
+ *
  * Authentication Flow:
  * 1. Frontend: User logs in via NextAuth (EVE SSO)
  * 2. Frontend: Stores EVE access_token in NextAuth session
@@ -13,7 +13,7 @@ import { EveAuthGuard } from './eve-auth.guard';
  * 5. Backend: EveJwtStrategy verifies token against EVE's JWKS (RS256)
  * 6. Backend: Strategy looks up character in DB, loads user/role
  * 7. Backend: Attaches user to request for use in controllers
- * 
+ *
  * Benefits:
  * - Single source of truth: NextAuth session
  * - EVE validates tokens (RS256 + JWKS)
@@ -27,4 +27,3 @@ export class CompositeAuthGuard extends EveAuthGuard {
     super(reflector);
   }
 }
-

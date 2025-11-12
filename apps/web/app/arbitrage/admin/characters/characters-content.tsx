@@ -87,11 +87,13 @@ export default function CharactersPageContent() {
     data: items = [],
     isLoading: itemsLoading,
     error: itemsError,
+    refetch: refetchCharacters,
   } = useAdminCharacters();
   const {
     data: users = [],
     isLoading: usersLoading,
     error: usersError,
+    refetch: refetchUsers,
   } = useAllUsers();
 
   const loading = itemsLoading || usersLoading;
@@ -110,6 +112,13 @@ export default function CharactersPageContent() {
   const linkCharacterToUserMutation = useLinkCharacterToUser();
   const adminSetPrimaryMutation = useAdminSetPrimaryCharacter();
   const adminUnlinkMutation = useAdminUnlinkCharacter();
+
+  // Track mutation loading states
+  const forceLinkBusy = linkCharacterToUserMutation.isPending;
+  const systemLinkBusy = getSystemLinkUrlMutation.isPending;
+  const roleBusyId = setUserRoleMutation.isPending ? setUserRoleMutation.variables?.userId : null;
+  const setPrimaryBusyId = adminSetPrimaryMutation.isPending ? adminSetPrimaryMutation.variables?.characterId : null;
+  const unlinkBusyId = adminUnlinkMutation.isPending ? adminUnlinkMutation.variables?.characterId : null;
 
   // Tab state management with URL sync
   const [activeTab, setActiveTab] = React.useState(
@@ -134,6 +143,11 @@ export default function CharactersPageContent() {
       router.replace(`?${params.toString()}`, { scroll: false });
     }
   }, [searchParams, router]);
+
+  // Refresh data function
+  const load = async () => {
+    await Promise.all([refetchCharacters(), refetchUsers()]);
+  };
 
   const handleUnlink = async (id: number) => {
     try {

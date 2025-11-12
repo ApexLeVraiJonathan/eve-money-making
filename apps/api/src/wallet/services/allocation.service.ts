@@ -120,11 +120,12 @@ export class AllocationService {
     );
 
     for (const tx of allBuyTxs) {
-      // Check how much of this tx is already allocated
+      // Check how much of this tx is already allocated (exclude rollover allocations)
       const existingAllocations = await this.prisma.buyAllocation.aggregate({
         where: {
           walletCharacterId: tx.characterId,
           walletTransactionId: tx.transactionId,
+          isRollover: false, // Only count real wallet allocations
         },
         _sum: { quantity: true },
       });
@@ -285,11 +286,12 @@ export class AllocationService {
     let unmatched = 0;
 
     for (const tx of allSellTxs) {
-      // Check existing allocations
+      // Check existing allocations (exclude rollover allocations)
       const existingAllocations = await this.prisma.sellAllocation.aggregate({
         where: {
           walletCharacterId: tx.characterId,
           walletTransactionId: tx.transactionId,
+          isRollover: false, // Only count real wallet allocations
         },
         _sum: { quantity: true },
       });

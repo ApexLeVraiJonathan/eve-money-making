@@ -9,7 +9,12 @@ import { GameDataModule } from '../game-data/game-data.module';
 import { CharactersModule } from '../characters/characters.module';
 
 @Module({
-  imports: [PrismaModule, EsiModule, forwardRef(() => GameDataModule), CharactersModule],
+  imports: [
+    PrismaModule,
+    EsiModule,
+    forwardRef(() => GameDataModule),
+    CharactersModule,
+  ],
   providers: [WalletService, AllocationService, Logger],
   controllers: [WalletController, ReconciliationController],
   exports: [WalletService, AllocationService],

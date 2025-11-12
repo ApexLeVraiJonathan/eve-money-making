@@ -101,6 +101,7 @@ export class UsersController {
 
   // User: list my linked characters
   @Get('users/me/characters')
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'List my linked characters' })
   async myCharacters(@CurrentUser() user: RequestUser) {
     if (!user.userId) return [];
@@ -108,6 +109,7 @@ export class UsersController {
   }
 
   @Patch('users/me/primary-character')
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Set my primary character' })
   async setPrimary(
     @CurrentUser() user: RequestUser | null,
@@ -119,6 +121,7 @@ export class UsersController {
   }
 
   @Delete('users/me/characters/:characterId')
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Unlink one of my characters' })
   @ApiParam({ name: 'characterId', description: 'Character ID' })
   async unlink(

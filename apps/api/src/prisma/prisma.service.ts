@@ -1,10 +1,15 @@
-import { Injectable, OnModuleInit, OnModuleDestroy, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  OnModuleInit,
+  OnModuleDestroy,
+  Logger,
+} from '@nestjs/common';
 import { PrismaClient } from '@eve/prisma';
 import { AppConfig } from '../common/config';
 
 /**
  * Prisma database service with slow query logging
- * 
+ *
  * Features:
  * - Connection lifecycle management
  * - Slow query logging (>500ms in dev)
@@ -21,7 +26,7 @@ export class PrismaService
 
   constructor() {
     const url = AppConfig.databaseUrl();
-    super({ 
+    super({
       datasources: url ? { db: { url } } : undefined,
       log: [
         { emit: 'event', level: 'query' },

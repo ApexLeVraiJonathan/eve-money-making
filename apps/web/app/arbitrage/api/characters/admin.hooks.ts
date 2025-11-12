@@ -57,7 +57,7 @@ export function useAdminCharacters() {
           managedBy?: string;
           notes?: string | null;
         }>
-      >("/admin/characters"),
+      >("/auth/admin/characters"),
   });
 }
 
@@ -237,7 +237,7 @@ export function useGetSystemCharacterLinkUrl() {
       if (returnUrl) params.set("returnUrl", returnUrl);
       const query = params.toString() ? `?${params.toString()}` : "";
       return client.get<{ url: string }>(
-        `/admin/system-characters/link/url${query}`,
+        `/auth/admin/system-characters/link/url${query}`,
       );
     },
   });

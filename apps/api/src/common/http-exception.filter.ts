@@ -40,7 +40,9 @@ export class HttpExceptionFilter implements ExceptionFilter {
   catch(exception: unknown, host: ArgumentsHost): void {
     const ctx = host.switchToHttp();
     const response = ctx.getResponse<Response>();
-    const request = ctx.getRequest<Request & { reqId?: string; user?: { userId: string } }>();
+    const request = ctx.getRequest<
+      Request & { reqId?: string; user?: { userId: string } }
+    >();
 
     const requestId = request?.reqId ?? '-';
     const path = request?.url ?? '/';
@@ -85,7 +87,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
       status = HttpStatus.INTERNAL_SERVER_ERROR;
       error = 'InternalError';
       message = this.isDev
-        ? (exception as Error)?.message ?? 'Internal server error'
+        ? ((exception as Error)?.message ?? 'Internal server error')
         : 'Internal server error';
 
       // Always log unhandled exceptions
