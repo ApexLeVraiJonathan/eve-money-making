@@ -35,7 +35,6 @@ import {
   useArbitrageCommits,
   useSellAppraise,
   useSellAppraiseByCommit,
-  useConfirmListing,
 } from "../../api";
 
 type TrackedStation = {
@@ -92,6 +91,7 @@ export default function SellAppraiserPage() {
   );
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Record<string, boolean>>({});
+  const [isConfirming, setIsConfirming] = useState(false);
 
   const BROKER_FEE_PCT = Number(process.env.NEXT_PUBLIC_BROKER_FEE_PCT ?? 1.5);
 
@@ -103,7 +103,6 @@ export default function SellAppraiserPage() {
   );
   const sellAppraiseMutation = useSellAppraise();
   const sellAppraiseByCommitMutation = useSellAppraiseByCommit();
-  const confirmListingMutation = useConfirmListing();
 
   // Sort items alphabetically with EVE convention: numbers before letters
   const sortItems = (items: Array<PasteRow | CommitRow>) => {
@@ -224,9 +223,10 @@ export default function SellAppraiserPage() {
   const onConfirmListed = async () => {
     if (!useCommit || !cycleId || !result) return;
 
+    setIsConfirming(true);
     setError(null);
 
-    // Fetch cycle lines (TODO: create a hook for this in a future refactor)
+    // Fetch cycle lines
     let cycleLines: CycleLine[];
     try {
       const response = await fetch(`/api/ledger/cycles/${cycleId}/lines`);
@@ -238,11 +238,13 @@ export default function SellAppraiserPage() {
       setError(
         `Failed to fetch cycle lines: ${e instanceof Error ? e.message : String(e)}`,
       );
+      setIsConfirming(false);
       return;
     }
 
     const errors: string[] = [];
-    const promises: Promise<void>[] = [];
+    const brokerFees: Array<{ lineId: string; amountIsk: string }> = [];
+    const priceUpdates: Array<{ lineId: string; newPrice: string }> = [];
 
     for (const r of result) {
       const key = `${r.destinationStationId}:${isCommitRow(r) ? r.typeId : r.itemName}`;
@@ -267,33 +269,70 @@ export default function SellAppraiserPage() {
         continue;
       }
 
-      // Execute all API calls in parallel using the mutation
-      promises.push(
-        confirmListingMutation
-          .mutateAsync({
-            lineId: line.id,
-            quantity: r.quantityRemaining,
-            unitPrice: r.suggestedSellPriceTicked,
-          })
-          .catch((e) => {
-            errors.push(
-              `${r.itemName}: ${e instanceof Error ? e.message : String(e)}`,
-            );
-          }),
-      );
-    }
+      // Calculate broker fee (BROKER_FEE_PCT%)
+      const total = r.quantityRemaining * r.suggestedSellPriceTicked;
+      const feeAmount = (total * (BROKER_FEE_PCT / 100)).toFixed(2);
 
-    // Wait for all requests to complete
-    await Promise.all(promises);
+      brokerFees.push({
+        lineId: line.id,
+        amountIsk: feeAmount,
+      });
+
+      priceUpdates.push({
+        lineId: line.id,
+        newPrice: r.suggestedSellPriceTicked.toFixed(2),
+      });
+    }
 
     if (errors.length) {
       setError(errors.join("\n"));
-    } else {
-      setError(null);
-      alert(
-        "Broker fees recorded and current sell prices updated successfully!",
-      );
+      setIsConfirming(false);
+      return;
     }
+
+    // Add all broker fees in bulk
+    try {
+      const response = await fetch("/api/ledger/fees/broker/bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fees: brokerFees }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to add broker fees: ${errorText}`);
+      }
+    } catch (e) {
+      setError(
+        `Failed to add broker fees: ${e instanceof Error ? e.message : String(e)}`,
+      );
+      setIsConfirming(false);
+      return;
+    }
+
+    // Update current sell prices for all lines in bulk
+    try {
+      const response = await fetch("/api/ledger/lines/sell-prices/bulk", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ updates: priceUpdates }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to update sell prices: ${errorText}`);
+      }
+    } catch (e) {
+      setError(
+        `Failed to update sell prices: ${e instanceof Error ? e.message : String(e)}`,
+      );
+      setIsConfirming(false);
+      return;
+    }
+
+    setError(null);
+    alert("Broker fees recorded and current sell prices updated successfully!");
+    setIsConfirming(false);
   };
 
   return (
@@ -431,10 +470,10 @@ export default function SellAppraiserPage() {
             {useCommit && (
               <Button
                 onClick={onConfirmListed}
-                disabled={confirmListingMutation.isPending || !cycleId}
+                disabled={isConfirming || !cycleId}
                 className="gap-2"
               >
-                {confirmListingMutation.isPending ? (
+                {isConfirming ? (
                   <>
                     <Loader2 className="h-4 w-4 animate-spin" />
                     Confirming...

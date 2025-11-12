@@ -142,23 +142,33 @@ async function createFakeDonation(
   console.log(`  ✓ Created donation with reason: ${reason}`);
 }
 
-// Create fake wallet transactions for buys
-async function createFakeBuyTransactions(
+// Create fake wallet transactions for buys using cost map from packages
+async function createFakeBuyTransactionsWithCosts(
   config: TestConfig,
-  cycleId: string,
   lines: any[],
+  costMap: Map<string, number>,
   percentage: number = 1.0, // Buy 100% by default
 ) {
   console.log(
     `\n💳 [SETUP] Creating fake buy transactions (${(percentage * 100).toFixed(0)}% of planned)...`,
   );
 
+  let created = 0;
+  let skipped = 0;
+
   for (const line of lines) {
     const unitsToBuy = Math.floor(line.plannedUnits * percentage);
     if (unitsToBuy === 0) continue;
 
-    const buyPrice = parseFloat(line.buyCostIsk) / line.unitsBought;
-    const totalCost = buyPrice * unitsToBuy;
+    // Get unit price from cost map
+    const key = `${line.typeId}:${line.destinationStationId}`;
+    const unitCost = costMap.get(key);
+    
+    if (!unitCost) {
+      console.log(`  ⚠️  No cost found for ${line.typeName || line.typeId} - skipping`);
+      skipped++;
+      continue;
+    }
 
     const buyTxId = BigInt(Date.now() + Math.floor(Math.random() * 100000));
 
@@ -169,16 +179,17 @@ async function createFakeBuyTransactions(
         date: new Date(),
         typeId: line.typeId,
         quantity: unitsToBuy,
-        unitPrice: buyPrice.toString(),
+        unitPrice: unitCost.toString(),
         clientId: 99999,
         locationId: line.destinationStationId,
         isBuy: true,
         journalRefId: buyTxId + BigInt(1),
       },
     });
+    created++;
   }
 
-  console.log(`  ✓ Created buy transactions for ${lines.length} items`);
+  console.log(`  ✓ Created buy transactions for ${created} items (${skipped} skipped - no cost data)`);
 }
 
 // Create fake wallet transactions for sells
@@ -359,11 +370,9 @@ async function testCycle1(config: TestConfig): Promise<string> {
 
   // 8. Add shipping fees
   console.log('\n8️⃣  Adding shipping fees (500M ISK)...');
-  await apiCall(config, 'POST', '/ledger/entries', {
-    cycleId: cycleId,
-    eventType: 'transport',
+  await apiCall(config, 'POST', `/ledger/cycles/${cycleId}/transport-fee`, {
     amountIsk: '500000000.00',
-    description: 'Shipping from Jita to trade hubs',
+    memo: 'Shipping from Jita to trade hubs',
   });
   console.log('  ✓ Shipping fees added');
 
@@ -378,51 +387,106 @@ async function testCycle1(config: TestConfig): Promise<string> {
   const plannedLines = updatedLines.filter(l => l.plannedUnits > 0);
   console.log(`  ✓ Found ${plannedLines.length} lines with planned units`);
 
-  // 10. Create fake buy transactions for the planned items
-  console.log('\n🔟 Creating fake buy transactions for planned items...');
-  await createFakeBuyTransactions(config, cycleId, plannedLines, 1.0);
+  // 10. Fetch committed packages to get unit costs
+  console.log('\n🔟 Fetching committed packages for unit costs...');
+  const packagesResponse: any = await apiCall(
+    config,
+    'GET',
+    `/packages?cycleId=${cycleId}`,
+  );
+  
+  // Build a map of typeId+stationId -> unitCost
+  const costMap = new Map<string, number>();
+  
+  // Ensure packagesResponse is an array
+  if (!Array.isArray(packagesResponse)) {
+    throw new Error(
+      `Expected packages response to be an array, got: ${JSON.stringify(packagesResponse).substring(0, 200)}`,
+    );
+  }
 
-  // 11. Allocate buy transactions
-  console.log('\n1️⃣1️⃣  Allocating buy transactions...');
+  for (const pkg of packagesResponse) {
+    if (!pkg.items || !Array.isArray(pkg.items)) {
+      console.log(`  ⚠️  Package ${pkg.id} has no items or items is not an array`);
+      continue;
+    }
+    
+    for (const item of pkg.items) {
+      const key = `${item.typeId}:${pkg.destinationStationId}`;
+      costMap.set(key, Number(item.unitCost));
+    }
+  }
+  console.log(`  ✓ Found unit costs for ${costMap.size} items from ${packagesResponse.length} packages`);
+
+  // 11. Create fake buy transactions for the planned items
+  console.log('\n1️⃣1️⃣  Creating fake buy transactions for planned items...');
+  await createFakeBuyTransactionsWithCosts(config, plannedLines, costMap, 1.0);
+
+  // 12. Allocate buy transactions
+  console.log('\n1️⃣2️⃣  Allocating buy transactions...');
   await apiCall(config, 'POST', `/ledger/cycles/${cycleId}/allocate`, {});
   console.log('  ✓ Buy transactions allocated');
+
+  // Refetch lines to get updated unitsBought
+  const linesAfterBuys: any[] = await apiCall(
+    config,
+    'GET',
+    `/ledger/cycles/${cycleId}/lines`,
+  );
+  const updatedPlannedLines = linesAfterBuys.filter((l) => l.plannedUnits > 0);
+  console.log(`  ✓ Refetched ${updatedPlannedLines.length} lines with unitsBought populated`);
 
   await waitForUser(
     `Check frontend: Cycle lines should show units bought matching planned units`,
   );
 
-  // 12. Add broker fees (for new listings - 1.5% of items value)
-  console.log('\n1️⃣2️⃣  Adding broker fees for new listings...');
-  const brokerFees = totalPlanValue * 0.015; // 1.5%
-  await apiCall(config, 'POST', '/ledger/entries', {
-    cycleId: cycleId,
-    eventType: 'broker_fees',
-    amountIsk: brokerFees.toFixed(2),
-    description: 'Broker fees for initial market orders',
+  // 13. Add broker fees (for new listings - 1.5% of each line's total value)
+  console.log('\n1️⃣3️⃣  Adding broker fees for new listings...');
+  const brokerFees = updatedPlannedLines.map((line) => {
+    // buyCostIsk is already the TOTAL cost for all units, not unit price
+    const totalValue = Number(line.buyCostIsk);
+    const brokerFee = totalValue * 0.015; // 1.5%
+    return {
+      lineId: line.id,
+      amountIsk: brokerFee.toFixed(2),
+    };
   });
-  console.log(`  ✓ Broker fees added: ${(brokerFees / 1e6).toFixed(0)}M ISK`);
+  const totalBrokerFees = brokerFees.reduce(
+    (sum, f) => sum + Number(f.amountIsk),
+    0,
+  );
+  await apiCall(config, 'POST', '/ledger/fees/broker/bulk', { fees: brokerFees });
+  console.log(`  ✓ Broker fees added: ${(totalBrokerFees / 1e6).toFixed(0)}M ISK`);
 
-  // 13. Add some relist fees (price adjustments)
-  console.log('\n1️⃣3️⃣  Adding relist fees (price adjustments)...');
-  const relistFees = totalPlanValue * 0.003; // 0.3%
-  await apiCall(config, 'POST', '/ledger/entries', {
-    cycleId: cycleId,
-    eventType: 'relist_fees',
-    amountIsk: relistFees.toFixed(2),
-    description: 'Relist fees for 3 price adjustments',
+  // 14. Add relist fees (price adjustments) to 30% of lines
+  console.log('\n1️⃣4️⃣  Adding relist fees (price adjustments)...');
+  const linesToRelist = updatedPlannedLines.slice(0, Math.ceil(updatedPlannedLines.length * 0.3));
+  const relistFees = linesToRelist.map((line) => {
+    // buyCostIsk is already the TOTAL cost for all units, not unit price
+    const totalValue = Number(line.buyCostIsk);
+    const relistFee = totalValue * 0.003; // 0.3%
+    return {
+      lineId: line.id,
+      amountIsk: relistFee.toFixed(2),
+    };
   });
-  console.log(`  ✓ Relist fees added: ${(relistFees / 1e6).toFixed(0)}M ISK`);
+  const totalRelistFees = relistFees.reduce(
+    (sum, f) => sum + Number(f.amountIsk),
+    0,
+  );
+  await apiCall(config, 'POST', '/ledger/fees/relist/bulk', { fees: relistFees });
+  console.log(`  ✓ Relist fees added to ${linesToRelist.length} lines: ${(totalRelistFees / 1e6).toFixed(0)}M ISK`);
 
   await waitForUser(
     `Check frontend: Ledger should show all fees (transport, broker, relist)`,
   );
 
-  // 14. Create sell transactions (80% sold)
-  console.log('\n1️⃣4️⃣  Creating sell transactions (80% of stock)...');
-  await createFakeSellTransactions(config, cycleId, plannedLines, 0.8);
+  // 15. Create sell transactions (80% sold)
+  console.log('\n1️⃣5️⃣  Creating sell transactions (80% of stock)...');
+  await createFakeSellTransactions(config, cycleId, updatedPlannedLines, 0.8);
 
-  // 15. Allocate sell transactions
-  console.log('\n1️⃣5️⃣  Allocating sell transactions...');
+  // 16. Allocate sell transactions
+  console.log('\n1️⃣6️⃣  Allocating sell transactions...');
   await apiCall(config, 'POST', `/ledger/cycles/${cycleId}/allocate`, {});
   console.log('  ✓ Sell transactions allocated');
 
@@ -430,8 +494,8 @@ async function testCycle1(config: TestConfig): Promise<string> {
     `Check frontend: Cycle lines should show sales, profit should be calculated`,
   );
 
-  // 16. Check profit
-  console.log('\n1️⃣6️⃣  Checking cycle profit...');
+  // 17. Check profit
+  console.log('\n1️⃣7️⃣  Checking cycle profit...');
   const overview: any = await apiCall(
     config,
     'GET',

@@ -114,6 +114,25 @@ function PackagesContent() {
   const markFailedMutation = useMarkPackageFailed();
   const isSubmitting = markFailedMutation.isPending;
 
+  // Group packages by destination
+  const packagesByDestination = React.useMemo(() => {
+    const grouped = new Map<string, CommittedPackage[]>();
+    packages.forEach((pkg) => {
+      const key = pkg.destinationName || `Station ${pkg.destinationStationId}`;
+      if (!grouped.has(key)) {
+        grouped.set(key, []);
+      }
+      grouped.get(key)!.push(pkg);
+    });
+    // Sort destinations alphabetically and packages by index
+    return Array.from(grouped.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([destination, pkgs]) => ({
+        destination,
+        packages: pkgs.sort((a, b) => a.packageIndex - b.packageIndex),
+      }));
+  }, [packages]);
+
   // Calculate total item costs for the selected package
   const totalItemCosts = React.useMemo(() => {
     if (!selectedPackage) return 0;
@@ -259,8 +278,18 @@ function PackagesContent() {
               </CardContent>
             </Card>
           ) : (
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {packages.map((pkg) => (
+            <div className="space-y-8">
+              {packagesByDestination.map(({ destination, packages: destPackages }) => (
+                <div key={destination} className="space-y-3">
+                  <h3 className="text-lg font-semibold flex items-center gap-2">
+                    <Package className="h-5 w-5" />
+                    {destination}
+                    <span className="text-sm font-normal text-muted-foreground">
+                      ({destPackages.length} {destPackages.length === 1 ? 'package' : 'packages'})
+                    </span>
+                  </h3>
+                  <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                    {destPackages.map((pkg) => (
                 <Card key={pkg.id}>
                   <CardHeader>
                     <div className="flex items-start justify-between">
@@ -268,10 +297,6 @@ function PackagesContent() {
                         <CardTitle className="text-lg">
                           Package #{pkg.packageIndex}
                         </CardTitle>
-                        <CardDescription>
-                          {pkg.destinationName ||
-                            `Station ${pkg.destinationStationId}`}
-                        </CardDescription>
                       </div>
                       <Badge
                         variant="outline"
@@ -288,6 +313,16 @@ function PackagesContent() {
                         <span className="font-medium">
                           {pkg.itemCount} ({pkg.totalUnits.toLocaleString()}{" "}
                           units)
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Volume:</span>
+                        <span className="font-medium tabular-nums">
+                          {Number(pkg.totalVolumeM3).toLocaleString(undefined, {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          })}{" "}
+                          m³
                         </span>
                       </div>
                       <div className="flex justify-between">
@@ -340,6 +375,9 @@ function PackagesContent() {
                     )}
                   </CardContent>
                 </Card>
+                    ))}
+                  </div>
+                </div>
               ))}
             </div>
           )}

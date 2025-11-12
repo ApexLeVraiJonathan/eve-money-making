@@ -545,10 +545,23 @@ export class CycleService {
         },
       });
 
-      // Close any existing open cycle (simple close, cleanup already done above)
+      // Close any existing open cycle (mark packages as completed, then close cycle)
       const open = await this.getCurrentOpenCycle();
       if (open && open.id !== cycle.id) {
-        this.logger.log(`Setting closedAt for cycle ${open.id}`);
+        this.logger.log(`Auto-closing cycle ${open.id}`);
+        
+        // Mark all active packages as completed
+        await tx.committedPackage.updateMany({
+          where: {
+            cycleId: open.id,
+            status: 'active',
+          },
+          data: {
+            status: 'completed',
+          },
+        });
+        
+        // Close the cycle
         await tx.cycle.update({
           where: { id: open.id },
           data: {

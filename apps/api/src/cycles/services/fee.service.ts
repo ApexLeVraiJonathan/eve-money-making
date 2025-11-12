@@ -36,6 +36,42 @@ export class FeeService {
   }
 
   /**
+   * Add broker fees to multiple cycle lines in bulk
+   */
+  async addBulkBrokerFees(input: {
+    fees: Array<{ lineId: string; amountIsk: string }>;
+  }) {
+    return await this.prisma.$transaction(
+      input.fees.map((fee) =>
+        this.prisma.cycleLine.update({
+          where: { id: fee.lineId },
+          data: {
+            brokerFeesIsk: { increment: Number(fee.amountIsk) },
+          },
+        }),
+      ),
+    );
+  }
+
+  /**
+   * Add relist fees to multiple cycle lines in bulk
+   */
+  async addBulkRelistFees(input: {
+    fees: Array<{ lineId: string; amountIsk: string }>;
+  }) {
+    return await this.prisma.$transaction(
+      input.fees.map((fee) =>
+        this.prisma.cycleLine.update({
+          where: { id: fee.lineId },
+          data: {
+            relistFeesIsk: { increment: Number(fee.amountIsk) },
+          },
+        }),
+      ),
+    );
+  }
+
+  /**
    * Add a transport fee to a cycle
    */
   async addTransportFee(input: {

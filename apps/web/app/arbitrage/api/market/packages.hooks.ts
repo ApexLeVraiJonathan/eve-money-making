@@ -30,6 +30,7 @@ export function usePackages(filters?: { cycleId?: string; status?: string }) {
       const query = params.toString() ? `?${params.toString()}` : "";
       return client.get<CommittedPackage[]>(`/packages${query}`);
     },
+    enabled: !!filters?.cycleId, // Only fetch when cycleId is provided
   });
 }
 

@@ -485,7 +485,7 @@ export class ArbitrageService {
                 data: { plannedUnits: existing.plannedUnits + it.units },
               });
             } else {
-              // Create new line
+              // Create new line (buyCostIsk will be set by allocation service)
               lines.push({
                 cycleId: currentOpen.id,
                 typeId: it.typeId,
@@ -528,7 +528,13 @@ export class ArbitrageService {
     const take = Math.min(Math.max(params?.limit ?? 25, 1), 200);
     const skip = Math.max(params?.offset ?? 0, 0);
     return await this.prisma.cycle.findMany({
-      select: { id: true, createdAt: true, name: true, status: true, closedAt: true },
+      select: {
+        id: true,
+        createdAt: true,
+        name: true,
+        status: true,
+        closedAt: true,
+      },
       orderBy: { createdAt: 'desc' },
       take,
       skip,

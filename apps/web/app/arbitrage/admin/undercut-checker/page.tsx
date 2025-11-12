@@ -26,8 +26,6 @@ import {
   useTrackedStations,
   useArbitrageCommits,
   useUndercutCheck,
-  useCycleLines,
-  useConfirmReprice,
 } from "../../api";
 
 type Group = {
@@ -76,7 +74,6 @@ export default function UndercutCheckerPage() {
     { enabled: useCommit },
   );
   const undercutCheckMutation = useUndercutCheck();
-  const confirmRepriceMutation = useConfirmReprice();
 
   const buildKeys = (rows: Group[] | null): string[] => {
     if (!Array.isArray(rows)) return [];
@@ -132,7 +129,7 @@ export default function UndercutCheckerPage() {
 
     setError(null);
 
-    // Fetch cycle lines (TODO: create a hook for this in a future refactor)
+    // Fetch cycle lines
     let cycleLines: CycleLine[];
     try {
       const response = await fetch(`/api/ledger/cycles/${cycleId}/lines`);
@@ -148,7 +145,8 @@ export default function UndercutCheckerPage() {
     }
 
     const errors: string[] = [];
-    const promises: Promise<void>[] = [];
+    const relistFees: Array<{ lineId: string; amountIsk: string }> = [];
+    const priceUpdates: Array<{ lineId: string; newPrice: string }> = [];
 
     for (const g of result) {
       for (const u of g.updates) {
@@ -169,32 +167,67 @@ export default function UndercutCheckerPage() {
           continue;
         }
 
-        // Execute all API calls in parallel using the mutation
-        promises.push(
-          confirmRepriceMutation
-            .mutateAsync({
-              lineId: line.id,
-              quantity: u.remaining,
-              newUnitPrice: u.suggestedNewPriceTicked,
-            })
-            .catch((e) => {
-              errors.push(
-                `${u.itemName}: ${e instanceof Error ? e.message : String(e)}`,
-              );
-            }),
-        );
+        // Calculate relist fee (RELIST_PCT%)
+        const total = u.remaining * u.suggestedNewPriceTicked;
+        const feeAmount = (total * (RELIST_PCT / 100)).toFixed(2);
+
+        relistFees.push({
+          lineId: line.id,
+          amountIsk: feeAmount,
+        });
+
+        priceUpdates.push({
+          lineId: line.id,
+          newPrice: u.suggestedNewPriceTicked.toFixed(2),
+        });
       }
     }
 
-    // Wait for all requests to complete
-    await Promise.all(promises);
-
     if (errors.length) {
       setError(errors.join("\n"));
-    } else {
-      setError(null);
-      alert("Relist fees recorded successfully!");
+      return;
     }
+
+    // Add all relist fees in bulk
+    try {
+      const response = await fetch("/api/ledger/fees/relist/bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fees: relistFees }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to add relist fees: ${errorText}`);
+      }
+    } catch (e) {
+      setError(
+        `Failed to add relist fees: ${e instanceof Error ? e.message : String(e)}`,
+      );
+      return;
+    }
+
+    // Update current sell prices for all lines in bulk
+    try {
+      const response = await fetch("/api/ledger/lines/sell-prices/bulk", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ updates: priceUpdates }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to update sell prices: ${errorText}`);
+      }
+    } catch (e) {
+      setError(
+        `Failed to update sell prices: ${e instanceof Error ? e.message : String(e)}`,
+      );
+      return;
+    }
+
+    setError(null);
+    alert("Relist fees recorded successfully!");
   };
 
   return (

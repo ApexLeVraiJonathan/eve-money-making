@@ -132,6 +132,22 @@ export class CycleLineService {
   }
 
   /**
+   * Update current sell prices for multiple cycle lines in bulk
+   */
+  async updateBulkSellPrices(input: {
+    updates: Array<{ lineId: string; currentSellPriceIsk: string }>;
+  }) {
+    return await this.prisma.$transaction(
+      input.updates.map((update) =>
+        this.prisma.cycleLine.update({
+          where: { id: update.lineId },
+          data: { currentSellPriceIsk: update.currentSellPriceIsk },
+        }),
+      ),
+    );
+  }
+
+  /**
    * Delete a cycle line
    */
   async deleteCycleLine(lineId: string) {

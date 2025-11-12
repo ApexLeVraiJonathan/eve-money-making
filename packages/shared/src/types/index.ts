@@ -197,6 +197,7 @@ export interface CommittedPackage {
   failureMemo: string | null;
   itemCount: number;
   totalUnits: number;
+  totalVolumeM3: string;
 }
 
 export interface PackageItem {

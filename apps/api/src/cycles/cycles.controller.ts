@@ -49,6 +49,11 @@ import { CreateCycleLineManualRequest } from './dto/create-cycle-line-manual.dto
 import { UpdateCycleLineRequest } from './dto/update-cycle-line.dto';
 import { AddFeeRequest } from './dto/add-fee.dto';
 import { AddTransportFeeRequest } from './dto/add-transport-fee.dto';
+import {
+  AddBulkBrokerFeesRequest,
+  AddBulkRelistFeesRequest,
+} from './dto/add-bulk-fees.dto';
+import { UpdateBulkSellPricesRequest } from './dto/update-bulk-sell-prices.dto';
 
 @ApiTags('ledger')
 @Controller('ledger')
@@ -420,6 +425,17 @@ export class CyclesController {
     return await this.cycleLineService.updateCycleLine(lineId, body);
   }
 
+  @Patch('lines/sell-prices/bulk')
+  @Roles('ADMIN')
+  @UseGuards(RolesGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Update current sell prices for multiple lines in bulk' })
+  async updateBulkSellPrices(
+    @Body() body: UpdateBulkSellPricesRequest,
+  ): Promise<unknown> {
+    return await this.cycleLineService.updateBulkSellPrices(body);
+  }
+
   @Delete('lines/:lineId')
   @Roles('ADMIN')
   @UseGuards(RolesGuard)
@@ -479,6 +495,28 @@ export class CyclesController {
   @ApiParam({ name: 'cycleId', description: 'Cycle ID' })
   async listTransportFees(@Param('cycleId') cycleId: string): Promise<unknown> {
     return await this.feeService.listTransportFees(cycleId);
+  }
+
+  @Post('fees/broker/bulk')
+  @Roles('ADMIN')
+  @UseGuards(RolesGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Add broker fees to multiple lines in bulk' })
+  async addBulkBrokerFees(
+    @Body() body: AddBulkBrokerFeesRequest,
+  ): Promise<unknown> {
+    return await this.feeService.addBulkBrokerFees(body);
+  }
+
+  @Post('fees/relist/bulk')
+  @Roles('ADMIN')
+  @UseGuards(RolesGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Add relist fees to multiple lines in bulk' })
+  async addBulkRelistFees(
+    @Body() body: AddBulkRelistFeesRequest,
+  ): Promise<unknown> {
+    return await this.feeService.addBulkRelistFees(body);
   }
 
   // ===== Cycle Profit & Snapshots =====

@@ -41,23 +41,47 @@ export class PackageService {
       orderBy: [{ committedAt: 'desc' }, { packageIndex: 'asc' }],
     });
 
-    return packages.map((pkg) => ({
-      id: pkg.id,
-      cycleId: pkg.cycleId,
-      packageIndex: pkg.packageIndex,
-      destinationStationId: pkg.destinationStationId,
-      destinationName: pkg.destinationName,
-      collateralIsk: pkg.collateralIsk.toString(),
-      shippingCostIsk: pkg.shippingCostIsk.toString(),
-      estimatedProfitIsk: pkg.estimatedProfitIsk.toString(),
-      status: pkg.status,
-      committedAt: pkg.committedAt.toISOString(),
-      failedAt: pkg.failedAt?.toISOString() ?? null,
-      collateralRecoveredIsk: pkg.collateralRecoveredIsk?.toString() ?? null,
-      failureMemo: pkg.failureMemo,
-      itemCount: pkg.items.length,
-      totalUnits: pkg.items.reduce((sum, item) => sum + item.units, 0),
-    }));
+    // Fetch type volumes for all items
+    const allTypeIds = [...new Set(packages.flatMap(pkg => pkg.items.map(item => item.typeId)))];
+    const typeVolumes = await this.prisma.typeId.findMany({
+      where: { id: { in: allTypeIds } },
+      select: { id: true, volume: true },
+    });
+    const volumeMap = new Map(typeVolumes.map(t => [t.id, Number(t.volume ?? 0)]));
+
+    return packages.map((pkg) => {
+      const totalVolume = pkg.items.reduce((sum, item) => {
+        const unitVolume = volumeMap.get(item.typeId) ?? 0;
+        return sum + (unitVolume * item.units);
+      }, 0);
+
+      return {
+        id: pkg.id,
+        cycleId: pkg.cycleId,
+        packageIndex: pkg.packageIndex,
+        destinationStationId: pkg.destinationStationId,
+        destinationName: pkg.destinationName,
+        collateralIsk: pkg.collateralIsk.toString(),
+        shippingCostIsk: pkg.shippingCostIsk.toString(),
+        estimatedProfitIsk: pkg.estimatedProfitIsk.toString(),
+        status: pkg.status,
+        committedAt: pkg.committedAt.toISOString(),
+        failedAt: pkg.failedAt?.toISOString() ?? null,
+        collateralRecoveredIsk: pkg.collateralRecoveredIsk?.toString() ?? null,
+        failureMemo: pkg.failureMemo,
+        itemCount: pkg.items.length,
+        totalUnits: pkg.items.reduce((sum, item) => sum + item.units, 0),
+        totalVolumeM3: totalVolume.toFixed(2),
+        items: pkg.items.map((item) => ({
+          id: item.id,
+          typeId: item.typeId,
+          typeName: item.typeName,
+          units: item.units,
+          unitCost: item.unitCost.toString(),
+          unitProfit: item.unitProfit.toString(),
+        })),
+      };
+    });
   }
 
   /**
