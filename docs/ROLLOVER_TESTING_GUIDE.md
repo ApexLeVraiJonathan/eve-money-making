@@ -32,22 +32,10 @@ pnpm exec ts-node scripts/test-rollover-setup.ts help
 pnpm exec ts-node scripts/test-rollover-setup.ts clean
 
 # Create fake donation
-pnpm exec ts-node scripts/test-rollover-setup.ts create-donation \
-  --characterId 123456 \
-  --amount 5000000000 \
-  --reason "ARB-12345678"
+pnpm exec ts-node scripts/test-rollover-setup.ts create-donation --characterId 123456 --amount 5000000000 --reason "ARB-12345678"
 
 # Create fake trades
-pnpm exec ts-node scripts/test-rollover-setup.ts create-trades \
-  --cycleId <cycle-id> \
-  --lineId <line-id> \
-  --characterId 123456 \
-  --typeId 34 \
-  --stationId 60003760 \
-  --buyUnits 100 \
-  --buyPrice 50000 \
-  --sellUnits 60 \
-  --sellPrice 55000
+pnpm exec ts-node scripts/test-rollover-setup.ts create-trades --cycleId <cycle-id> --lineId <line-id> --characterId 123456 --typeId 34 --stationId 60003760 --buyUnits 100 --buyPrice 50000 --sellUnits 60 --sellPrice 55000
 ```
 
 **Note:** Use `pnpm exec ts-node` instead of `pnpm tsx` to avoid Prisma client type compatibility issues.
@@ -107,10 +95,7 @@ Content-Type: application/json
 ### Step 5: Create Fake Donation
 
 ```bash
-pnpm exec ts-node scripts/test-rollover-setup.ts create-donation \
-  --characterId <logistics-char-id> \
-  --amount 5000000000 \
-  --reason "ARB-<first-8-chars-of-cycle-id>"
+pnpm exec ts-node scripts/test-rollover-setup.ts create-donation --characterId <logistics-char-id> --amount 5000000000 --reason "ARB-<first-8-chars-of-cycle-id>"
 ```
 
 ### Step 6: Match Donation to Participation
@@ -172,22 +157,14 @@ Content-Type: application/json
 ### Step 9: Create Fake Trades (with unsold inventory)
 
 ```bash
-pnpm exec ts-node scripts/test-rollover-setup.ts create-trades \
-  --cycleId <cycle-id> \
-  --lineId <line-id> \
-  --characterId <logistics-char-id> \
-  --typeId 34 \
-  --stationId 60003760 \
-  --buyUnits 100 \
-  --buyPrice 50000 \
-  --sellUnits 60 \
-  --sellPrice 55000
-
-# This creates:
-# - Buy: 100 units @ 50,000 ISK = 5,000,000 ISK cost
-# - Sell: 60 units @ 55,000 ISK = 3,300,000 ISK gross (3,135,000 net after tax)
-# - Remaining: 40 units @ 50,000 WAC = 2,000,000 ISK for rollover
+pnpm exec ts-node scripts/test-rollover-setup.ts create-trades --cycleId <cycle-id> --lineId <line-id> --characterId <logistics-char-id> --typeId 34 --stationId 60003760 --buyUnits 100 --buyPrice 50000 --sellUnits 60 --sellPrice 55000
 ```
+
+This creates:
+
+- Buy: 100 units @ 50,000 ISK = 5,000,000 ISK cost
+- Sell: 60 units @ 55,000 ISK = 3,300,000 ISK gross (3,135,000 net after tax)
+- Remaining: 40 units @ 50,000 WAC = 2,000,000 ISK for rollover
 
 **Verification:**
 
@@ -307,10 +284,7 @@ Content-Type: application/json
 
 ```bash
 # Create donation
-pnpm exec ts-node scripts/test-rollover-setup.ts create-donation \
-  --characterId <logistics-char-id> \
-  --amount 8000000000 \
-  --reason "ARB-<first-8-chars-of-new-cycle-id>"
+pnpm exec ts-node scripts/test-rollover-setup.ts create-donation --characterId <logistics-char-id> --amount 8000000000 --reason "ARB-<first-8-chars-of-new-cycle-id>"
 
 # Match it
 POST http://localhost:3000/ledger/participations/match?cycleId={newCycleId}

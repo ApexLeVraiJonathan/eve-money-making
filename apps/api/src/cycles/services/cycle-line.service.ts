@@ -78,6 +78,14 @@ export class CycleLineService {
       const wacUnitCost =
         unitsBought > 0 ? Number(l.buyCostIsk) / unitsBought : 0;
 
+      // Calculate profit: SalesNet - COGS - Fees
+      const cogs = wacUnitCost * unitsSold;
+      const lineProfitExclTransport =
+        Number(l.salesNetIsk) -
+        cogs -
+        Number(l.brokerFeesIsk) -
+        Number(l.relistFeesIsk);
+
       return {
         id: l.id,
         typeId: l.typeId,
@@ -97,6 +105,7 @@ export class CycleLineService {
         salesNetIsk: Number(l.salesNetIsk).toFixed(2),
         brokerFeesIsk: Number(l.brokerFeesIsk).toFixed(2),
         relistFeesIsk: Number(l.relistFeesIsk).toFixed(2),
+        lineProfitExclTransport: lineProfitExclTransport.toFixed(2),
         currentSellPriceIsk: l.currentSellPriceIsk
           ? Number(l.currentSellPriceIsk).toFixed(2)
           : null,

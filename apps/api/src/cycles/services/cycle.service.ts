@@ -13,6 +13,7 @@ import {
   computeCostBasisPositions,
   createJitaPriceFetcher,
 } from '../utils/capital-helpers';
+import { fetchStationOrders } from '../../esi/market-helpers';
 
 /**
  * CycleService handles core cycle lifecycle management.
@@ -319,7 +320,9 @@ export class CycleService {
    * 2. Close any existing open cycle
    * 3. Set startedAt to now if in future
    * 4. Compute initial capital from investor participations only (no wallet ISK)
-   * 5. Create rollover cycle lines from active sell orders with linkage to previous cycle
+   * 5. Create rollover cycle lines from active sell orders with proper buyCostIsk:
+   *    - If previous cycle has buy cost: use WAC from previous cycle
+   *    - If no buy cost: fetch Jita sell price and use as buy cost
    *
    * After transaction:
    * 6. Process rollover purchase (synthetic buy allocations at cost basis)
@@ -328,7 +331,17 @@ export class CycleService {
    * @returns Opened cycle with initial capital set
    * @throws Error if cycle not found
    */
-  async openPlannedCycle(input: { cycleId: string; startedAt?: Date }) {
+  async openPlannedCycle(
+    input: { cycleId: string; startedAt?: Date },
+    allocationService?: {
+      allocateAll: (cycleId?: string) => Promise<{
+        buysAllocated: number;
+        sellsAllocated: number;
+        unmatchedBuys: number;
+        unmatchedSells: number;
+      }>;
+    },
+  ) {
     const now = new Date();
     const cycle = await this.prisma.cycle.findUnique({
       where: { id: input.cycleId },
@@ -342,7 +355,7 @@ export class CycleService {
       select: { id: true },
     });
 
-    // Build map of previous cycle lines for reference (including current sell prices)
+    // Build map of previous cycle lines for reference (including buy cost data)
     const prevCycleLines = prevCycle
       ? await this.prisma.cycleLine.findMany({
           where: { cycleId: prevCycle.id },
@@ -351,6 +364,8 @@ export class CycleService {
             typeId: true,
             destinationStationId: true,
             currentSellPriceIsk: true,
+            buyCostIsk: true,
+            unitsBought: true,
           },
         })
       : [];
@@ -363,9 +378,143 @@ export class CycleService {
           currentSellPrice: l.currentSellPriceIsk
             ? Number(l.currentSellPriceIsk)
             : null,
+          buyCostIsk: Number(l.buyCostIsk),
+          unitsBought: l.unitsBought,
         },
       ]),
     );
+
+    // Fetch active sell orders to determine rollover lines
+    const key = (stationId: number, typeId: number) => `${stationId}:${typeId}`;
+    const qtyByTypeStation = new Map<string, number>();
+    const sellPriceByTypeStation = new Map<string, number>();
+    const trackedChars = await this.characterService.getTrackedSellerIds();
+
+    for (const cid of trackedChars) {
+      try {
+        const orders = await this.esiChars.getOrders(cid);
+        for (const o of orders) {
+          if (!o.is_buy_order) {
+            const k2 = key(o.location_id, o.type_id);
+            qtyByTypeStation.set(
+              k2,
+              (qtyByTypeStation.get(k2) ?? 0) + o.volume_remain,
+            );
+            const existingPrice = sellPriceByTypeStation.get(k2);
+            if (!existingPrice || o.price < existingPrice) {
+              sellPriceByTypeStation.set(k2, o.price);
+            }
+          }
+        }
+      } catch (e) {
+        this.logger.warn(`Orders fetch failed for ${cid}: ${String(e)}`);
+      }
+    }
+
+    // Build rollover lines list
+    const rolloverLinesTemp: Array<{
+      typeId: number;
+      destinationStationId: number;
+      plannedUnits: number;
+      currentSellPriceIsk: number | null;
+      rolloverFromLineId: string | null;
+    }> = [];
+
+    for (const [k2, qty] of qtyByTypeStation) {
+      const [sidStr, tidStr] = k2.split(':');
+      const stationId = Number(sidStr);
+      const typeId = Number(tidStr);
+      if (!Number.isFinite(qty) || qty <= 0) continue;
+
+      const currentSellPrice = sellPriceByTypeStation.get(k2) ?? null;
+      const prevLineInfo = prevLineMap.get(k2);
+
+      rolloverLinesTemp.push({
+        typeId,
+        destinationStationId: stationId,
+        plannedUnits: Math.floor(qty),
+        currentSellPriceIsk:
+          currentSellPrice ?? prevLineInfo?.currentSellPrice ?? null,
+        rolloverFromLineId: prevLineInfo?.lineId ?? null,
+      });
+
+      if (rolloverLinesTemp.length >= CAPITAL_CONSTANTS.MAX_ROLLOVER_LINES)
+        break;
+    }
+
+    // Pre-fetch Jita prices for items without buy cost (OUTSIDE transaction)
+    const jitaPriceMap = new Map<number, number>();
+    if (rolloverLinesTemp.length > 0) {
+      const itemsNeedingJitaPrices = new Set<number>();
+      for (const l of rolloverLinesTemp) {
+        const prevLineInfo = prevLineMap.get(
+          `${l.destinationStationId}:${l.typeId}`,
+        );
+        if (
+          !prevLineInfo ||
+          prevLineInfo.buyCostIsk === 0 ||
+          prevLineInfo.unitsBought === 0
+        ) {
+          itemsNeedingJitaPrices.add(l.typeId);
+        }
+      }
+
+      if (itemsNeedingJitaPrices.size > 0) {
+        this.logger.log(
+          `[Line Creation] Fetching Jita prices for ${itemsNeedingJitaPrices.size} items...`,
+        );
+        const jitaPricePromises = Array.from(itemsNeedingJitaPrices).map(
+          async (typeId) => {
+            const price = await this.fetchJitaCheapestSell(typeId);
+            return { typeId, price };
+          },
+        );
+        const jitaPrices = await Promise.all(jitaPricePromises);
+        for (const { typeId, price } of jitaPrices) {
+          if (price) jitaPriceMap.set(typeId, price);
+        }
+      }
+    }
+
+    // Auto-close previous cycle BEFORE transaction (if allocation service provided)
+    const previousCycleToClose = await this.getCurrentOpenCycle();
+    if (
+      previousCycleToClose &&
+      previousCycleToClose.id !== cycle.id &&
+      allocationService
+    ) {
+      this.logger.log(
+        `Auto-closing previous cycle ${previousCycleToClose.id}`,
+      );
+
+      // 1. Run final allocation
+      const allocationResult = await allocationService.allocateAll(
+        previousCycleToClose.id,
+      );
+      this.logger.log(
+        `Allocation: buys=${allocationResult.buysAllocated}, sells=${allocationResult.sellsAllocated}`,
+      );
+
+      // 2. Process rollover buyback (creates synthetic sell allocations)
+      const buybackResult = await this.processRolloverBuyback(
+        previousCycleToClose.id,
+      );
+      this.logger.log(
+        `Buyback: ${buybackResult.itemsBoughtBack} items, ${buybackResult.totalBuybackIsk.toFixed(2)} ISK`,
+      );
+
+      // 3. Try to create payouts (non-blocking)
+      try {
+        const payouts = await this.payoutService.createPayouts(
+          previousCycleToClose.id,
+        );
+        this.logger.log(`Created ${payouts.length} payouts`);
+      } catch (error) {
+        this.logger.warn(
+          `Payout creation failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
 
     // All database operations within a transaction
     const openedCycle = await this.prisma.$transaction(async (tx) => {
@@ -377,9 +526,10 @@ export class CycleService {
         },
       });
 
-      // Close any existing open cycle
+      // Close any existing open cycle (simple close, cleanup already done above)
       const open = await this.getCurrentOpenCycle();
       if (open && open.id !== cycle.id) {
+        this.logger.log(`Setting closedAt for cycle ${open.id}`);
         await tx.cycle.update({
           where: { id: open.id },
           data: { closedAt: now },
@@ -420,88 +570,81 @@ export class CycleService {
         data: { initialCapitalIsk: initialCapital.toFixed(2) },
       });
 
-      // Create rollover cycle lines from active sell orders
-      const key = (stationId: number, typeId: number) =>
-        `${stationId}:${typeId}`;
-      const qtyByTypeStation = new Map<string, number>();
-      const sellPriceByTypeStation = new Map<string, number>();
-      const trackedChars = await this.characterService.getTrackedSellerIds();
+      // Create rollover cycle lines with pre-calculated buy costs
+      if (rolloverLinesTemp.length) {
+        const lineDataWithCosts: Array<{
+          typeId: number;
+          destinationStationId: number;
+          plannedUnits: number;
+          buyCostIsk: string;
+          currentSellPriceIsk: string | null;
+          rolloverFromLineId: string | null;
+        }> = [];
 
-      for (const cid of trackedChars) {
-        try {
-          const orders = await this.esiChars.getOrders(cid);
-          for (const o of orders) {
-            if (!o.is_buy_order) {
-              const k2 = key(o.location_id, o.type_id);
-              qtyByTypeStation.set(
-                k2,
-                (qtyByTypeStation.get(k2) ?? 0) + o.volume_remain,
+        // Calculate buy cost for each line using pre-fetched data
+        for (const l of rolloverLinesTemp) {
+          let buyCostIsk = 0;
+          const prevLineInfo = prevLineMap.get(
+            `${l.destinationStationId}:${l.typeId}`,
+          );
+
+          if (
+            prevLineInfo &&
+            prevLineInfo.buyCostIsk > 0 &&
+            prevLineInfo.unitsBought > 0
+          ) {
+            // Calculate WAC from previous cycle
+            const wac = prevLineInfo.buyCostIsk / prevLineInfo.unitsBought;
+            buyCostIsk = wac * l.plannedUnits;
+            this.logger.log(
+              `[Line Creation] Type ${l.typeId}: Using WAC ${wac.toFixed(2)} ISK/unit from previous cycle`,
+            );
+          } else {
+            // Use pre-fetched Jita price
+            const jitaPrice = jitaPriceMap.get(l.typeId);
+            if (jitaPrice) {
+              buyCostIsk = jitaPrice * l.plannedUnits;
+              this.logger.log(
+                `[Line Creation] Type ${l.typeId}: Using Jita price ${jitaPrice.toFixed(2)} ISK/unit`,
               );
-              const existingPrice = sellPriceByTypeStation.get(k2);
-              if (!existingPrice || o.price < existingPrice) {
-                sellPriceByTypeStation.set(k2, o.price);
-              }
+            } else {
+              this.logger.error(
+                `[Line Creation] Type ${l.typeId}: Could not fetch Jita price. Setting buyCostIsk to 0.`,
+              );
+              buyCostIsk = 0;
             }
           }
-        } catch (e) {
-          this.logger.warn(`Orders fetch failed for ${cid}: ${String(e)}`);
+
+          lineDataWithCosts.push({
+            typeId: l.typeId,
+            destinationStationId: l.destinationStationId,
+            plannedUnits: l.plannedUnits,
+            buyCostIsk: buyCostIsk.toFixed(2),
+            currentSellPriceIsk: l.currentSellPriceIsk
+              ? l.currentSellPriceIsk.toFixed(2)
+              : null,
+            rolloverFromLineId: l.rolloverFromLineId,
+          });
         }
-      }
 
-      const rolloverLines: Array<{
-        typeId: number;
-        destinationStationId: number;
-        plannedUnits: number;
-        currentSellPriceIsk: number | null;
-        rolloverFromLineId: string | null;
-      }> = [];
-
-      for (const [k2, qty] of qtyByTypeStation) {
-        const [sidStr, tidStr] = k2.split(':');
-        const stationId = Number(sidStr);
-        const typeId = Number(tidStr);
-        if (!Number.isFinite(qty) || qty <= 0) continue;
-
-        // Get current sell price from ESI orders (active price)
-        const currentSellPrice = sellPriceByTypeStation.get(k2) ?? null;
-
-        // Get previous line info for linkage
-        const prevLineInfo = prevLineMap.get(k2);
-
-        rolloverLines.push({
-          typeId,
-          destinationStationId: stationId,
-          plannedUnits: Math.floor(qty),
-          // Use ESI sell price if available, otherwise use previous cycle's price
-          currentSellPriceIsk:
-            currentSellPrice ?? prevLineInfo?.currentSellPrice ?? null,
-          rolloverFromLineId: prevLineInfo?.lineId ?? null,
-        });
-
-        // Limit to prevent excessive database operations
-        if (rolloverLines.length >= CAPITAL_CONSTANTS.MAX_ROLLOVER_LINES) break;
-      }
-
-      if (rolloverLines.length) {
+        // Bulk create with pre-calculated costs (1 DB operation)
         await tx.cycleLine.createMany({
-          data: rolloverLines.map((l) => ({
+          data: lineDataWithCosts.map((l) => ({
             cycleId: cycle.id,
             typeId: l.typeId,
             destinationStationId: l.destinationStationId,
             plannedUnits: l.plannedUnits,
             unitsBought: l.plannedUnits,
-            buyCostIsk: '0.00', // Will be set by processRolloverPurchase
-            currentSellPriceIsk: l.currentSellPriceIsk
-              ? l.currentSellPriceIsk.toFixed(2)
-              : null,
-            // NEW: Mark as rollover and link to previous cycle
+            buyCostIsk: l.buyCostIsk,
+            currentSellPriceIsk: l.currentSellPriceIsk,
+            // Mark as rollover and link to previous cycle
             isRollover: true,
             rolloverFromCycleId: prevCycle?.id ?? null,
             rolloverFromLineId: l.rolloverFromLineId,
           })),
         });
         this.logger.log(
-          `Created ${rolloverLines.length} rollover cycle lines for cycle ${cycle.id}`,
+          `Created ${rolloverLinesTemp.length} rollover cycle lines for cycle ${cycle.id}`,
         );
       }
 
@@ -509,18 +652,61 @@ export class CycleService {
     });
 
     // After transaction: Process rollover purchase (synthetic buy allocations)
-    if (prevCycle) {
+    // Check if we actually have rollover lines (regardless of whether there's a previous cycle)
+    const rolloverLineCount = await this.prisma.cycleLine.count({
+      where: { cycleId: cycle.id, isRollover: true },
+    });
+
+    if (rolloverLineCount > 0) {
       const rolloverResult = await this.processRolloverPurchase(
         cycle.id,
-        prevCycle.id,
+        prevCycle?.id ?? null,
       );
-      this.logger.log(
-        `Rollover purchase completed: ${rolloverResult.itemsRolledOver} items, ` +
-          `${rolloverResult.totalRolloverCostIsk.toFixed(2)} ISK deducted from capital`,
-      );
+      
+      // Log rollover completion (capital remains unchanged)
+      if (rolloverResult.totalRolloverCostIsk > 0) {
+        this.logger.log(
+          `Rollover purchase completed: ${rolloverResult.itemsRolledOver} items, ` +
+            `${rolloverResult.totalRolloverCostIsk.toFixed(2)} ISK in inventory from rollover`,
+        );
+      }
     }
 
     return openedCycle;
+  }
+
+  /**
+   * Fetch the cheapest sell order price from Jita for a given type.
+   * Used as fallback when an item has no buy cost data.
+   *
+   * @param typeId - EVE type ID
+   * @returns Lowest sell price in ISK, or null if no orders found
+   */
+  private async fetchJitaCheapestSell(typeId: number): Promise<number | null> {
+    const JITA_REGION_ID = 10000002; // The Forge
+    const JITA_STATION_ID = 60003760; // Jita IV - Moon 4 - Caldari Navy Assembly Plant
+
+    try {
+      const orders = await fetchStationOrders(this.esi, {
+        regionId: JITA_REGION_ID,
+        stationId: JITA_STATION_ID,
+        typeId,
+        side: 'sell',
+      });
+
+      if (orders.length === 0) {
+        return null;
+      }
+
+      // Find the lowest price
+      const lowestPrice = Math.min(...orders.map((o) => o.price));
+      return lowestPrice;
+    } catch (error) {
+      this.logger.error(
+        `[Jita Price Fetch] Failed to fetch Jita sell price for type ${typeId}: ${error.message}`,
+      );
+      return null;
+    }
   }
 
   /**
@@ -560,6 +746,14 @@ export class CycleService {
 
       const wac =
         line.unitsBought > 0 ? Number(line.buyCostIsk) / line.unitsBought : 0;
+
+      if (wac === 0) {
+        this.logger.error(
+          `[Rollover Buyback] Line ${line.id} (type ${line.typeId}) has no buy cost. This should not happen. Skipping.`,
+        );
+        continue;
+      }
+
       const buybackAmount = wac * remainingUnits;
 
       // Create synthetic sell allocation for buyback (no wallet transaction)
@@ -616,7 +810,7 @@ export class CycleService {
    */
   private async processRolloverPurchase(
     newCycleId: string,
-    previousCycleId: string,
+    previousCycleId: string | null,
   ): Promise<{
     itemsRolledOver: number;
     totalRolloverCostIsk: number;
@@ -626,7 +820,7 @@ export class CycleService {
       where: {
         cycleId: newCycleId,
         isRollover: true,
-        rolloverFromCycleId: previousCycleId,
+        ...(previousCycleId ? { rolloverFromCycleId: previousCycleId } : {}),
       },
       select: {
         id: true,
@@ -641,30 +835,38 @@ export class CycleService {
     let itemsProcessed = 0;
 
     for (const line of rolloverLines) {
-      if (!line.rolloverFromLineId) {
-        this.logger.warn(
-          `[Rollover Purchase] Line ${line.id} has no rolloverFromLineId, skipping`,
-        );
-        continue;
-      }
-
-      // Get original cost basis from previous cycle line
-      const prevLine = await this.prisma.cycleLine.findUnique({
-        where: { id: line.rolloverFromLineId },
-        select: { unitsBought: true, buyCostIsk: true },
+      // Note: rolloverFromLineId can be null for items detected from game
+      // that don't have a previous cycle line (e.g., first cycle in dev)
+      
+      // Get the buy cost that was set during line creation
+      // (either from previous cycle WAC or Jita price)
+      const currentLine = await this.prisma.cycleLine.findUnique({
+        where: { id: line.id },
+        select: { 
+          buyCostIsk: true,
+          unitsBought: true,
+        },
       });
 
-      if (!prevLine) {
+      if (!currentLine) {
         this.logger.warn(
-          `[Rollover Purchase] Previous line ${line.rolloverFromLineId} not found, skipping`,
+          `[Rollover Purchase] Current line ${line.id} not found, skipping`,
         );
         continue;
       }
 
       const wac =
-        prevLine.unitsBought > 0
-          ? Number(prevLine.buyCostIsk) / prevLine.unitsBought
+        currentLine.unitsBought > 0
+          ? Number(currentLine.buyCostIsk) / currentLine.unitsBought
           : 0;
+
+      if (wac === 0) {
+        this.logger.error(
+          `[Rollover Purchase] Line ${line.id} (type ${line.typeId}) has no buy cost. This should not happen. Skipping.`,
+        );
+        continue;
+      }
+
       const rolloverCost = wac * line.unitsBought;
 
       // Create synthetic buy allocation (no wallet transaction)
@@ -823,13 +1025,14 @@ export class CycleService {
     } = null;
 
     if (current) {
-      const [portfolioData, estimatedData] = await Promise.all([
+      const [portfolioData, estimatedData, profitData] = await Promise.all([
         this.profitService.computePortfolioValue(current.id),
         this.profitService.computeEstimatedProfit(current.id).catch(() => null),
+        this.profitService.computeCycleProfit(current.id),
       ]);
 
-      const currentProfit = 0; // TODO: Get from portfolioData
-      const inventoryValue = Number(portfolioData.totalValue);
+      const currentProfit = Number(profitData.cycleProfitCash);
+      const inventoryValue = Number(portfolioData.inventoryValueAtCost);
       const portfolioValue = Number(portfolioData.totalValue);
       const estimatedProfit = estimatedData
         ? Number(estimatedData.estimatedTotalProfit)
@@ -860,8 +1063,10 @@ export class CycleService {
         0,
       );
 
-      const cash = initial + currentProfit;
-      const totalCapital = cash + inventoryValue;
+      // Portfolio = Starting Capital + Profit
+      const totalCapital = initial + currentProfit;
+      // Cash = Portfolio - Inventory
+      const cash = totalCapital - inventoryValue;
 
       currentOut = {
         id: current.id,

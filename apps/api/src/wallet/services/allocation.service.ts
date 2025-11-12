@@ -263,6 +263,7 @@ export class AllocationService {
         typeId: true,
         quantity: true,
         unitPrice: true,
+        locationId: true,
       },
     });
 
@@ -300,8 +301,11 @@ export class AllocationService {
 
       if (remaining <= 0) continue;
 
-      // Resolve destination from character location
-      const destStation = charToStation.get(tx.characterId);
+      // Resolve destination from character location, fallback to transaction locationId
+      let destStation = charToStation.get(tx.characterId);
+      if (!destStation && tx.locationId) {
+        destStation = tx.locationId; // Use transaction's locationId directly
+      }
       if (!destStation) {
         unmatched++;
         continue;

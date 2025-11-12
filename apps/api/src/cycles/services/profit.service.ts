@@ -12,7 +12,8 @@ import { AppConfig } from '../../common/config';
  * - Calculate portfolio valuations
  *
  * Profit Formulas:
- * - Line Profit = SalesNet - BuyCost - BrokerFees - RelistFees
+ * - Line Profit = SalesNet - COGS - BrokerFees - RelistFees
+ *   where COGS = (buyCostIsk / unitsBought) * unitsSold
  * - Cycle Profit = Sum(Line Profits) - Transport Fees
  * - Estimated Profit = Realized + (CurrentValue - CostBasis) for unsold inventory
  */
@@ -29,7 +30,8 @@ export class ProfitService {
    * Compute realized profit for a cycle from completed sales.
    *
    * Formula:
-   * - Per-line: SalesNet - BuyCost - BrokerFees - RelistFees
+   * - Per-line: SalesNet - COGS - BrokerFees - RelistFees
+   *   where COGS (Cost of Goods Sold) = WAC * unitsSold
    * - Cycle Total: Sum(Line Profits) - Transport Fees
    *
    * @param cycleId - Cycle to compute profit for
@@ -56,6 +58,8 @@ export class ProfitService {
         destinationStationId: true,
         salesNetIsk: true,
         buyCostIsk: true,
+        unitsBought: true,
+        unitsSold: true,
         brokerFeesIsk: true,
         relistFeesIsk: true,
       },
@@ -87,9 +91,13 @@ export class ProfitService {
     ]);
 
     for (const line of lines) {
+      // Calculate Cost of Goods Sold (COGS) - only for items actually sold
+      const wac = line.unitsBought > 0 ? Number(line.buyCostIsk) / line.unitsBought : 0;
+      const cogs = wac * line.unitsSold;
+      
       const profit =
         Number(line.salesNetIsk) -
-        Number(line.buyCostIsk) -
+        cogs -
         Number(line.brokerFeesIsk) -
         Number(line.relistFeesIsk);
       lineProfitTotal += profit;
@@ -347,6 +355,8 @@ export class ProfitService {
     return {
       cycle: { id: cycle.id, name: cycle.name, startedAt: cycle.startedAt },
       totalValue: totalValue.toFixed(2),
+      inventoryValueAtCost: totalInventoryValue.toFixed(2),
+      expectedSalesRevenue: totalSalesRevenue.toFixed(2),
       breakdown,
     };
   }

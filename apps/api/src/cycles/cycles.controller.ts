@@ -121,6 +121,16 @@ export class CyclesController {
     );
   }
 
+  @Post('cycles/:id/allocate')
+  @Roles('ADMIN')
+  @UseGuards(RolesGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Manually allocate wallet transactions to cycle lines' })
+  @ApiParam({ name: 'id', description: 'Cycle ID' })
+  async allocateTransactions(@Param('id') id: string): Promise<unknown> {
+    return await this.allocation.allocateAll(id);
+  }
+
   @Post('cycles/:id/open')
   @Roles('ADMIN')
   @UseGuards(RolesGuard)
@@ -131,10 +141,13 @@ export class CyclesController {
     @Param('id') id: string,
     @Body() body: OpenCycleRequest,
   ): Promise<unknown> {
-    return await this.cycleService.openPlannedCycle({
-      cycleId: id,
-      startedAt: body.startedAt ? new Date(body.startedAt) : undefined,
-    });
+    return await this.cycleService.openPlannedCycle(
+      {
+        cycleId: id,
+        startedAt: body.startedAt ? new Date(body.startedAt) : undefined,
+      },
+      this.allocation, // Pass allocation service for automatic cycle closure
+    );
   }
 
   @Post('entries')
@@ -387,6 +400,7 @@ export class CyclesController {
   }
 
   @Get('cycles/:cycleId/lines')
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'List cycle lines' })
   @ApiParam({ name: 'cycleId', description: 'Cycle ID' })
   async listCycleLines(@Param('cycleId') cycleId: string): Promise<unknown> {
