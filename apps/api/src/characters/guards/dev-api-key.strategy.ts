@@ -25,7 +25,7 @@ export class DevApiKeyStrategy extends PassportStrategy(Strategy, 'dev-api-key')
   constructor(private readonly prisma: PrismaService) {
     super();
     this.devApiKey = process.env.DEV_API_KEY;
-    this.isProduction = AppConfig.nodeEnv === 'production';
+    this.isProduction = AppConfig.env() === 'prod';
 
     if (this.devApiKey && !this.isProduction) {
       this.logger.log('✅ Dev API key authentication enabled (non-production)');

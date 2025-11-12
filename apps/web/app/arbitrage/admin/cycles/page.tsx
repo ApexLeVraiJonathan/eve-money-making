@@ -13,13 +13,7 @@ import {
   useCloseCycle,
   useCycleCapital,
 } from "../../api";
-
-type Cycle = {
-  id: string;
-  name: string | null;
-  startedAt: string;
-  closedAt: string | null;
-};
+import type { Cycle } from "@eve/shared/types";
 
 export default function CyclesPage() {
   // Use new API hooks
@@ -127,11 +121,9 @@ export default function CyclesPage() {
   };
 
   const getStatus = (c: Cycle): "Planned" | "Ongoing" | "Completed" => {
-    const now = Date.now();
-    const start = new Date(c.startedAt).getTime();
-    if (start > now) return "Planned";
-    if (c.closedAt) return "Completed";
-    return "Ongoing";
+    if (c.status === "PLANNED") return "Planned";
+    if (c.status === "COMPLETED") return "Completed";
+    return "Ongoing"; // OPEN status
   };
 
   return (

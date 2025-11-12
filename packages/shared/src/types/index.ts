@@ -13,11 +13,13 @@ export type CharacterRole = "USER" | "LOGISTICS";
 export type CharacterManagedBy = "USER" | "SYSTEM";
 export type CharacterFunction = "SELLER" | "BUYER";
 export type CharacterLocation = "JITA" | "DODIXIE" | "AMARR" | "HEK" | "RENS" | "CN";
+export type CycleStatus = "PLANNED" | "OPEN" | "COMPLETED";
 export type ParticipationStatus =
   | "AWAITING_INVESTMENT"
   | "AWAITING_VALIDATION"
   | "OPTED_IN"
   | "OPTED_OUT"
+  | "AWAITING_PAYOUT"
   | "COMPLETED"
   | "REFUNDED";
 
@@ -55,6 +57,7 @@ export interface EveCharacter {
 export interface Cycle {
   id: string;
   name: string | null;
+  status: CycleStatus;
   startedAt: string;
   closedAt: string | null;
   initialCapitalIsk: string | null;

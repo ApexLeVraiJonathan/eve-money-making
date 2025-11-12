@@ -48,6 +48,7 @@ type Participation = {
   cycle: {
     id: string;
     name: string | null;
+    status: "PLANNED" | "OPEN" | "COMPLETED";
     startedAt: string;
     closedAt: string | null;
   };

@@ -47,7 +47,8 @@ export default function LedgerPage() {
   // Auto-select latest cycle
   React.useEffect(() => {
     if (cycles.length > 0 && !cycleId) {
-      setCycleId(cycles[0].id);
+      const openCycle = cycles.find((c) => c.status === "OPEN");
+      setCycleId(openCycle?.id || cycles[0].id);
     }
   }, [cycles, cycleId]);
 

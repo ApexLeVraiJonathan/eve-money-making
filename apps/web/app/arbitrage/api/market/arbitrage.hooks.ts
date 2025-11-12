@@ -4,6 +4,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useApiClient } from "@/app/api-hooks/useApiClient";
 import { useAuthenticatedQuery } from "@/app/api-hooks/useAuthenticatedQuery";
 import { qk } from "@eve/api-client/queryKeys";
+import type { Cycle } from "@eve/shared/types";
 
 /**
  * API hooks for arbitrage opportunities and commitments
@@ -30,9 +31,7 @@ export function useArbitrageCommits(options?: {
       if (options?.limit) params.set("limit", String(options.limit));
       if (options?.offset) params.set("offset", String(options.offset));
       const query = params.toString() ? `?${params.toString()}` : "";
-      return client.get<
-        Array<{ id: string; name: string | null; closedAt: Date | null }>
-      >(`/arbitrage/commits${query}`);
+      return client.get<Cycle[]>(`/arbitrage/commits${query}`);
     },
   });
 }

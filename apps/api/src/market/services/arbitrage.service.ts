@@ -129,7 +129,7 @@ export class ArbitrageService {
 
     // Get current open cycle to check for existing inventory
     const currentCycle = await this.prisma.cycle.findFirst({
-      where: { startedAt: { lte: new Date() }, closedAt: null },
+      where: { status: 'OPEN' },
       select: { id: true },
     });
 
@@ -446,7 +446,7 @@ export class ArbitrageService {
   }): Promise<{ id: string; createdAt: Date }> {
     // Find the current open cycle
     const currentOpen = await this.prisma.cycle.findFirst({
-      where: { startedAt: { lte: new Date() }, closedAt: null },
+      where: { status: 'OPEN' },
       select: { id: true },
     });
 
@@ -528,7 +528,7 @@ export class ArbitrageService {
     const take = Math.min(Math.max(params?.limit ?? 25, 1), 200);
     const skip = Math.max(params?.offset ?? 0, 0);
     return await this.prisma.cycle.findMany({
-      select: { id: true, createdAt: true, name: true, closedAt: true },
+      select: { id: true, createdAt: true, name: true, status: true, closedAt: true },
       orderBy: { createdAt: 'desc' },
       take,
       skip,

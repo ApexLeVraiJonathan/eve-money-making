@@ -54,7 +54,9 @@ const chartConfig = {
 export default function AdminPage() {
   // Use React Query hooks for data fetching
   const { data: cycles = [], isLoading: cyclesLoading } = useCycles();
-  const latestCycle = cycles[0] || null;
+  // Prioritize open cycle, fall back to latest cycle
+  const openCycle = cycles.find((c) => c.status === "OPEN");
+  const latestCycle = openCycle || cycles[0] || null;
 
   const { data: capital, isLoading: capitalLoading } = useCycleCapital(
     latestCycle?.id || "",
@@ -435,7 +437,7 @@ export default function AdminPage() {
               <div>
                 <div className="text-muted-foreground">Status</div>
                 <div className="font-medium">
-                  {latestCycle.closedAt ? "Closed" : "Open"}
+                  {latestCycle.status === "COMPLETED" ? "Closed" : latestCycle.status === "PLANNED" ? "Planned" : "Open"}
                 </div>
               </div>
               {capital && (

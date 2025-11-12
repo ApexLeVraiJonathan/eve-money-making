@@ -106,7 +106,7 @@ export class JobsService {
   private async snapshotOpenCycles(): Promise<void> {
     try {
       const openCycles = await this.prisma.cycle.findMany({
-        where: { closedAt: null },
+        where: { status: 'OPEN' },
         select: { id: true },
       });
       for (const c of openCycles) {
@@ -130,7 +130,7 @@ export class JobsService {
     }
     try {
       const openCycles = await this.prisma.cycle.findMany({
-        where: { closedAt: null },
+        where: { status: 'OPEN' },
         select: { id: true },
       });
       for (const c of openCycles) {

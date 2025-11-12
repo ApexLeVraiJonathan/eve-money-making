@@ -47,6 +47,13 @@ enum ParticipationStatus {
   REFUNDED
 }
 
+/// Cycle lifecycle status
+enum CycleStatus {
+  PLANNED
+  OPEN
+  COMPLETED
+}
+
 model TypeId {
   id        Int      @id @map("type_id")
   published Boolean
@@ -217,12 +224,13 @@ model CharacterToken {
 
 /// Investment cycles for grouping commits and cash flows
 model Cycle {
-  id        String    @id @default(uuid()) @map("id")
-  name      String?   @map("name")
-  startedAt DateTime  @map("started_at")
-  closedAt  DateTime? @map("closed_at")
-  createdAt DateTime  @default(now()) @map("created_at")
-  updatedAt DateTime  @updatedAt @map("updated_at")
+  id        String      @id @default(uuid()) @map("id")
+  name      String?     @map("name")
+  status    CycleStatus @default(PLANNED) @map("status")
+  startedAt DateTime    @map("started_at")
+  closedAt  DateTime?   @map("closed_at")
+  createdAt DateTime    @default(now()) @map("created_at")
+  updatedAt DateTime    @updatedAt @map("updated_at")
 
   /// Optional: amount of new ISK injected at cycle start (user-provided)
   initialInjectionIsk Decimal? @map("initial_injection_isk") @db.Decimal(28, 2)

@@ -146,10 +146,10 @@ export default function TriggersPage() {
       const rows = await client.get<
         Array<{
           id: string;
-          closedAt?: Date | null;
+          status: "PLANNED" | "OPEN" | "COMPLETED";
         }>
       >("/ledger/cycles?limit=1");
-      const openCycle = rows.find((r) => !r.closedAt);
+      const openCycle = rows.find((r) => r.status === "OPEN");
       if (openCycle) {
         setCurrentCycleId(openCycle.id);
         await loadSnapshots(openCycle.id);

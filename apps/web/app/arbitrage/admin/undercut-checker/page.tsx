@@ -72,7 +72,7 @@ export default function UndercutCheckerPage() {
   // React Query hooks
   const { data: stations = [] } = useTrackedStations();
   const { data: latestCycles = [] } = useArbitrageCommits(
-    { limit: 1 },
+    { limit: 5 }, // Fetch a few cycles to ensure we can find the open one
     { enabled: useCommit },
   );
   const undercutCheckMutation = useUndercutCheck();
@@ -92,7 +92,7 @@ export default function UndercutCheckerPage() {
   // Auto-set cycle ID from latest cycles
   useEffect(() => {
     if (useCommit && latestCycles.length > 0) {
-      const openCycle = latestCycles.find((r) => !r.closedAt);
+      const openCycle = latestCycles.find((r) => r.status === "OPEN");
       if (openCycle) {
         setCycleId(openCycle.id);
       } else {

@@ -129,7 +129,7 @@ function PackagesContent() {
       if (initialCycleId) {
         setSelectedCycleId(initialCycleId);
       } else {
-        const openCycle = cycles.find((c) => !c.closedAt);
+        const openCycle = cycles.find((c) => c.status === "OPEN");
         setSelectedCycleId(openCycle?.id || cycles[0].id);
       }
     }
@@ -219,7 +219,7 @@ function PackagesContent() {
               {cycles.map((cycle) => (
                 <SelectItem key={cycle.id} value={cycle.id}>
                   {cycle.name || `Cycle ${cycle.id.slice(0, 8)}`}
-                  {!cycle.closedAt && " (Open)"}
+                  {cycle.status === "OPEN" && " (Open)"}
                 </SelectItem>
               ))}
             </SelectContent>

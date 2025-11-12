@@ -51,37 +51,23 @@ export class CycleService {
   ) {}
 
   /**
-   * Get the current open cycle
+   * Get the current open cycle (status = OPEN)
    */
   async getCurrentOpenCycle() {
     return await this.prisma.cycle.findFirst({
-      where: { startedAt: { lte: new Date() }, closedAt: null },
+      where: { status: 'OPEN' },
       orderBy: { startedAt: 'desc' },
     });
   }
 
   /**
-   * Get the next planned cycle (future or unopened)
+   * Get the next planned cycle (status = PLANNED)
    */
   async getNextPlannedCycle() {
-    // First try to find a cycle with future startedAt
-    const futureCycle = await this.prisma.cycle.findFirst({
-      where: { startedAt: { gt: new Date() }, closedAt: null },
+    return await this.prisma.cycle.findFirst({
+      where: { status: 'PLANNED' },
       orderBy: { startedAt: 'asc' },
     });
-
-    if (futureCycle) return futureCycle;
-
-    // If no future cycle, find the most recent cycle without ledger entries (not yet opened)
-    const unopenedCycle = await this.prisma.cycle.findFirst({
-      where: {
-        closedAt: null,
-        ledgerEntries: { none: {} }, // No ledger entries = not opened yet
-      },
-      orderBy: { createdAt: 'desc' },
-    });
-
-    return unopenedCycle;
   }
 
   /**
@@ -119,7 +105,10 @@ export class CycleService {
 
     return await this.prisma.cycle.update({
       where: { id: cycleId },
-      data: { closedAt },
+      data: {
+        status: 'COMPLETED',
+        closedAt,
+      },
     });
   }
 
@@ -562,7 +551,10 @@ export class CycleService {
         this.logger.log(`Setting closedAt for cycle ${open.id}`);
         await tx.cycle.update({
           where: { id: open.id },
-          data: { closedAt: now },
+          data: {
+            status: 'COMPLETED',
+            closedAt: now,
+          },
         });
       }
 
@@ -597,7 +589,10 @@ export class CycleService {
       const initialCapital = participationTotal + inj;
       await tx.cycle.update({
         where: { id: cycle.id },
-        data: { initialCapitalIsk: initialCapital.toFixed(2) },
+        data: {
+          status: 'OPEN',
+          initialCapitalIsk: initialCapital.toFixed(2),
+        },
       });
 
       // Create rollover cycle lines with pre-calculated buy costs
@@ -1013,12 +1008,8 @@ export class CycleService {
       status: 'Planned';
     };
   }> {
-    const now = new Date();
     const [current, next] = await Promise.all([
-      this.prisma.cycle.findFirst({
-        where: { startedAt: { lte: now }, closedAt: null },
-        orderBy: { startedAt: 'desc' },
-      }),
+      this.getCurrentOpenCycle(),
       this.getNextPlannedCycle(),
     ]);
 

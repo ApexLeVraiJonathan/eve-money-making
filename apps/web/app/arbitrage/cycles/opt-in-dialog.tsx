@@ -87,9 +87,8 @@ export default function OptInDialog(props: OptInDialogProps) {
       const amt = Math.max(0, amount);
 
       // Find next planned cycle
-      const now = Date.now();
       const next = (cycles ?? [])
-        .filter((c) => new Date(c.startedAt).getTime() > now)
+        .filter((c) => c.status === "PLANNED")
         .sort(
           (a, b) =>
             new Date(a.startedAt).getTime() - new Date(b.startedAt).getTime(),

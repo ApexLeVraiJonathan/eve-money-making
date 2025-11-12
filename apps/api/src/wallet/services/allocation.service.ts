@@ -39,7 +39,7 @@ export class AllocationService {
       cycleId ??
       (
         await this.prisma.cycle.findFirst({
-          where: { closedAt: null },
+          where: { status: 'OPEN' },
           orderBy: { startedAt: 'desc' },
           select: { id: true },
         })

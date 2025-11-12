@@ -29,7 +29,7 @@ export class ParticipationService {
       where: { id: input.cycleId },
     });
     if (!cycle) throw new Error('Cycle not found');
-    if (cycle.startedAt <= new Date()) {
+    if (cycle.status !== 'PLANNED') {
       throw new Error('Opt-in only allowed for planned cycles');
     }
 
