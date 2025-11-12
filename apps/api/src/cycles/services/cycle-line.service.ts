@@ -54,6 +54,9 @@ export class CycleLineService {
         brokerFeesIsk: true,
         relistFeesIsk: true,
         currentSellPriceIsk: true,
+        isRollover: true,
+        rolloverFromCycleId: true,
+        rolloverFromLineId: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -109,6 +112,9 @@ export class CycleLineService {
         currentSellPriceIsk: l.currentSellPriceIsk
           ? Number(l.currentSellPriceIsk).toFixed(2)
           : null,
+        isRollover: l.isRollover,
+        rolloverFromCycleId: l.rolloverFromCycleId,
+        rolloverFromLineId: l.rolloverFromLineId,
         createdAt: l.createdAt.toISOString(),
         updatedAt: l.updatedAt.toISOString(),
       };

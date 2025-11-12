@@ -136,6 +136,18 @@ export default function ParticipationsPage() {
             Confirmed
           </Badge>
         );
+      case "AWAITING_PAYOUT":
+        return (
+          <Badge variant="outline" className="bg-blue-500/10 text-blue-600">
+            Payout Ready
+          </Badge>
+        );
+      case "COMPLETED":
+        return (
+          <Badge variant="outline" className="bg-purple-500/10 text-purple-600">
+            Paid Out
+          </Badge>
+        );
       case "OPTED_OUT":
         return (
           <Badge variant="outline" className="bg-gray-500/10 text-gray-600">
@@ -157,7 +169,7 @@ export default function ParticipationsPage() {
     (p) => p.status === "OPTED_OUT" && !p.refundedAt,
   );
   const needsPayout = participations.filter(
-    (p) => p.status === "OPTED_IN" && !p.payoutSentAt && p.payoutIsk,
+    (p) => p.status === "AWAITING_PAYOUT" && !p.payoutPaidAt && p.payoutAmountIsk,
   );
 
   if (loading) {
@@ -609,9 +621,8 @@ export default function ParticipationsPage() {
                   <tbody className="divide-y">
                     {needsPayout.map((p) => {
                       const investment = parseFloat(p.amountIsk);
-                      const profitShare = parseFloat(p.payoutIsk ?? "0");
-                      // Total payout = investment + profit (so user gets their money back plus profit)
-                      const totalPayout = investment + profitShare;
+                      const totalPayout = parseFloat(p.payoutAmountIsk ?? "0");
+                      const profitShare = totalPayout - investment;
                       const returnPct = (profitShare / investment) * 100;
 
                       return (

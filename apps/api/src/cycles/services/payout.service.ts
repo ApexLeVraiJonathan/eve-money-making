@@ -1,5 +1,6 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, forwardRef, Inject } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { ProfitService } from './profit.service';
 
 /**
  * PayoutService handles payout computation and creation.
@@ -9,7 +10,11 @@ import { PrismaService } from '../../prisma/prisma.service';
 export class PayoutService {
   private readonly logger = new Logger(PayoutService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Inject(forwardRef(() => ProfitService))
+    private readonly profitService: ProfitService,
+  ) {}
 
   /**
    * Compute payouts for validated participations
@@ -34,9 +39,13 @@ export class PayoutService {
       0,
     );
 
-    // Get cycle profit (placeholder - would call profit service)
-    // For now, return structure without actual profit calc
-    const cycleProfit = 0; // TODO: Inject ProfitService
+    // Get actual cycle profit from ProfitService
+    const profitData = await this.profitService.computeCycleProfit(cycleId);
+    const cycleProfit = Number(profitData.cycleProfitCash);
+
+    this.logger.log(
+      `Cycle ${cycleId} profit: ${cycleProfit.toFixed(2)} ISK (${(profitSharePct * 100).toFixed(0)}% to investors)`,
+    );
 
     const profitToDistribute = cycleProfit * profitSharePct;
     const payouts = participations.map((p) => {
@@ -77,13 +86,18 @@ export class PayoutService {
     const results: Array<{ participationId: string; payoutIsk: string }> = [];
 
     for (const payout of payouts) {
-      // Update participation with payout amount
+      // Update participation with payout amount and mark as AWAITING_PAYOUT
       await this.prisma.cycleParticipation.update({
         where: { id: payout.participationId },
         data: {
           payoutAmountIsk: payout.totalPayoutIsk,
+          status: 'AWAITING_PAYOUT', // Payout calculated, awaiting admin to send
         },
       });
+
+      this.logger.log(
+        `Set payout for ${payout.characterName}: ${payout.totalPayoutIsk} ISK (investment: ${payout.investmentIsk}, profit share: ${payout.profitShareIsk})`,
+      );
 
       results.push({
         participationId: payout.participationId,
@@ -113,12 +127,13 @@ export class PayoutService {
   }> {
     const rec = await this.computePayouts(cycleId, profitSharePct);
 
-    // Create payout records
+    // Create payout records and mark as awaiting payout
     for (const payout of rec.payouts) {
       await this.prisma.cycleParticipation.update({
         where: { id: payout.participationId },
         data: {
           payoutAmountIsk: payout.totalPayoutIsk,
+          status: 'AWAITING_PAYOUT', // Payout calculated, awaiting admin to send
         },
       });
     }

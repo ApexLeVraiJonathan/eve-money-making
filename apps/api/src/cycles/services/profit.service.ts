@@ -261,6 +261,8 @@ export class ProfitService {
   async computePortfolioValue(cycleId: string): Promise<{
     cycle: { id: string; name: string | null; startedAt: Date };
     totalValue: string;
+    inventoryValueAtCost: string;
+    expectedSalesRevenue: string;
     breakdown: Array<{
       lineId: string;
       typeId: number;

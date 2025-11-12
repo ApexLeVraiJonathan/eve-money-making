@@ -7,7 +7,11 @@
  * The script will PAUSE at key points, allowing you to verify the frontend UI
  * before continuing. Press ENTER at each pause to proceed to the next step.
  *
- * Usage:
+ * Usage (with Dev API Key - RECOMMENDED):
+ *   Set DEV_API_KEY in your .env file, then:
+ *   pnpm exec ts-node scripts/e2e-rollover-test.ts --apiUrl http://localhost:3000 --apiKey your-secret-key --characterId <logistics-char-id> --initialCapital 20000000000
+ *
+ * Usage (with Bearer Token - legacy):
  *   pnpm exec ts-node scripts/e2e-rollover-test.ts --apiUrl http://localhost:3000 --token <your-admin-token> --characterId <logistics-char-id> --initialCapital 20000000000
  *
  * Interactive Pauses:
@@ -40,7 +44,8 @@ function waitForUser(message: string): Promise<void> {
 
 interface TestConfig {
   apiUrl: string;
-  token: string;
+  token?: string; // Bearer token (legacy)
+  apiKey?: string; // Dev API key (recommended)
   characterId: number;
   initialCapital: number; // in ISK
 }
@@ -55,12 +60,22 @@ async function apiCall(
   const url = `${config.apiUrl}${path}`;
   console.log(`[API] ${method} ${path}`);
 
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+
+  // Use API key if provided, otherwise fall back to bearer token
+  if (config.apiKey) {
+    headers['x-api-key'] = config.apiKey;
+  } else if (config.token) {
+    headers['Authorization'] = `Bearer ${config.token}`;
+  } else {
+    throw new Error('Either --apiKey or --token must be provided');
+  }
+
   const response = await fetch(url, {
     method,
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${config.token}`,
-    },
+    headers,
     body: body ? JSON.stringify(body) : undefined,
   });
 
@@ -398,26 +413,32 @@ async function main() {
 
   const config: TestConfig = {
     apiUrl: getArg('--apiUrl') || 'http://localhost:3000',
-    token: getArg('--token') || '',
+    token: getArg('--token'),
+    apiKey: getArg('--apiKey'),
     characterId: parseInt(getArg('--characterId') || '0'),
     initialCapital: parseInt(getArg('--initialCapital') || '20000000000'),
   };
 
-  if (!config.token || !config.characterId) {
+  if ((!config.token && !config.apiKey) || !config.characterId) {
     console.error('❌ Missing required arguments');
-    console.log('\nUsage:');
+    console.log('\nUsage (with Dev API Key - RECOMMENDED):');
+    console.log(
+      '  pnpm exec ts-node scripts/e2e-rollover-test.ts --apiUrl http://localhost:3000 --apiKey your-secret-key --characterId <logistics-char-id> --initialCapital 20000000000',
+    );
+    console.log('\nUsage (with Bearer Token):');
     console.log(
       '  pnpm exec ts-node scripts/e2e-rollover-test.ts --apiUrl http://localhost:3000 --token <your-admin-token> --characterId <logistics-char-id> --initialCapital 20000000000',
     );
-    console.log('\nExample:');
+    console.log('\nExample (API Key):');
     console.log(
-      '  pnpm exec ts-node scripts/e2e-rollover-test.ts --token eyJhbGc... --characterId 2122151042',
+      '  pnpm exec ts-node scripts/e2e-rollover-test.ts --apiKey my-dev-secret --characterId 2122151042',
     );
     process.exit(1);
   }
 
   console.log('🚀 Starting End-to-End Rollover Test');
   console.log(`  API: ${config.apiUrl}`);
+  console.log(`  Auth: ${config.apiKey ? '🔑 API Key' : '🔐 Bearer Token'}`);
   console.log(`  Character: ${config.characterId}`);
   console.log(
     `  Initial Capital: ${config.initialCapital.toLocaleString()} ISK\n`,

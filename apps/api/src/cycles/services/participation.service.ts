@@ -71,6 +71,7 @@ export class ParticipationService {
       'AWAITING_VALIDATION',
       'OPTED_IN',
       'OPTED_OUT',
+      'AWAITING_PAYOUT',
       'COMPLETED',
       'REFUNDED',
     ];

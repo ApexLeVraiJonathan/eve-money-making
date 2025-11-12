@@ -18,6 +18,7 @@ import { UsersController } from './users.controller';
 
 // Guards & Strategy
 import { EveJwtStrategy } from './guards/jwt.strategy';
+import { DevApiKeyStrategy } from './guards/dev-api-key.strategy';
 import { CompositeAuthGuard } from './guards/composite-auth.guard';
 import { RolesGuard } from './guards/roles.guard';
 
@@ -40,6 +41,7 @@ import { RolesGuard } from './guards/roles.guard';
     EsiTokenService,
     // Guards & Strategy
     EveJwtStrategy,
+    DevApiKeyStrategy,
     CompositeAuthGuard,
     RolesGuard,
     Logger,
