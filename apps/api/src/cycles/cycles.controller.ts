@@ -107,6 +107,13 @@ export class CyclesController {
   }
 
   @Public()
+  @Get('cycles/history')
+  @ApiOperation({ summary: 'Get public cycle history with profit metrics' })
+  async getCycleHistory(): Promise<unknown> {
+    return await this.cycleService.getCycleHistory();
+  }
+
+  @Public()
   @Get('cycles/overview')
   @ApiOperation({ summary: 'Get cycles overview' })
   async cyclesOverview(): Promise<unknown> {
@@ -283,9 +290,23 @@ export class CyclesController {
   @Roles('ADMIN')
   @UseGuards(RolesGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Get all participations' })
+  @ApiOperation({ summary: 'Get all participations (admin only)' })
   async allParticipations(): Promise<unknown> {
     return await this.participationService.getAllParticipations();
+  }
+
+  @Get('participations/my-history')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get my participation history across all cycles' })
+  async myParticipationHistory(
+    @CurrentUser() user: RequestUser | null,
+  ): Promise<unknown> {
+    if (!user?.userId) {
+      throw new Error('User not authenticated');
+    }
+    return await this.participationService.getUserParticipationHistory(
+      user.userId,
+    );
   }
 
   @Get('participations/unmatched-donations')

@@ -180,7 +180,7 @@ function CycleLinesContent() {
           <Button
             variant="ghost"
             size="icon"
-            onClick={() => router.push("/arbitrage/cycles")}
+            onClick={() => router.push("/tradecraft/cycles")}
           >
             <ArrowLeft className="h-4 w-4" />
           </Button>

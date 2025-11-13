@@ -152,7 +152,7 @@ export default function CyclesOverviewPage() {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => router.push("/arbitrage/cycle-details")}
+                    onClick={() => router.push("/tradecraft/cycle-details")}
                     className="ml-3"
                   >
                     View Details

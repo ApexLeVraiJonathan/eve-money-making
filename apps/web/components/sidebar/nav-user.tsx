@@ -20,7 +20,7 @@ import {
   useSidebar,
 } from "@eve/ui";
 import { Button } from "@eve/ui";
-import { useMyCharacters } from "@/app/arbitrage/api/characters";
+import { useMyCharacters } from "@/app/tradecraft/api/characters";
 
 export function NavUser() {
   const { isMobile } = useSidebar();
@@ -62,7 +62,7 @@ export function NavUser() {
 
   // Use primary character if available, otherwise first character
   const primary = characters?.find((c) => c.isPrimary) ?? characters?.[0];
-  
+
   if (!primary) {
     return null; // Safety check
   }

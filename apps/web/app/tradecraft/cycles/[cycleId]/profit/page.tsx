@@ -13,7 +13,7 @@ import {
 } from "@eve/ui";
 import { ArrowLeft } from "lucide-react";
 import { formatIsk } from "@/lib/utils";
-import { useCycleProfit, useTransportFees } from "@/app/arbitrage/api";
+import { useCycleProfit, useTransportFees } from "@/app/tradecraft/api";
 import type { CycleProfit } from "@eve/shared";
 import { Skeleton } from "@eve/ui";
 
@@ -33,7 +33,7 @@ export default function CycleProfitPage() {
           <Button
             variant="ghost"
             size="icon"
-            onClick={() => router.push("/arbitrage/cycles")}
+            onClick={() => router.push("/tradecraft/cycles")}
           >
             <ArrowLeft className="h-4 w-4" />
           </Button>
@@ -62,7 +62,7 @@ export default function CycleProfitPage() {
         <Button
           variant="ghost"
           size="icon"
-          onClick={() => router.push("/arbitrage/cycles")}
+          onClick={() => router.push("/tradecraft/cycles")}
         >
           <ArrowLeft className="h-4 w-4" />
         </Button>

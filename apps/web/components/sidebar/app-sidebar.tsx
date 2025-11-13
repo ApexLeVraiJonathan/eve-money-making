@@ -27,7 +27,7 @@ import {
   DropdownMenuTrigger,
 } from "@eve/ui";
 import { getApps, getActiveAppByPathname } from "@/app/apps.config";
-import { useCurrentUser } from "@/app/arbitrage/api/characters";
+import { useCurrentUser } from "@/app/tradecraft/api/characters";
 
 const data = {
   navSecondary: [

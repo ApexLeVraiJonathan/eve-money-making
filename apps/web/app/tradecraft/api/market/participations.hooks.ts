@@ -30,6 +30,30 @@ export function useAllParticipations() {
 }
 
 /**
+ * Get my participation history across all cycles
+ */
+export function useMyParticipationHistory() {
+  const client = useApiClient();
+  return useAuthenticatedQuery({
+    queryKey: ["myParticipationHistory"],
+    queryFn: () =>
+      client.get<
+        Array<
+          CycleParticipation & {
+            cycle: {
+              id: string;
+              name: string | null;
+              startedAt: string;
+              closedAt: string | null;
+              status: string;
+            };
+          }
+        >
+      >("/ledger/participations/my-history"),
+  });
+}
+
+/**
  * List participations for a specific cycle
  */
 export function useParticipations(cycleId: string, status?: string) {

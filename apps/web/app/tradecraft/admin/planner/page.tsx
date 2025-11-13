@@ -545,7 +545,7 @@ export default function PlannerPage() {
               created for cycle {commitSuccess.cycleId.slice(0, 8)}...
             </span>
             <Link
-              href={`/arbitrage/admin/packages?cycleId=${commitSuccess.cycleId}`}
+              href={`/tradecraft/admin/packages?cycleId=${commitSuccess.cycleId}`}
             >
               <Button variant="outline" size="sm" className="ml-4">
                 View Packages →

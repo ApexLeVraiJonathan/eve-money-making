@@ -26,11 +26,11 @@ import {
   TableHeader,
   TableRow,
 } from "@eve/ui";
-import { UserRound, LogIn, Wallet, TrendingUp, DollarSign } from "lucide-react";
+import { UserRound, LogIn, Wallet, TrendingUp, DollarSign, History } from "lucide-react";
 import { Button } from "@eve/ui";
 import { Badge } from "@eve/ui";
 import { Skeleton } from "@eve/ui";
-import { useAllParticipations } from "../api";
+import { useMyParticipationHistory } from "../api";
 
 type ParticipationHistory = {
   cycleId: string;
@@ -57,7 +57,7 @@ export default function MyInvestmentsPage() {
     data: participations = [],
     isLoading: loading,
     error,
-  } = useAllParticipations();
+  } = useMyParticipationHistory();
 
   const authRequired = status === "unauthenticated" || error;
 
@@ -68,9 +68,9 @@ export default function MyInvestmentsPage() {
   );
   // Total returned = investment + profit for all completed payouts
   const totalReturned = participations.reduce((sum, p) => {
-    if (p.payoutIsk && p.payoutSentAt) {
+    if (p.payoutAmountIsk && p.payoutPaidAt) {
       const investment = Number(p.amountIsk);
-      const profitShare = Number(p.payoutIsk);
+      const profitShare = Number(p.payoutAmountIsk);
       return sum + investment + profitShare;
     }
     return sum;
@@ -114,7 +114,7 @@ export default function MyInvestmentsPage() {
                       callbackUrl:
                         typeof window !== "undefined"
                           ? window.location.href
-                          : "/arbitrage/my-investments",
+                          : "/tradecraft/my-investments",
                     })
                   }
                   className="mt-4 gap-2"
@@ -167,18 +167,30 @@ export default function MyInvestmentsPage() {
                 <EmptyMedia variant="icon">
                   <UserRound className="size-6" />
                 </EmptyMedia>
-                <EmptyTitle>No investments yet</EmptyTitle>
+                <EmptyTitle>Start Your Investment Journey</EmptyTitle>
                 <EmptyDescription>
-                  You haven&apos;t participated in any arbitrage cycles yet.
-                  Opt-in to the next cycle to start investing and earning
-                  passive income.
+                  You haven&apos;t participated in any tradecraft cycles yet.
+                  Join the next cycle to start earning passive income through our
+                  EVE Online trading program. Check out our historical performance
+                  to see what returns you can expect!
                 </EmptyDescription>
-                <Button
-                  onClick={() => router.push("/arbitrage/cycles")}
-                  className="mt-4"
-                >
-                  View Cycles
-                </Button>
+                <div className="flex gap-3 mt-4">
+                  <Button
+                    onClick={() => router.push("/tradecraft/cycles")}
+                    className="gap-2"
+                  >
+                    <TrendingUp className="h-4 w-4" />
+                    View Available Cycles
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => router.push("/tradecraft/cycle-history")}
+                    className="gap-2"
+                  >
+                    <History className="h-4 w-4" />
+                    View Performance History
+                  </Button>
+                </div>
               </EmptyHeader>
             </Empty>
           </CardContent>
@@ -281,7 +293,7 @@ export default function MyInvestmentsPage() {
         <CardHeader>
           <CardTitle>Investment History</CardTitle>
           <CardDescription>
-            All your participations across arbitrage cycles
+            All your participations across tradecraft cycles
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -301,16 +313,17 @@ export default function MyInvestmentsPage() {
               <TableBody>
                 {participations.map((p) => {
                   const invested = Number(p.amountIsk);
-                  // payoutIsk is the profit share, total payout = investment + profit
-                  const profitShare = Number(p.payoutIsk || 0);
+                  // payoutAmountIsk is the profit share, total payout = investment + profit
+                  const profitShare = Number(p.payoutAmountIsk || 0);
                   const totalPayout =
                     profitShare > 0 ? invested + profitShare : 0;
                   const roi = invested > 0 ? (profitShare / invested) * 100 : 0;
+                  const isPaid = !!p.payoutPaidAt;
 
                   return (
-                    <TableRow key={p.cycleId}>
+                    <TableRow key={p.id}>
                       <TableCell className="font-medium">
-                        {p.cycleId.slice(0, 8)}
+                        {p.cycle?.name || p.cycleId.slice(0, 8)}
                       </TableCell>
                       <TableCell className="text-right tabular-nums">
                         {formatIsk(invested)}
@@ -321,9 +334,14 @@ export default function MyInvestmentsPage() {
                             <div className="font-semibold">
                               {formatIsk(totalPayout)}
                             </div>
-                            {!p.payoutSentAt && (
+                            {!isPaid && (
                               <div className="text-xs text-amber-600">
-                                Pending
+                                Awaiting Payment
+                              </div>
+                            )}
+                            {isPaid && (
+                              <div className="text-xs text-emerald-600">
+                                Paid
                               </div>
                             )}
                           </div>

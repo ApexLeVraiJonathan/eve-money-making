@@ -273,7 +273,7 @@ export default function NextCycleSection({ next }: { next: NextCycle | null }) {
               </p>
               <p className="text-sm text-muted-foreground mb-3">
                 Connect your EVE Online character to opt-in and invest ISK in
-                upcoming arbitrage cycles.
+                upcoming tradecraft cycles.
               </p>
               <Button
                 onClick={() =>

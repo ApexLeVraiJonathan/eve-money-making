@@ -33,7 +33,7 @@ import {
   useDeleteCycleLine,
   useAddBrokerFee,
   useAddRelistFee,
-} from "@/app/arbitrage/api";
+} from "@/app/tradecraft/api";
 import type { CycleLine } from "@eve/shared";
 import { toast } from "sonner";
 import { Badge } from "@eve/ui";
@@ -145,7 +145,7 @@ export default function CycleLinesPage() {
           <Button
             variant="ghost"
             size="icon"
-            onClick={() => router.push("/arbitrage/cycles")}
+            onClick={() => router.push("/tradecraft/cycles")}
           >
             <ArrowLeft className="h-4 w-4" />
           </Button>

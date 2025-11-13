@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 import { qk } from "@eve/api-client/queryKeys";
 import { useApiClient } from "@/app/api-hooks/useApiClient";
 import { useAuthenticatedQuery } from "@/app/api-hooks/useAuthenticatedQuery";
@@ -48,6 +48,31 @@ export function useCycles() {
   return useAuthenticatedQuery({
     queryKey: qk.cycles.list(),
     queryFn: () => client.get<Cycle[]>("/ledger/cycles"),
+  });
+}
+
+/**
+ * Get public cycle history with profit metrics (no auth required)
+ */
+export function useCycleHistory() {
+  const client = useApiClient();
+  return useQuery({
+    queryKey: ["cycleHistory"],
+    queryFn: () =>
+      client.get<
+        Array<{
+          id: string;
+          name: string | null;
+          startedAt: string;
+          closedAt: string | null;
+          status: string;
+          initialCapitalIsk: string;
+          profitIsk: string;
+          roiPercent: string;
+          participantCount: number;
+          durationDays: number | null;
+        }>
+      >("/ledger/cycles/history"),
   });
 }
 

@@ -11,9 +11,9 @@
  * 
  * Usage:
  * ```ts
- * import { useCycles, useCreateCycle } from "@/app/arbitrage/api";
+ * import { useCycles, useCreateCycle } from "@/app/tradecraft/api";
  * // or
- * import { useCycles } from "@/app/arbitrage/api/cycles";
+ * import { useCycles } from "@/app/tradecraft/api/cycles";
  * ```
  */
 

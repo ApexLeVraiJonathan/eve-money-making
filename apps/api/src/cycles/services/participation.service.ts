@@ -193,6 +193,27 @@ export class ParticipationService {
   }
 
   /**
+   * Get participation history for a specific user across all cycles
+   */
+  async getUserParticipationHistory(userId: string) {
+    return await this.prisma.cycleParticipation.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        cycle: {
+          select: {
+            id: true,
+            name: true,
+            startedAt: true,
+            closedAt: true,
+            status: true,
+          },
+        },
+      },
+    });
+  }
+
+  /**
    * Get participation for a user in a cycle
    */
   async getMyParticipation(cycleId: string, userId: string) {

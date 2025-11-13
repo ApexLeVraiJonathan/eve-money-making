@@ -17,7 +17,7 @@ export default function ArbitrageHome() {
           <span className="inline-flex h-10 w-10 items-center justify-center rounded-md bg-primary/15 text-primary">
             <CircleDollarSign className="h-6 w-6" />
           </span>
-          Arbitrage Investment
+          Tradecraft
         </h1>
         <p className="mt-2 max-w-3xl text-base">
           Earn passive income in EVE Online by investing in professional market
@@ -27,21 +27,21 @@ export default function ArbitrageHome() {
         </p>
         <div className="mt-4 flex flex-wrap gap-3 text-sm items-center">
           <Link
-            href="/arbitrage/cycles/opt-in"
+            href="/tradecraft/cycles/opt-in"
             className="inline-flex h-9 items-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground shadow hover:opacity-90"
           >
             Opt-in to next cycle
           </Link>
           <span className="text-muted-foreground">•</span>
           <Link
-            href="/arbitrage/cycles"
+            href="/tradecraft/cycles"
             className="underline underline-offset-4"
           >
             View current cycle
           </Link>
           <span className="text-muted-foreground">•</span>
           <Link
-            href="/arbitrage/reports"
+            href="/tradecraft/reports"
             className="underline underline-offset-4"
           >
             View reports
@@ -183,19 +183,19 @@ export default function ArbitrageHome() {
         </p>
         <div className="flex flex-wrap gap-3">
           <Link
-            href="/arbitrage/cycles"
+            href="/tradecraft/cycles"
             className="inline-flex h-9 items-center rounded-md border border-input bg-background px-4 text-sm font-medium shadow-sm hover:bg-accent hover:text-accent-foreground"
           >
             View Current Cycle
           </Link>
           <Link
-            href="/arbitrage/my-investments"
+            href="/tradecraft/my-investments"
             className="inline-flex h-9 items-center rounded-md border border-input bg-background px-4 text-sm font-medium shadow-sm hover:bg-accent hover:text-accent-foreground"
           >
             View My Investments
           </Link>
           <Link
-            href="/arbitrage/cycles/opt-in"
+            href="/tradecraft/cycles/opt-in"
             className="inline-flex h-9 items-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground shadow hover:opacity-90"
           >
             Opt-in to Next Cycle

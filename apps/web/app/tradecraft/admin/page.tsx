@@ -383,7 +383,7 @@ export default function AdminPage() {
               variant="outline"
               className="justify-start"
               onClick={() =>
-                (window.location.href = "/arbitrage/admin/triggers")
+                (window.location.href = "/tradecraft/admin/triggers")
               }
             >
               <Database className="mr-2 h-4 w-4" />
@@ -392,7 +392,7 @@ export default function AdminPage() {
             <Button
               variant="outline"
               className="justify-start"
-              onClick={() => (window.location.href = "/arbitrage/admin/lines")}
+              onClick={() => (window.location.href = "/tradecraft/admin/lines")}
             >
               <Activity className="mr-2 h-4 w-4" />
               Manage Lines
@@ -400,7 +400,7 @@ export default function AdminPage() {
             <Button
               variant="outline"
               className="justify-start"
-              onClick={() => (window.location.href = "/arbitrage/admin/profit")}
+              onClick={() => (window.location.href = "/tradecraft/admin/profit")}
             >
               <TrendingUp className="mr-2 h-4 w-4" />
               View Profit
@@ -408,7 +408,7 @@ export default function AdminPage() {
             <Button
               variant="outline"
               className="justify-start"
-              onClick={() => (window.location.href = "/arbitrage/cycles")}
+              onClick={() => (window.location.href = "/tradecraft/cycles")}
             >
               <Wallet className="mr-2 h-4 w-4" />
               All Cycles

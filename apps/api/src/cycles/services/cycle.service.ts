@@ -97,6 +97,64 @@ export class CycleService {
   }
 
   /**
+   * Get public cycle history with profit metrics (for completed cycles only)
+   */
+  async getCycleHistory() {
+    const completedCycles = await this.prisma.cycle.findMany({
+      where: { status: 'COMPLETED' },
+      orderBy: { startedAt: 'desc' },
+      select: {
+        id: true,
+        name: true,
+        startedAt: true,
+        closedAt: true,
+        status: true,
+        initialCapitalIsk: true,
+      },
+    });
+
+    // Get profit and participation data for each cycle
+    const history = await Promise.all(
+      completedCycles.map(async (cycle) => {
+        // Get profit data
+        const profitData = await this.profitService.computeCycleProfit(cycle.id);
+        const profit = Number(profitData.cycleProfitCash);
+        const initialCapital = Number(cycle.initialCapitalIsk);
+        const roi = initialCapital > 0 ? (profit / initialCapital) * 100 : 0;
+
+        // Get participation count (but not individual details)
+        const participationCount = await this.prisma.cycleParticipation.count({
+          where: { cycleId: cycle.id },
+        });
+
+        // Calculate duration
+        const durationDays = cycle.closedAt
+          ? Math.ceil(
+              (new Date(cycle.closedAt).getTime() -
+                new Date(cycle.startedAt).getTime()) /
+                (1000 * 60 * 60 * 24),
+            )
+          : null;
+
+        return {
+          id: cycle.id,
+          name: cycle.name,
+          startedAt: cycle.startedAt.toISOString(),
+          closedAt: cycle.closedAt?.toISOString() ?? null,
+          status: cycle.status,
+          initialCapitalIsk: cycle.initialCapitalIsk,
+          profitIsk: profit.toFixed(2),
+          roiPercent: roi.toFixed(2),
+          participantCount: participationCount,
+          durationDays,
+        };
+      }),
+    );
+
+    return history;
+  }
+
+  /**
    * Close a cycle (marks packages as completed)
    */
   async closeCycle(cycleId: string, closedAt: Date) {
