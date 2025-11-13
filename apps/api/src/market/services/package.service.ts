@@ -42,17 +42,23 @@ export class PackageService {
     });
 
     // Fetch type volumes for all items
-    const allTypeIds = [...new Set(packages.flatMap(pkg => pkg.items.map(item => item.typeId)))];
+    const allTypeIds = [
+      ...new Set(
+        packages.flatMap((pkg) => pkg.items.map((item) => item.typeId)),
+      ),
+    ];
     const typeVolumes = await this.prisma.typeId.findMany({
       where: { id: { in: allTypeIds } },
       select: { id: true, volume: true },
     });
-    const volumeMap = new Map(typeVolumes.map(t => [t.id, Number(t.volume ?? 0)]));
+    const volumeMap = new Map(
+      typeVolumes.map((t) => [t.id, Number(t.volume ?? 0)]),
+    );
 
     return packages.map((pkg) => {
       const totalVolume = pkg.items.reduce((sum, item) => {
         const unitVolume = volumeMap.get(item.typeId) ?? 0;
-        return sum + (unitVolume * item.units);
+        return sum + unitVolume * item.units;
       }, 0);
 
       return {

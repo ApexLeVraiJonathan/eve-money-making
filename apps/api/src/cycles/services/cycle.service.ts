@@ -117,7 +117,9 @@ export class CycleService {
     const history = await Promise.all(
       completedCycles.map(async (cycle) => {
         // Get profit data
-        const profitData = await this.profitService.computeCycleProfit(cycle.id);
+        const profitData = await this.profitService.computeCycleProfit(
+          cycle.id,
+        );
         const profit = Number(profitData.cycleProfitCash);
         const initialCapital = Number(cycle.initialCapitalIsk);
         const roi = initialCapital > 0 ? (profit / initialCapital) * 100 : 0;
@@ -591,23 +593,47 @@ export class CycleService {
           this.logger.error(error.stack);
         }
       }
+
+      // 4. Process rollover participations
+      try {
+        this.logger.log(
+          `Processing rollovers for cycle ${previousCycleToClose.id}...`,
+        );
+        const rolloverResult = await this.payoutService.processRollovers(
+          previousCycleToClose.id,
+          input.cycleId, // Pass the cycle being opened as the target for rollovers
+        );
+        if (rolloverResult.processed > 0) {
+          this.logger.log(
+            `✓ Processed ${rolloverResult.processed} rollovers: ${rolloverResult.rolledOver} ISK rolled over, ${rolloverResult.paidOut} ISK paid out`,
+          );
+        }
+      } catch (error) {
+        this.logger.warn(
+          `Failed to process rollovers for cycle ${previousCycleToClose.id}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
     }
 
     // All database operations within a transaction
     const openedCycle = await this.prisma.$transaction(async (tx) => {
       // Clean up unpaid and refunded participations
+      // BUT: Keep rollover participations (they have rolloverType set)
       await tx.cycleParticipation.deleteMany({
         where: {
           cycleId: input.cycleId,
           status: { in: ['AWAITING_INVESTMENT', 'REFUNDED'] },
+          rolloverType: null, // Only delete non-rollover participations
         },
       });
 
-      // Close any existing open cycle (mark packages as completed, then close cycle)
+      // Close any existing open cycle (already handled before transaction if allocationService provided)
       const open = await this.getCurrentOpenCycle();
       if (open && open.id !== cycle.id) {
-        this.logger.log(`Auto-closing cycle ${open.id}`);
-        
+        this.logger.log(
+          `Marking cycle ${open.id} as completed (already processed above)`,
+        );
+
         // Mark all active packages as completed
         await tx.committedPackage.updateMany({
           where: {
@@ -618,7 +644,7 @@ export class CycleService {
             status: 'completed',
           },
         });
-        
+
         // Close the cycle
         await tx.cycle.update({
           where: { id: open.id },
@@ -1042,6 +1068,20 @@ export class CycleService {
     } catch (error) {
       this.logger.warn(
         `Failed to create payouts for cycle ${cycleId}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+
+    // Process rollover participations
+    try {
+      const rolloverResult = await this.payoutService.processRollovers(cycleId);
+      if (rolloverResult.processed > 0) {
+        this.logger.log(
+          `Processed ${rolloverResult.processed} rollovers: ${rolloverResult.rolledOver} ISK rolled over, ${rolloverResult.paidOut} ISK paid out`,
+        );
+      }
+    } catch (error) {
+      this.logger.warn(
+        `Failed to process rollovers for cycle ${cycleId}: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
 

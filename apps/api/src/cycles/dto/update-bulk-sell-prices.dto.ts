@@ -32,4 +32,3 @@ export class UpdateBulkSellPricesRequest {
   @Type(() => SellPriceUpdate)
   updates: SellPriceUpdate[];
 }
-

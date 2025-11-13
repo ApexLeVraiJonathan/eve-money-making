@@ -138,7 +138,9 @@ export class CyclesController {
   @Roles('ADMIN')
   @UseGuards(RolesGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Manually allocate wallet transactions to cycle lines' })
+  @ApiOperation({
+    summary: 'Manually allocate wallet transactions to cycle lines',
+  })
   @ApiParam({ name: 'id', description: 'Cycle ID' })
   async allocateTransactions(@Param('id') id: string): Promise<unknown> {
     return await this.allocation.allocateAll(id);
@@ -210,6 +212,34 @@ export class CyclesController {
   }
 
   // Participations
+  @Get('participations/max-amount')
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Get maximum allowed participation amount for current user',
+  })
+  async getMaxParticipation(
+    @CurrentUser() user: RequestUser | null,
+    @Query('testUserId') testUserId?: string,
+  ): Promise<{ maxAmountIsk: string; maxAmountB: number }> {
+    // In dev/test mode, allow checking max amount for a specific testUserId
+    let userIdToCheck: string | undefined;
+    if (testUserId && process.env.NODE_ENV !== 'production') {
+      this.logger.debug(
+        `[getMaxParticipation] Using testUserId: ${testUserId} (dev mode)`,
+      );
+      userIdToCheck = testUserId;
+    } else {
+      userIdToCheck = user?.userId ?? undefined;
+    }
+
+    const maxAmount =
+      await this.participationService.determineMaxParticipation(userIdToCheck);
+    return {
+      maxAmountIsk: maxAmount.toFixed(2),
+      maxAmountB: maxAmount / 1_000_000_000,
+    };
+  }
+
   @Post('cycles/:cycleId/participations')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create a participation in a cycle' })
@@ -221,28 +251,29 @@ export class CyclesController {
   ): Promise<unknown> {
     // Prefer session identity when characterName not provided
     const characterName = body.characterName ?? user?.name ?? undefined;
-    
+
     // In dev/test environments, allow testUserId to override the authenticated userId
     // This enables creating multiple test participations from a single dev API key
     let userId = user?.userId ?? undefined;
     const env = AppConfig.env();
-    
+
     this.logger.debug(
       `Creating participation: testUserId=${body.testUserId}, env=${env}, isProd=${env === 'prod'}, userUserId=${user?.userId}`,
     );
-    
+
     if (body.testUserId && env !== 'prod') {
       this.logger.debug(`Using testUserId: ${body.testUserId}`);
       userId = body.testUserId;
     } else {
       this.logger.debug(`Using authenticated userId: ${userId}`);
     }
-    
+
     return await this.participationService.createParticipation({
       cycleId,
       characterName,
       amountIsk: body.amountIsk,
       userId,
+      rollover: body.rollover,
     });
   }
 
@@ -468,7 +499,9 @@ export class CyclesController {
   @Roles('ADMIN')
   @UseGuards(RolesGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Update current sell prices for multiple lines in bulk' })
+  @ApiOperation({
+    summary: 'Update current sell prices for multiple lines in bulk',
+  })
   async updateBulkSellPrices(
     @Body() body: UpdateBulkSellPricesRequest,
   ): Promise<unknown> {
@@ -570,7 +603,9 @@ export class CyclesController {
   @Get('cycles/:cycleId/profit/breakdown')
   @ApiOperation({ summary: 'Get detailed profit breakdown (P&L statement)' })
   @ApiParam({ name: 'cycleId', description: 'Cycle ID' })
-  async getProfitBreakdown(@Param('cycleId') cycleId: string): Promise<unknown> {
+  async getProfitBreakdown(
+    @Param('cycleId') cycleId: string,
+  ): Promise<unknown> {
     return await this.profitService.getProfitBreakdown(cycleId);
   }
 

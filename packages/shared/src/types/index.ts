@@ -22,6 +22,7 @@ export type ParticipationStatus =
   | "AWAITING_PAYOUT"
   | "COMPLETED"
   | "REFUNDED";
+export type RolloverType = "FULL_PAYOUT" | "INITIAL_ONLY" | "CUSTOM_AMOUNT";
 
 // ============================================================================
 // User & Authentication
@@ -139,6 +140,10 @@ export interface CycleParticipation {
   refundAmountIsk: string | null;
   refundedAt: string | null;
   optedOutAt: string | null;
+  // Rollover fields for automatic reinvestment
+  rolloverType: RolloverType | null;
+  rolloverRequestedAmountIsk: string | null;
+  rolloverFromParticipationId: string | null;
   createdAt: string;
   updatedAt: string;
 }

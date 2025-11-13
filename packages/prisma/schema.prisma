@@ -47,6 +47,13 @@ enum ParticipationStatus {
   REFUNDED
 }
 
+/// Rollover type for automatic reinvestment
+enum RolloverType {
+  FULL_PAYOUT // Roll over entire payout (initial + profit), capped at 20B
+  INITIAL_ONLY // Roll over only initial investment amount
+  CUSTOM_AMOUNT // Roll over user-specified amount (≤ initial)
+}
+
 /// Cycle lifecycle status
 enum CycleStatus {
   PLANNED
@@ -349,10 +356,18 @@ model CycleParticipation {
   createdAt       DateTime            @default(now()) @map("created_at")
   updatedAt       DateTime            @updatedAt @map("updated_at")
 
+  // Rollover fields for automatic reinvestment
+  rolloverType                RolloverType?        @map("rollover_type")
+  rolloverRequestedAmountIsk  Decimal?             @map("rollover_requested_amount_isk") @db.Decimal(28, 2)
+  rolloverFromParticipationId String?              @map("rollover_from_participation_id")
+  rolloverFromParticipation   CycleParticipation?  @relation("RolloverChain", fields: [rolloverFromParticipationId], references: [id], onDelete: SetNull)
+  rolloverToParticipations    CycleParticipation[] @relation("RolloverChain")
+
   ledgerEntries CycleLedgerEntry[]
 
   @@unique([cycleId, userId], name: "cycle_user_unique")
   @@index([cycleId])
+  @@index([rolloverFromParticipationId])
   @@map("cycle_participations")
 }
 
@@ -484,22 +499,22 @@ model CycleSnapshot {
 
 /// Historical record of committed courier packages
 model CommittedPackage {
-  id                     String   @id @default(uuid()) @map("id")
-  cycleId                String   @map("cycle_id")
-  cycle                  Cycle    @relation(fields: [cycleId], references: [id], onDelete: Cascade)
-  packageIndex           Int      @map("package_index")
-  destinationStationId   Int      @map("destination_station_id")
-  destinationName        String?  @map("destination_name")
-  collateralIsk          Decimal  @map("collateral_isk") @db.Decimal(28, 2)
-  shippingCostIsk        Decimal  @map("shipping_cost_isk") @db.Decimal(28, 2)
-  estimatedProfitIsk     Decimal  @map("estimated_profit_isk") @db.Decimal(28, 2)
-  status                 String   @default("active") @map("status") // active | failed | completed
-  committedAt            DateTime @default(now()) @map("committed_at")
+  id                     String    @id @default(uuid()) @map("id")
+  cycleId                String    @map("cycle_id")
+  cycle                  Cycle     @relation(fields: [cycleId], references: [id], onDelete: Cascade)
+  packageIndex           Int       @map("package_index")
+  destinationStationId   Int       @map("destination_station_id")
+  destinationName        String?   @map("destination_name")
+  collateralIsk          Decimal   @map("collateral_isk") @db.Decimal(28, 2)
+  shippingCostIsk        Decimal   @map("shipping_cost_isk") @db.Decimal(28, 2)
+  estimatedProfitIsk     Decimal   @map("estimated_profit_isk") @db.Decimal(28, 2)
+  status                 String    @default("active") @map("status") // active | failed | completed
+  committedAt            DateTime  @default(now()) @map("committed_at")
   failedAt               DateTime? @map("failed_at")
-  collateralRecoveredIsk Decimal? @map("collateral_recovered_isk") @db.Decimal(28, 2)
-  failureMemo            String?  @map("failure_memo")
-  createdAt              DateTime @default(now()) @map("created_at")
-  updatedAt              DateTime @updatedAt @map("updated_at")
+  collateralRecoveredIsk Decimal?  @map("collateral_recovered_isk") @db.Decimal(28, 2)
+  failureMemo            String?   @map("failure_memo")
+  createdAt              DateTime  @default(now()) @map("created_at")
+  updatedAt              DateTime  @updatedAt @map("updated_at")
 
   items          CommittedPackageItem[]
   cycleLineLinks PackageCycleLine[]
@@ -541,4 +556,3 @@ model PackageCycleLine {
   @@index([cycleLineId])
   @@map("package_cycle_lines")
 }
-

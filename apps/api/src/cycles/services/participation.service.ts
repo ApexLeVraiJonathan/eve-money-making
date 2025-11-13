@@ -17,6 +17,125 @@ export class ParticipationService {
   ) {}
 
   /**
+   * Determine maximum allowed participation for a user
+   * Returns 10B for first-time or users who fully cashed out
+   * Returns 20B for users with active rollover history
+   */
+  async determineMaxParticipation(userId?: string): Promise<number> {
+    if (!userId) return 10_000_000_000; // 10B for non-authenticated users
+
+    const ACTIVE_ROLLOVER_STATUSES: ParticipationStatus[] = [
+      'AWAITING_INVESTMENT',
+      'AWAITING_VALIDATION',
+      'OPTED_IN',
+    ];
+
+    // 1. Check if the user currently has an upcoming rollover participation in a PLANNED/OPEN cycle
+    const activeRollover = await this.prisma.cycleParticipation.findFirst({
+      where: {
+        userId,
+        rolloverFromParticipationId: { not: null },
+        status: { in: ACTIVE_ROLLOVER_STATUSES },
+        cycle: {
+          status: { in: ['PLANNED', 'OPEN'] },
+        },
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+
+    if (activeRollover) {
+      this.logger.debug(
+        `[determineMaxParticipation] Active rollover participation in upcoming cycle: ${activeRollover.id.substring(0, 8)} → 20B cap`,
+      );
+      return 20_000_000_000;
+    }
+
+    // 2. Fetch ALL completed participations and find the truly most recent one
+    const allParticipations = await this.prisma.cycleParticipation.findMany({
+      where: {
+        userId,
+      },
+      include: {
+        cycle: {
+          select: {
+            id: true,
+            startedAt: true,
+            closedAt: true,
+            status: true,
+          },
+        },
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+
+    this.logger.debug(
+      `[determineMaxParticipation] Found ${allParticipations.length} total participations for ${userId}:`,
+    );
+    for (const p of allParticipations) {
+      this.logger.debug(
+        `  - ${p.id.substring(0, 8)}: cycle=${p.cycle?.id.substring(0, 8) ?? 'n/a'}, cycleStatus=${p.cycle?.status ?? 'n/a'}, cycleClosedAt=${p.cycle?.closedAt?.toISOString() ?? 'null'}, pStatus=${p.status}, rolloverFrom=${p.rolloverFromParticipationId?.substring(0, 8) ?? 'none'}`,
+      );
+    }
+
+    // Filter to completed participations in completed cycles
+    const completedParticipations = allParticipations.filter(
+      (p) =>
+        (p.status === 'COMPLETED' ||
+          p.status === 'AWAITING_PAYOUT' ||
+          p.status === 'REFUNDED') &&
+        p.cycle?.status === 'COMPLETED',
+    );
+
+    if (completedParticipations.length === 0) {
+      this.logger.debug(
+        '[determineMaxParticipation] No completed participations found → 10B cap',
+      );
+      return 10_000_000_000;
+    }
+
+    // Sort by cycle closed date to find the most recent
+    completedParticipations.sort((a, b) => {
+      const aDate = a.cycle?.closedAt?.getTime() ?? 0;
+      const bDate = b.cycle?.closedAt?.getTime() ?? 0;
+      return bDate - aDate; // desc
+    });
+
+    const mostRecent = completedParticipations[0];
+    this.logger.debug(
+      `[determineMaxParticipation] Most recent completed: ${mostRecent.id.substring(0, 8)} in cycle ${mostRecent.cycle?.id.substring(0, 8) ?? 'unknown'}, closed at ${mostRecent.cycle?.closedAt?.toISOString() ?? 'null'}`,
+    );
+
+    // Check if this participation rolled over to another participation
+    // Only count rollovers that were actually executed (OPTED_IN, AWAITING_PAYOUT, COMPLETED)
+    // Exclude AWAITING_INVESTMENT (rollover was created but never executed)
+    const childRollover = await this.prisma.cycleParticipation.findFirst({
+      where: {
+        userId,
+        rolloverFromParticipationId: mostRecent.id,
+        status: {
+          in: [
+            'OPTED_IN',
+            'AWAITING_PAYOUT',
+            'COMPLETED',
+            'AWAITING_VALIDATION',
+          ],
+        },
+      },
+    });
+
+    const hasChildRollover = Boolean(childRollover);
+    this.logger.debug(
+      `[determineMaxParticipation] Child rollover check: ${hasChildRollover ? `YES (${childRollover!.id.substring(0, 8)}, status=${childRollover!.status})` : 'NO'} → ${hasChildRollover ? '20B' : '10B'} cap`,
+    );
+
+    return hasChildRollover ? 20_000_000_000 : 10_000_000_000;
+  }
+
+  /**
    * Create a participation (opt-in to a future cycle)
    */
   async createParticipation(input: {
@@ -24,6 +143,10 @@ export class ParticipationService {
     characterName?: string;
     amountIsk: string;
     userId?: string;
+    rollover?: {
+      type: 'FULL_PAYOUT' | 'INITIAL_ONLY' | 'CUSTOM_AMOUNT';
+      customAmountIsk?: string;
+    };
   }) {
     const cycle = await this.prisma.cycle.findUnique({
       where: { id: input.cycleId },
@@ -47,10 +170,95 @@ export class ParticipationService {
       },
     });
     if (existing) return existing;
-    
+
+    // Validate participation cap
+    const requestedAmount = Number(input.amountIsk);
+
+    // For rollover participations, cap is always 20B
+    // For regular participations, use determineMaxParticipation (10B or 20B based on history)
+    let maxParticipation: number;
+    if (input.rollover) {
+      maxParticipation = 20_000_000_000; // 20B cap for rollover investors
+    } else {
+      maxParticipation = await this.determineMaxParticipation(input.userId);
+    }
+
+    if (requestedAmount > maxParticipation) {
+      const maxB = maxParticipation / 1_000_000_000;
+      throw new Error(
+        `Participation amount exceeds maximum allowed (${maxB}B ISK)`,
+      );
+    }
+
+    // Handle rollover opt-in
+    if (input.rollover) {
+      // Find user's active participation in the current OPEN cycle
+      const openCycle = await this.prisma.cycle.findFirst({
+        where: { status: 'OPEN' },
+        include: {
+          participations: {
+            where: {
+              userId: input.userId ?? null,
+              status: { in: ['OPTED_IN', 'AWAITING_PAYOUT'] },
+            },
+          },
+        },
+      });
+
+      if (!openCycle || openCycle.participations.length === 0) {
+        throw new Error(
+          'Rollover requires an active participation in the current OPEN cycle',
+        );
+      }
+
+      const activeParticipation = openCycle.participations[0];
+
+      // Validate custom amount
+      if (input.rollover.type === 'CUSTOM_AMOUNT') {
+        if (!input.rollover.customAmountIsk) {
+          throw new Error('Custom amount required for CUSTOM_AMOUNT rollover');
+        }
+        const customAmount = Number(input.rollover.customAmountIsk);
+        const initialAmount = Number(activeParticipation.amountIsk);
+        if (customAmount > initialAmount) {
+          throw new Error(
+            'Custom rollover amount cannot exceed initial participation',
+          );
+        }
+      }
+
+      // Generate rollover memo: ROLLOVER-{cycleId:8}-{fromParticipationId:8}
+      const rolloverMemo = `ROLLOVER-${cycle.id.substring(0, 8)}-${activeParticipation.id.substring(0, 8)}`;
+
+      // Calculate requested rollover amount
+      let rolloverRequestedAmount: string;
+      if (input.rollover.type === 'FULL_PAYOUT') {
+        // Will be calculated on cycle close, store as 0 for now
+        rolloverRequestedAmount = '0.00';
+      } else if (input.rollover.type === 'INITIAL_ONLY') {
+        rolloverRequestedAmount = String(activeParticipation.amountIsk);
+      } else {
+        // CUSTOM_AMOUNT
+        rolloverRequestedAmount = input.rollover.customAmountIsk!;
+      }
+
+      return await this.prisma.cycleParticipation.create({
+        data: {
+          cycleId: input.cycleId,
+          userId: input.userId, // Already set to testUserId in controller if provided
+          characterName,
+          amountIsk: requestedAmount.toFixed(2),
+          memo: rolloverMemo,
+          status: 'AWAITING_INVESTMENT', // Will be auto-validated on cycle close
+          rolloverType: input.rollover.type,
+          rolloverRequestedAmountIsk: rolloverRequestedAmount,
+          rolloverFromParticipationId: activeParticipation.id,
+        },
+      });
+    }
+
+    // Non-rollover participation
     // Generate unique memo: ARB-{cycleId:8}-{userId:8}
-    // This allows generating the memo BEFORE creating the participation (for frontend UX)
-    // Format: "ARB-e7f100d7-a3b4c5d6" = 21 chars (well under 40 char limit)
     const userIdForMemo = input.userId || 'unknown';
     const uniqueMemo = `ARB-${cycle.id.substring(0, 8)}-${String(userIdForMemo).substring(0, 8)}`;
 
@@ -93,6 +301,8 @@ export class ParticipationService {
 
   /**
    * Opt out of a participation
+   * Can opt-out of PLANNED cycles (including rollover participations)
+   * Cannot opt-out once cycle is OPEN
    */
   async optOutParticipation(participationId: string) {
     const p = await this.prisma.cycleParticipation.findUnique({
@@ -100,12 +310,15 @@ export class ParticipationService {
       include: { cycle: true },
     });
     if (!p) throw new Error('Participation not found');
-    const cycle = p.cycle as { startedAt: Date };
-    if (cycle.startedAt <= new Date()) {
-      throw new Error('Cannot opt-out after cycle start');
+
+    const cycle = p.cycle as { status: string; startedAt: Date };
+
+    // Allow opt-out for PLANNED cycles only
+    if (cycle.status !== 'PLANNED') {
+      throw new Error('Can only opt-out of PLANNED cycles');
     }
 
-    // If still awaiting investment, delete
+    // If still awaiting investment (includes rollover participations), delete
     if (p.status === 'AWAITING_INVESTMENT') {
       return await this.prisma.cycleParticipation.delete({
         where: { id: participationId },

@@ -71,6 +71,20 @@ export function useParticipations(cycleId: string, status?: string) {
 }
 
 /**
+ * Get maximum allowed participation amount for current user
+ */
+export function useMaxParticipation() {
+  const client = useApiClient();
+  return useAuthenticatedQuery({
+    queryKey: ["maxParticipation"],
+    queryFn: () =>
+      client.get<{ maxAmountIsk: string; maxAmountB: number }>(
+        "/ledger/participations/max-amount",
+      ),
+  });
+}
+
+/**
  * Get current user's participation for a cycle
  */
 export function useMyParticipation(cycleId: string) {
@@ -116,7 +130,6 @@ export function useUnmatchedDonations() {
  */
 export function useCreateParticipation() {
   const client = useApiClient();
-  const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: ({
@@ -127,6 +140,10 @@ export function useCreateParticipation() {
       data: {
         characterName?: string;
         amountIsk: string;
+        rollover?: {
+          type: "FULL_PAYOUT" | "INITIAL_ONLY" | "CUSTOM_AMOUNT";
+          customAmountIsk?: string;
+        };
       };
     }) =>
       client.post<CycleParticipation>(

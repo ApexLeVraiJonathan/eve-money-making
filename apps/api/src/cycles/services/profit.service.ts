@@ -93,9 +93,10 @@ export class ProfitService {
 
     for (const line of lines) {
       // Calculate Cost of Goods Sold (COGS) - only for items actually sold
-      const wac = line.unitsBought > 0 ? Number(line.buyCostIsk) / line.unitsBought : 0;
+      const wac =
+        line.unitsBought > 0 ? Number(line.buyCostIsk) / line.unitsBought : 0;
       const cogs = wac * line.unitsSold;
-      
+
       const profit =
         Number(line.salesNetIsk) -
         cogs -
@@ -115,10 +116,7 @@ export class ProfitService {
     }
 
     // Sum all fees (transport is positive, collateral_recovery is negative)
-    const totalFees = fees.reduce(
-      (sum, f) => sum + Number(f.amountIsk),
-      0,
-    );
+    const totalFees = fees.reduce((sum, f) => sum + Number(f.amountIsk), 0);
     const cycleProfitCash = lineProfitTotal - totalFees;
 
     return {
@@ -230,7 +228,8 @@ export class ProfitService {
       (sum, f) => sum + Number(f.amountIsk),
       0,
     ); // This will be negative (income)
-    const totalExpenses = brokerFees + relistFees + transportFeesTotal + collateralRecoveryTotal;
+    const totalExpenses =
+      brokerFees + relistFees + transportFeesTotal + collateralRecoveryTotal;
 
     // Calculate profit
     const grossProfit = netSales - totalCogs;

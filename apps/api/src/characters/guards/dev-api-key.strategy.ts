@@ -8,16 +8,19 @@ import { RequestUser } from './jwt.strategy';
 
 /**
  * Dev-only API key authentication strategy
- * 
+ *
  * Usage: Add header `x-api-key: <DEV_API_KEY>` to requests
- * 
+ *
  * Security:
  * - Only enabled when NODE_ENV !== 'production'
  * - Requires DEV_API_KEY environment variable to be set
  * - Returns a fake admin user for testing purposes
  */
 @Injectable()
-export class DevApiKeyStrategy extends PassportStrategy(Strategy, 'dev-api-key') {
+export class DevApiKeyStrategy extends PassportStrategy(
+  Strategy,
+  'dev-api-key',
+) {
   private readonly logger = new Logger(DevApiKeyStrategy.name);
   private readonly devApiKey: string | undefined;
   private readonly isProduction: boolean;
@@ -104,4 +107,3 @@ export class DevApiKeyStrategy extends PassportStrategy(Strategy, 'dev-api-key')
     };
   }
 }
-

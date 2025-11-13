@@ -43,4 +43,3 @@ export class AddBulkRelistFeesRequest {
   @Type(() => FeeItem)
   fees: FeeItem[];
 }
-
