@@ -1,6 +1,6 @@
 /**
  * API Hooks - Domain-Driven Organization
- * 
+ *
  * This structure mirrors the backend domain organization:
  * - apps/api/src/cycles → api/cycles
  * - apps/api/src/characters → api/characters
@@ -8,7 +8,7 @@
  * - apps/api/src/wallet → api/wallet
  * - apps/api/src/game-data → api/game-data
  * - apps/api/src/jobs → api/jobs
- * 
+ *
  * Usage:
  * ```ts
  * import { useCycles, useCreateCycle } from "@/app/tradecraft/api";

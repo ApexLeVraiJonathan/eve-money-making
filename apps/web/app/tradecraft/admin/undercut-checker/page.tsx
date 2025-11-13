@@ -69,10 +69,7 @@ export default function UndercutCheckerPage() {
 
   // React Query hooks
   const { data: stations = [] } = useTrackedStations();
-  const { data: latestCycles = [] } = useArbitrageCommits(
-    { limit: 5 }, // Fetch a few cycles to ensure we can find the open one
-    { enabled: useCommit },
-  );
+  const { data: latestCycles = [] } = useArbitrageCommits({ limit: 5 });
   const undercutCheckMutation = useUndercutCheck();
 
   const buildKeys = (rows: Group[] | null): string[] => {
@@ -108,11 +105,32 @@ export default function UndercutCheckerPage() {
           : selectedStations.length
             ? selectedStations
             : undefined,
-        cycleId: useCommit ? cycleId || undefined : undefined,
+        cycleId: useCommit && cycleId ? cycleId : undefined,
       });
-      setResult(data);
+      // Convert needsUpdate array to expected Group[] format
+      const groups: Group[] = data.needsUpdate.map((item) => {
+        const station = stations.find((s) => s.stationId === item.stationId);
+        return {
+          characterId: 0, // Not provided by this API
+          characterName: "Unknown", // Not provided by this API
+          stationId: item.stationId,
+          stationName: station?.station?.name ?? `Station ${item.stationId}`,
+          updates: [
+            {
+              orderId: parseInt(item.lineId), // Convert lineId string to number
+              typeId: item.typeId,
+              itemName: item.typeName,
+              remaining: 0, // Not provided by this API
+              currentPrice: item.currentPrice,
+              competitorLowest: item.lowestCompetitor,
+              suggestedNewPriceTicked: item.suggestedPrice,
+            },
+          ],
+        };
+      });
+      setResult(groups);
       // Default select all items
-      const allKeys = buildKeys(data);
+      const allKeys = buildKeys(groups);
       const initial: Record<string, boolean> = {};
       for (const k of allKeys) initial[k] = true;
       setSelected(initial);
@@ -325,7 +343,9 @@ export default function UndercutCheckerPage() {
 
           <Button
             onClick={onRun}
-            disabled={undercutCheckMutation.isPending || (useCommit && !cycleId)}
+            disabled={
+              undercutCheckMutation.isPending || (useCommit && !cycleId)
+            }
             className="gap-2"
           >
             {undercutCheckMutation.isPending ? (

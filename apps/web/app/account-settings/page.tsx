@@ -29,7 +29,7 @@ import {
   useUnlinkCharacter,
   startCharacterLink,
   logout,
-} from "../api-hooks/users";
+} from "../tradecraft/api/characters/users.hooks";
 
 export default function AccountSettingsPage() {
   const { data: me, error, isLoading } = useCurrentUser();

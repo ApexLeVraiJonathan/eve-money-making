@@ -97,10 +97,7 @@ export default function SellAppraiserPage() {
 
   // React Query hooks
   const { data: stations = [] } = useTrackedStations();
-  const { data: latestCycles = [] } = useArbitrageCommits(
-    { limit: 5 }, // Fetch a few cycles to ensure we can find the open one
-    { enabled: useCommit },
-  );
+  const { data: latestCycles = [] } = useArbitrageCommits({ limit: 5 });
   const sellAppraiseMutation = useSellAppraise();
   const sellAppraiseByCommitMutation = useSellAppraiseByCommit();
 
@@ -173,14 +170,23 @@ export default function SellAppraiserPage() {
     setResult(null);
     try {
       if (useCommit) {
+        if (!cycleId) return;
         const data = await sellAppraiseByCommitMutation.mutateAsync({
-          cycleId: cycleId || undefined,
+          cycleId,
         });
-        setResult(data);
+        // Map API response to CommitRow format
+        const mappedItems: CommitRow[] = data.items.map((item) => ({
+          itemName: item.typeName,
+          typeId: item.typeId,
+          quantityRemaining: item.quantity,
+          destinationStationId: item.stationId,
+          lowestSell: item.bestSellPrice,
+          suggestedSellPriceTicked: item.bestSellPrice * 1.01, // Apply 1% tick
+        }));
+        setResult(mappedItems);
         // Default select all
-        const allKeys = data.map(
-          (r: PasteRow | CommitRow) =>
-            `${r.destinationStationId}:${isCommitRow(r) ? r.typeId : r.itemName}`,
+        const allKeys = mappedItems.map(
+          (r) => `${r.destinationStationId}:${r.itemName}`,
         );
         const initial: Record<string, boolean> = {};
         for (const k of allKeys) initial[k] = true;
@@ -188,12 +194,20 @@ export default function SellAppraiserPage() {
       } else {
         if (!destinationId) return;
         const data = await sellAppraiseMutation.mutateAsync({
-          destinationStationId: destinationId,
           lines,
+          destinationStationId: destinationId,
         });
-        setResult(data);
+        // Map API response to PasteRow format
+        const mappedItems: PasteRow[] = data.items.map((item) => ({
+          itemName: item.typeName,
+          quantity: item.quantity,
+          destinationStationId: item.stationId,
+          lowestSell: item.bestSellPrice,
+          suggestedSellPriceTicked: item.bestSellPrice * 1.01, // Apply 1% tick
+        }));
+        setResult(mappedItems);
         // Default select all
-        const allKeys = data.map(
+        const allKeys = mappedItems.map(
           (r) => `${r.destinationStationId}:${r.itemName}`,
         );
         const initial: Record<string, boolean> = {};

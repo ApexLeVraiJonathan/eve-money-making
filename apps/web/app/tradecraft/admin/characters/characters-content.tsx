@@ -116,9 +116,15 @@ export default function CharactersPageContent() {
   // Track mutation loading states
   const forceLinkBusy = linkCharacterToUserMutation.isPending;
   const systemLinkBusy = getSystemLinkUrlMutation.isPending;
-  const roleBusyId = setUserRoleMutation.isPending ? setUserRoleMutation.variables?.userId : null;
-  const setPrimaryBusyId = adminSetPrimaryMutation.isPending ? adminSetPrimaryMutation.variables?.characterId : null;
-  const unlinkBusyId = adminUnlinkMutation.isPending ? adminUnlinkMutation.variables?.characterId : null;
+  const roleBusyId = setUserRoleMutation.isPending
+    ? setUserRoleMutation.variables?.userId
+    : null;
+  const setPrimaryBusyId = adminSetPrimaryMutation.isPending
+    ? adminSetPrimaryMutation.variables?.characterId
+    : null;
+  const unlinkBusyId = adminUnlinkMutation.isPending
+    ? adminUnlinkMutation.variables?.characterId
+    : null;
 
   // Tab state management with URL sync
   const [activeTab, setActiveTab] = React.useState(

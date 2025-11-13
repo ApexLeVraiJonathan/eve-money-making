@@ -6,7 +6,7 @@ import { qk } from "@eve/api-client/queryKeys";
 
 /**
  * API hooks for pricing operations
- * 
+ *
  * Backend: apps/api/src/market/pricing.controller.ts
  */
 
@@ -20,7 +20,7 @@ import { qk } from "@eve/api-client/queryKeys";
 export function useSellAppraise() {
   const client = useApiClient();
   return useMutation({
-    mutationFn: (items: Array<{ typeId: number; quantity: number }>) =>
+    mutationFn: (data: { destinationStationId: number; lines: string[] }) =>
       client.post<{
         totalEstimatedIsk: string;
         items: Array<{
@@ -32,7 +32,7 @@ export function useSellAppraise() {
           stationId: number;
           stationName: string;
         }>;
-      }>("/pricing/sell-appraise", { items }),
+      }>("/pricing/sell-appraise", data),
   });
 }
 
@@ -42,7 +42,7 @@ export function useSellAppraise() {
 export function useSellAppraiseByCommit() {
   const client = useApiClient();
   return useMutation({
-    mutationFn: (commitId: string) =>
+    mutationFn: (data: { cycleId: string }) =>
       client.post<{
         totalEstimatedIsk: string;
         items: Array<{
@@ -51,8 +51,10 @@ export function useSellAppraiseByCommit() {
           quantity: number;
           bestSellPrice: number;
           totalValue: string;
+          stationId: number;
+          stationName: string;
         }>;
-      }>("/pricing/sell-appraise-by-commit", { commitId }),
+      }>("/pricing/sell-appraise-by-commit", data),
   });
 }
 
@@ -62,7 +64,11 @@ export function useSellAppraiseByCommit() {
 export function useUndercutCheck() {
   const client = useApiClient();
   return useMutation({
-    mutationFn: (data?: { cycleId?: string }) =>
+    mutationFn: (data?: {
+      characterIds?: number[];
+      stationIds?: number[];
+      cycleId?: string;
+    }) =>
       client.post<{
         needsUpdate: Array<{
           lineId: string;
@@ -111,4 +117,3 @@ export function useConfirmReprice() {
     },
   });
 }
-

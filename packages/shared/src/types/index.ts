@@ -131,12 +131,14 @@ export interface CycleParticipation {
   characterName: string;
   amountIsk: string;
   status: ParticipationStatus;
-  memo: string | null;
+  memo: string;
   validatedAt: string | null;
   walletJournalId: bigint | null;
-  payoutIsk: string | null;
-  payoutSentAt: string | null;
+  payoutAmountIsk: string | null;
+  payoutPaidAt: string | null;
+  refundAmountIsk: string | null;
   refundedAt: string | null;
+  optedOutAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -162,6 +164,46 @@ export interface ArbitrageOpportunity {
     dailyVolume: number;
     daysToSell: number;
   };
+}
+
+// Arbitrage Planner Types
+export interface PackedUnit {
+  typeId: number;
+  name: string;
+  units: number;
+  unitCost: number;
+  unitProfit: number;
+  unitVolume: number;
+  spendISK: number;
+  profitISK: number;
+  volumeM3: number;
+}
+
+export interface PackagePlan {
+  packageIndex: number;
+  destinationStationId: number;
+  destinationName?: string;
+  items: PackedUnit[];
+  spendISK: number;
+  grossProfitISK: number;
+  shippingISK: number;
+  netProfitISK: number;
+  usedCapacityM3: number;
+  efficiency: number;
+}
+
+export interface PlanResult {
+  packages: PackagePlan[];
+  totalSpendISK: number;
+  totalGrossProfitISK: number;
+  totalShippingISK: number;
+  totalNetProfitISK: number;
+  itemExposureByDest: Record<
+    number,
+    Record<number, { spendISK: number; units: number }>
+  >;
+  destSpend: Record<number, number>;
+  notes: string[];
 }
 
 export interface Package {

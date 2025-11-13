@@ -4,7 +4,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useApiClient } from "@/app/api-hooks/useApiClient";
 import { useAuthenticatedQuery } from "@/app/api-hooks/useAuthenticatedQuery";
 import { qk } from "@eve/api-client/queryKeys";
-import type { Cycle } from "@eve/shared/types";
+import type { Cycle, PlanResult } from "@eve/shared/types";
 
 /**
  * API hooks for arbitrage opportunities and commitments
@@ -41,6 +41,18 @@ export function useArbitrageCommits(options?: {
 // ============================================================================
 
 /**
+ * Plan arbitrage packages
+ */
+export function usePlanArbitrage() {
+  const client = useApiClient();
+
+  return useMutation({
+    mutationFn: (data: unknown) =>
+      client.post<PlanResult>("/arbitrage/plan-packages", data),
+  });
+}
+
+/**
  * Commit to arbitrage plan
  */
 export function useCommitArbitrage() {
@@ -48,19 +60,10 @@ export function useCommitArbitrage() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (data: {
-      planCommitId: string;
-      cycleId: string;
-      items: Array<{
-        typeId: number;
-        quantity: number;
-        buyStationId: number;
-        sellStationId: number;
-      }>;
-    }) =>
+    mutationFn: (data: { request: unknown; result: unknown; memo?: string }) =>
       client.post<{
-        committed: number;
-        packageId?: string;
+        id: string;
+        createdAt: Date;
       }>("/tradecraft/commit", data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: qk.arbitrage._root });

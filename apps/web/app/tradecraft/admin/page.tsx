@@ -400,7 +400,9 @@ export default function AdminPage() {
             <Button
               variant="outline"
               className="justify-start"
-              onClick={() => (window.location.href = "/tradecraft/admin/profit")}
+              onClick={() =>
+                (window.location.href = "/tradecraft/admin/profit")
+              }
             >
               <TrendingUp className="mr-2 h-4 w-4" />
               View Profit
@@ -437,7 +439,11 @@ export default function AdminPage() {
               <div>
                 <div className="text-muted-foreground">Status</div>
                 <div className="font-medium">
-                  {latestCycle.status === "COMPLETED" ? "Closed" : latestCycle.status === "PLANNED" ? "Planned" : "Open"}
+                  {latestCycle.status === "COMPLETED"
+                    ? "Closed"
+                    : latestCycle.status === "PLANNED"
+                      ? "Planned"
+                      : "Open"}
                 </div>
               </div>
               {capital && (

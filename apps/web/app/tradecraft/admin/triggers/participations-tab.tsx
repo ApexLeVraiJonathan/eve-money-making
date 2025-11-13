@@ -58,7 +58,7 @@ export function ParticipationsTab({
               try {
                 const data = await importWalletMutation.mutateAsync();
                 toast.success(
-                  `Wallet journals imported for ${data.count || "all"} LOGISTICS characters`,
+                  `Wallet journals imported: ${data.imported} imported, ${data.skipped} skipped (${data.charactersProcessed} characters)`,
                 );
               } catch (error) {
                 const errorMessage =

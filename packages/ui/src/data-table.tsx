@@ -8,6 +8,7 @@ import {
   type ColumnDef,
   type SortingState,
   type PaginationState,
+  type OnChangeFn,
 } from "@tanstack/react-table";
 import { ChevronDown, ChevronUp, ChevronsUpDown } from "lucide-react";
 
@@ -37,7 +38,7 @@ export interface DataTableProps<TData, TValue> {
   };
   sorting?: {
     state: SortingState;
-    onSortingChange: (sorting: SortingState) => void;
+    onSortingChange: OnChangeFn<SortingState>;
   };
 }
 

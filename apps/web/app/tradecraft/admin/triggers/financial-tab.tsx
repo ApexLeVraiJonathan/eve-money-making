@@ -116,11 +116,10 @@ export function FinancialTab({
           <Button
             onClick={async () => {
               try {
-                const data = await reconcileWalletMutation.mutateAsync({
-                  cycleId: currentCycleId,
-                });
+                const data =
+                  await reconcileWalletMutation.mutateAsync(currentCycleId);
                 toast.success(
-                  `Reconciliation completed: ${data.created || 0} ledger entries created`,
+                  `Reconciliation completed: ${data.buysAllocated} buys, ${data.sellsAllocated} sells allocated`,
                 );
               } catch (error) {
                 const errorMessage =

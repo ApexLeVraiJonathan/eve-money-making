@@ -5,7 +5,7 @@ import { useAuthenticatedQuery } from "@/app/api-hooks/useAuthenticatedQuery";
 
 /**
  * API hooks for ESI (EVE Swagger Interface) operations
- * 
+ *
  * Backend: apps/api/src/esi/esi.controller.ts
  */
 
@@ -44,4 +44,3 @@ export function useEsiMetrics() {
     refetchInterval: 30000,
   });
 }
-

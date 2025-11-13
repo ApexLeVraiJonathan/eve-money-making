@@ -18,9 +18,9 @@ import type {
 
 /**
  * API hooks for cycle management
- * 
+ *
  * Backend: apps/api/src/cycles/cycles.controller.ts
- * 
+ *
  * Uses useApiClient() for authenticated API calls with Bearer tokens
  * and centralized query keys from @eve/api-client/queryKeys
  */
@@ -141,6 +141,7 @@ export function useProfitBreakdown(cycleId: string) {
           transportFees: string;
           brokerFees: string;
           relistFees: string;
+          collateralRecovery: string;
           totalExpenses: string;
         };
         netProfit: string;
@@ -533,4 +534,3 @@ export function useAddRelistFee() {
     },
   });
 }
-

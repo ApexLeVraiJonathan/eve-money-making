@@ -1,0 +1,58 @@
+{
+  "cycle": {
+    "name": "2025-11-13",
+    "startedAt": "2025-11-13T23:00:00.000Z"
+  },
+  "participations": [
+    {
+      "userId": "615c91e6-c66f-4ead-bd28-0722d34adf92",
+      "characterName": "Floki Khamsi",
+      "amountIsk": "5000000000",
+      "memo": "ARB-0abbcac7",
+      "status": "OPTED_IN",
+      "walletJournalId": "24825776172",
+      "validatedAt": "2025-11-12T14:22:58.786Z",
+      "createdAt": "2025-11-12T02:32:31.168Z"
+    },
+    {
+      "userId": "c066938d-1332-480e-a307-643c40140160",
+      "characterName": "Twiggs McGee",
+      "amountIsk": "10000000000",
+      "memo": "ARB-0abbcac7",
+      "status": "OPTED_IN",
+      "walletJournalId": "24825803017",
+      "validatedAt": "2025-11-12T14:22:38.287Z",
+      "createdAt": "2025-11-12T02:44:57.685Z"
+    },
+    {
+      "userId": "51c31fbe-ba0f-4ce2-8739-203339863caf",
+      "characterName": "Rediculocity",
+      "amountIsk": "10000000000",
+      "memo": "ARB-0abbcac7",
+      "status": "OPTED_IN",
+      "walletJournalId": "24826735066",
+      "validatedAt": "2025-11-12T14:23:31.037Z",
+      "createdAt": "2025-11-12T10:40:19.692Z"
+    },
+    {
+      "userId": "1d31280a-efb6-4dfc-a95a-21be1216ddd2",
+      "characterName": "Odins Mandate",
+      "amountIsk": "10000000000",
+      "memo": "ARB-0abbcac7",
+      "status": "OPTED_IN",
+      "walletJournalId": "24827217576",
+      "validatedAt": "2025-11-12T14:23:14.371Z",
+      "createdAt": "2025-11-12T13:48:49.463Z"
+    },
+    {
+      "userId": "c2ab33eb-5a88-4e62-acf0-7596d64448b3",
+      "characterName": "TigersmithV2",
+      "amountIsk": "500000000",
+      "memo": "ARB-0abbcac7",
+      "status": "OPTED_IN",
+      "walletJournalId": "24827421134",
+      "validatedAt": "2025-11-12T16:23:44.550Z",
+      "createdAt": "2025-11-12T14:08:18.283Z"
+    }
+  ]
+}

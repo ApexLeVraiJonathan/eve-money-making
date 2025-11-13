@@ -273,7 +273,10 @@ function CycleProfitContent() {
                 <div className="flex justify-between gap-8 text-sm">
                   <span>Collateral Recovery</span>
                   <span className="tabular-nums font-medium text-emerald-500">
-                    +{formatIsk(Math.abs(Number(breakdown.expenses.collateralRecovery)))}
+                    +
+                    {formatIsk(
+                      Math.abs(Number(breakdown.expenses.collateralRecovery)),
+                    )}
                   </span>
                 </div>
               )}
@@ -347,12 +350,12 @@ function CycleProfitContent() {
       <Card className="bg-muted/30">
         <CardContent className="pt-6">
           <p className="text-sm opacity-80">
-            <strong className="opacity-100">How to read this P&L:</strong> Start with Gross Sales
-            Revenue, subtract Sales Tax to get Net Sales. Then subtract the Cost
-            of Goods Sold (what you paid for items that were sold) to get Gross
-            Profit. Finally, subtract all Operating Expenses (transport, broker,
-            relist fees) to arrive at your Net Profit. The ROI shows your return
-            as a percentage of your initial investment.
+            <strong className="opacity-100">How to read this P&L:</strong> Start
+            with Gross Sales Revenue, subtract Sales Tax to get Net Sales. Then
+            subtract the Cost of Goods Sold (what you paid for items that were
+            sold) to get Gross Profit. Finally, subtract all Operating Expenses
+            (transport, broker, relist fees) to arrive at your Net Profit. The
+            ROI shows your return as a percentage of your initial investment.
           </p>
         </CardContent>
       </Card>

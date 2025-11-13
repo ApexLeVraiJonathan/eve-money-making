@@ -1,7 +1,19 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsOptional, MaxLength, IsObject } from 'class-validator';
+import { IsString, IsOptional, MaxLength } from 'class-validator';
 
 export class PlanCommitRequest {
+  @ApiProperty({
+    description: 'Original plan request payload',
+    type: Object,
+  })
+  request: unknown;
+
+  @ApiProperty({
+    description: 'Plan result from the packager',
+    type: Object,
+  })
+  result: unknown;
+
   @ApiPropertyOptional({
     description: 'Optional memo about this commit',
     maxLength: 500,
@@ -11,18 +23,4 @@ export class PlanCommitRequest {
   @IsString()
   @MaxLength(500)
   memo?: string;
-
-  @ApiProperty({
-    description: 'Original plan request data',
-    example: {},
-  })
-  @IsObject()
-  request: unknown;
-
-  @ApiProperty({
-    description: 'Plan result data',
-    example: {},
-  })
-  @IsObject()
-  result: unknown;
 }

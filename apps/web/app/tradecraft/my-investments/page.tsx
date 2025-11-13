@@ -26,7 +26,14 @@ import {
   TableHeader,
   TableRow,
 } from "@eve/ui";
-import { UserRound, LogIn, Wallet, TrendingUp, DollarSign, History } from "lucide-react";
+import {
+  UserRound,
+  LogIn,
+  Wallet,
+  TrendingUp,
+  DollarSign,
+  History,
+} from "lucide-react";
 import { Button } from "@eve/ui";
 import { Badge } from "@eve/ui";
 import { Skeleton } from "@eve/ui";
@@ -170,9 +177,9 @@ export default function MyInvestmentsPage() {
                 <EmptyTitle>Start Your Investment Journey</EmptyTitle>
                 <EmptyDescription>
                   You haven&apos;t participated in any tradecraft cycles yet.
-                  Join the next cycle to start earning passive income through our
-                  EVE Online trading program. Check out our historical performance
-                  to see what returns you can expect!
+                  Join the next cycle to start earning passive income through
+                  our EVE Online trading program. Check out our historical
+                  performance to see what returns you can expect!
                 </EmptyDescription>
                 <div className="flex gap-3 mt-4">
                   <Button

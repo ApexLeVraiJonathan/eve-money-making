@@ -9,12 +9,12 @@ import { useSession } from "next-auth/react";
 
 /**
  * Wrapper around useQuery that automatically waits for session to be ready
- * 
+ *
  * This prevents the race condition where queries run before the user's
  * authentication token is available, causing 401 errors that get cached.
- * 
+ *
  * Use this instead of useQuery for any queries that require authentication.
- * 
+ *
  * @example
  * ```typescript
  * export function useCurrentUser() {
@@ -41,7 +41,7 @@ export function useAuthenticatedQuery<
      * @example enabled: !!userId
      */
     enabled?: boolean;
-  }
+  },
 ) {
   const { status } = useSession();
 
@@ -51,4 +51,3 @@ export function useAuthenticatedQuery<
     enabled: status !== "loading" && (options.enabled ?? true),
   });
 }
-

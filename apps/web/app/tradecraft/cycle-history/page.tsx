@@ -44,20 +44,20 @@ export default function CycleHistoryPage() {
 
   // Calculate statistics
   const totalCycles = cycles.length;
-  const avgDuration = cycles.length > 0
-    ? Math.round(
-        cycles.reduce((sum, c) => sum + (c.durationDays ?? 0), 0) / cycles.length
-      )
-    : 0;
+  const avgDuration =
+    cycles.length > 0
+      ? Math.round(
+          cycles.reduce((sum, c) => sum + (c.durationDays ?? 0), 0) /
+            cycles.length,
+        )
+      : 0;
 
-  const totalProfit = cycles.reduce(
-    (sum, c) => sum + Number(c.profitIsk),
-    0
-  );
+  const totalProfit = cycles.reduce((sum, c) => sum + Number(c.profitIsk), 0);
 
-  const avgRoi = cycles.length > 0
-    ? cycles.reduce((sum, c) => sum + Number(c.roiPercent), 0) / cycles.length
-    : 0;
+  const avgRoi =
+    cycles.length > 0
+      ? cycles.reduce((sum, c) => sum + Number(c.roiPercent), 0) / cycles.length
+      : 0;
 
   const profitableCycles = cycles.filter((c) => Number(c.profitIsk) > 0).length;
   const winRate = totalCycles > 0 ? (profitableCycles / totalCycles) * 100 : 0;
@@ -268,7 +268,9 @@ export default function CycleHistoryPage() {
                             </div>
                           </TableCell>
                           <TableCell className="text-right tabular-nums text-sm">
-                            {cycle.durationDays ? `${cycle.durationDays}d` : "—"}
+                            {cycle.durationDays
+                              ? `${cycle.durationDays}d`
+                              : "—"}
                           </TableCell>
                           <TableCell className="text-right tabular-nums text-sm">
                             {cycle.participantCount}
@@ -290,7 +292,7 @@ export default function CycleHistoryPage() {
                           </TableCell>
                           <TableCell className="pr-6 text-right tabular-nums font-medium">
                             <Badge
-                              variant={isProfitable ? "default" : "destructive"}
+                              variant={isProfitable ? "default" : "secondary"}
                               className="font-mono"
                             >
                               {roi >= 0 ? "+" : ""}

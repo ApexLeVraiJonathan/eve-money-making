@@ -93,8 +93,6 @@ export function useCleanupOAuthState() {
 export function useRunWalletsJob() {
   const client = useApiClient();
   return useMutation({
-    mutationFn: () =>
-      client.post<{ message: string }>("/jobs/wallets/run", {}),
+    mutationFn: () => client.post<{ message: string }>("/jobs/wallets/run", {}),
   });
 }
-

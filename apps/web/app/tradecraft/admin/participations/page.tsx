@@ -170,7 +170,8 @@ export default function ParticipationsPage() {
     (p) => p.status === "OPTED_OUT" && !p.refundedAt,
   );
   const needsPayout = participations.filter(
-    (p) => p.status === "AWAITING_PAYOUT" && !p.payoutPaidAt && p.payoutAmountIsk,
+    (p) =>
+      p.status === "AWAITING_PAYOUT" && !p.payoutPaidAt && p.payoutAmountIsk,
   );
 
   if (loading) {

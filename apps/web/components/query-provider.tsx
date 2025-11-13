@@ -6,7 +6,7 @@ import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 
 /**
  * TanStack Query provider with DevTools enabled in development
- * 
+ *
  * Features:
  * - Global query client configuration
  * - DevTools for debugging queries (dev only)

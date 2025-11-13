@@ -13,6 +13,7 @@ import {
   Check,
   AlertCircle,
   CheckCircle,
+  Loader2,
 } from "lucide-react";
 import { Button } from "@eve/ui";
 import { Input } from "@eve/ui";
@@ -29,46 +30,8 @@ import { Alert, AlertDescription } from "@eve/ui";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@eve/ui";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@eve/ui";
 import { ChevronDown } from "lucide-react";
-import { usePlanPackages, useCommitArbitrage } from "../../api";
-
-type PlanItem = {
-  typeId: number;
-  name: string;
-  units: number;
-  unitCost: number;
-  unitProfit: number;
-  unitVolume: number;
-  spendISK: number;
-  profitISK: number;
-  volumeM3: number;
-};
-
-type PackagePlan = {
-  packageIndex: number;
-  destinationStationId: number;
-  destinationName?: string;
-  items: PlanItem[];
-  spendISK: number;
-  grossProfitISK: number;
-  shippingISK: number;
-  netProfitISK: number;
-  usedCapacityM3: number;
-  efficiency: number;
-};
-
-type PlanResult = {
-  packages: PackagePlan[];
-  totalSpendISK: number;
-  totalGrossProfitISK: number;
-  totalShippingISK: number;
-  totalNetProfitISK: number;
-  itemExposureByDest: Record<
-    number,
-    Record<number, { spendISK: number; units: number }>
-  >;
-  destSpend: Record<number, number>;
-  notes: string[];
-};
+import { usePlanArbitrage, useCommitArbitrage } from "../../api";
+import type { PlanResult, PackagePlan, PackedUnit } from "@eve/shared";
 
 const defaultPayload = {
   shippingCostByStation: {
@@ -111,7 +74,7 @@ export default function PlannerPage() {
   } | null>(null);
 
   // React Query mutations
-  const planPackagesMutation = usePlanPackages();
+  const planPackagesMutation = usePlanArbitrage();
   const commitArbitrageMutation = useCommitArbitrage();
 
   const loading = planPackagesMutation.isPending;
@@ -247,7 +210,7 @@ export default function PlannerPage() {
     try {
       const payload = JSON.parse(json);
       const result = await planPackagesMutation.mutateAsync(payload);
-      setData(result as PlanResult);
+      setData(result);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     }

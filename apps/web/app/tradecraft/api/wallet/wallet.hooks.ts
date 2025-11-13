@@ -7,7 +7,7 @@ import { qk } from "@eve/api-client/queryKeys";
 
 /**
  * API hooks for wallet operations
- * 
+ *
  * Backend: apps/api/src/wallet/wallet.controller.ts
  */
 
@@ -90,4 +90,3 @@ export function useReconcileWallet() {
     },
   });
 }
-

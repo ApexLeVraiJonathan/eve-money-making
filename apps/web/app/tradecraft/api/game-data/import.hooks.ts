@@ -6,7 +6,7 @@ import { useAuthenticatedQuery } from "@/app/api-hooks/useAuthenticatedQuery";
 
 /**
  * API hooks for game data import operations
- * 
+ *
  * Backend: apps/api/src/game-data/import.controller.ts
  */
 
@@ -52,7 +52,9 @@ export function useImportTypes() {
       );
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["gameData", "importSummary"] });
+      queryClient.invalidateQueries({
+        queryKey: ["gameData", "importSummary"],
+      });
     },
   });
 }
@@ -71,7 +73,9 @@ export function useImportStations() {
         {},
       ),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["gameData", "importSummary"] });
+      queryClient.invalidateQueries({
+        queryKey: ["gameData", "importSummary"],
+      });
     },
   });
 }
@@ -90,7 +94,9 @@ export function useImportSystems() {
         {},
       ),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["gameData", "importSummary"] });
+      queryClient.invalidateQueries({
+        queryKey: ["gameData", "importSummary"],
+      });
     },
   });
 }
@@ -109,7 +115,9 @@ export function useImportRegions() {
         {},
       ),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["gameData", "importSummary"] });
+      queryClient.invalidateQueries({
+        queryKey: ["gameData", "importSummary"],
+      });
     },
   });
 }
@@ -130,7 +138,9 @@ export function useImportAll() {
         regions: { imported: number; updated: number };
       }>("/import/all", {}),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["gameData", "importSummary"] });
+      queryClient.invalidateQueries({
+        queryKey: ["gameData", "importSummary"],
+      });
     },
   });
 }
@@ -146,7 +156,9 @@ export function useImportDay() {
     mutationFn: (day: string) =>
       client.post<{ imported: number }>("/import/day", { day }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["gameData", "importSummary"] });
+      queryClient.invalidateQueries({
+        queryKey: ["gameData", "importSummary"],
+      });
     },
   });
 }
@@ -159,11 +171,11 @@ export function useImportMissing() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: () =>
-      client.post<{ imported: number }>("/import/missing", {}),
+    mutationFn: () => client.post<{ imported: number }>("/import/missing", {}),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["gameData", "importSummary"] });
+      queryClient.invalidateQueries({
+        queryKey: ["gameData", "importSummary"],
+      });
     },
   });
 }
-

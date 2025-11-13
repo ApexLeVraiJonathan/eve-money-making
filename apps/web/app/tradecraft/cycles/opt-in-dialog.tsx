@@ -125,11 +125,11 @@ export default function OptInDialog(props: OptInDialogProps) {
           setParticipationCreated(false);
         }
       }, 100);
-      
+
       // Reset state
       setStep("form");
       setMemo("");
-      
+
       return () => clearTimeout(timer);
     }
   }, [open, participationCreated, onSuccess]);

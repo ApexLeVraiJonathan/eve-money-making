@@ -6,7 +6,7 @@ import { useAuthenticatedQuery } from "@/app/api-hooks/useAuthenticatedQuery";
 
 /**
  * API hooks for tracked station management
- * 
+ *
  * Backend: apps/api/src/market/tracked-stations.controller.ts
  */
 
@@ -54,7 +54,9 @@ export function useAddTrackedStation() {
     mutationFn: (stationId: number) =>
       client.post<TrackedStation>("/tracked-stations", { stationId }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["market", "trackedStations"] });
+      queryClient.invalidateQueries({
+        queryKey: ["market", "trackedStations"],
+      });
     },
   });
 }
@@ -69,8 +71,9 @@ export function useRemoveTrackedStation() {
   return useMutation({
     mutationFn: (id: string) => client.delete<void>(`/tracked-stations/${id}`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["market", "trackedStations"] });
+      queryClient.invalidateQueries({
+        queryKey: ["market", "trackedStations"],
+      });
     },
   });
 }
-

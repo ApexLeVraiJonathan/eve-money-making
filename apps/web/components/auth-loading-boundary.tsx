@@ -29,4 +29,3 @@ export function AuthLoadingBoundary({
   // Session ready - render the app
   return <>{children}</>;
 }
-

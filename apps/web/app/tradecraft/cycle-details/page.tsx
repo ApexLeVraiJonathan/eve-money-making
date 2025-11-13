@@ -67,7 +67,7 @@ type CycleDetails = {
   totalInvestorCapital: number;
   myParticipation?: {
     amountIsk: string;
-    payoutIsk: string | null;
+    payoutAmountIsk: string | null;
     status: string;
   };
 };
@@ -243,17 +243,17 @@ export default function CycleDetailsPage() {
                   Estimated Payout
                 </p>
                 <p className="text-xl font-semibold tabular-nums">
-                  {cycle.myParticipation.payoutIsk
-                    ? formatIsk(Number(cycle.myParticipation.payoutIsk))
+                  {cycle.myParticipation.payoutAmountIsk
+                    ? formatIsk(Number(cycle.myParticipation.payoutAmountIsk))
                     : "—"}
                 </p>
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Expected Return</p>
                 <p className="text-xl font-semibold tabular-nums text-emerald-600">
-                  {cycle.myParticipation.payoutIsk &&
+                  {cycle.myParticipation.payoutAmountIsk &&
                   Number(cycle.myParticipation.amountIsk) > 0
-                    ? `${((Number(cycle.myParticipation.payoutIsk) / Number(cycle.myParticipation.amountIsk)) * 100).toFixed(2)}%`
+                    ? `${((Number(cycle.myParticipation.payoutAmountIsk) / Number(cycle.myParticipation.amountIsk)) * 100).toFixed(2)}%`
                     : "—"}
                 </p>
               </div>

@@ -8,7 +8,7 @@ import type { CycleParticipation } from "@eve/shared";
 
 /**
  * API hooks for cycle participations (investor investments)
- * 
+ *
  * These hooks are related to the cycles domain but live in the API structure
  * Backend: apps/api/src/cycles/cycles.controller.ts (participations endpoints)
  */
@@ -250,4 +250,3 @@ export function useRefundParticipation() {
     },
   });
 }
-
