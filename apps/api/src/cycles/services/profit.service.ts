@@ -65,9 +65,10 @@ export class ProfitService {
       },
     });
 
+    // Fetch all fees (transport, collateral_recovery, etc.)
     const fees = await this.prisma.cycleFeeEvent.findMany({
-      where: { cycleId, feeType: 'transport' },
-      select: { amountIsk: true },
+      where: { cycleId },
+      select: { amountIsk: true, feeType: true },
     });
 
     let lineProfitTotal = 0;
@@ -113,17 +114,157 @@ export class ProfitService {
       });
     }
 
-    const transportTotal = fees.reduce(
+    // Sum all fees (transport is positive, collateral_recovery is negative)
+    const totalFees = fees.reduce(
       (sum, f) => sum + Number(f.amountIsk),
       0,
     );
-    const cycleProfitCash = lineProfitTotal - transportTotal;
+    const cycleProfitCash = lineProfitTotal - totalFees;
 
     return {
       lineProfitExclTransport: lineProfitTotal.toFixed(2),
-      transportFees: transportTotal.toFixed(2),
+      transportFees: totalFees.toFixed(2), // Note: Includes all fees (transport, collateral recovery, etc.)
       cycleProfitCash: cycleProfitCash.toFixed(2),
       lineBreakdown: breakdown,
+    };
+  }
+
+  /**
+   * Get detailed profit breakdown for audit/validation purposes
+   */
+  async getProfitBreakdown(cycleId: string): Promise<{
+    revenue: {
+      grossSales: string;
+      salesTax: string;
+      netSales: string;
+    };
+    cogs: {
+      totalCogs: string;
+      unitsSold: number;
+      avgCostPerUnit: string;
+    };
+    grossProfit: string;
+    expenses: {
+      transportFees: string;
+      brokerFees: string;
+      relistFees: string;
+      collateralRecovery: string; // Negative value (income)
+      totalExpenses: string;
+    };
+    netProfit: string;
+    roi: {
+      percentage: string;
+      initialCapital: string;
+    };
+  }> {
+    // Get cycle to find initial capital
+    const cycle = await this.prisma.cycle.findUnique({
+      where: { id: cycleId },
+      select: { initialCapitalIsk: true },
+    });
+
+    if (!cycle) {
+      throw new Error(`Cycle ${cycleId} not found`);
+    }
+
+    // Get all cycle lines
+    const lines = await this.prisma.cycleLine.findMany({
+      where: { cycleId },
+      select: {
+        salesGrossIsk: true,
+        salesTaxIsk: true,
+        salesNetIsk: true,
+        buyCostIsk: true,
+        unitsBought: true,
+        unitsSold: true,
+        brokerFeesIsk: true,
+        relistFeesIsk: true,
+      },
+    });
+
+    // Get all fees by type
+    const transportFees = await this.prisma.cycleFeeEvent.findMany({
+      where: { cycleId, feeType: 'transport' },
+      select: { amountIsk: true },
+    });
+
+    const collateralRecoveryFees = await this.prisma.cycleFeeEvent.findMany({
+      where: { cycleId, feeType: 'collateral_recovery' },
+      select: { amountIsk: true },
+    });
+
+    // Calculate revenue
+    const grossSales = lines.reduce(
+      (sum, l) => sum + Number(l.salesGrossIsk),
+      0,
+    );
+    const salesTax = lines.reduce((sum, l) => sum + Number(l.salesTaxIsk), 0);
+    const netSales = lines.reduce((sum, l) => sum + Number(l.salesNetIsk), 0);
+
+    // Calculate COGS (Cost of Goods Sold)
+    let totalCogs = 0;
+    let totalUnitsSold = 0;
+    for (const line of lines) {
+      const wac =
+        line.unitsBought > 0 ? Number(line.buyCostIsk) / line.unitsBought : 0;
+      const cogs = wac * line.unitsSold;
+      totalCogs += cogs;
+      totalUnitsSold += line.unitsSold;
+    }
+    const avgCostPerUnit = totalUnitsSold > 0 ? totalCogs / totalUnitsSold : 0;
+
+    // Calculate expenses
+    const brokerFees = lines.reduce(
+      (sum, l) => sum + Number(l.brokerFeesIsk),
+      0,
+    );
+    const relistFees = lines.reduce(
+      (sum, l) => sum + Number(l.relistFeesIsk),
+      0,
+    );
+    const transportFeesTotal = transportFees.reduce(
+      (sum, f) => sum + Number(f.amountIsk),
+      0,
+    );
+    const collateralRecoveryTotal = collateralRecoveryFees.reduce(
+      (sum, f) => sum + Number(f.amountIsk),
+      0,
+    ); // This will be negative (income)
+    const totalExpenses = brokerFees + relistFees + transportFeesTotal + collateralRecoveryTotal;
+
+    // Calculate profit
+    const grossProfit = netSales - totalCogs;
+    const netProfit = grossProfit - totalExpenses;
+
+    // Calculate ROI
+    const initialCapital = Number(cycle.initialCapitalIsk);
+    const roiPercentage =
+      initialCapital > 0 ? (netProfit / initialCapital) * 100 : 0;
+
+    return {
+      revenue: {
+        grossSales: grossSales.toFixed(2),
+        salesTax: salesTax.toFixed(2),
+        netSales: netSales.toFixed(2),
+      },
+      cogs: {
+        totalCogs: totalCogs.toFixed(2),
+        unitsSold: totalUnitsSold,
+        avgCostPerUnit: avgCostPerUnit.toFixed(2),
+      },
+      grossProfit: grossProfit.toFixed(2),
+      expenses: {
+        transportFees: transportFeesTotal.toFixed(2),
+        brokerFees: brokerFees.toFixed(2),
+        relistFees: relistFees.toFixed(2),
+        collateralRecovery: collateralRecoveryTotal.toFixed(2), // Negative = income
+        totalExpenses: totalExpenses.toFixed(2),
+      },
+      netProfit: netProfit.toFixed(2),
+      roi: {
+        percentage: roiPercentage.toFixed(2),
+        initialCapital: initialCapital.toFixed(2),
+      },
     };
   }
 

@@ -123,7 +123,7 @@ async function createFakeDonation(
   console.log(`💰 [SETUP] Creating fake donation: ${amount} ISK`);
   await prisma.walletJournalEntry.create({
     data: {
-      journalId: BigInt(Date.now() + Math.floor(Math.random() * 1000)),
+      journalId: BigInt(Date.now() * 1000 + (transactionIdCounter++ * 10)),
       characterId,
       date: new Date(),
       amount: amount.toString(),
@@ -141,6 +141,9 @@ async function createFakeDonation(
   });
   console.log(`  ✓ Created donation with reason: ${reason}`);
 }
+
+// Transaction ID counter to ensure uniqueness across the entire test
+let transactionIdCounter = 0;
 
 // Create fake wallet transactions for buys using cost map from packages
 async function createFakeBuyTransactionsWithCosts(
@@ -170,7 +173,7 @@ async function createFakeBuyTransactionsWithCosts(
       continue;
     }
 
-    const buyTxId = BigInt(Date.now() + Math.floor(Math.random() * 100000));
+    const buyTxId = BigInt(Date.now() * 1000 + (transactionIdCounter++ * 10));
 
     await prisma.walletTransaction.create({
       data: {
@@ -229,9 +232,7 @@ async function createFakeSellTransactions(
     const salesTax = grossRevenue * 0.0337; // 3.37% tax
     const netRevenue = grossRevenue - salesTax;
 
-    const sellTxId = BigInt(
-      Date.now() + Math.floor(Math.random() * 100000) + 50000,
-    );
+    const sellTxId = BigInt(Date.now() * 1000 + (transactionIdCounter++ * 10));
 
     await prisma.walletTransaction.create({
       data: {
@@ -273,26 +274,31 @@ async function testCycle1(config: TestConfig): Promise<string> {
   // 2. Create multiple participations (5 people, 60B total)
   console.log('\n2️⃣  Creating 5 participations (60B total)...');
   const participants = [
-    { name: 'Investor Alpha', amount: 15000000000 },
-    { name: 'Investor Beta', amount: 12000000000 },
-    { name: 'Investor Gamma', amount: 10000000000 },
-    { name: 'Investor Delta', amount: 13000000000 },
-    { name: 'Investor Epsilon', amount: 10000000000 },
+    { name: 'Investor Alpha', amount: 15000000000, testUserId: 'alpha001' },
+    { name: 'Investor Beta', amount: 12000000000, testUserId: 'beta0001' },
+    { name: 'Investor Gamma', amount: 10000000000, testUserId: 'gamma001' },
+    { name: 'Investor Delta', amount: 13000000000, testUserId: 'delta001' },
+    { name: 'Investor Epsilon', amount: 10000000000, testUserId: 'epsilon1' },
   ];
 
   for (const p of participants) {
     await apiCall(config, 'POST', `/ledger/cycles/${cycleId}/participations`, {
       characterName: p.name,
       amountIsk: p.amount.toFixed(2),
+      testUserId: p.testUserId, // Dev-only field for creating multiple test participations
     });
     console.log(`  ✓ ${p.name}: ${(p.amount / 1e9).toFixed(1)}B ISK`);
   }
 
-  // 3. Create fake donations and match
+  // 3. Create fake donations (memo format: ARB-{cycleId:8}-{testUserId:8})
   console.log('\n3️⃣  Creating donations and matching...');
-  const totalDonation = participants.reduce((sum, p) => sum + p.amount, 0);
-  const reason = `ARB-${cycleId.slice(0, 8)}`;
-  await createFakeDonation(config.characterId, totalDonation, reason);
+  
+  // Create donation for each investor using their testUserId in the memo
+  for (const p of participants) {
+    const memo = `ARB-${cycleId.substring(0, 8)}-${p.testUserId.substring(0, 8)}`;
+    await createFakeDonation(config.characterId, p.amount, memo);
+    console.log(`  💰 Donation: ${p.name} - ${(p.amount / 1e9).toFixed(1)}B ISK (memo: ${memo})`);
+  }
 
   await apiCall(
     config,
@@ -537,26 +543,31 @@ async function testCycle2(
   // 2. Create participations (same as Cycle 1)
   console.log('\n2️⃣  Creating 5 participations (60B total)...');
   const participants = [
-    { name: 'Investor Alpha', amount: 15000000000 },
-    { name: 'Investor Beta', amount: 12000000000 },
-    { name: 'Investor Gamma', amount: 10000000000 },
-    { name: 'Investor Delta', amount: 13000000000 },
-    { name: 'Investor Epsilon', amount: 10000000000 },
+    { name: 'Investor Alpha', amount: 15000000000, testUserId: 'alpha001' },
+    { name: 'Investor Beta', amount: 12000000000, testUserId: 'beta0001' },
+    { name: 'Investor Gamma', amount: 10000000000, testUserId: 'gamma001' },
+    { name: 'Investor Delta', amount: 13000000000, testUserId: 'delta001' },
+    { name: 'Investor Epsilon', amount: 10000000000, testUserId: 'epsilon1' },
   ];
 
   for (const p of participants) {
     await apiCall(config, 'POST', `/ledger/cycles/${cycleId}/participations`, {
       characterName: p.name,
       amountIsk: p.amount.toFixed(2),
+      testUserId: p.testUserId, // Dev-only field for creating multiple test participations
     });
   }
   console.log('  ✓ All participations created');
 
-  // 3. Create donations and match
+  // 3. Create fake donations (memo format: ARB-{cycleId:8}-{testUserId:8})
   console.log('\n3️⃣  Creating donations and matching...');
-  const totalDonation = participants.reduce((sum, p) => sum + p.amount, 0);
-  const reason = `ARB-${cycleId.slice(0, 8)}`;
-  await createFakeDonation(config.characterId, totalDonation, reason);
+  
+  // Create donation for each investor using their testUserId in the memo
+  for (const p of participants) {
+    const memo = `ARB-${cycleId.substring(0, 8)}-${p.testUserId.substring(0, 8)}`;
+    await createFakeDonation(config.characterId, p.amount, memo);
+    console.log(`  💰 Donation: ${p.name} - ${(p.amount / 1e9).toFixed(1)}B ISK (memo: ${memo})`);
+  }
 
   await apiCall(
     config,
@@ -611,55 +622,62 @@ async function testCycle2(
   // 7. Create a new plan with available cash
   console.log('\n7️⃣  Creating new plan with available cash...');
   const availableCash = Number(cycle2Data.capital.cash);
-  const targetPlanValue = availableCash * 0.3; // Use 30% of available cash
+  const targetInvestment = availableCash * 0.3; // Use 30% of available cash
 
-  let planValue = 0;
-  const planItems: any[] = [];
+  // Get unique destination stations from all cycle lines (including rollover)
+  const destinations = [...new Set(lines.map((l: any) => l.destinationStationId))];
+  const shippingCostByStation: Record<string, number> = {};
+  destinations.forEach((stationId: number) => {
+    shippingCostByStation[stationId.toString()] = 50000000; // 50M ISK per destination
+  });
 
-  // Only use non-rollover items for the plan
-  const nonRolloverLines = lines.filter((l: any) => !l.isRollover);
+  const planRequest = {
+    shippingCostByStation,
+    packageCapacityM3: 350000, // Standard freight container
+    investmentISK: targetInvestment,
+    maxPackagesHint: 5,
+    maxPackageCollateralISK: 2000000000, // 2B ISK
+  };
 
-  for (const line of nonRolloverLines) {
-    if (planValue >= targetPlanValue) break;
-    
-    const percentage = 0.5 + Math.random() * 0.3;
-    const unitsForPlan = Math.floor(line.plannedUnits * percentage);
-    
-    if (unitsForPlan > 0) {
-      const unitCost = parseFloat(line.buyCostIsk) / line.unitsBought;
-      const lineValue = unitCost * unitsForPlan;
-      
-      planItems.push({
-        cycleLineId: line.id,
-        typeId: line.typeId,
-        units: unitsForPlan,
-        destinationStationId: line.destinationStationId,
-      });
-      
-      planValue += lineValue;
-    }
-  }
+  console.log(`  Planning with ${destinations.length} destinations, ${(targetInvestment / 1e9).toFixed(1)}B ISK investment...`);
+  const planResult = await apiCall(config, 'POST', '/arbitrage/plan-packages', planRequest);
+  console.log(`  ✓ Plan created with ${planResult.packages?.length || 0} packages`);
 
+  let totalPlanValue = 0;
   let packageId: string | null = null;
-
-  if (planItems.length > 0) {
-    const plan = await apiCall(config, 'POST', `/ledger/cycles/${cycleId}/plans`, {
-      name: 'Test Plan Package 2',
-      items: planItems,
-    });
-    packageId = plan.packageId;
-    console.log(`  ✓ Plan created with ${planItems.length} items (~${(planValue / 1e9).toFixed(1)}B ISK)`);
+  
+  if (planResult.packages && planResult.packages.length > 0) {
+    for (const pkg of planResult.packages) {
+      totalPlanValue += Number(pkg.totalCost || 0);
+    }
+    packageId = planResult.packages[0]?.id || null;
+    console.log(`  ✓ Total plan value: ${(totalPlanValue / 1e9).toFixed(1)}B ISK`);
   } else {
-    console.log('  ⚠️  No new items available for planning (all rollover)');
+    console.log('  ⚠️  No packages created (no profitable opportunities found)');
   }
 
   await waitForUser(
-    `Check frontend: New plan should appear${packageId ? ' with items' : ' (or no new items if all rollover)'}`,
+    `Check frontend: New plan should appear with ${planResult.packages?.length || 0} packages`,
   );
 
-  // 8. Simulate lost package (if we created one)
+  // 8. Commit the plan (if packages were created)
+  if (planResult.packages && planResult.packages.length > 0) {
+    console.log('\n8️⃣  Committing plan...');
+    const commitResult = await apiCall(config, 'POST', '/arbitrage/commit', {
+      request: planRequest,
+      result: planResult,
+      memo: 'E2E Test Plan 2 (Cycle 2)',
+    });
+    console.log(`  ✓ Plan committed (${commitResult.id})`);
+
+    await waitForUser(
+      `Check frontend: Packages should now appear in the packages page for Cycle 2`,
+    );
+  }
+
+  // 9. Simulate lost package (if we created one)
   if (packageId) {
-    console.log('\n8️⃣  Simulating lost package...');
+    console.log('\n9️⃣  Simulating lost package...');
     console.log(`  Package ID: ${packageId}`);
     console.log(`  📦 To test package audit:`);
     console.log(`     1. Go to http://localhost:3001/arbitrage/admin/packages`);

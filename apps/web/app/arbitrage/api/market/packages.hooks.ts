@@ -97,11 +97,20 @@ export function useMarkPackageFailed() {
   return useMutation({
     mutationFn: ({
       packageId,
-      reason,
+      collateralRecoveredIsk,
+      collateralProfitIsk,
+      memo,
     }: {
       packageId: string;
-      reason?: string;
-    }) => client.post<void>(`/packages/${packageId}/mark-failed`, { reason }),
+      collateralRecoveredIsk: string;
+      collateralProfitIsk?: string;
+      memo?: string;
+    }) =>
+      client.post<void>(`/packages/${packageId}/mark-failed`, {
+        collateralRecoveredIsk,
+        collateralProfitIsk,
+        memo,
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: qk.packages._root });
     },

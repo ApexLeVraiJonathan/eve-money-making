@@ -39,8 +39,6 @@ export class ParticipationService {
       characterName = anyChar ?? 'Unknown';
     }
 
-    const memo = `ARB-${cycle.id.substring(0, 8)}`;
-
     // Check for existing participation
     const existing = await this.prisma.cycleParticipation.findFirst({
       where: {
@@ -49,6 +47,12 @@ export class ParticipationService {
       },
     });
     if (existing) return existing;
+    
+    // Generate unique memo: ARB-{cycleId:8}-{userId:8}
+    // This allows generating the memo BEFORE creating the participation (for frontend UX)
+    // Format: "ARB-e7f100d7-a3b4c5d6" = 21 chars (well under 40 char limit)
+    const userIdForMemo = input.userId || 'unknown';
+    const uniqueMemo = `ARB-${cycle.id.substring(0, 8)}-${String(userIdForMemo).substring(0, 8)}`;
 
     return await this.prisma.cycleParticipation.create({
       data: {
@@ -56,7 +60,7 @@ export class ParticipationService {
         userId: input.userId,
         characterName,
         amountIsk: input.amountIsk,
-        memo,
+        memo: uniqueMemo,
         status: 'AWAITING_INVESTMENT',
       },
     });

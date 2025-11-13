@@ -135,7 +135,9 @@ export class PaymentMatchingService {
       const expectedAmount = Number(p.amountIsk);
 
       // Find all journals that could match this participation
+      // Filter out journals already matched in this run
       const candidates = unlinkedJournals
+        .filter((j) => !linkedJournalIds.has(j.journalId)) // Exclude already-matched journals
         .map((j) => {
           const memo = (j.reason || '').trim();
           let score = 0;
@@ -174,7 +176,7 @@ export class PaymentMatchingService {
         continue;
       }
 
-      // Sum up all matching payments
+      // Filter to high-scoring matches
       const matchedJournals = candidates.filter((c) => c.score >= 100);
       const totalAmount = matchedJournals.reduce((sum, c) => sum + c.amount, 0);
 

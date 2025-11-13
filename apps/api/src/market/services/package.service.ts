@@ -332,6 +332,11 @@ export class PackageService {
         const newUnitsBought = cycleLine.unitsBought - link.unitsCommitted;
         const newBuyCostIsk = Number(cycleLine.buyCostIsk) - costReduction;
 
+        // Delete the junction record first (before deleting cycle line)
+        await tx.packageCycleLine.deleteMany({
+          where: { id: link.id },
+        });
+
         if (newUnitsBought <= 0 || newPlannedUnits <= 0) {
           // Delete the cycle line entirely
           await tx.cycleLine.delete({
@@ -354,11 +359,6 @@ export class PackageService {
             `Reduced cycle line ${cycleLine.id}: -${link.unitsCommitted} units, -${costReduction.toFixed(2)} ISK`,
           );
         }
-
-        // Delete the junction record
-        await tx.packageCycleLine.delete({
-          where: { id: link.id },
-        });
       }
 
       // Calculate collateral profit (margin above costs)

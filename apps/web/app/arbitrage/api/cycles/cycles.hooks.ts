@@ -93,6 +93,42 @@ export function useCycleProfit(cycleId: string) {
 }
 
 /**
+ * Get detailed profit breakdown (P&L statement)
+ */
+export function useProfitBreakdown(cycleId: string) {
+  const client = useApiClient();
+  return useAuthenticatedQuery({
+    queryKey: [...qk.cycles.profit(cycleId), "breakdown"],
+    queryFn: () =>
+      client.get<{
+        revenue: {
+          grossSales: string;
+          salesTax: string;
+          netSales: string;
+        };
+        cogs: {
+          totalCogs: string;
+          unitsSold: number;
+          avgCostPerUnit: string;
+        };
+        grossProfit: string;
+        expenses: {
+          transportFees: string;
+          brokerFees: string;
+          relistFees: string;
+          totalExpenses: string;
+        };
+        netProfit: string;
+        roi: {
+          percentage: string;
+          initialCapital: string;
+        };
+      }>(`/ledger/cycles/${cycleId}/profit/breakdown`),
+    enabled: !!cycleId,
+  });
+}
+
+/**
  * Get estimated profit for cycle
  */
 export function useCycleEstimatedProfit(cycleId: string) {

@@ -117,14 +117,20 @@ export default function OptInDialog(props: OptInDialogProps) {
   // Reset to form when dialog closes and call onSuccess if participation was created
   React.useEffect(() => {
     if (!open) {
-      // If participation was successfully created, notify parent
-      if (participationCreated) {
-        onSuccess?.();
-        setParticipationCreated(false);
-      }
+      // Small delay to ensure dialog is fully closed before triggering refresh
+      const timer = setTimeout(() => {
+        // If participation was successfully created, notify parent
+        if (participationCreated) {
+          onSuccess?.();
+          setParticipationCreated(false);
+        }
+      }, 100);
+      
       // Reset state
       setStep("form");
       setMemo("");
+      
+      return () => clearTimeout(timer);
     }
   }, [open, participationCreated, onSuccess]);
 

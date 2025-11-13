@@ -176,7 +176,9 @@ function PackagesContent() {
     try {
       await markFailedMutation.mutateAsync({
         packageId: selectedPackage.id,
-        reason: failureMemo || undefined,
+        collateralRecoveredIsk: collateralRecovered,
+        collateralProfitIsk: collateralProfit || undefined,
+        memo: failureMemo || undefined,
       });
 
       // Close dialog and reset

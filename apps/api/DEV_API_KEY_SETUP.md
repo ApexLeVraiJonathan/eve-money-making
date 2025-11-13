@@ -138,10 +138,37 @@ pnpm exec ts-node scripts/e2e-rollover-test.ts \
   --characterId 2122151042
 ```
 
+## Creating Multiple Test Participations
+
+In dev/test environments, you can use the `testUserId` field to create multiple participations from a single API key:
+
+```bash
+# Create participation for Investor Alpha
+curl -H "x-api-key: my-dev-key" \
+  http://localhost:3000/ledger/cycles/CYCLE_ID/participations \
+  -X POST \
+  -H "Content-Type: application/json" \
+  -d '{"characterName": "Investor Alpha", "amountIsk": "15000000000.00", "testUserId": "test-user-alpha"}'
+
+# Create participation for Investor Beta
+curl -H "x-api-key: my-dev-key" \
+  http://localhost:3000/ledger/cycles/CYCLE_ID/participations \
+  -X POST \
+  -H "Content-Type: application/json" \
+  -d '{"characterName": "Investor Beta", "amountIsk": "12000000000.00", "testUserId": "test-user-beta"}'
+```
+
+**Note:** The `testUserId` field:
+- Is **only available in dev/test environments**
+- Will be **ignored in production** (production uses actual authenticated userId)
+- Allows testing multi-investor scenarios without creating multiple real users
+- Is used in E2E tests to simulate multiple investors
+
 ## Benefits
 
 - ✅ **Faster testing**: No need to grab fresh EVE SSO tokens
 - ✅ **Automation-friendly**: Perfect for CI/CD and automated tests
 - ✅ **Simpler scripts**: No token expiry to worry about
 - ✅ **Admin access**: Always authenticated as admin for full testing
+- ✅ **Multi-user testing**: Create multiple test participations with `testUserId`
 

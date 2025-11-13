@@ -109,13 +109,10 @@ export function useCreateParticipation() {
         `/ledger/cycles/${cycleId}/participations`,
         data,
       ),
-    onSuccess: (_, { cycleId }) => {
-      queryClient.invalidateQueries({
-        queryKey: qk.participations.list(cycleId),
-      });
-      queryClient.invalidateQueries({
-        queryKey: qk.participations.me(cycleId),
-      });
+    // Don't invalidate queries immediately - let the caller handle it
+    // This prevents the parent component from re-rendering and closing dialogs
+    onSuccess: () => {
+      // Queries will be invalidated when the dialog closes
     },
   });
 }

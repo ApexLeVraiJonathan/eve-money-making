@@ -28,6 +28,7 @@ import { CapitalService } from './services/capital.service';
 import { ProfitService } from './services/profit.service';
 import { WalletService } from '../wallet/services/wallet.service';
 import { AllocationService } from '../wallet/services/allocation.service';
+import { AppConfig } from '../common/config';
 import {
   CurrentUser,
   type RequestUser,
@@ -213,11 +214,28 @@ export class CyclesController {
   ): Promise<unknown> {
     // Prefer session identity when characterName not provided
     const characterName = body.characterName ?? user?.name ?? undefined;
+    
+    // In dev/test environments, allow testUserId to override the authenticated userId
+    // This enables creating multiple test participations from a single dev API key
+    let userId = user?.userId ?? undefined;
+    const env = AppConfig.env();
+    
+    this.logger.debug(
+      `Creating participation: testUserId=${body.testUserId}, env=${env}, isProd=${env === 'prod'}, userUserId=${user?.userId}`,
+    );
+    
+    if (body.testUserId && env !== 'prod') {
+      this.logger.debug(`Using testUserId: ${body.testUserId}`);
+      userId = body.testUserId;
+    } else {
+      this.logger.debug(`Using authenticated userId: ${userId}`);
+    }
+    
     return await this.participationService.createParticipation({
       cycleId,
       characterName,
       amountIsk: body.amountIsk,
-      userId: user?.userId ?? undefined, // Link to user if authenticated
+      userId,
     });
   }
 
@@ -526,6 +544,13 @@ export class CyclesController {
   @ApiParam({ name: 'cycleId', description: 'Cycle ID' })
   async getCycleProfit(@Param('cycleId') cycleId: string): Promise<unknown> {
     return await this.profitService.computeCycleProfit(cycleId);
+  }
+
+  @Get('cycles/:cycleId/profit/breakdown')
+  @ApiOperation({ summary: 'Get detailed profit breakdown (P&L statement)' })
+  @ApiParam({ name: 'cycleId', description: 'Cycle ID' })
+  async getProfitBreakdown(@Param('cycleId') cycleId: string): Promise<unknown> {
+    return await this.profitService.getProfitBreakdown(cycleId);
   }
 
   @Public()

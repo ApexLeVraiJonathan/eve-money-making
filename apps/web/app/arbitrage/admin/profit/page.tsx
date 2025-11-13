@@ -6,56 +6,18 @@ export const dynamic = "force-dynamic";
 import * as React from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@eve/ui";
+import { Card, CardContent, CardHeader, CardTitle } from "@eve/ui";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@eve/ui";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@eve/ui";
-import { Input } from "@eve/ui";
-import { Label } from "@eve/ui";
-import { Textarea } from "@eve/ui";
-import { ArrowLeft, Plus } from "lucide-react";
+  ArrowLeft,
+  TrendingUp,
+  DollarSign,
+  Package,
+  Truck,
+  Percent,
+} from "lucide-react";
 import { formatIsk } from "@/lib/utils";
 import { Skeleton } from "@eve/ui";
-import {
-  useCycles,
-  useCycleProfit,
-  useTransportFees,
-  useAddTransportFee,
-} from "../../api";
-import { toast } from "sonner";
-
-type CycleProfit = {
-  lineProfitExclTransport: string;
-  transportFees: string;
-  cycleProfitCash: string;
-  lineBreakdown: Array<{
-    lineId: string;
-    typeId: number;
-    typeName: string;
-    destinationStationName: string;
-    profit: string;
-  }>;
-};
-
-type TransportFee = {
-  id: string;
-  occurredAt: string;
-  amountIsk: string;
-  memo: string | null;
-};
+import { useCycles, useProfitBreakdown } from "../../api";
 
 export default function CycleProfitPage() {
   return (
@@ -72,7 +34,7 @@ function CycleProfitContent() {
 
   const [cycleId, setCycleId] = React.useState<string>("");
 
-  // Auto-load latest cycle
+  // Auto-load latest open cycle
   const { data: cycles = [] } = useCycles();
 
   React.useEffect(() => {
@@ -84,46 +46,8 @@ function CycleProfitContent() {
     }
   }, [queryParamCycleId, cycles, cycleId]);
 
-  // Use new API hooks
-  const { data: profit, isLoading, error } = useCycleProfit(cycleId);
-  const { data: transportFees = [] } = useTransportFees(cycleId);
-
-  // Transport fee dialog state
-  const [isDialogOpen, setIsDialogOpen] = React.useState(false);
-  const [feeAmount, setFeeAmount] = React.useState("");
-  const [feeMemo, setFeeMemo] = React.useState("");
-
-  const addTransportFeeMutation = useAddTransportFee();
-
-  const handleAddTransportFee = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!cycleId || !feeAmount) return;
-
-    // Validate amount format
-    const amountNum = Number(feeAmount);
-    if (isNaN(amountNum) || amountNum <= 0) {
-      toast.error("Please enter a valid amount greater than 0");
-      return;
-    }
-
-    try {
-      await addTransportFeeMutation.mutateAsync({
-        cycleId,
-        data: {
-          amountIsk: amountNum.toFixed(2),
-          memo: feeMemo.trim() || undefined,
-        },
-      });
-      setIsDialogOpen(false);
-      setFeeAmount("");
-      setFeeMemo("");
-      toast.success("Transport fee added");
-    } catch (err) {
-      toast.error(
-        err instanceof Error ? err.message : "Failed to add transport fee",
-      );
-    }
-  };
+  // Use new profit breakdown API
+  const { data: breakdown, isLoading, error } = useProfitBreakdown(cycleId);
 
   if (error) {
     return (
@@ -132,13 +56,13 @@ function CycleProfitContent() {
           <Button
             variant="ghost"
             size="icon"
-            onClick={() => router.push("/arbitrage/cycles")}
+            onClick={() => router.push("/arbitrage/admin")}
           >
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">
-              Cycle Profit
+              Profit & Loss Statement
             </h1>
             <p className="text-sm text-muted-foreground">Error loading data</p>
           </div>
@@ -152,24 +76,24 @@ function CycleProfitContent() {
     );
   }
 
-  if (isLoading || !profit) {
+  if (isLoading || !breakdown) {
     return (
       <div className="p-6 space-y-6">
         <div className="flex items-center gap-3">
           <Button
             variant="ghost"
             size="icon"
-            onClick={() => router.push("/arbitrage/cycles")}
+            onClick={() => router.push("/arbitrage/admin")}
           >
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">
-              Cycle Profit
+              Profit & Loss Statement
             </h1>
             {cycleId ? (
               <p className="text-sm text-muted-foreground">
-                Loading profit for cycle {cycleId.slice(0, 8)}...
+                Loading breakdown for cycle {cycleId.slice(0, 8)}...
               </p>
             ) : (
               <p className="text-sm text-muted-foreground">
@@ -179,230 +103,259 @@ function CycleProfitContent() {
           </div>
         </div>
         <div className="space-y-4">
-          <Skeleton className="h-32 w-full" />
-          <Skeleton className="h-64 w-full" />
+          <Skeleton className="h-96 w-full" />
         </div>
       </div>
     );
   }
 
-  const lineProfitNum = Number(profit.lineProfitExclTransport);
-  const transportFeesNum = Number(profit.transportFees);
-  const totalProfitNum = Number(profit.cycleProfitCash);
+  const netProfitNum = Number(breakdown.netProfit);
+  const isProfit = netProfitNum >= 0;
 
   return (
     <div className="p-6 space-y-6">
+      {/* Header */}
       <div className="flex items-center gap-3">
         <Button
           variant="ghost"
           size="icon"
-          onClick={() => router.push("/arbitrage/cycles")}
+          onClick={() => router.push("/arbitrage/admin")}
         >
           <ArrowLeft className="h-4 w-4" />
         </Button>
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">
-            Cycle Profit
+        <div className="flex-1">
+          <h1 className="text-2xl font-semibold tracking-tight flex items-center gap-2">
+            <TrendingUp className="h-6 w-6" />
+            Profit & Loss Statement
           </h1>
           <p className="text-sm text-muted-foreground">
-            Cash-only profit for cycle {cycleId.slice(0, 8)}...
+            Detailed breakdown for cycle {cycleId.slice(0, 8)}...
           </p>
         </div>
       </div>
 
-      {/* Summary Cards */}
-      <div className="grid gap-4 md:grid-cols-3">
-        <div className="rounded-lg border p-4 surface-1">
-          <div className="text-sm text-muted-foreground">Line Profit</div>
-          <div className="mt-2 text-2xl font-semibold">
-            {formatIsk(lineProfitNum)}
+      {/* Net Profit Card */}
+      <Card className="border-2">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm font-medium uppercase tracking-wide">
+            Net Profit
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-baseline justify-between gap-8 max-w-2xl">
+            <div
+              className={`text-4xl font-bold ${
+                isProfit ? "text-emerald-500" : "text-red-500"
+              }`}
+            >
+              {formatIsk(netProfitNum)}
+            </div>
+            <div className="text-right whitespace-nowrap">
+              <div
+                className={`text-2xl font-semibold ${
+                  isProfit ? "text-emerald-500" : "text-red-500"
+                }`}
+              >
+                {breakdown.roi.percentage}%
+              </div>
+              <div className="text-xs opacity-70">ROI</div>
+            </div>
           </div>
-          <p className="text-xs text-muted-foreground mt-1">
-            Sales net minus costs and fees (excl. transport)
-          </p>
-        </div>
-        <div className="rounded-lg border p-4 surface-1">
-          <div className="text-sm text-muted-foreground">Transport Fees</div>
-          <div className="mt-2 text-2xl font-semibold text-red-400">
-            {formatIsk(transportFeesNum)}
-          </div>
-          <p className="text-xs text-muted-foreground mt-1">
-            Total transport costs
-          </p>
-        </div>
-        <div className="rounded-lg border p-4 surface-1">
-          <div className="text-sm text-muted-foreground">Net Cash Profit</div>
-          <div
-            className={`mt-2 text-2xl font-semibold ${
-              totalProfitNum < 0 ? "text-red-400" : "text-emerald-500"
-            }`}
-          >
-            {formatIsk(totalProfitNum)}
-          </div>
-          <p className="text-xs text-muted-foreground mt-1">
-            Line profit minus transport fees
-          </p>
-        </div>
-      </div>
+        </CardContent>
+      </Card>
 
-      {/* Line Breakdown */}
-      {profit.lineBreakdown && profit.lineBreakdown.length > 0 ? (
-        <div className="rounded-lg border surface-1 overflow-hidden">
-          <div className="p-4 border-b">
-            <h2 className="text-base font-medium">Line Breakdown</h2>
+      {/* P&L Statement */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <DollarSign className="h-5 w-5" />
+            Income Statement
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {/* REVENUE */}
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide">
+              <DollarSign className="h-4 w-4" />
+              Revenue
+            </div>
+            <div className="ml-6 space-y-1 max-w-2xl">
+              <div className="flex justify-between gap-8 text-sm">
+                <span>Gross Sales</span>
+                <span className="tabular-nums font-medium">
+                  {formatIsk(Number(breakdown.revenue.grossSales))}
+                </span>
+              </div>
+              <div className="flex justify-between gap-8 text-sm">
+                <span>Sales Tax (3.37%)</span>
+                <span className="tabular-nums font-medium text-red-400">
+                  -{formatIsk(Number(breakdown.revenue.salesTax))}
+                </span>
+              </div>
+              <div className="flex justify-between gap-8 pt-2 border-t">
+                <span className="font-semibold">Net Sales Revenue</span>
+                <span className="tabular-nums font-bold">
+                  {formatIsk(Number(breakdown.revenue.netSales))}
+                </span>
+              </div>
+            </div>
           </div>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Item</TableHead>
-                <TableHead>Destination</TableHead>
-                <TableHead className="text-right">Profit</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {profit.lineBreakdown.map((line) => {
-                const lineProfit = Number(line.profit);
-                const isNegative = lineProfit < 0;
 
-                return (
-                  <TableRow key={line.lineId}>
-                    <TableCell className="font-medium">
-                      <div>
-                        <div className="text-sm">{line.typeName}</div>
-                        <div className="text-xs text-muted-foreground">
-                          ID: {line.typeId}
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>{line.destinationStationName}</TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      <span
-                        className={
-                          isNegative ? "text-red-400" : "text-emerald-500"
-                        }
-                      >
-                        {formatIsk(lineProfit)}
-                      </span>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        </div>
-      ) : (
-        <div className="rounded-lg border p-8 text-center surface-1">
-          <p className="text-muted-foreground">
-            No cycle lines yet. Commit a plan to get started.
-          </p>
-        </div>
-      )}
+          {/* COGS */}
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide">
+              <Package className="h-4 w-4" />
+              Cost of Goods Sold
+            </div>
+            <div className="ml-6 space-y-1 max-w-2xl">
+              <div className="flex justify-between gap-8 text-sm">
+                <span>
+                  {breakdown.cogs.unitsSold.toLocaleString()} units sold
+                </span>
+                <span className="text-xs opacity-70">
+                  Avg: {formatIsk(Number(breakdown.cogs.avgCostPerUnit))}/unit
+                </span>
+              </div>
+              <div className="flex justify-between gap-8 pt-2 border-t">
+                <span className="font-semibold">Total COGS</span>
+                <span className="tabular-nums font-bold text-red-400">
+                  -{formatIsk(Number(breakdown.cogs.totalCogs))}
+                </span>
+              </div>
+            </div>
+          </div>
 
-      {/* Transport Fees */}
-      <div className="rounded-lg border surface-1 overflow-hidden">
-        <div className="p-4 border-b flex items-center justify-between">
-          <h2 className="text-base font-medium">Transport Fees</h2>
-          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-            <DialogTrigger asChild>
-              <Button size="sm" variant="outline">
-                <Plus className="h-4 w-4 mr-2" />
-                Record Transport Fee
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <form onSubmit={handleAddTransportFee}>
-                <DialogHeader>
-                  <DialogTitle>Record Transport Fee</DialogTitle>
-                  <DialogDescription>
-                    Add a manual transport fee for this cycle (e.g., hauling
-                    contract cost).
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="grid gap-4 py-4">
-                  <div className="grid gap-2">
-                    <Label htmlFor="amount">
-                      Amount (ISK) <span className="text-red-500">*</span>
-                    </Label>
-                    <Input
-                      id="amount"
-                      type="number"
-                      step="0.01"
-                      min="0.01"
-                      placeholder="1000000.00"
-                      value={feeAmount}
-                      onChange={(e) => setFeeAmount(e.target.value)}
-                      required
-                      disabled={addTransportFeeMutation.isPending}
-                    />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="memo">Memo (optional)</Label>
-                    <Textarea
-                      id="memo"
-                      placeholder="e.g., Contract from Jita to Dodixie"
-                      value={feeMemo}
-                      onChange={(e) => setFeeMemo(e.target.value)}
-                      rows={3}
-                      disabled={addTransportFeeMutation.isPending}
-                    />
-                  </div>
-                </div>
-                <DialogFooter>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => {
-                      setIsDialogOpen(false);
-                    }}
-                    disabled={addTransportFeeMutation.isPending}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    type="submit"
-                    disabled={addTransportFeeMutation.isPending || !feeAmount}
-                  >
-                    {addTransportFeeMutation.isPending
-                      ? "Adding..."
-                      : "Add Fee"}
-                  </Button>
-                </DialogFooter>
-              </form>
-            </DialogContent>
-          </Dialog>
-        </div>
-        {transportFees.length > 0 ? (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Date</TableHead>
-                <TableHead>Memo</TableHead>
-                <TableHead className="text-right">Amount</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {transportFees.map((fee) => (
-                <TableRow key={fee.id}>
-                  <TableCell>
-                    {new Date(fee.occurredAt).toLocaleString()}
-                  </TableCell>
-                  <TableCell>{fee.memo || "—"}</TableCell>
-                  <TableCell className="text-right tabular-nums text-red-400">
-                    {formatIsk(Number(fee.amountIsk))}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        ) : (
-          <div className="p-8 text-center">
-            <p className="text-sm text-muted-foreground">
-              No transport fees recorded yet. Click &quot;Record Transport
-              Fee&quot; to add one.
+          {/* GROSS PROFIT */}
+          <div className="bg-primary/5 -mx-6 px-6 py-3">
+            <div className="flex justify-between gap-8 items-center max-w-2xl">
+              <span className="font-semibold text-lg">Gross Profit</span>
+              <span
+                className={`tabular-nums font-bold text-xl ${
+                  Number(breakdown.grossProfit) >= 0
+                    ? "text-emerald-500"
+                    : "text-red-500"
+                }`}
+              >
+                {formatIsk(Number(breakdown.grossProfit))}
+              </span>
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              = Net Sales - Cost of Goods Sold
             </p>
           </div>
-        )}
-      </div>
+
+          {/* EXPENSES */}
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide">
+              <Truck className="h-4 w-4" />
+              Operating Expenses
+            </div>
+            <div className="ml-6 space-y-1 max-w-2xl">
+              <div className="flex justify-between gap-8 text-sm">
+                <span>Transport Fees</span>
+                <span className="tabular-nums font-medium text-red-400">
+                  -{formatIsk(Number(breakdown.expenses.transportFees))}
+                </span>
+              </div>
+              <div className="flex justify-between gap-8 text-sm">
+                <span>Broker Fees (1.5%)</span>
+                <span className="tabular-nums font-medium text-red-400">
+                  -{formatIsk(Number(breakdown.expenses.brokerFees))}
+                </span>
+              </div>
+              <div className="flex justify-between gap-8 text-sm">
+                <span>Relist Fees (0.3%)</span>
+                <span className="tabular-nums font-medium text-red-400">
+                  -{formatIsk(Number(breakdown.expenses.relistFees))}
+                </span>
+              </div>
+              {Number(breakdown.expenses.collateralRecovery) < 0 && (
+                <div className="flex justify-between gap-8 text-sm">
+                  <span>Collateral Recovery</span>
+                  <span className="tabular-nums font-medium text-emerald-500">
+                    +{formatIsk(Math.abs(Number(breakdown.expenses.collateralRecovery)))}
+                  </span>
+                </div>
+              )}
+              <div className="flex justify-between gap-8 pt-2 border-t">
+                <span className="font-semibold">Total Expenses</span>
+                <span className="tabular-nums font-bold text-red-400">
+                  -{formatIsk(Number(breakdown.expenses.totalExpenses))}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* NET PROFIT */}
+          <div className="bg-primary/10 -mx-6 px-6 py-4 border-t-2">
+            <div className="flex justify-between gap-8 items-center max-w-2xl">
+              <div>
+                <span className="font-bold text-xl">Net Profit</span>
+                <p className="text-xs text-muted-foreground mt-1">
+                  = Gross Profit - Operating Expenses
+                </p>
+              </div>
+              <span
+                className={`tabular-nums font-bold text-3xl ${
+                  isProfit ? "text-emerald-500" : "text-red-500"
+                }`}
+              >
+                {formatIsk(netProfitNum)}
+              </span>
+            </div>
+          </div>
+
+          {/* ROI */}
+          <div className="space-y-2 pt-4 border-t">
+            <div className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide">
+              <Percent className="h-4 w-4" />
+              Return on Investment
+            </div>
+            <div className="ml-6 space-y-1 max-w-2xl">
+              <div className="flex justify-between gap-8 text-sm">
+                <span>Initial Capital</span>
+                <span className="tabular-nums font-medium">
+                  {formatIsk(Number(breakdown.roi.initialCapital))}
+                </span>
+              </div>
+              <div className="flex justify-between gap-8 text-sm">
+                <span>Net Profit</span>
+                <span
+                  className={`tabular-nums font-medium ${
+                    isProfit ? "text-emerald-500" : "text-red-500"
+                  }`}
+                >
+                  {formatIsk(netProfitNum)}
+                </span>
+              </div>
+              <div className="flex justify-between gap-8 pt-2 border-t">
+                <span className="font-semibold">ROI Percentage</span>
+                <span
+                  className={`tabular-nums font-bold text-lg ${
+                    isProfit ? "text-emerald-500" : "text-red-500"
+                  }`}
+                >
+                  {breakdown.roi.percentage}%
+                </span>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Helper Text */}
+      <Card className="bg-muted/30">
+        <CardContent className="pt-6">
+          <p className="text-sm opacity-80">
+            <strong className="opacity-100">How to read this P&L:</strong> Start with Gross Sales
+            Revenue, subtract Sales Tax to get Net Sales. Then subtract the Cost
+            of Goods Sold (what you paid for items that were sold) to get Gross
+            Profit. Finally, subtract all Operating Expenses (transport, broker,
+            relist fees) to arrive at your Net Profit. The ROI shows your return
+            as a percentage of your initial investment.
+          </p>
+        </CardContent>
+      </Card>
     </div>
   );
 }

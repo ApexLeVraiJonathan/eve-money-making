@@ -22,4 +22,12 @@ export class CreateParticipationManualRequest {
     message: 'amountIsk must be in format XXXXX.XX',
   })
   amountIsk: string;
+
+  @ApiPropertyOptional({
+    description: 'Test user ID (DEV ONLY - used to create multiple participations in testing)',
+    example: 'test-user-alpha',
+  })
+  @IsOptional()
+  @IsString()
+  testUserId?: string;
 }
