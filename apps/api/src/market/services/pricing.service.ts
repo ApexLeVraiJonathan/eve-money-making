@@ -145,6 +145,7 @@ export class PricingService {
       stationName: string;
       updates: Array<{
         orderId: number;
+        typeId: number;
         itemName: string;
         remaining: number;
         currentPrice: number;
@@ -251,6 +252,7 @@ export class PricingService {
       stationName: string;
       updates: Array<{
         orderId: number;
+        typeId: number;
         itemName: string;
         remaining: number;
         currentPrice: number;
@@ -270,6 +272,7 @@ export class PricingService {
       string,
       Array<{
         orderId: number;
+        typeId: number;
         itemName: string;
         remaining: number;
         currentPrice: number;

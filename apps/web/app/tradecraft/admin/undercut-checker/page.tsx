@@ -69,7 +69,10 @@ export default function UndercutCheckerPage() {
 
   // React Query hooks
   const { data: stations = [] } = useTrackedStations();
-  const { data: latestCycles = [] } = useArbitrageCommits({ limit: 5 });
+  const { data: latestCycles = [] } = useArbitrageCommits(
+    { limit: 5 },
+    { enabled: useCommit }, // Only fetch cycles when using cycle mode
+  );
   const undercutCheckMutation = useUndercutCheck();
 
   const buildKeys = (rows: Group[] | null): string[] => {
@@ -107,27 +110,22 @@ export default function UndercutCheckerPage() {
             : undefined,
         cycleId: useCommit && cycleId ? cycleId : undefined,
       });
-      // Convert needsUpdate array to expected Group[] format
-      const groups: Group[] = data.needsUpdate.map((item) => {
-        const station = stations.find((s) => s.stationId === item.stationId);
-        return {
-          characterId: 0, // Not provided by this API
-          characterName: "Unknown", // Not provided by this API
-          stationId: item.stationId,
-          stationName: station?.station?.name ?? `Station ${item.stationId}`,
-          updates: [
-            {
-              orderId: parseInt(item.lineId), // Convert lineId string to number
-              typeId: item.typeId,
-              itemName: item.typeName,
-              remaining: 0, // Not provided by this API
-              currentPrice: item.currentPrice,
-              competitorLowest: item.lowestCompetitor,
-              suggestedNewPriceTicked: item.suggestedPrice,
-            },
-          ],
-        };
-      });
+      // Backend returns the data in the correct Group[] format already
+      const groups: Group[] = data.map((item) => ({
+        characterId: item.characterId,
+        characterName: item.characterName,
+        stationId: item.stationId,
+        stationName: item.stationName,
+        updates: item.updates.map((update) => ({
+          orderId: update.orderId,
+          typeId: update.typeId,
+          itemName: update.itemName,
+          remaining: update.remaining,
+          currentPrice: update.currentPrice,
+          competitorLowest: update.competitorLowest,
+          suggestedNewPriceTicked: update.suggestedNewPriceTicked,
+        })),
+      }));
       setResult(groups);
       // Default select all items
       const allKeys = buildKeys(groups);

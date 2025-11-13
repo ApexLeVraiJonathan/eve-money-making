@@ -69,17 +69,23 @@ export function useUndercutCheck() {
       stationIds?: number[];
       cycleId?: string;
     }) =>
-      client.post<{
-        needsUpdate: Array<{
-          lineId: string;
-          typeId: number;
-          typeName: string;
-          currentPrice: number;
-          lowestCompetitor: number;
-          suggestedPrice: number;
+      client.post<
+        Array<{
+          characterId: number;
+          characterName: string;
           stationId: number;
-        }>;
-      }>("/pricing/undercut-check", data ?? {}),
+          stationName: string;
+          updates: Array<{
+            orderId: number;
+            typeId: number;
+            itemName: string;
+            remaining: number;
+            currentPrice: number;
+            competitorLowest: number;
+            suggestedNewPriceTicked: number;
+          }>;
+        }>
+      >("/pricing/undercut-check", data ?? {}),
   });
 }
 

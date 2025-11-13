@@ -19,10 +19,15 @@ import type { Cycle, PlanResult } from "@eve/shared/types";
 /**
  * List arbitrage commits (cycles with commit data)
  */
-export function useArbitrageCommits(options?: {
-  limit?: number;
-  offset?: number;
-}) {
+export function useArbitrageCommits(
+  options?: {
+    limit?: number;
+    offset?: number;
+  },
+  queryOptions?: {
+    enabled?: boolean;
+  },
+) {
   const client = useApiClient();
   return useAuthenticatedQuery({
     queryKey: ["arbitrage", "commits", options],
@@ -33,6 +38,7 @@ export function useArbitrageCommits(options?: {
       const query = params.toString() ? `?${params.toString()}` : "";
       return client.get<Cycle[]>(`/tradecraft/commits${query}`);
     },
+    enabled: queryOptions?.enabled,
   });
 }
 

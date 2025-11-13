@@ -97,7 +97,10 @@ export default function SellAppraiserPage() {
 
   // React Query hooks
   const { data: stations = [] } = useTrackedStations();
-  const { data: latestCycles = [] } = useArbitrageCommits({ limit: 5 });
+  const { data: latestCycles = [] } = useArbitrageCommits(
+    { limit: 5 },
+    { enabled: useCommit }, // Only fetch cycles when using cycle mode
+  );
   const sellAppraiseMutation = useSellAppraise();
   const sellAppraiseByCommitMutation = useSellAppraiseByCommit();
 
