@@ -60,7 +60,7 @@ export function useImportWallet() {
         imported: number;
         skipped: number;
         charactersProcessed: number;
-      }>("/wallet/import-all", {}),
+      }>("/wallet-import/all", {}),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: qk.wallet._root });
     },
