@@ -35,6 +35,9 @@ import {
   useArbitrageCommits,
   useSellAppraise,
   useSellAppraiseByCommit,
+  useCycleLines,
+  useAddBulkBrokerFees,
+  useUpdateBulkSellPrices,
 } from "../../api";
 import type {
   SellAppraiseItem,
@@ -45,14 +48,6 @@ type TrackedStation = {
   id: string;
   stationId: number;
   station: { name: string };
-};
-
-type CycleLine = {
-  id: string;
-  typeId: number;
-  destinationStationId: number;
-  plannedUnits: number;
-  unitsBought: number;
 };
 
 // Use shared types from @eve/shared/types
@@ -91,6 +86,9 @@ export default function SellAppraiserPage() {
   );
   const sellAppraiseMutation = useSellAppraise();
   const sellAppraiseByCommitMutation = useSellAppraiseByCommit();
+  const { data: cycleLines = [] } = useCycleLines(cycleId);
+  const addBulkBrokerFeesMutation = useAddBulkBrokerFees();
+  const updateBulkSellPricesMutation = useUpdateBulkSellPrices();
 
   // Sort items alphabetically: 0-9, A-Z (lexicographic/string order)
   const sortItems = (items: Array<PasteRow | CommitRow>) => {
@@ -222,30 +220,17 @@ export default function SellAppraiserPage() {
   };
 
   const onConfirmListed = async () => {
-    if (!useCommit || !cycleId || !result) return;
+    if (!useCommit || !cycleId || !result || cycleLines.length === 0) return;
 
     setIsConfirming(true);
     setError(null);
 
-    // Fetch cycle lines
-    let cycleLines: CycleLine[];
-    try {
-      const response = await fetch(`/api/ledger/cycles/${cycleId}/lines`);
-      if (!response.ok) {
-        throw new Error(`Failed to fetch cycle lines: ${response.statusText}`);
-      }
-      cycleLines = await response.json();
-    } catch (e) {
-      setError(
-        `Failed to fetch cycle lines: ${e instanceof Error ? e.message : String(e)}`,
-      );
-      setIsConfirming(false);
-      return;
-    }
-
     const errors: string[] = [];
     const brokerFees: Array<{ lineId: string; amountIsk: string }> = [];
-    const priceUpdates: Array<{ lineId: string; newPrice: string }> = [];
+    const priceUpdates: Array<{
+      lineId: string;
+      currentSellPriceIsk: string;
+    }> = [];
 
     for (const r of result) {
       const key = `${r.destinationStationId}:${isCommitRow(r) ? r.typeId : r.itemName}`;
@@ -281,7 +266,7 @@ export default function SellAppraiserPage() {
 
       priceUpdates.push({
         lineId: line.id,
-        newPrice: r.suggestedSellPriceTicked.toFixed(2),
+        currentSellPriceIsk: r.suggestedSellPriceTicked.toFixed(2),
       });
     }
 
@@ -293,16 +278,7 @@ export default function SellAppraiserPage() {
 
     // Add all broker fees in bulk
     try {
-      const response = await fetch("/api/ledger/fees/broker/bulk", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fees: brokerFees }),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Failed to add broker fees: ${errorText}`);
-      }
+      await addBulkBrokerFeesMutation.mutateAsync({ fees: brokerFees });
     } catch (e) {
       setError(
         `Failed to add broker fees: ${e instanceof Error ? e.message : String(e)}`,
@@ -313,16 +289,9 @@ export default function SellAppraiserPage() {
 
     // Update current sell prices for all lines in bulk
     try {
-      const response = await fetch("/api/ledger/lines/sell-prices/bulk", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ updates: priceUpdates }),
+      await updateBulkSellPricesMutation.mutateAsync({
+        updates: priceUpdates,
       });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Failed to update sell prices: ${errorText}`);
-      }
     } catch (e) {
       setError(
         `Failed to update sell prices: ${e instanceof Error ? e.message : String(e)}`,

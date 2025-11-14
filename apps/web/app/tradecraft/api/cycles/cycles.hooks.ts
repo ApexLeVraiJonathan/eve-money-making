@@ -534,3 +534,54 @@ export function useAddRelistFee() {
     },
   });
 }
+
+/**
+ * Add broker fees to multiple lines in bulk
+ */
+export function useAddBulkBrokerFees() {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (data: {
+      fees: Array<{ lineId: string; amountIsk: string }>;
+    }) => client.post<void>("/ledger/fees/broker/bulk", data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: qk.cycleLines._root });
+    },
+  });
+}
+
+/**
+ * Add relist fees to multiple lines in bulk
+ */
+export function useAddBulkRelistFees() {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (data: {
+      fees: Array<{ lineId: string; amountIsk: string }>;
+    }) => client.post<void>("/ledger/fees/relist/bulk", data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: qk.cycleLines._root });
+    },
+  });
+}
+
+/**
+ * Update current sell prices for multiple lines in bulk
+ */
+export function useUpdateBulkSellPrices() {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (data: {
+      updates: Array<{ lineId: string; currentSellPriceIsk: string }>;
+    }) => client.patch<void>("/ledger/lines/sell-prices/bulk", data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: qk.cycleLines._root });
+    },
+  });
+}

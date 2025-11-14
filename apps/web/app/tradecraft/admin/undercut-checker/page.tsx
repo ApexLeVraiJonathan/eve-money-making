@@ -26,6 +26,9 @@ import {
   useTrackedStations,
   useArbitrageCommits,
   useUndercutCheck,
+  useCycleLines,
+  useAddBulkRelistFees,
+  useUpdateBulkSellPrices,
 } from "../../api";
 import type { UndercutCheckGroup } from "@eve/shared/types";
 
@@ -33,14 +36,6 @@ type TrackedStation = {
   id: string;
   stationId: number;
   station: { name: string };
-};
-
-type CycleLine = {
-  id: string;
-  typeId: number;
-  destinationStationId: number;
-  plannedUnits: number;
-  unitsBought: number;
 };
 
 export default function UndercutCheckerPage() {
@@ -59,6 +54,9 @@ export default function UndercutCheckerPage() {
     { enabled: useCommit }, // Only fetch cycles when using cycle mode
   );
   const undercutCheckMutation = useUndercutCheck();
+  const { data: cycleLines = [] } = useCycleLines(cycleId);
+  const addBulkRelistFeesMutation = useAddBulkRelistFees();
+  const updateBulkSellPricesMutation = useUpdateBulkSellPrices();
 
   const buildKeys = (rows: UndercutCheckGroup[] | null): string[] => {
     if (!Array.isArray(rows)) return [];
@@ -111,28 +109,16 @@ export default function UndercutCheckerPage() {
     setSelected((prev) => ({ ...prev, [key]: !prev[key] }));
 
   const onConfirmReprice = async () => {
-    if (!cycleId || !result) return;
+    if (!cycleId || !result || cycleLines.length === 0) return;
 
     setError(null);
 
-    // Fetch cycle lines
-    let cycleLines: CycleLine[];
-    try {
-      const response = await fetch(`/api/ledger/cycles/${cycleId}/lines`);
-      if (!response.ok) {
-        throw new Error(`Failed to fetch cycle lines: ${response.statusText}`);
-      }
-      cycleLines = await response.json();
-    } catch (e) {
-      setError(
-        `Failed to fetch cycle lines: ${e instanceof Error ? e.message : String(e)}`,
-      );
-      return;
-    }
-
     const errors: string[] = [];
     const relistFees: Array<{ lineId: string; amountIsk: string }> = [];
-    const priceUpdates: Array<{ lineId: string; newPrice: string }> = [];
+    const priceUpdates: Array<{
+      lineId: string;
+      currentSellPriceIsk: string;
+    }> = [];
 
     for (const g of result) {
       for (const u of g.updates) {
@@ -164,7 +150,7 @@ export default function UndercutCheckerPage() {
 
         priceUpdates.push({
           lineId: line.id,
-          newPrice: u.suggestedNewPriceTicked.toFixed(2),
+          currentSellPriceIsk: u.suggestedNewPriceTicked.toFixed(2),
         });
       }
     }
@@ -176,16 +162,7 @@ export default function UndercutCheckerPage() {
 
     // Add all relist fees in bulk
     try {
-      const response = await fetch("/api/ledger/fees/relist/bulk", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fees: relistFees }),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Failed to add relist fees: ${errorText}`);
-      }
+      await addBulkRelistFeesMutation.mutateAsync({ fees: relistFees });
     } catch (e) {
       setError(
         `Failed to add relist fees: ${e instanceof Error ? e.message : String(e)}`,
@@ -195,16 +172,9 @@ export default function UndercutCheckerPage() {
 
     // Update current sell prices for all lines in bulk
     try {
-      const response = await fetch("/api/ledger/lines/sell-prices/bulk", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ updates: priceUpdates }),
+      await updateBulkSellPricesMutation.mutateAsync({
+        updates: priceUpdates,
       });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Failed to update sell prices: ${errorText}`);
-      }
     } catch (e) {
       setError(
         `Failed to update sell prices: ${e instanceof Error ? e.message : String(e)}`,
