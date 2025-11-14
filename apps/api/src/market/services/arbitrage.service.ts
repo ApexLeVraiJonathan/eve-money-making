@@ -459,49 +459,77 @@ export class ArbitrageService {
       const plan = payload.result as PlanResult;
 
       await this.prisma.$transaction(async (tx) => {
-        const lines: Array<{
+        // STEP 1: Consolidate items by typeId+destinationStationId across all packages
+        const consolidatedItems = new Map<
+          string,
+          { typeId: number; destinationStationId: number; units: number }
+        >();
+
+        for (const pkg of plan.packages ?? []) {
+          const dst = pkg.destinationStationId;
+          for (const it of pkg.items ?? []) {
+            const key = `${it.typeId}-${dst}`;
+            const existing = consolidatedItems.get(key);
+            if (existing) {
+              existing.units += it.units;
+            } else {
+              consolidatedItems.set(key, {
+                typeId: it.typeId,
+                destinationStationId: dst,
+                units: it.units,
+              });
+            }
+          }
+        }
+
+        this.logger.log(
+          `Consolidated ${consolidatedItems.size} unique item+destination combinations from ${plan.packages?.length ?? 0} packages`,
+        );
+
+        // STEP 2: Process each consolidated item - update existing or create new
+        const linesToCreate: Array<{
           cycleId: string;
           typeId: number;
           destinationStationId: number;
           plannedUnits: number;
         }> = [];
 
-        for (const pkg of plan.packages ?? []) {
-          const dst = pkg.destinationStationId;
-          for (const it of pkg.items ?? []) {
-            // Check if line already exists for this type+destination
-            const existing = await tx.cycleLine.findFirst({
-              where: {
-                cycleId: currentOpen.id,
-                typeId: it.typeId,
-                destinationStationId: dst,
-              },
-            });
+        for (const item of consolidatedItems.values()) {
+          // Check if line already exists for this type+destination
+          const existing = await tx.cycleLine.findFirst({
+            where: {
+              cycleId: currentOpen.id,
+              typeId: item.typeId,
+              destinationStationId: item.destinationStationId,
+            },
+          });
 
-            if (existing) {
-              // Update planned units
-              await tx.cycleLine.update({
-                where: { id: existing.id },
-                data: { plannedUnits: existing.plannedUnits + it.units },
-              });
-            } else {
-              // Create new line (buyCostIsk will be set by allocation service)
-              lines.push({
-                cycleId: currentOpen.id,
-                typeId: it.typeId,
-                destinationStationId: dst,
-                plannedUnits: it.units,
-              });
-            }
+          if (existing) {
+            // Update planned units by adding the new units
+            await tx.cycleLine.update({
+              where: { id: existing.id },
+              data: { plannedUnits: existing.plannedUnits + item.units },
+            });
+            this.logger.log(
+              `Updated existing cycle line for type ${item.typeId} to destination ${item.destinationStationId}: ${existing.plannedUnits} + ${item.units} = ${existing.plannedUnits + item.units} units`,
+            );
+          } else {
+            // Create new line (buyCostIsk will be set by allocation service)
+            linesToCreate.push({
+              cycleId: currentOpen.id,
+              typeId: item.typeId,
+              destinationStationId: item.destinationStationId,
+              plannedUnits: item.units,
+            });
           }
         }
 
-        if (lines.length > 0) {
-          await tx.cycleLine.createMany({ data: lines });
+        if (linesToCreate.length > 0) {
+          await tx.cycleLine.createMany({ data: linesToCreate });
         }
 
         this.logger.log(
-          `Plan committed: ${lines.length} new lines added to cycle ${currentOpen.id}`,
+          `Plan committed: ${linesToCreate.length} new lines added to cycle ${currentOpen.id}`,
         );
 
         // Create committed package records (inside same transaction)
