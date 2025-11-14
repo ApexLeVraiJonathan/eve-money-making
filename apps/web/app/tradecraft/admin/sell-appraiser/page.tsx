@@ -36,6 +36,10 @@ import {
   useSellAppraise,
   useSellAppraiseByCommit,
 } from "../../api";
+import type {
+  SellAppraiseItem,
+  SellAppraiseByCommitItem,
+} from "@eve/shared/types";
 
 type TrackedStation = {
   id: string;
@@ -51,25 +55,9 @@ type CycleLine = {
   unitsBought: number;
 };
 
-type PasteRow = {
-  itemName: string;
-  quantity: number;
-  destinationStationId: number;
-  lowestSell: number | null;
-  suggestedSellPriceTicked: number | null;
-  typeId?: undefined;
-  quantityRemaining?: undefined;
-};
-
-type CommitRow = {
-  itemName: string;
-  typeId: number;
-  quantityRemaining: number;
-  destinationStationId: number;
-  lowestSell: number | null;
-  suggestedSellPriceTicked: number | null;
-  quantity?: undefined;
-};
+// Use shared types from @eve/shared/types
+type PasteRow = SellAppraiseItem;
+type CommitRow = SellAppraiseByCommitItem;
 
 type GroupedResult = {
   destinationStationId: number;
@@ -78,7 +66,7 @@ type GroupedResult = {
 };
 
 function isCommitRow(row: PasteRow | CommitRow): row is CommitRow {
-  return (row as CommitRow).typeId !== undefined;
+  return (row as CommitRow).typeId !== undefined && "quantityRemaining" in row;
 }
 
 export default function SellAppraiserPage() {
@@ -104,25 +92,36 @@ export default function SellAppraiserPage() {
   const sellAppraiseMutation = useSellAppraise();
   const sellAppraiseByCommitMutation = useSellAppraiseByCommit();
 
-  // Sort items alphabetically with EVE convention: numbers before letters
+  // Sort items alphabetically: 0-9, A-Z (lexicographic/string order)
   const sortItems = (items: Array<PasteRow | CommitRow>) => {
     return items.sort((a, b) => {
-      const nameA = a.itemName;
-      const nameB = b.itemName;
-
-      // Check if first character is a digit
-      const startsWithDigitA = /^\d/.test(nameA);
-      const startsWithDigitB = /^\d/.test(nameB);
-
-      // If one starts with digit and other doesn't, digit comes first
-      if (startsWithDigitA && !startsWithDigitB) return -1;
-      if (!startsWithDigitA && startsWithDigitB) return 1;
-
-      // Both start with same type (digit or letter), compare alphabetically
-      return nameA.localeCompare(nameB, "en", {
-        numeric: true,
+      return a.itemName.localeCompare(b.itemName, "en", {
         sensitivity: "base",
       });
+    });
+  };
+
+  // Sort destinations by specified order
+  const sortDestinations = (groups: GroupedResult[]) => {
+    const stationOrder = ["Dodixie", "Hek", "Rens", "Amarr"];
+
+    return groups.sort((a, b) => {
+      const indexA = stationOrder.findIndex((name) =>
+        a.stationName.includes(name),
+      );
+      const indexB = stationOrder.findIndex((name) =>
+        b.stationName.includes(name),
+      );
+
+      // If both stations are in the order list, sort by their position
+      if (indexA !== -1 && indexB !== -1) {
+        return indexA - indexB;
+      }
+      // If only one is in the list, it comes first
+      if (indexA !== -1) return -1;
+      if (indexB !== -1) return 1;
+      // If neither is in the list, sort alphabetically
+      return a.stationName.localeCompare(b.stationName);
     });
   };
 
@@ -144,7 +143,7 @@ export default function SellAppraiserPage() {
         items: sortItems(items),
       });
     }
-    return groups;
+    return sortDestinations(groups);
   }, [result, stations]);
 
   // Auto-set destination ID when stations load
@@ -177,18 +176,10 @@ export default function SellAppraiserPage() {
         const data = await sellAppraiseByCommitMutation.mutateAsync({
           cycleId,
         });
-        // Map API response to CommitRow format
-        const mappedItems: CommitRow[] = data.items.map((item) => ({
-          itemName: item.typeName,
-          typeId: item.typeId,
-          quantityRemaining: item.quantity,
-          destinationStationId: item.stationId,
-          lowestSell: item.bestSellPrice,
-          suggestedSellPriceTicked: item.bestSellPrice * 1.01, // Apply 1% tick
-        }));
-        setResult(mappedItems);
+        // API returns array directly (SellAppraiseByCommitResponse)
+        setResult(data);
         // Default select all
-        const allKeys = mappedItems.map(
+        const allKeys = data.map(
           (r) => `${r.destinationStationId}:${r.itemName}`,
         );
         const initial: Record<string, boolean> = {};
@@ -200,17 +191,10 @@ export default function SellAppraiserPage() {
           lines,
           destinationStationId: destinationId,
         });
-        // Map API response to PasteRow format
-        const mappedItems: PasteRow[] = data.items.map((item) => ({
-          itemName: item.typeName,
-          quantity: item.quantity,
-          destinationStationId: item.stationId,
-          lowestSell: item.bestSellPrice,
-          suggestedSellPriceTicked: item.bestSellPrice * 1.01, // Apply 1% tick
-        }));
-        setResult(mappedItems);
+        // API returns array directly (SellAppraiseResponse)
+        setResult(data);
         // Default select all
-        const allKeys = mappedItems.map(
+        const allKeys = data.map(
           (r) => `${r.destinationStationId}:${r.itemName}`,
         );
         const initial: Record<string, boolean> = {};

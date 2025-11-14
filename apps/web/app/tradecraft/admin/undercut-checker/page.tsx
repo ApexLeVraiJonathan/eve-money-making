@@ -27,22 +27,7 @@ import {
   useArbitrageCommits,
   useUndercutCheck,
 } from "../../api";
-
-type Group = {
-  characterId: number;
-  characterName: string;
-  stationId: number;
-  stationName: string;
-  updates: Array<{
-    orderId: number;
-    typeId: number;
-    itemName: string;
-    remaining: number;
-    currentPrice: number;
-    competitorLowest: number;
-    suggestedNewPriceTicked: number;
-  }>;
-};
+import type { UndercutCheckGroup } from "@eve/shared/types";
 
 type TrackedStation = {
   id: string;
@@ -60,7 +45,7 @@ type CycleLine = {
 
 export default function UndercutCheckerPage() {
   const [selectedStations, setSelectedStations] = useState<number[]>([]);
-  const [result, setResult] = useState<Group[] | null>(null);
+  const [result, setResult] = useState<UndercutCheckGroup[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [useCommit, setUseCommit] = useState<boolean>(true);
   const [cycleId, setCycleId] = useState<string>("");
@@ -75,7 +60,7 @@ export default function UndercutCheckerPage() {
   );
   const undercutCheckMutation = useUndercutCheck();
 
-  const buildKeys = (rows: Group[] | null): string[] => {
+  const buildKeys = (rows: UndercutCheckGroup[] | null): string[] => {
     if (!Array.isArray(rows)) return [];
     const keys: string[] = [];
     for (const g of rows) {
@@ -110,25 +95,10 @@ export default function UndercutCheckerPage() {
             : undefined,
         cycleId: useCommit && cycleId ? cycleId : undefined,
       });
-      // Backend returns the data in the correct Group[] format already
-      const groups: Group[] = data.map((item) => ({
-        characterId: item.characterId,
-        characterName: item.characterName,
-        stationId: item.stationId,
-        stationName: item.stationName,
-        updates: item.updates.map((update) => ({
-          orderId: update.orderId,
-          typeId: update.typeId,
-          itemName: update.itemName,
-          remaining: update.remaining,
-          currentPrice: update.currentPrice,
-          competitorLowest: update.competitorLowest,
-          suggestedNewPriceTicked: update.suggestedNewPriceTicked,
-        })),
-      }));
-      setResult(groups);
+      // API returns array directly (UndercutCheckResponse)
+      setResult(data);
       // Default select all items
-      const allKeys = buildKeys(groups);
+      const allKeys = buildKeys(data);
       const initial: Record<string, boolean> = {};
       for (const k of allKeys) initial[k] = true;
       setSelected(initial);

@@ -3,6 +3,11 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useApiClient } from "@/app/api-hooks/useApiClient";
 import { qk } from "@eve/api-client/queryKeys";
+import type {
+  SellAppraiseResponse,
+  SellAppraiseByCommitResponse,
+  UndercutCheckResponse,
+} from "@eve/shared/types";
 
 /**
  * API hooks for pricing operations
@@ -21,40 +26,22 @@ export function useSellAppraise() {
   const client = useApiClient();
   return useMutation({
     mutationFn: (data: { destinationStationId: number; lines: string[] }) =>
-      client.post<{
-        totalEstimatedIsk: string;
-        items: Array<{
-          typeId: number;
-          typeName: string;
-          quantity: number;
-          bestSellPrice: number;
-          totalValue: string;
-          stationId: number;
-          stationName: string;
-        }>;
-      }>("/pricing/sell-appraise", data),
+      client.post<SellAppraiseResponse>("/pricing/sell-appraise", data),
   });
 }
 
 /**
  * Sell appraise by commit ID
+ * Returns array of items directly (not wrapped in object)
  */
 export function useSellAppraiseByCommit() {
   const client = useApiClient();
   return useMutation({
     mutationFn: (data: { cycleId: string }) =>
-      client.post<{
-        totalEstimatedIsk: string;
-        items: Array<{
-          typeId: number;
-          typeName: string;
-          quantity: number;
-          bestSellPrice: number;
-          totalValue: string;
-          stationId: number;
-          stationName: string;
-        }>;
-      }>("/pricing/sell-appraise-by-commit", data),
+      client.post<SellAppraiseByCommitResponse>(
+        "/pricing/sell-appraise-by-commit",
+        data,
+      ),
   });
 }
 
@@ -69,23 +56,7 @@ export function useUndercutCheck() {
       stationIds?: number[];
       cycleId?: string;
     }) =>
-      client.post<
-        Array<{
-          characterId: number;
-          characterName: string;
-          stationId: number;
-          stationName: string;
-          updates: Array<{
-            orderId: number;
-            typeId: number;
-            itemName: string;
-            remaining: number;
-            currentPrice: number;
-            competitorLowest: number;
-            suggestedNewPriceTicked: number;
-          }>;
-        }>
-      >("/pricing/undercut-check", data ?? {}),
+      client.post<UndercutCheckResponse>("/pricing/undercut-check", data ?? {}),
   });
 }
 

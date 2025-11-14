@@ -1,6 +1,6 @@
 /**
  * Shared types used across frontend and backend
- * 
+ *
  * These types mirror the database schema but are optimized for API consumption.
  * Frontend and backend both import from here for type consistency.
  */
@@ -12,7 +12,13 @@
 export type CharacterRole = "USER" | "LOGISTICS";
 export type CharacterManagedBy = "USER" | "SYSTEM";
 export type CharacterFunction = "SELLER" | "BUYER";
-export type CharacterLocation = "JITA" | "DODIXIE" | "AMARR" | "HEK" | "RENS" | "CN";
+export type CharacterLocation =
+  | "JITA"
+  | "DODIXIE"
+  | "AMARR"
+  | "HEK"
+  | "RENS"
+  | "CN";
 export type CycleStatus = "PLANNED" | "OPEN" | "COMPLETED";
 export type ParticipationStatus =
   | "AWAITING_INVESTMENT"
@@ -425,6 +431,77 @@ export interface PayoutSuggestion {
   }>;
   totalPayout: string;
 }
+
+// ============================================================================
+// Pricing & Market Data
+// ============================================================================
+
+/**
+ * Item in a sell appraisal response (paste mode)
+ * Backend: apps/api/src/market/services/pricing.service.ts - sellAppraise
+ */
+export interface SellAppraiseItem {
+  itemName: string;
+  quantity: number;
+  destinationStationId: number;
+  lowestSell: number | null;
+  suggestedSellPriceTicked: number | null;
+}
+
+/**
+ * Item in a sell appraisal by commit response
+ * Backend: apps/api/src/market/services/pricing.service.ts - sellAppraiseByCommit
+ */
+export interface SellAppraiseByCommitItem {
+  itemName: string;
+  typeId: number;
+  quantityRemaining: number;
+  destinationStationId: number;
+  lowestSell: number | null;
+  suggestedSellPriceTicked: number | null;
+}
+
+/**
+ * Response from /pricing/sell-appraise endpoint
+ * Backend: apps/api/src/market/services/pricing.service.ts - sellAppraise
+ */
+export type SellAppraiseResponse = SellAppraiseItem[];
+
+/**
+ * Response from /pricing/sell-appraise-by-commit endpoint
+ * Backend: apps/api/src/market/services/pricing.service.ts - sellAppraiseByCommit
+ */
+export type SellAppraiseByCommitResponse = SellAppraiseByCommitItem[];
+
+/**
+ * Update item in undercut check response
+ */
+export interface UndercutUpdate {
+  orderId: number;
+  typeId: number;
+  itemName: string;
+  remaining: number;
+  currentPrice: number;
+  competitorLowest: number;
+  suggestedNewPriceTicked: number;
+}
+
+/**
+ * Character-station group in undercut check response
+ */
+export interface UndercutCheckGroup {
+  characterId: number;
+  characterName: string;
+  stationId: number;
+  stationName: string;
+  updates: UndercutUpdate[];
+}
+
+/**
+ * Response from /pricing/undercut-check endpoint
+ * Backend: apps/api/src/market/services/pricing.service.ts - undercutCheck
+ */
+export type UndercutCheckResponse = UndercutCheckGroup[];
 
 // ============================================================================
 // Utility Types
