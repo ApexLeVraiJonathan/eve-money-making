@@ -36,7 +36,7 @@ export function useArbitrageCommits(
       if (options?.limit) params.set("limit", String(options.limit));
       if (options?.offset) params.set("offset", String(options.offset));
       const query = params.toString() ? `?${params.toString()}` : "";
-      return client.get<Cycle[]>(`/tradecraft/commits${query}`);
+      return client.get<Cycle[]>(`/arbitrage/commits${query}`);
     },
     enabled: queryOptions?.enabled,
   });
@@ -70,7 +70,7 @@ export function useCommitArbitrage() {
       client.post<{
         id: string;
         createdAt: Date;
-      }>("/tradecraft/commit", data),
+      }>("/arbitrage/commit", data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: qk.arbitrage._root });
       queryClient.invalidateQueries({ queryKey: qk.packages._root });

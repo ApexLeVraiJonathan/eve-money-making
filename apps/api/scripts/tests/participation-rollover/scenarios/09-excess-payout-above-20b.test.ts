@@ -245,6 +245,7 @@ if (require.main === module) {
     };
 
     const ctx: TestContext = {
+      config,
       characterId: config.characterId,
       transactionIdCounter: 0,
     };

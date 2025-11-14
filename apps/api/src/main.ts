@@ -3,6 +3,7 @@ import { Logger, ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
+import * as bodyParser from 'body-parser';
 import { config as dotenvConfig } from 'dotenv';
 import { AppModule } from './app.module';
 import { LoggingInterceptor } from './common/logging.interceptor';
@@ -45,6 +46,9 @@ async function bootstrap() {
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   });
 
+  // Increase body size limit for large plan commits
+  app.use(bodyParser.json({ limit: '50mb' }));
+  app.use(bodyParser.urlencoded({ limit: '50mb', extended: true }));
   app.use(cookieParser());
   app.useGlobalInterceptors(
     new BigIntSerializationInterceptor(), // Must be first to serialize before logging
