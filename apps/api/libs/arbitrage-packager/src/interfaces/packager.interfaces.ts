@@ -35,6 +35,13 @@ export interface MultiPlanOptions {
   maxPackagesHint?: number; // default 30
   // Maximum package collateral (total value of items in package) - default 5B ISK
   maxPackageCollateralISK?: number; // default 5_000_000_000
+  // Package Quality Thresholds: reject packages below these minimums
+  minPackageNetProfitISK?: number; // minimum net profit required per package (after shipping)
+  minPackageROIPercent?: number; // minimum ROI required per package (netProfit/spend * 100)
+  // Shipping margin multiplier: require boxProfit >= shippingCost * k (default 1.0 = break-even)
+  shippingMarginMultiplier?: number; // default 1.0; e.g., 1.5 = require 50% more gross profit than shipping
+  // Item Prioritization: blend density (profit/m³) vs ROI (profit/cost)
+  densityWeight?: number; // default 1.0 = pure density; 0.0 = pure ROI; 0.5 = equal blend
   // Per-destination market/budget caps (hard)
   destinationCaps?: Record<number, DestinationCaps>;
   // How to spread investment between destinations

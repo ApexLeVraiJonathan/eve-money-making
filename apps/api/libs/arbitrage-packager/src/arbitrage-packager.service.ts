@@ -35,6 +35,8 @@ export class ArbitragePackagerService {
     perItemBudgetCapISK: number;
     itemExposureForDest: Record<number, { spendISK: number; units: number }>;
     maxPackageCollateralISK: number;
+    shippingMarginMultiplier: number;
+    densityWeight: number;
   }): Omit<PackagePlan, 'packageIndex' | 'efficiency'> | null {
     const {
       destinationStationId,
@@ -44,10 +46,16 @@ export class ArbitragePackagerService {
       perItemBudgetCapISK,
       itemExposureForDest,
       maxPackageCollateralISK,
+      shippingMarginMultiplier,
+      densityWeight,
     } = params;
 
     if (params.budgetLeft < shippingCostISK) return null;
 
+    // Item Prioritization: blend density (profit/m³) and ROI (profit/cost)
+    // densityWeight = 1.0 → pure density (space-limited, default)
+    // densityWeight = 0.0 → pure ROI (capital-limited)
+    // densityWeight = 0.5 → equal blend
     const sorted = itemsState
       .filter(
         (it) =>
@@ -59,10 +67,20 @@ export class ArbitragePackagerService {
       .sort((a, b) => {
         const densA = a.unitProfit / a.unitVolume;
         const densB = b.unitProfit / b.unitVolume;
-        if (densA !== densB) return densB - densA;
         const roiA = a.unitProfit / a.unitCost;
         const roiB = b.unitProfit / b.unitCost;
-        return roiB - roiA;
+
+        // Normalize to 0-1 range for fair blending (using max observed values)
+        // In practice, we blend: scoreA = densityWeight * (densA/maxDens) + (1-densityWeight) * (roiA/maxRoi)
+        // For simplicity, blend raw scores weighted by densityWeight
+        const scoreA =
+          densityWeight * densA + (1 - densityWeight) * roiA * 1000; // scale ROI to similar magnitude
+        const scoreB =
+          densityWeight * densB + (1 - densityWeight) * roiB * 1000;
+
+        if (Math.abs(scoreA - scoreB) > 0.0001) return scoreB - scoreA;
+        // Tie-breaker: if scores are equal, prefer lower cost (easier to fit)
+        return a.unitCost - b.unitCost;
       });
 
     if (sorted.length === 0) return null;
@@ -141,7 +159,11 @@ export class ArbitragePackagerService {
     }
 
     if (chosen.length === 0) return null;
-    if (boxProfit < shippingCostISK) return null;
+
+    // Shipping Margin Check: require boxProfit >= shippingCost * multiplier
+    // Example: multiplier=1.5 means package must earn 50% more gross profit than shipping cost
+    const requiredProfit = shippingCostISK * shippingMarginMultiplier;
+    if (boxProfit < requiredProfit) return null;
 
     const filtered = chosen.filter((x) => x.units > 0);
     return {
@@ -172,6 +194,10 @@ export class ArbitragePackagerService {
       perDestinationMaxBudgetSharePerItem = 0.2,
       maxPackagesHint = 30,
       maxPackageCollateralISK = 5_000_000_000, // 5B ISK default
+      minPackageNetProfitISK, // undefined = no threshold
+      minPackageROIPercent, // undefined = no threshold
+      shippingMarginMultiplier = 1.0, // default 1.0 = break-even
+      densityWeight = 1.0, // default 1.0 = pure density (space-limited); 0.0 = pure ROI (capital-limited)
       destinationCaps = {},
       allocation = {},
     } = opts;
@@ -264,6 +290,8 @@ export class ArbitragePackagerService {
           perItemBudgetCapISK: perItemCapISK,
           itemExposureForDest: itemExposureByDest[d.destinationStationId],
           maxPackageCollateralISK,
+          shippingMarginMultiplier,
+          densityWeight,
         });
 
         if (!cand) {
@@ -277,6 +305,21 @@ export class ArbitragePackagerService {
 
         // Hard caps check with the *spend* of this candidate
         if (violatesCaps(d.destinationStationId, cand.spendISK)) continue;
+
+        // Package Quality Thresholds: reject packages below minimum standards
+        if (
+          minPackageNetProfitISK !== undefined &&
+          cand.netProfitISK < minPackageNetProfitISK
+        ) {
+          continue; // package doesn't meet minimum profit threshold
+        }
+        if (minPackageROIPercent !== undefined) {
+          const roiPercent =
+            (cand.netProfitISK / Math.max(1, cand.spendISK)) * 100;
+          if (roiPercent < minPackageROIPercent) {
+            continue; // package doesn't meet minimum ROI threshold
+          }
+        }
 
         // Scoring
         const eff = cand.netProfitISK / Math.max(1, cand.spendISK);
@@ -324,6 +367,8 @@ export class ArbitragePackagerService {
         itemExposureForDest:
           itemExposureByDest[chosenDest.destinationStationId],
         maxPackageCollateralISK,
+        shippingMarginMultiplier,
+        densityWeight,
       });
 
       if (!committed) {
@@ -342,6 +387,8 @@ export class ArbitragePackagerService {
           itemExposureForDest:
             itemExposureByDest[nextDest.destinationStationId],
           maxPackageCollateralISK,
+          shippingMarginMultiplier,
+          densityWeight,
         });
         if (!committed2) break; // give up this round
         // use committed2
@@ -414,8 +461,22 @@ export class ArbitragePackagerService {
       `Per-destination item cap: ≤ ${(perDestinationMaxBudgetSharePerItem * 100).toFixed(0)}% of total budget per item (per destination).`,
       `Max package collateral: ${(maxPackageCollateralISK / 1_000_000_000).toFixed(1)}B ISK.`,
       `Max packages considered: ${maxPackagesHint}.`,
+      `Shipping margin multiplier: ${shippingMarginMultiplier.toFixed(1)}× (requires box profit ≥ ${shippingMarginMultiplier.toFixed(1)}× shipping cost).`,
+      `Density weight: ${densityWeight.toFixed(2)} (${densityWeight === 1 ? 'pure density/space-limited' : densityWeight === 0 ? 'pure ROI/capital-limited' : 'blended strategy'}).`,
       `Allocation mode: ${mode}${mode === 'targetWeighted' ? ` (bias=${spreadBias}, targets=${JSON.stringify(targets)})` : ''}.`,
     );
+
+    // Add quality threshold notes if set
+    if (minPackageNetProfitISK !== undefined) {
+      notes.push(
+        `Min package net profit: ${(minPackageNetProfitISK / 1_000_000).toFixed(1)}M ISK (rejects low-value packages).`,
+      );
+    }
+    if (minPackageROIPercent !== undefined) {
+      notes.push(
+        `Min package ROI: ${minPackageROIPercent.toFixed(1)}% (rejects low-efficiency packages).`,
+      );
+    }
 
     return {
       packages,

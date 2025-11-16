@@ -6,9 +6,10 @@ export type FeeDefaults = {
 
 export type ArbitrageDefaults = {
   sourceStationId: number;
-  multiplier: number;
+  maxInventoryDays: number;
   marginValidateThreshold: number;
   minTotalProfitISK: number;
+  minMarginPercent: number;
   stationConcurrency: number;
   itemConcurrency: number;
   fees: FeeDefaults;
@@ -323,13 +324,14 @@ export const AppConfig = {
       sourceStationId: Number(
         process.env.DEFAULT_SOURCE_STATION_ID ?? 60003760,
       ),
-      multiplier: Number(process.env.DEFAULT_ARBITRAGE_MULTIPLIER ?? 3),
+      maxInventoryDays: Number(process.env.DEFAULT_MAX_INVENTORY_DAYS ?? 3),
       marginValidateThreshold: Number(
         process.env.DEFAULT_MARGIN_VALIDATE_THRESHOLD ?? 50,
       ),
       minTotalProfitISK: Number(
         process.env.DEFAULT_MIN_TOTAL_PROFIT_ISK ?? 1_000_000,
       ),
+      minMarginPercent: Number(process.env.DEFAULT_MIN_MARGIN_PERCENT ?? 10),
       stationConcurrency: Number(process.env.DEFAULT_STATION_CONCURRENCY ?? 4),
       itemConcurrency: Number(process.env.DEFAULT_ITEM_CONCURRENCY ?? 20),
       fees: {

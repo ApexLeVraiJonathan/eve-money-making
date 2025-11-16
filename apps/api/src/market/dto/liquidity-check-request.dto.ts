@@ -20,7 +20,6 @@ export class LiquidityCheckRequest {
   @ApiPropertyOptional({
     description: 'Time window in days for liquidity calculation',
     minimum: 1,
-    maximum: 30,
     example: 7,
     type: 'integer',
   })
@@ -28,7 +27,6 @@ export class LiquidityCheckRequest {
   @Type(() => Number)
   @IsInt()
   @Min(1)
-  @Max(30)
   windowDays?: number;
 
   @ApiPropertyOptional({

@@ -4,7 +4,12 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useApiClient } from "@/app/api-hooks/useApiClient";
 import { useAuthenticatedQuery } from "@/app/api-hooks/useAuthenticatedQuery";
 import { qk } from "@eve/api-client/queryKeys";
-import type { Cycle, PlanResult } from "@eve/shared/types";
+import type {
+  Cycle,
+  PlanResult,
+  ArbitrageCheckRequest,
+  ArbitrageCheckResponse,
+} from "@eve/shared/types";
 
 /**
  * API hooks for arbitrage opportunities and commitments
@@ -45,6 +50,17 @@ export function useArbitrageCommits(
 // ============================================================================
 // Mutations
 // ============================================================================
+
+/**
+ * Check arbitrage opportunities
+ */
+export function useArbitrageCheck() {
+  const client = useApiClient();
+  return useMutation({
+    mutationFn: (data: ArbitrageCheckRequest) =>
+      client.post<ArbitrageCheckResponse>("/arbitrage/check", data),
+  });
+}
 
 /**
  * Plan arbitrage packages

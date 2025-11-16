@@ -66,7 +66,6 @@ export class LiquidityItemStatsRequest {
   @ApiPropertyOptional({
     description: 'Time window in days',
     minimum: 1,
-    maximum: 30,
     example: 7,
     type: 'integer',
   })
@@ -74,7 +73,6 @@ export class LiquidityItemStatsRequest {
   @Type(() => Number)
   @IsInt()
   @Min(1)
-  @Max(30)
   windowDays?: number;
 
   @ValidateIf((o) => !o.itemId && !o.itemName)

@@ -31,7 +31,22 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@eve/ui";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@eve/ui";
 import { ChevronDown } from "lucide-react";
 import { usePlanArbitrage, useCommitArbitrage } from "../../api";
-import type { PlanResult, PackagePlan, PackedUnit } from "@eve/shared";
+import type {
+  PlanResult,
+  PackagePlan,
+  PackedUnit,
+  LiquidityOptions,
+  ArbitrageOptions,
+} from "@eve/shared";
+import { LabeledInput } from "@eve/ui";
+import { Checkbox } from "@eve/ui";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@eve/ui";
 
 const defaultPayload = {
   shippingCostByStation: {
@@ -45,7 +60,6 @@ const defaultPayload = {
   perDestinationMaxBudgetSharePerItem: 0.2,
   maxPackagesHint: 20,
   maxPackageCollateralISK: 5_000_000_000, // 5B ISK default
-  liquidityWindowDays: 15, // Days of market data to analyze (adjust based on available data)
   allocation: { mode: "best" as const },
 };
 
@@ -95,8 +109,59 @@ export default function PlannerPage() {
   const [collateralDisplay, setCollateralDisplay] = React.useState(
     defaultPayload.maxPackageCollateralISK.toLocaleString(),
   );
-  const [windowDaysDisplay, setWindowDaysDisplay] = React.useState(
-    defaultPayload.liquidityWindowDays.toString(),
+
+  // Advanced Options State
+  const [showAdvancedOptions, setShowAdvancedOptions] = React.useState(false);
+
+  // Liquidity Options
+  const [liquidityWindowDays, setLiquidityWindowDays] = React.useState<
+    number | undefined
+  >(undefined);
+  const [liquidityMinCoverageRatio, setLiquidityMinCoverageRatio] =
+    React.useState<number | undefined>(undefined);
+  const [
+    liquidityMinLiquidityThresholdISK,
+    setLiquidityMinLiquidityThresholdISK,
+  ] = React.useState<number | undefined>(undefined);
+  const [liquidityMinWindowTrades, setLiquidityMinWindowTrades] =
+    React.useState<number | undefined>(undefined);
+
+  // Arbitrage Options
+  const [arb_maxInventoryDays, setArb_maxInventoryDays] = React.useState<
+    number | undefined
+  >(undefined);
+  const [arb_minMarginPercent, setArb_minMarginPercent] = React.useState<
+    number | undefined
+  >(undefined);
+  const [arb_maxPriceDeviationMultiple, setArb_maxPriceDeviationMultiple] =
+    React.useState<number | undefined>(undefined);
+  const [arb_minTotalProfitISK, setArb_minTotalProfitISK] = React.useState<
+    number | undefined
+  >(undefined);
+  const [arb_disableInventoryLimit, setArb_disableInventoryLimit] =
+    React.useState<boolean>(false);
+  const [arb_allowInventoryTopOff, setArb_allowInventoryTopOff] =
+    React.useState<boolean>(false);
+
+  // Allocation Options
+  const [allocationMode, setAllocationMode] = React.useState<
+    "best" | "targetWeighted" | "roundRobin"
+  >("best");
+  const [spreadBias, setSpreadBias] = React.useState<number | undefined>(
+    undefined,
+  );
+
+  // Package Quality Thresholds
+  const [minPackageNetProfitISK, setMinPackageNetProfitISK] = React.useState<
+    number | undefined
+  >(undefined);
+  const [minPackageROIPercent, setMinPackageROIPercent] = React.useState<
+    number | undefined
+  >(undefined);
+  const [shippingMarginMultiplier, setShippingMarginMultiplier] =
+    React.useState<number | undefined>(undefined);
+  const [densityWeight, setDensityWeight] = React.useState<number | undefined>(
+    undefined,
   );
 
   // Helper to parse formatted number string to number
@@ -170,18 +235,6 @@ export default function PlannerPage() {
     } catch {}
   };
 
-  const handleWindowDaysChange = (value: string) => {
-    setWindowDaysDisplay(value);
-    try {
-      const j = JSON.parse(json);
-      const numValue = Number(value);
-      if (!isNaN(numValue)) {
-        j.liquidityWindowDays = numValue;
-        setJson(JSON.stringify(j, null, 2));
-      }
-    } catch {}
-  };
-
   // Format on blur to add commas
   const handleCapacityBlur = () => {
     const numValue = parseFormattedNumber(capacityDisplay);
@@ -209,6 +262,81 @@ export default function PlannerPage() {
     setData(null);
     try {
       const payload = JSON.parse(json);
+
+      // Add advanced options if enabled
+      if (showAdvancedOptions) {
+        // Liquidity Options
+        if (
+          liquidityWindowDays !== undefined ||
+          liquidityMinCoverageRatio !== undefined ||
+          liquidityMinLiquidityThresholdISK !== undefined ||
+          liquidityMinWindowTrades !== undefined
+        ) {
+          payload.liquidityOptions = {
+            ...(liquidityWindowDays !== undefined && {
+              windowDays: liquidityWindowDays,
+            }),
+            ...(liquidityMinCoverageRatio !== undefined && {
+              minCoverageRatio: liquidityMinCoverageRatio,
+            }),
+            ...(liquidityMinLiquidityThresholdISK !== undefined && {
+              minLiquidityThresholdISK: liquidityMinLiquidityThresholdISK,
+            }),
+            ...(liquidityMinWindowTrades !== undefined && {
+              minWindowTrades: liquidityMinWindowTrades,
+            }),
+          };
+        }
+
+        // Arbitrage Options
+        if (
+          arb_maxInventoryDays !== undefined ||
+          arb_minMarginPercent !== undefined ||
+          arb_maxPriceDeviationMultiple !== undefined ||
+          arb_minTotalProfitISK !== undefined ||
+          arb_disableInventoryLimit ||
+          arb_allowInventoryTopOff
+        ) {
+          payload.arbitrageOptions = {
+            ...(arb_maxInventoryDays !== undefined && {
+              maxInventoryDays: arb_maxInventoryDays,
+            }),
+            ...(arb_minMarginPercent !== undefined && {
+              minMarginPercent: arb_minMarginPercent,
+            }),
+            ...(arb_maxPriceDeviationMultiple !== undefined && {
+              maxPriceDeviationMultiple: arb_maxPriceDeviationMultiple,
+            }),
+            ...(arb_minTotalProfitISK !== undefined && {
+              minTotalProfitISK: arb_minTotalProfitISK,
+            }),
+            ...(arb_disableInventoryLimit && { disableInventoryLimit: true }),
+            ...(arb_allowInventoryTopOff && { allowInventoryTopOff: true }),
+          };
+        }
+
+        // Allocation Options
+        // Always include allocation since we have the mode selector
+        payload.allocation = {
+          mode: allocationMode,
+          ...(spreadBias !== undefined && { spreadBias }),
+        };
+
+        // Package Quality Thresholds
+        if (minPackageNetProfitISK !== undefined) {
+          payload.minPackageNetProfitISK = minPackageNetProfitISK;
+        }
+        if (minPackageROIPercent !== undefined) {
+          payload.minPackageROIPercent = minPackageROIPercent;
+        }
+        if (shippingMarginMultiplier !== undefined) {
+          payload.shippingMarginMultiplier = shippingMarginMultiplier;
+        }
+        if (densityWeight !== undefined) {
+          payload.densityWeight = densityWeight;
+        }
+      }
+
       const result = await planPackagesMutation.mutateAsync(payload);
       setData(result);
     } catch (e: unknown) {
@@ -389,22 +517,404 @@ export default function PlannerPage() {
                     Max total value per package
                   </p>
                 </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="windowDays">Liquidity Window (Days)</Label>
-                  <Input
-                    id="windowDays"
-                    type="text"
-                    value={windowDaysDisplay}
-                    onChange={(e) => handleWindowDaysChange(e.target.value)}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Days of market data to analyze (1-90)
-                  </p>
-                </div>
               </div>
             </CardContent>
           </Card>
+
+          {/* Advanced Options Collapsible */}
+          <Collapsible
+            open={showAdvancedOptions}
+            onOpenChange={setShowAdvancedOptions}
+          >
+            <Card>
+              <CollapsibleTrigger className="w-full">
+                <CardHeader className="cursor-pointer hover:bg-muted/50 transition-colors">
+                  <div className="flex items-center justify-between">
+                    <div className="text-left">
+                      <CardTitle className="flex items-center gap-2">
+                        <Settings className="h-5 w-5" />
+                        Advanced Pipeline Options
+                      </CardTitle>
+                      <CardDescription>
+                        Fine-tune liquidity and arbitrage parameters
+                      </CardDescription>
+                    </div>
+                    <ChevronDown
+                      className={`h-5 w-5 transition-transform ${showAdvancedOptions ? "rotate-180" : ""}`}
+                    />
+                  </div>
+                </CardHeader>
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <CardContent className="space-y-6 pt-0">
+                  {/* Liquidity Options */}
+                  <div className="space-y-4">
+                    <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+                      Liquidity Filters
+                    </h3>
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <LabeledInput
+                        label="Time Window (days)"
+                        tooltip="Override the liquidity window for deeper analysis. Leave empty to use default."
+                      >
+                        <Input
+                          type="number"
+                          value={liquidityWindowDays ?? ""}
+                          onChange={(e) =>
+                            setLiquidityWindowDays(
+                              e.target.value
+                                ? Number(e.target.value)
+                                : undefined,
+                            )
+                          }
+                          min="1"
+                          placeholder="Default"
+                        />
+                      </LabeledInput>
+
+                      <LabeledInput
+                        label="Min Coverage Ratio"
+                        tooltip="Minimum fraction of days with trades (0-1). Higher values ensure more consistent trading."
+                      >
+                        <Input
+                          type="number"
+                          value={liquidityMinCoverageRatio ?? ""}
+                          onChange={(e) =>
+                            setLiquidityMinCoverageRatio(
+                              e.target.value
+                                ? Number(e.target.value)
+                                : undefined,
+                            )
+                          }
+                          min="0"
+                          max="1"
+                          step="0.1"
+                          placeholder="Default"
+                        />
+                      </LabeledInput>
+
+                      <LabeledInput
+                        label="Min Daily ISK Volume"
+                        tooltip="Minimum average daily ISK value traded. Filters out low-volume items."
+                      >
+                        <Input
+                          type="number"
+                          value={liquidityMinLiquidityThresholdISK ?? ""}
+                          onChange={(e) =>
+                            setLiquidityMinLiquidityThresholdISK(
+                              e.target.value
+                                ? Number(e.target.value)
+                                : undefined,
+                            )
+                          }
+                          min="0"
+                          placeholder="Default"
+                        />
+                      </LabeledInput>
+
+                      <LabeledInput
+                        label="Min Daily Trades"
+                        tooltip="Minimum average number of trades per day. Ensures active market participation."
+                      >
+                        <Input
+                          type="number"
+                          value={liquidityMinWindowTrades ?? ""}
+                          onChange={(e) =>
+                            setLiquidityMinWindowTrades(
+                              e.target.value
+                                ? Number(e.target.value)
+                                : undefined,
+                            )
+                          }
+                          min="0"
+                          placeholder="Default"
+                        />
+                      </LabeledInput>
+                    </div>
+                  </div>
+
+                  {/* Arbitrage Options */}
+                  <div className="space-y-4">
+                    <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+                      Arbitrage Constraints
+                    </h3>
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <LabeledInput
+                        label="Max Inventory Days"
+                        tooltip="Maximum days of average daily volume to hold as inventory. Controls position sizing."
+                      >
+                        <Input
+                          type="number"
+                          value={arb_maxInventoryDays ?? ""}
+                          onChange={(e) =>
+                            setArb_maxInventoryDays(
+                              e.target.value
+                                ? Number(e.target.value)
+                                : undefined,
+                            )
+                          }
+                          min="0.1"
+                          step="0.1"
+                          placeholder="Default (3)"
+                        />
+                      </LabeledInput>
+
+                      <LabeledInput
+                        label="Min Margin %"
+                        tooltip="Minimum profit margin percentage after fees. Higher values = fewer but more profitable opportunities."
+                      >
+                        <Input
+                          type="number"
+                          value={arb_minMarginPercent ?? ""}
+                          onChange={(e) =>
+                            setArb_minMarginPercent(
+                              e.target.value
+                                ? Number(e.target.value)
+                                : undefined,
+                            )
+                          }
+                          min="0"
+                          step="1"
+                          placeholder="Default (10)"
+                        />
+                      </LabeledInput>
+
+                      <LabeledInput
+                        label="Max Price Deviation Multiple"
+                        tooltip="Reject opportunities where current price > historical average by this multiple. Helps avoid overpriced items."
+                      >
+                        <Input
+                          type="number"
+                          value={arb_maxPriceDeviationMultiple ?? ""}
+                          onChange={(e) =>
+                            setArb_maxPriceDeviationMultiple(
+                              e.target.value
+                                ? Number(e.target.value)
+                                : undefined,
+                            )
+                          }
+                          min="1"
+                          step="0.1"
+                          placeholder="No limit"
+                        />
+                      </LabeledInput>
+
+                      <LabeledInput
+                        label="Min Total Profit (ISK)"
+                        tooltip="Minimum total profit per opportunity. Filters out small opportunities."
+                      >
+                        <Input
+                          type="number"
+                          value={arb_minTotalProfitISK ?? ""}
+                          onChange={(e) =>
+                            setArb_minTotalProfitISK(
+                              e.target.value
+                                ? Number(e.target.value)
+                                : undefined,
+                            )
+                          }
+                          min="0"
+                          placeholder="Default"
+                        />
+                      </LabeledInput>
+                    </div>
+
+                    {/* Inventory Control */}
+                    <div className="space-y-3 pt-2">
+                      <div className="flex items-start gap-3">
+                        <Checkbox
+                          id="planner-disableInventory"
+                          checked={arb_disableInventoryLimit}
+                          onCheckedChange={(checked) =>
+                            setArb_disableInventoryLimit(checked as boolean)
+                          }
+                        />
+                        <div className="space-y-1">
+                          <label
+                            htmlFor="planner-disableInventory"
+                            className="text-sm font-medium leading-none cursor-pointer"
+                          >
+                            Disable Inventory Limits
+                          </label>
+                          <p className="text-xs text-muted-foreground">
+                            Ignore current cycle inventory constraints
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-start gap-3">
+                        <Checkbox
+                          id="planner-allowTopOff"
+                          checked={arb_allowInventoryTopOff}
+                          onCheckedChange={(checked) =>
+                            setArb_allowInventoryTopOff(checked as boolean)
+                          }
+                          disabled={arb_disableInventoryLimit}
+                        />
+                        <div className="space-y-1">
+                          <label
+                            htmlFor="planner-allowTopOff"
+                            className="text-sm font-medium leading-none cursor-pointer"
+                          >
+                            Allow Inventory Top-Off
+                          </label>
+                          <p className="text-xs text-muted-foreground">
+                            Add to existing positions up to max inventory days
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Packaging/Allocation Options */}
+                  <div className="space-y-4">
+                    <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+                      Packaging & Allocation
+                    </h3>
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <LabeledInput
+                        label="Allocation Mode"
+                        tooltip="Strategy for distributing opportunities across packages: 'best' prioritizes highest efficiency, 'roundRobin' distributes evenly, 'targetWeighted' uses custom targets."
+                      >
+                        <Select
+                          value={allocationMode}
+                          onValueChange={(value) =>
+                            setAllocationMode(
+                              value as "best" | "targetWeighted" | "roundRobin",
+                            )
+                          }
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="best">
+                              Best (Efficiency First)
+                            </SelectItem>
+                            <SelectItem value="roundRobin">
+                              Round Robin (Even Distribution)
+                            </SelectItem>
+                            <SelectItem value="targetWeighted">
+                              Target Weighted (Custom)
+                            </SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </LabeledInput>
+
+                      <LabeledInput
+                        label="Spread Bias"
+                        tooltip="For roundRobin mode: controls how evenly to spread opportunities. Higher values = more even distribution across destinations."
+                      >
+                        <Input
+                          type="number"
+                          value={spreadBias ?? ""}
+                          onChange={(e) =>
+                            setSpreadBias(
+                              e.target.value
+                                ? Number(e.target.value)
+                                : undefined,
+                            )
+                          }
+                          min="0"
+                          step="0.1"
+                          placeholder="Default"
+                          disabled={allocationMode !== "roundRobin"}
+                        />
+                      </LabeledInput>
+                    </div>
+                  </div>
+
+                  {/* Package Quality Thresholds */}
+                  <div className="space-y-4">
+                    <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+                      Package Quality Filters
+                    </h3>
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <LabeledInput
+                        label="Min Package Net Profit (ISK)"
+                        tooltip="Reject packages with net profit below this threshold. Prevents wasting effort on low-value contracts."
+                      >
+                        <Input
+                          type="number"
+                          value={minPackageNetProfitISK ?? ""}
+                          onChange={(e) =>
+                            setMinPackageNetProfitISK(
+                              e.target.value
+                                ? Number(e.target.value)
+                                : undefined,
+                            )
+                          }
+                          min="0"
+                          placeholder="No minimum"
+                        />
+                      </LabeledInput>
+
+                      <LabeledInput
+                        label="Min Package ROI %"
+                        tooltip="Reject packages with ROI (netProfit/spend * 100) below this threshold. Ensures minimum efficiency for each contract."
+                      >
+                        <Input
+                          type="number"
+                          value={minPackageROIPercent ?? ""}
+                          onChange={(e) =>
+                            setMinPackageROIPercent(
+                              e.target.value
+                                ? Number(e.target.value)
+                                : undefined,
+                            )
+                          }
+                          min="0"
+                          step="0.1"
+                          placeholder="No minimum"
+                        />
+                      </LabeledInput>
+
+                      <LabeledInput
+                        label="Shipping Margin Multiplier"
+                        tooltip="Require box gross profit >= shipping cost × this multiplier. Default 1.0 = break-even; 1.5 = require 50% more profit than shipping. Prevents barely-profitable packages."
+                      >
+                        <Input
+                          type="number"
+                          value={shippingMarginMultiplier ?? ""}
+                          onChange={(e) =>
+                            setShippingMarginMultiplier(
+                              e.target.value
+                                ? Number(e.target.value)
+                                : undefined,
+                            )
+                          }
+                          min="1"
+                          step="0.1"
+                          placeholder="Default (1.0)"
+                        />
+                      </LabeledInput>
+
+                      <LabeledInput
+                        label="Density Weight"
+                        tooltip="Item prioritization blend: 1.0 = pure density (profit/m³, space-limited), 0.0 = pure ROI (profit/cost, capital-limited), 0.5 = equal blend. Adjust based on whether you're constrained by cargo space or budget."
+                      >
+                        <Input
+                          type="number"
+                          value={densityWeight ?? ""}
+                          onChange={(e) =>
+                            setDensityWeight(
+                              e.target.value
+                                ? Number(e.target.value)
+                                : undefined,
+                            )
+                          }
+                          min="0"
+                          max="1"
+                          step="0.1"
+                          placeholder="Default (1.0)"
+                        />
+                      </LabeledInput>
+                    </div>
+                  </div>
+                </CardContent>
+              </CollapsibleContent>
+            </Card>
+          </Collapsible>
         </TabsContent>
 
         <TabsContent value="advanced" className="space-y-6">

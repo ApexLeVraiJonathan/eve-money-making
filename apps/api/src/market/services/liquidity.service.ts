@@ -6,6 +6,23 @@ import type { LiquidityItemDto } from '../dto/liquidity-item.dto';
 import { GameDataService } from '../../game-data/services/game-data.service';
 import { MarketDataService } from './market-data.service';
 
+/**
+ * Liquidity check parameters.
+ * Used by both the /liquidity/check endpoint and arbitrage service.
+ */
+export type LiquidityCheckParams = {
+  /** Station ID to check liquidity for; if omitted, checks all tracked stations */
+  station_id?: number;
+  /** Time window in days for liquidity calculation */
+  windowDays?: number;
+  /** Minimum coverage ratio (0..1) – fraction of days in window that must have trades */
+  minCoverageRatio?: number;
+  /** Minimum average daily ISK value traded */
+  minLiquidityThresholdISK?: number;
+  /** Minimum average number of trades per day over the window */
+  minWindowTrades?: number;
+};
+
 @Injectable()
 export class LiquidityService {
   constructor(
@@ -16,13 +33,7 @@ export class LiquidityService {
   ) {}
 
   async runCheck(
-    params?: {
-      station_id?: number;
-      windowDays?: number;
-      minCoverageRatio?: number; // 0..1
-      minLiquidityThresholdISK?: number; // average daily isk_value
-      minWindowTrades?: number; // average trades per day over window
-    },
+    params?: LiquidityCheckParams,
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     _reqId?: string,
   ): Promise<

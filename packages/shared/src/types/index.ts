@@ -158,6 +158,127 @@ export interface CycleParticipation {
 // Market & Arbitrage
 // ============================================================================
 
+// Liquidity Types
+export interface LiquidityCheckRequest {
+  station_id?: number;
+  windowDays?: number;
+  minCoverageRatio?: number;
+  minLiquidityThresholdISK?: number;
+  minWindowTrades?: number;
+}
+
+export interface LiquidityItemDto {
+  typeId: number;
+  typeName?: string;
+  avgDailyAmount: number;
+  latest: { high: string; low: string; avg: string } | null;
+  avgDailyIskValue: number;
+  coverageDays: number;
+  avgDailyTrades: number;
+}
+
+export interface LiquidityCheckResponse {
+  [stationId: string]: {
+    stationName: string;
+    totalItems: number;
+    items: LiquidityItemDto[];
+  };
+}
+
+export interface LiquidityItemStatsRequest {
+  itemId?: number;
+  itemName?: string;
+  stationId?: number;
+  stationName?: string;
+  isBuyOrder?: boolean;
+  windowDays?: number;
+}
+
+export interface LiquidityItemStatsResponse {
+  [stationId: string]: {
+    stationName: string;
+    buy?: {
+      perDay: Array<{
+        date: string;
+        amount: number;
+        high: string;
+        low: string;
+        avg: string;
+        orderNum: number;
+        iskValue: string;
+      }>;
+      windowAverages: { amountAvg: number; iskValueAvg: number };
+    };
+    sell?: {
+      perDay: Array<{
+        date: string;
+        amount: number;
+        high: string;
+        low: string;
+        avg: string;
+        orderNum: number;
+        iskValue: string;
+      }>;
+      windowAverages: { amountAvg: number; iskValueAvg: number };
+    };
+  };
+}
+
+// Arbitrage Types
+export type PriceValidationSource = 'ESI' | 'LiquidityAvg' | 'None';
+
+export interface ArbitrageCheckRequest {
+  sourceStationId?: number;
+  maxInventoryDays?: number;
+  marginValidateThreshold?: number;
+  minTotalProfitISK?: number;
+  minMarginPercent?: number;
+  maxPriceDeviationMultiple?: number;
+  stationConcurrency?: number;
+  itemConcurrency?: number;
+  salesTaxPercent?: number;
+  brokerFeePercent?: number;
+  esiMaxConcurrency?: number;
+  liquidityWindowDays?: number;
+  liquidityMinCoverageRatio?: number;
+  liquidityMinLiquidityThresholdISK?: number;
+  liquidityMinWindowTrades?: number;
+  destinationStationIds?: number[];
+  excludeDestinationStationIds?: number[];
+  disableInventoryLimit?: boolean;
+  allowInventoryTopOff?: boolean;
+}
+
+export interface Opportunity {
+  typeId: number;
+  name: string;
+  sourceStationId: number;
+  destinationStationId: number;
+  sourcePrice: number | null;
+  destinationPrice: number | null;
+  priceValidationSource: PriceValidationSource;
+  netProfitISK: number;
+  margin: number;
+  recentDailyVolume: number;
+  arbitrageQuantity: number;
+  totalCostISK: number;
+  totalProfitISK: number;
+}
+
+export interface DestinationGroup {
+  destinationStationId: number;
+  stationName?: string;
+  totalItems: number;
+  totalCostISK: number;
+  totalProfitISK: number;
+  averageMargin: number;
+  items: Opportunity[];
+}
+
+export interface ArbitrageCheckResponse {
+  [stationId: string]: DestinationGroup;
+}
+
 export interface ArbitrageOpportunity {
   typeId: number;
   typeName: string;
@@ -178,6 +299,50 @@ export interface ArbitrageOpportunity {
 }
 
 // Arbitrage Planner Types
+export interface LiquidityOptions {
+  windowDays?: number;
+  minCoverageRatio?: number;
+  minLiquidityThresholdISK?: number;
+  minWindowTrades?: number;
+}
+
+export interface ArbitrageOptions {
+  maxInventoryDays?: number;
+  minMarginPercent?: number;
+  maxPriceDeviationMultiple?: number;
+  destinationStationIds?: number[];
+  excludeDestinationStationIds?: number[];
+  disableInventoryLimit?: boolean;
+  allowInventoryTopOff?: boolean;
+  salesTaxPercent?: number;
+  brokerFeePercent?: number;
+  minTotalProfitISK?: number;
+}
+
+export interface PlanPackagesRequest {
+  shippingCostByStation: Record<string, number>;
+  packageCapacityM3: number;
+  investmentISK: number;
+  perDestinationMaxBudgetSharePerItem?: number;
+  maxPackagesHint?: number;
+  maxPackageCollateralISK?: number;
+  minPackageNetProfitISK?: number;
+  minPackageROIPercent?: number;
+  shippingMarginMultiplier?: number;
+  densityWeight?: number;
+  destinationCaps?: Record<
+    string,
+    { maxShare?: number; maxISK?: number }
+  >;
+  allocation?: {
+    mode?: 'best' | 'targetWeighted' | 'roundRobin';
+    targets?: Record<string, number>;
+    spreadBias?: number;
+  };
+  liquidityOptions?: LiquidityOptions;
+  arbitrageOptions?: ArbitrageOptions;
+}
+
 export interface PackedUnit {
   typeId: number;
   name: string;

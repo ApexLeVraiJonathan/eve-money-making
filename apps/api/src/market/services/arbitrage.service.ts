@@ -102,12 +102,24 @@ export class ArbitrageService {
   ): Promise<Record<string, DestinationGroup>> {
     const defaults = AppConfig.arbitrage();
     const sourceStationId = params?.sourceStationId ?? defaults.sourceStationId; // Jita IV-4
-    const arbitrageMultiplier =
-      params?.arbitrageMultiplier ?? defaults.multiplier;
+
+    // Financial Risk: Inventory Days
+    // maxInventoryDays controls position sizing relative to market velocity
+    // Example: 3 days at 100 units/day = max 300 units inventory
+    // Rationale: Limits exposure to price drops and ensures capital isn't tied up too long
+    const maxInventoryDays =
+      params?.maxInventoryDays ?? defaults.maxInventoryDays;
+
     const marginValidateThreshold =
       params?.marginValidateThreshold ?? defaults.marginValidateThreshold; // percent
     const minTotalProfitISK =
       params?.minTotalProfitISK ?? defaults.minTotalProfitISK;
+
+    // Financial Risk: Minimum Margin
+    // minMarginPercent ensures we only pursue opportunities with sufficient profit buffer
+    // Default 10% after fees protects against small price movements and market volatility
+    const minMarginPercent =
+      params?.minMarginPercent ?? defaults.minMarginPercent;
     const stationConcurrency = Math.max(
       1,
       params?.stationConcurrency ?? defaults.stationConcurrency,
@@ -122,20 +134,30 @@ export class ArbitrageService {
       params?.brokerFeePercent ?? defaults.fees.brokerFeePercent;
     const feeInputs = { salesTaxPercent, brokerFeePercent };
 
-    // Get liquidity for all tracked stations with defaults
+    // Get liquidity for all tracked stations with optional overrides
     const liquidity = await this.liquidity.runCheck({
       windowDays: params?.liquidityWindowDays,
+      minCoverageRatio: params?.liquidityMinCoverageRatio,
+      minLiquidityThresholdISK: params?.liquidityMinLiquidityThresholdISK,
+      minWindowTrades: params?.liquidityMinWindowTrades,
     });
 
-    // Get current open cycle to check for existing inventory
-    const currentCycle = await this.prisma.cycle.findFirst({
-      where: { status: 'OPEN' },
-      select: { id: true },
-    });
+    // Get current open cycle to check for existing inventory (unless disabled)
+    const currentCycle = params?.disableInventoryLimit
+      ? null
+      : await this.prisma.cycle.findFirst({
+          where: { status: 'OPEN' },
+          select: { id: true },
+        });
 
     // Fetch all cycle lines with remaining inventory (items not fully sold)
-    const existingInventory = new Set<string>();
-    if (currentCycle) {
+    // Store both as a Set for quick lookup and as a Map for quantity tracking
+    const existingInventorySet = new Set<string>();
+    const existingInventoryMap = new Map<
+      string,
+      { unitsBought: number; unitsSold: number; remaining: number }
+    >();
+    if (currentCycle && !params?.disableInventoryLimit) {
       const lines = await this.prisma.cycleLine.findMany({
         where: {
           cycleId: currentCycle.id,
@@ -148,12 +170,17 @@ export class ArbitrageService {
         },
       });
 
-      // Build set of "typeId:destinationStationId" for items with remaining stock
+      // Build set and map of "typeId:destinationStationId" for items with remaining stock
       for (const line of lines) {
         const remaining = line.unitsBought - line.unitsSold;
         if (remaining > 0) {
           const key = `${line.typeId}:${line.destinationStationId}`;
-          existingInventory.add(key);
+          existingInventorySet.add(key);
+          existingInventoryMap.set(key, {
+            unitsBought: line.unitsBought,
+            unitsSold: line.unitsSold,
+            remaining,
+          });
         }
       }
     }
@@ -190,12 +217,35 @@ export class ArbitrageService {
     };
 
     const startedAt = Date.now();
-    const stations = Object.entries(liquidity);
+    let stations = Object.entries(liquidity);
+
+    // Apply destination station filters if provided
+    if (
+      params?.destinationStationIds &&
+      params.destinationStationIds.length > 0
+    ) {
+      const allowedSet = new Set(params.destinationStationIds.map(String));
+      stations = stations.filter(([stationIdStr]) =>
+        allowedSet.has(stationIdStr),
+      );
+    }
+    if (
+      params?.excludeDestinationStationIds &&
+      params.excludeDestinationStationIds.length > 0
+    ) {
+      const excludedSet = new Set(
+        params.excludeDestinationStationIds.map(String),
+      );
+      stations = stations.filter(
+        ([stationIdStr]) => !excludedSet.has(stationIdStr),
+      );
+    }
+
     const desiredEsiConc =
       params?.esiMaxConcurrency ?? Math.max(1, itemConcurrency * 4);
     const liquidityWindowDays = params?.liquidityWindowDays ?? 30;
     this.logger.log(
-      `[reqId=${reqId ?? '-'}] Arbitrage start src=${sourceStationId} mult=${arbitrageMultiplier} validate>${marginValidateThreshold}% minProfit=${minTotalProfitISK} stationConc=${stationConcurrency} itemConc=${itemConcurrency} stations=${stations.length} esiConc=${desiredEsiConc} liquidityDays=${liquidityWindowDays}`,
+      `[reqId=${reqId ?? '-'}] Arbitrage start src=${sourceStationId} maxInvDays=${maxInventoryDays} validate>${marginValidateThreshold}% minProfit=${minTotalProfitISK} stationConc=${stationConcurrency} itemConc=${itemConcurrency} stations=${stations.length} esiConc=${desiredEsiConc} liquidityDays=${liquidityWindowDays}`,
     );
     let sIdx = 0;
     const stationWorkers = Array.from(
@@ -219,16 +269,45 @@ export class ArbitrageService {
               if (i >= list.length) break;
               const item = list[i];
 
-              // Skip items we still have in stock at this destination
-              const inventoryKey = `${item.typeId}:${destinationStationId}`;
-              if (existingInventory.has(inventoryKey)) {
-                // We still have unsold inventory for this item at this destination
-                continue;
-              }
+              // Financial Risk: Inventory Management
+              // Three inventory strategies based on risk tolerance:
+              // 1. disableInventoryLimit: Market analysis mode - ignore current holdings
+              // 2. allowInventoryTopOff: Add to existing positions up to maxInventoryDays limit
+              // 3. Conservative (default): Skip items with any remaining inventory to avoid overexposure
 
+              const inventoryKey = `${item.typeId}:${destinationStationId}`;
               const recentDailyVolume = item.avgDailyAmount;
-              const plannedArbitrageQuantity =
-                recentDailyVolume * arbitrageMultiplier;
+
+              // Position Sizing: Scale inventory to market liquidity
+              // Example: 100 units/day × 3 days = 300 max units (sellable in ~3 days)
+              const allowedMaxUnits = recentDailyVolume * maxInventoryDays;
+
+              let plannedArbitrageQuantity = allowedMaxUnits;
+
+              // Three-way inventory behavior:
+              if (params?.disableInventoryLimit) {
+                // Case 1: Inventory limits disabled - use full allowed quantity
+                plannedArbitrageQuantity = allowedMaxUnits;
+              } else if (params?.allowInventoryTopOff) {
+                // Case 2: Top-off mode - adjust quantity to not exceed maxInventoryDays
+                const existing = existingInventoryMap.get(inventoryKey);
+                if (existing) {
+                  const topOffQuantity = Math.max(
+                    0,
+                    allowedMaxUnits - existing.remaining,
+                  );
+                  if (topOffQuantity === 0) {
+                    // Already at or above limit
+                    continue;
+                  }
+                  plannedArbitrageQuantity = topOffQuantity;
+                }
+              } else {
+                // Case 3: Conservative mode (default) - skip items with any remaining stock
+                if (existingInventorySet.has(inventoryKey)) {
+                  continue;
+                }
+              }
 
               const [sourceOrders, dstPriceFromEsi] = await Promise.all([
                 getSourceOrders(item.typeId),
@@ -255,6 +334,9 @@ export class ArbitrageService {
               let destinationPrice = dstPriceFromEsi ?? null;
               let priceValidationSource: PriceValidationSource = 'ESI';
 
+              // Price Validation: Protect against anomalous ESI prices
+              // When margin looks "too good to be true" (above threshold), cap destination price
+              // using historical average from liquidity data as a reality check
               if (
                 srcPrice !== null &&
                 destinationPrice !== null &&
@@ -273,6 +355,25 @@ export class ArbitrageService {
                 }
               }
 
+              // Financial Risk: Price Deviation Filter
+              // Reject opportunities where current price is far above historical average
+              // Rationale: Protects against temporary price spikes, market manipulation, or data errors
+              // Example: If avg=100M and current=350M with 3× limit, skip this opportunity
+              if (
+                params?.maxPriceDeviationMultiple !== undefined &&
+                destinationPrice !== null
+              ) {
+                const liquidityavg = Number(item.latest?.avg ?? '0');
+                if (
+                  liquidityavg > 0 &&
+                  destinationPrice >
+                    liquidityavg * params.maxPriceDeviationMultiple
+                ) {
+                  // Skip this item - price is too volatile/anomalous
+                  continue;
+                }
+              }
+
               // Apply sell-side fees to destination price only
               const effectiveDestPrice =
                 destinationPrice !== null
@@ -283,7 +384,11 @@ export class ArbitrageService {
                 srcPrice !== null && destinationPrice !== null
                   ? computeUnitNetProfit(srcPrice, destinationPrice, feeInputs)
                   : 0;
-              // Margin as percent gain over cost: ((sell_net - buy)/buy)*100
+
+              // Financial Metric: Margin Calculation
+              // Margin = ((net_sell_price - buy_price) / buy_price) × 100
+              // Example: Buy at 100M, sell at 115M after fees = 15% margin
+              // This is the core profitability metric for arbitrage
               const margin =
                 srcPrice !== null && effectiveDestPrice !== null && srcPrice > 0
                   ? ((effectiveDestPrice - srcPrice) / srcPrice) * 100
@@ -308,7 +413,14 @@ export class ArbitrageService {
                 totalCostISK: round2(totalCostISK),
                 totalProfitISK: round2(totalProfitISK),
               };
-              if (opp.totalProfitISK >= minTotalProfitISK) {
+
+              // Dual Filter: Both total profit AND margin must meet thresholds
+              // Rationale: High-margin but low-profit trades waste effort; high-profit but
+              // low-margin trades are vulnerable to price movements
+              if (
+                opp.totalProfitISK >= minTotalProfitISK &&
+                opp.margin >= minMarginPercent
+              ) {
                 itemsOut.push(opp);
               }
             }
@@ -373,9 +485,28 @@ export class ArbitrageService {
     reqId?: string,
   ): Promise<PlanResult> {
     // Build DestinationConfig[] from arbitrage check results
+    // Map nested options to check request format
     const arbitrage = await this.check(
       {
-        liquidityWindowDays: params.liquidityWindowDays,
+        // Liquidity options
+        liquidityWindowDays: params.liquidityOptions?.windowDays,
+        liquidityMinCoverageRatio: params.liquidityOptions?.minCoverageRatio,
+        liquidityMinLiquidityThresholdISK:
+          params.liquidityOptions?.minLiquidityThresholdISK,
+        liquidityMinWindowTrades: params.liquidityOptions?.minWindowTrades,
+        // Arbitrage options
+        maxInventoryDays: params.arbitrageOptions?.maxInventoryDays,
+        minMarginPercent: params.arbitrageOptions?.minMarginPercent,
+        maxPriceDeviationMultiple:
+          params.arbitrageOptions?.maxPriceDeviationMultiple,
+        destinationStationIds: params.arbitrageOptions?.destinationStationIds,
+        excludeDestinationStationIds:
+          params.arbitrageOptions?.excludeDestinationStationIds,
+        disableInventoryLimit: params.arbitrageOptions?.disableInventoryLimit,
+        allowInventoryTopOff: params.arbitrageOptions?.allowInventoryTopOff,
+        salesTaxPercent: params.arbitrageOptions?.salesTaxPercent,
+        brokerFeePercent: params.arbitrageOptions?.brokerFeePercent,
+        minTotalProfitISK: params.arbitrageOptions?.minTotalProfitISK,
       },
       reqId,
     );

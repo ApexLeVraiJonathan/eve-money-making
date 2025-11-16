@@ -13,6 +13,8 @@ import {
   NotebookPen,
   Users,
   Zap,
+  TrendingUp,
+  ArrowLeftRight,
 } from "lucide-react";
 
 export type NavItem = {
@@ -147,6 +149,16 @@ export const APPS: AppConfig[] = [
         name: "Packages",
         url: "/tradecraft/admin/packages",
         icon: Package,
+      },
+      {
+        name: "Liquidity",
+        url: "/tradecraft/admin/liquidity",
+        icon: TrendingUp,
+      },
+      {
+        name: "Arbitrage",
+        url: "/tradecraft/admin/arbitrage",
+        icon: ArrowLeftRight,
       },
       {
         name: "Characters",

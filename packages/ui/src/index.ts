@@ -24,6 +24,7 @@ export * from "./dropdown-menu";
 export * from "./empty";
 export * from "./input";
 export * from "./label";
+export * from "./labeled-input";
 export * from "./radio-group";
 export * from "./select";
 export * from "./separator";
