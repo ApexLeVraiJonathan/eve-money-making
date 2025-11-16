@@ -6,16 +6,23 @@ import { PrismaClient } from '@eve/prisma';
  * Logic:
  * 1. Fetch all sell orders from seller characters via API
  * 2. Group orders by typeId + stationId, sum volume_total (original listed amount)
- * 3. For each cycle line, calculate listedUnits:
- *    listedUnits = min(ESI_volume_total + unitsSold, unitsBought)
- *    - ESI_volume_total: currently listed units from active orders
- *    - unitsSold: units that were sold (were listed before)
- *    - unitsBought: hard cap (can't list more than you bought)
+ * 3. For each cycle line, calculate listedUnits based on three cases:
+ *    CASE 1: Fully sold out (unitsBought == unitsSold, ESI == 0)
+ *      - listedUnits = unitsSold (all units were listed before selling)
+ *    CASE 2: Partial listing with gap (listedUnits < unitsBought AND ESI < unitsBought)
+ *      - listedUnits = min(ESI + unitsSold, unitsBought) (add sold units to ESI)
+ *    CASE 3: Default (ESI >= unitsBought or no gap)
+ *      - listedUnits = min(ESI, unitsBought) (use ESI only, capped)
  * 4. Update cycle lines with the calculated listedUnits
  *
  * Note: This script requires the API to be running to fetch orders with token refresh
  *
- * Run with: npx ts-node apps/api/scripts/reset-and-backfill-listed-units.ts [--dry-run] [--cycle-id <id>] [--status <status>]
+ * Run with: npx ts-node apps/api/scripts/reset-and-backfill-listed-units.ts [options]
+ * Options:
+ *   --dry-run          Preview changes without updating database
+ *   --cycle-id <id>    Process only a specific cycle
+ *   --status <status>  Process only cycles with specific status (OPEN, COMPLETED, etc)
+ *   --sold-out-only    Only update fully sold-out items (unitsBought == unitsSold)
  */
 
 const prisma = new PrismaClient();
@@ -25,6 +32,7 @@ function parseArgs() {
   let dryRun = false;
   let cycleId: string | null = null;
   let status: string | null = null;
+  let soldOutOnly = false;
 
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '--dry-run') {
@@ -35,14 +43,16 @@ function parseArgs() {
     } else if (args[i] === '--status' && i + 1 < args.length) {
       status = args[i + 1];
       i++;
+    } else if (args[i] === '--sold-out-only') {
+      soldOutOnly = true;
     }
   }
 
-  return { dryRun, cycleId, status };
+  return { dryRun, cycleId, status, soldOutOnly };
 }
 
 async function main() {
-  const { dryRun, cycleId: targetCycleId, status: targetStatus } = parseArgs();
+  const { dryRun, cycleId: targetCycleId, status: targetStatus, soldOutOnly } = parseArgs();
 
   console.log('='.repeat(80));
   console.log('Backfill listedUnits Script');
@@ -50,6 +60,7 @@ async function main() {
   console.log(`DRY_RUN: ${dryRun}`);
   if (targetCycleId) console.log(`TARGET_CYCLE_ID: ${targetCycleId}`);
   if (targetStatus) console.log(`TARGET_STATUS: ${targetStatus}`);
+  if (soldOutOnly) console.log(`MODE: Sold-out items only`);
   console.log('');
 
   const API_BASE_URL = process.env.API_URL || 'http://localhost:3000';
@@ -230,15 +241,26 @@ async function main() {
         const currentlyListedFromESI = listedUnitsMap.get(key) || 0;
         const unitsSold = line.unitsSold || 0;
 
-        // Calculate total listed units:
+        // Calculate total listed units with multiple cases:
+        let totalListedUnits;
+        let calculationNote = '';
+
+        // CASE 1: Fully sold out (unitsBought == unitsSold, no active orders)
+        // All units were sold, so they must have all been listed
+        if (
+          line.unitsBought === unitsSold &&
+          unitsSold > 0 &&
+          currentlyListedFromESI === 0
+        ) {
+          totalListedUnits = unitsSold;
+          calculationNote = 'Fully sold out';
+        }
+        // CASE 2: Partial listing with gap (add sold units to ESI)
         // ONLY add unitsSold if:
         // 1. listedUnits < unitsBought (there are unlisted units)
         // 2. AND ESI < unitsBought (ESI shows less than bought)
         // This means some units were sold (they were listed before selling)
-        let totalListedUnits;
-        let calculationNote = '';
-
-        if (
+        else if (
           line.listedUnits < line.unitsBought &&
           currentlyListedFromESI < line.unitsBought
         ) {
@@ -248,10 +270,17 @@ async function main() {
             line.unitsBought,
           );
           calculationNote = 'ESI + sold, capped at bought';
-        } else {
+        }
+        // CASE 3: Default - use ESI only, capped at bought
+        else {
           // Just use ESI data, capped at bought
           totalListedUnits = Math.min(currentlyListedFromESI, line.unitsBought);
           calculationNote = 'ESI only, capped at bought';
+        }
+
+        // If --sold-out-only mode, skip lines that aren't fully sold
+        if (soldOutOnly && calculationNote !== 'Fully sold out') {
+          continue;
         }
 
         // Only update if there's a change
