@@ -402,6 +402,7 @@ export class ParticipationService {
       include: {
         cycle: {
           select: {
+            id: true,
             name: true,
             startedAt: true,
             closedAt: true,

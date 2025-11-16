@@ -154,6 +154,8 @@ export class PricingService {
       }>;
     }>
   > {
+    const startTime = Date.now();
+
     // Determine characters to check - default to logistics sellers
     const characters = params.characterIds?.length
       ? await Promise.all(
@@ -174,6 +176,9 @@ export class PricingService {
       ? params.stationIds
       : await this.marketData.getTrackedStationIds();
 
+    // Use Set for O(1) station lookup
+    const stationIdSet = new Set(stationIds);
+
     // Preload regions per station using GameDataService
     const stationsWithRegions =
       await this.gameData.getStationsWithRegions(stationIds);
@@ -186,7 +191,13 @@ export class PricingService {
       }
     }
 
-    // Collect our own active sell orders per station and per type
+    const setupTime = Date.now();
+
+    // Collect our own active sell orders per station and per type in parallel
+    const ordersResults = await Promise.allSettled(
+      characters.map((c) => this.esiChars.getOrders(c.id)),
+    );
+
     const ourOrders: Array<{
       characterId: number;
       order_id: number;
@@ -196,21 +207,38 @@ export class PricingService {
       location_id: number;
       issued?: string;
     }> = [];
-    for (const c of characters) {
-      const orders = await this.esiChars.getOrders(c.id);
-      for (const o of orders) {
-        if (o.is_buy_order) continue;
-        if (!stationIds.includes(o.location_id)) continue;
-        ourOrders.push({
-          characterId: c.id,
-          order_id: o.order_id,
-          type_id: o.type_id,
-          price: o.price,
-          volume_remain: o.volume_remain,
-          location_id: o.location_id,
-          issued: o.issued,
-        });
+
+    ordersResults.forEach((result, idx) => {
+      if (result.status === 'fulfilled') {
+        const c = characters[idx];
+        for (const o of result.value) {
+          if (o.is_buy_order) continue;
+          if (!stationIdSet.has(o.location_id)) continue;
+          ourOrders.push({
+            characterId: c.id,
+            order_id: o.order_id,
+            type_id: o.type_id,
+            price: o.price,
+            volume_remain: o.volume_remain,
+            location_id: o.location_id,
+            issued: o.issued,
+          });
+        }
+      } else {
+        console.warn(
+          `Orders fetch failed for character ${characters[idx].id}: ${String(result.reason)}`,
+        );
       }
+    });
+
+    const fetchOrdersTime = Date.now();
+
+    // Early exit if no orders to check
+    if (ourOrders.length === 0) {
+      console.log(
+        `UndercutCheck: No orders to check (setup=${setupTime - startTime}ms, fetchOrders=${fetchOrdersTime - setupTime}ms)`,
+      );
+      return [];
     }
 
     // Optional: filter orders to those belonging to a specific cycle scope
@@ -233,6 +261,16 @@ export class PricingService {
           }
         }
       }
+    }
+
+    const filterTime = Date.now();
+
+    // Early exit after cycle filtering
+    if (ourOrders.length === 0) {
+      console.log(
+        `UndercutCheck: No orders after cycle filter (setup=${setupTime - startTime}ms, fetchOrders=${fetchOrdersTime - setupTime}ms, filter=${filterTime - fetchOrdersTime}ms)`,
+      );
+      return [];
     }
 
     // Group our orders by station and type
@@ -281,53 +319,72 @@ export class PricingService {
       }>
     >();
 
-    for (const [key, orders] of byStationType) {
-      const [stationIdStr, typeIdStr] = key.split(':');
-      const stationId = Number(stationIdStr);
-      const typeId = Number(typeIdStr);
-      const regionId = regionByStation.get(stationId);
-      if (!regionId) continue;
+    // Fetch competitor orders in parallel using worker pool
+    const entries = Array.from(byStationType.entries());
+    let idx = 0;
 
-      const stationSells = await fetchStationOrders(this.esi, {
-        regionId,
-        typeId,
-        stationId,
-        side: 'sell',
-      });
-      stationSells.sort((a, b) => a.price - b.price);
-      if (!stationSells.length) continue;
+    const worker = async () => {
+      for (;;) {
+        const current = idx++;
+        if (current >= entries.length) break;
 
-      // Compute lowest price that is not one of our orders
-      const ourPrices = new Set(orders.map((o) => o.price));
-      let competitorLowest: number | null = null;
-      for (const s of stationSells) {
-        if (!ourPrices.has(s.price)) {
-          competitorLowest = s.price;
-          break;
+        const [key, orders] = entries[current];
+        const [stationIdStr, typeIdStr] = key.split(':');
+        const stationId = Number(stationIdStr);
+        const typeId = Number(typeIdStr);
+        const regionId = regionByStation.get(stationId);
+        if (!regionId) continue;
+
+        const stationSells = await fetchStationOrders(this.esi, {
+          regionId,
+          typeId,
+          stationId,
+          side: 'sell',
+        });
+        stationSells.sort((a, b) => a.price - b.price);
+        if (!stationSells.length) continue;
+
+        // Compute lowest price that is not one of our orders
+        const ourPrices = new Set(orders.map((o) => o.price));
+        let competitorLowest: number | null = null;
+        for (const s of stationSells) {
+          if (!ourPrices.has(s.price)) {
+            competitorLowest = s.price;
+            break;
+          }
+        }
+        // If competitorLowest is null, we are cheapest (all sells are our prices)
+        if (competitorLowest === null) continue;
+
+        for (const o of orders) {
+          if (o.price <= competitorLowest) continue; // already cheapest
+          const suggested = nextCheaperTick(competitorLowest);
+          const itemName = typeNameById.get(o.type_id) ?? String(o.type_id);
+          const entry = {
+            orderId: o.order_id,
+            typeId: o.type_id,
+            itemName,
+            remaining: o.volume_remain,
+            currentPrice: o.price,
+            competitorLowest: competitorLowest,
+            suggestedNewPriceTicked: suggested,
+          };
+          const groupKey = `${o.characterId}:${stationId}`;
+          const list = updatesByCharStation.get(groupKey) ?? [];
+          list.push(entry);
+          updatesByCharStation.set(groupKey, list);
         }
       }
-      // If competitorLowest is null, we are cheapest (all sells are our prices)
-      if (competitorLowest === null) continue;
+    };
 
-      for (const o of orders) {
-        if (o.price <= competitorLowest) continue; // already cheapest
-        const suggested = nextCheaperTick(competitorLowest);
-        const itemName = typeNameById.get(o.type_id) ?? String(o.type_id);
-        const entry = {
-          orderId: o.order_id,
-          typeId: o.type_id,
-          itemName,
-          remaining: o.volume_remain,
-          currentPrice: o.price,
-          competitorLowest: competitorLowest,
-          suggestedNewPriceTicked: suggested,
-        };
-        const groupKey = `${o.characterId}:${stationId}`;
-        const list = updatesByCharStation.get(groupKey) ?? [];
-        list.push(entry);
-        updatesByCharStation.set(groupKey, list);
-      }
-    }
+    const workerCount = Math.min(8, entries.length);
+    const fetchCompetitorsStart = Date.now();
+    
+    await this.esi.withMaxConcurrency(workerCount * 2, async () => {
+      await Promise.all(Array.from({ length: workerCount }, () => worker()));
+    });
+
+    const fetchCompetitorsTime = Date.now();
 
     // Build grouped, sorted output
     for (const [key, updates] of updatesByCharStation) {
@@ -353,6 +410,15 @@ export class PricingService {
         ? a.characterId - b.characterId
         : a.stationId - b.stationId,
     );
+
+    const totalTime = Date.now();
+    console.log(
+      `UndercutCheck completed: ${results.length} updates across ${byStationType.size} station/type combos | ` +
+        `Times: setup=${setupTime - startTime}ms, fetchOrders=${fetchOrdersTime - setupTime}ms, ` +
+        `filter=${filterTime - fetchOrdersTime}ms, fetchCompetitors=${fetchCompetitorsTime - fetchCompetitorsStart}ms, ` +
+        `total=${totalTime - startTime}ms`,
+    );
+
     return results;
   }
 
