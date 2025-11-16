@@ -1,6 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsArray, IsString, Matches, ValidateNested } from 'class-validator';
+import { IsArray, IsInt, IsOptional, IsPositive, IsString, Matches, ValidateNested } from 'class-validator';
 
 class SellPriceUpdate {
   @ApiProperty({
@@ -26,6 +26,9 @@ class SellPriceUpdate {
     example: 100,
     required: false,
   })
+  @IsOptional()
+  @IsInt()
+  @IsPositive()
   quantity?: number;
 }
 
