@@ -13,9 +13,14 @@ import { AppConfig } from '../../common/config';
  *
  * Profit Formulas:
  * - Line Profit = SalesNet - COGS - BrokerFees - RelistFees
- *   where COGS = (buyCostIsk / unitsBought) * unitsSold
+ *   where COGS = WAC * unitsSold
+ *   and WAC (Weighted Average Cost) = buyCostIsk / unitsBought
  * - Cycle Profit = Sum(Line Profits) - Transport Fees
- * - Estimated Profit = Realized + (CurrentValue - CostBasis) for unsold inventory
+ * - Estimated Profit = Current Realized Profit + Σ(remainingUnits × (currentSellPrice × (1 - salesTaxPct) - WAC))
+ *   This correctly accounts for:
+ *   - Cost basis of remaining inventory (WAC × remainingUnits)
+ *   - Sales tax on future sales (not double-counted)
+ *   - Already-paid broker/relist fees (not re-applied to remaining inventory)
  */
 @Injectable()
 export class ProfitService {
@@ -338,10 +343,17 @@ export class ProfitService {
 
     const feeDefaults = AppConfig.arbitrage().fees;
 
+    let totalAdditionalProfit = 0;
+
     for (const line of lines) {
+      // Calculate current realized profit using COGS (not total buyCostIsk)
+      const wac =
+        line.unitsBought > 0 ? Number(line.buyCostIsk) / line.unitsBought : 0;
+      const cogs = wac * line.unitsSold;
+      
       const currentLineProfit =
         Number(line.salesNetIsk) -
-        Number(line.buyCostIsk) -
+        cogs -
         Number(line.brokerFeesIsk) -
         Number(line.relistFeesIsk);
 
@@ -352,19 +364,27 @@ export class ProfitService {
 
       let estimatedRevenue = 0;
       let estimatedFees = 0;
+      let estimatedAdditionalProfit = 0;
 
       if (remainingUnits > 0 && currentSellPrice) {
         const grossRevenue = remainingUnits * currentSellPrice;
         const salesTax = grossRevenue * (feeDefaults.salesTaxPercent / 100);
-        estimatedRevenue = grossRevenue - salesTax;
-        // Broker fees already paid on listing, only sales tax on sell
+        const netRevenue = grossRevenue - salesTax;
+        const costBasis = wac * remainingUnits;
+        
+        // Additional profit = net revenue from remaining units - their cost basis
+        estimatedAdditionalProfit = netRevenue - costBasis;
+        
+        // Track components for breakdown visibility
+        estimatedRevenue = netRevenue;
         estimatedFees = salesTax;
       }
 
       totalEstimatedRevenue += estimatedRevenue;
       totalEstimatedFees += estimatedFees;
+      totalAdditionalProfit += estimatedAdditionalProfit;
 
-      const estimatedLineProfit = estimatedRevenue - estimatedFees;
+      const estimatedLineProfit = estimatedAdditionalProfit;
 
       breakdown.push({
         lineId: line.id,
@@ -383,8 +403,8 @@ export class ProfitService {
       });
     }
 
-    const estimatedTotalProfit =
-      currentProfit + totalEstimatedRevenue - totalEstimatedFees;
+    // Estimated total profit = current realized + additional from remaining inventory
+    const estimatedTotalProfit = currentProfit + totalAdditionalProfit;
 
     return {
       currentProfit: currentProfit.toFixed(2),
