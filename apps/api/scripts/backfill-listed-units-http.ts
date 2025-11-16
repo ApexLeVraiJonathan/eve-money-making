@@ -140,8 +140,8 @@ async function main() {
           totalLinesUpdated++;
 
           const remainingUnits = Math.max(0, line.unitsBought - line.unitsSold);
-          const oldUnlisted = Math.max(0, remainingUnits - line.listedUnits);
-          const newUnlisted = Math.max(0, remainingUnits - calculatedListedUnits);
+          const oldUnlisted = Math.max(0, line.unitsBought - line.listedUnits);
+          const newUnlisted = Math.max(0, line.unitsBought - calculatedListedUnits);
 
           console.log(`Line ${line.id.slice(0, 8)}: typeId=${line.typeId}, station=${line.destinationStationId}`);
           console.log(`  Units: bought=${line.unitsBought}, sold=${line.unitsSold}, remaining=${remainingUnits}`);

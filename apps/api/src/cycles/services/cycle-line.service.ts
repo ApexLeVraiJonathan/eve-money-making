@@ -186,7 +186,7 @@ export class CycleLineService {
   }
 
   /**
-   * Get cycle lines with unlisted units (remaining units that haven't been listed yet)
+   * Get cycle lines with unlisted units (units that have been bought but not yet listed)
    * This replaces the old logic that filtered by currentSellPriceIsk === null
    */
   async getUnlistedCycleLines(cycleId: string) {
@@ -205,14 +205,11 @@ export class CycleLineService {
     });
 
     // Filter to only lines that have unlisted units
-    // unlistedUnits = max(0, remainingUnits - listedUnits)
-    // where remainingUnits = max(0, unitsBought - unitsSold) or plannedUnits if nothing bought yet
+    // unlistedUnits = max(0, unitsBought - listedUnits)
+    // We use unitsBought (not remainingUnits) because listedUnits tracks cumulative listed units
     return allLines.filter((line) => {
       const bought = line.unitsBought ?? 0;
-      const sold = line.unitsSold ?? 0;
-      const remainingUnits =
-        bought > 0 ? Math.max(0, bought - sold) : line.plannedUnits;
-      const unlistedUnits = Math.max(0, remainingUnits - line.listedUnits);
+      const unlistedUnits = Math.max(0, bought - line.listedUnits);
       return unlistedUnits > 0;
     });
   }

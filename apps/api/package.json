@@ -29,7 +29,8 @@
     "fix:allocation": "tsx scripts/fix-allocation.ts",
     "fix:missing-table": "tsx scripts/fix-missing-table.ts",
     "audit:endpoints": "tsx scripts/audit-endpoints.ts",
-    "check:env": "tsx scripts/check-env.ts"
+    "check:env": "tsx scripts/check-env.ts",
+    "backfill:listed-units": "tsx scripts/reset-and-backfill-listed-units.ts"
   },
   "dependencies": {
     "@eve/prisma": "workspace:*",

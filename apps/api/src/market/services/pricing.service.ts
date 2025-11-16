@@ -438,16 +438,11 @@ export class PricingService {
     );
 
     // Calculate unlisted units per line and aggregate by type+destination
-    // unlistedUnits = remainingUnits - listedUnits
+    // unlistedUnits = unitsBought - listedUnits (listedUnits is cumulative)
     const unlistedMap = new Map<string, number>();
     for (const l of lines) {
       const bought = l.unitsBought ?? 0;
-      const sold = l.unitsSold ?? 0;
-      // If items have been bought, use actual inventory (bought - sold)
-      // Otherwise, use planned units to allow pre-listing price checks
-      const remainingUnits =
-        bought > 0 ? Math.max(0, bought - sold) : l.plannedUnits;
-      const unlistedUnits = Math.max(0, remainingUnits - l.listedUnits);
+      const unlistedUnits = Math.max(0, bought - l.listedUnits);
       
       if (unlistedUnits > 0) {
         const k = `${l.destinationStationId}:${l.typeId}`;

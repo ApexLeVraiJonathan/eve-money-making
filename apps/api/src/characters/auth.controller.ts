@@ -21,8 +21,10 @@ import type { Response, Request } from 'express';
 import crypto from 'node:crypto';
 import * as jwt from 'jsonwebtoken';
 import { AuthService } from './services/auth.service';
+import { CharacterService } from './services/character.service';
 import { CryptoUtil } from '../common/crypto.util';
 import { EsiService } from '../esi/esi.service';
+import { EsiCharactersService } from '../esi/esi-characters.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { Roles } from './decorators/roles.decorator';
 import { RolesGuard } from './guards/roles.guard';
@@ -39,7 +41,9 @@ import {
 export class AuthController {
   constructor(
     private readonly auth: AuthService,
+    private readonly characterService: CharacterService,
     private readonly esi: EsiService,
+    private readonly esiChars: EsiCharactersService,
     private readonly prisma: PrismaService,
   ) {}
 
@@ -890,6 +894,44 @@ export class AuthController {
         c.token?.accessTokenExpiresAt?.toISOString() ?? null,
       scopes: c.token?.scopes ?? null,
     }));
+  }
+
+  /**
+   * Admin: Get character orders from ESI
+   * Returns all orders for a character including volume_total (original listed amount)
+   * Handles ESI token refresh automatically
+   */
+  @UseGuards(RolesGuard)
+  @Roles('ADMIN')
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Get character orders from ESI',
+    description:
+      'Fetches all orders for a character with volume_total (original listed amount). Handles ESI token refresh automatically.',
+  })
+  @ApiParam({
+    name: 'id',
+    description: 'Character ID',
+    type: 'number',
+    example: 123456789,
+  })
+  @Get('admin/characters/:id/orders')
+  async getCharacterOrders(@Param('id') idParam: string): Promise<
+    Array<{
+      order_id: number;
+      type_id: number;
+      is_buy_order: boolean;
+      price: number;
+      volume_remain: number;
+      volume_total: number;
+      location_id: number;
+      issued?: string;
+      state?: string;
+      region_id?: number;
+    }>
+  > {
+    const id = Number(idParam);
+    return await this.characterService.getCharacterOrders(id);
   }
 
   /**

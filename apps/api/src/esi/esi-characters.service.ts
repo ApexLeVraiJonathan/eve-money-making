@@ -23,6 +23,7 @@ export class EsiCharactersService {
       is_buy_order: boolean;
       price: number;
       volume_remain: number;
+      volume_total: number;
       location_id: number;
       issued?: string;
       state?: string;
@@ -36,6 +37,7 @@ export class EsiCharactersService {
         is_buy_order: boolean;
         price: number;
         volume_remain: number;
+        volume_total: number;
         location_id: number;
         issued?: string;
         state?: string;
@@ -58,6 +60,7 @@ export class EsiCharactersService {
       is_buy_order: boolean;
       price: number;
       volume_remain: number;
+      volume_total: number;
       location_id: number;
       issued?: string;
       state?: string;
@@ -70,6 +73,7 @@ export class EsiCharactersService {
       is_buy_order: boolean;
       price: number;
       volume_remain: number;
+      volume_total: number;
       location_id: number;
       issued?: string;
       state?: string;
@@ -83,6 +87,7 @@ export class EsiCharactersService {
         is_buy_order: boolean;
         price: number;
         volume_remain: number;
+        volume_total: number;
         location_id: number;
         issued?: string;
         state?: string;
@@ -108,6 +113,7 @@ export class EsiCharactersService {
           is_buy_order: boolean;
           price: number;
           volume_remain: number;
+          volume_total: number;
           location_id: number;
           issued?: string;
           state?: string;

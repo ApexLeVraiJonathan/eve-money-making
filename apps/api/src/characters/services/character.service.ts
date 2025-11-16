@@ -1,5 +1,6 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { EsiCharactersService } from '../../esi/esi-characters.service';
 import type {
   CharacterRole,
   CharacterFunction,
@@ -16,7 +17,10 @@ import type {
 export class CharacterService {
   private readonly logger = new Logger(CharacterService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly esiChars: EsiCharactersService,
+  ) {}
 
   /**
    * Get tracked SELLER character IDs (have tokens, in specific hubs)
@@ -188,5 +192,44 @@ export class CharacterService {
       where: { managedBy: 'SYSTEM' },
       select: { id: true, name: true },
     });
+  }
+
+  /**
+   * Get character orders from ESI
+   * Returns all orders for a character including volume_total (original listed amount)
+   * Handles ESI token refresh automatically
+   *
+   * @throws NotFoundException if character doesn't exist
+   */
+  async getCharacterOrders(
+    characterId: number,
+  ): Promise<
+    Array<{
+      order_id: number;
+      type_id: number;
+      is_buy_order: boolean;
+      price: number;
+      volume_remain: number;
+      volume_total: number;
+      location_id: number;
+      issued?: string;
+      state?: string;
+      region_id?: number;
+    }>
+  > {
+    // Verify character exists
+    const character = await this.prisma.eveCharacter.findUnique({
+      where: { id: characterId },
+      select: { id: true, name: true },
+    });
+
+    if (!character) {
+      throw new NotFoundException(
+        `Character with ID ${characterId} not found`,
+      );
+    }
+
+    // Fetch orders from ESI (handles token refresh automatically)
+    return await this.esiChars.getOrders(characterId);
   }
 }
