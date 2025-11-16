@@ -231,28 +231,35 @@ export class PackageService {
       });
 
       // Link to cycle lines
-      // Find cycle lines for each item in this package
+      // Aggregate units per typeId (multiple package items may map to same cycle line)
+      const unitsByTypeId = new Map<number, number>();
       for (const item of pkg.items) {
+        const current = unitsByTypeId.get(item.typeId) ?? 0;
+        unitsByTypeId.set(item.typeId, current + item.units);
+      }
+
+      // Create junction records (one per unique typeId)
+      for (const [typeId, totalUnits] of unitsByTypeId.entries()) {
         const cycleLine = await client.cycleLine.findFirst({
           where: {
             cycleId,
-            typeId: item.typeId,
+            typeId,
             destinationStationId: pkg.destinationStationId,
           },
         });
 
         if (cycleLine) {
-          // Create junction record
+          // Create junction record with aggregated units
           await client.packageCycleLine.create({
             data: {
               packageId: createdPackage.id,
               cycleLineId: cycleLine.id,
-              unitsCommitted: item.units,
+              unitsCommitted: totalUnits,
             },
           });
         } else {
           this.logger.warn(
-            `No cycle line found for typeId=${item.typeId} dest=${pkg.destinationStationId} in cycle ${cycleId}`,
+            `No cycle line found for typeId=${typeId} dest=${pkg.destinationStationId} in cycle ${cycleId}`,
           );
         }
       }
