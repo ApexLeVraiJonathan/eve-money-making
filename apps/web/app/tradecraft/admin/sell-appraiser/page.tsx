@@ -230,6 +230,7 @@ export default function SellAppraiserPage() {
     const priceUpdates: Array<{
       lineId: string;
       currentSellPriceIsk: string;
+      quantity: number;
     }> = [];
 
     for (const r of result) {
@@ -267,6 +268,7 @@ export default function SellAppraiserPage() {
       priceUpdates.push({
         lineId: line.id,
         currentSellPriceIsk: r.suggestedSellPriceTicked.toFixed(2),
+        quantity: r.quantityRemaining,
       });
     }
 

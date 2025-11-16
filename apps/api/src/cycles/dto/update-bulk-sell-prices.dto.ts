@@ -20,6 +20,13 @@ class SellPriceUpdate {
     message: 'currentSellPriceIsk must be in format XXXXX.XX',
   })
   currentSellPriceIsk: string;
+
+  @ApiProperty({
+    description: 'Number of units being listed (to increment listedUnits)',
+    example: 100,
+    required: false,
+  })
+  quantity?: number;
 }
 
 export class UpdateBulkSellPricesRequest {

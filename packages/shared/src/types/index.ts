@@ -90,6 +90,7 @@ export interface CycleLine {
   brokerFeesIsk: string;
   relistFeesIsk: string;
   currentSellPriceIsk: string | null;
+  listedUnits: number;
   unitsRemaining?: number; // Computed
   wacUnitCost?: string; // Computed
   lineProfitExclTransport?: string; // Computed

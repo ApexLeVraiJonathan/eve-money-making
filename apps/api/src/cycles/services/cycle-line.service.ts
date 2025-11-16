@@ -54,6 +54,7 @@ export class CycleLineService {
         brokerFeesIsk: true,
         relistFeesIsk: true,
         currentSellPriceIsk: true,
+        listedUnits: true,
         isRollover: true,
         rolloverFromCycleId: true,
         rolloverFromLineId: true,
@@ -112,6 +113,7 @@ export class CycleLineService {
         currentSellPriceIsk: l.currentSellPriceIsk
           ? Number(l.currentSellPriceIsk).toFixed(2)
           : null,
+        listedUnits: l.listedUnits,
         isRollover: l.isRollover,
         rolloverFromCycleId: l.rolloverFromCycleId,
         rolloverFromLineId: l.rolloverFromLineId,
@@ -133,15 +135,25 @@ export class CycleLineService {
 
   /**
    * Update current sell prices for multiple cycle lines in bulk
+   * If quantity is provided, also increment listedUnits by that amount
    */
   async updateBulkSellPrices(input: {
-    updates: Array<{ lineId: string; currentSellPriceIsk: string }>;
+    updates: Array<{
+      lineId: string;
+      currentSellPriceIsk: string;
+      quantity?: number;
+    }>;
   }) {
     return await this.prisma.$transaction(
       input.updates.map((update) =>
         this.prisma.cycleLine.update({
           where: { id: update.lineId },
-          data: { currentSellPriceIsk: update.currentSellPriceIsk },
+          data: {
+            currentSellPriceIsk: update.currentSellPriceIsk,
+            ...(update.quantity
+              ? { listedUnits: { increment: update.quantity } }
+              : {}),
+          },
         }),
       ),
     );
@@ -174,14 +186,12 @@ export class CycleLineService {
   }
 
   /**
-   * Get unlisted cycle lines (no current sell price set)
+   * Get cycle lines with unlisted units (remaining units that haven't been listed yet)
+   * This replaces the old logic that filtered by currentSellPriceIsk === null
    */
   async getUnlistedCycleLines(cycleId: string) {
-    return await this.prisma.cycleLine.findMany({
-      where: {
-        cycleId,
-        currentSellPriceIsk: null,
-      },
+    const allLines = await this.prisma.cycleLine.findMany({
+      where: { cycleId },
       select: {
         id: true,
         typeId: true,
@@ -189,8 +199,21 @@ export class CycleLineService {
         plannedUnits: true,
         unitsBought: true,
         unitsSold: true,
+        listedUnits: true,
         buyCostIsk: true,
       },
+    });
+
+    // Filter to only lines that have unlisted units
+    // unlistedUnits = max(0, remainingUnits - listedUnits)
+    // where remainingUnits = max(0, unitsBought - unitsSold) or plannedUnits if nothing bought yet
+    return allLines.filter((line) => {
+      const bought = line.unitsBought ?? 0;
+      const sold = line.unitsSold ?? 0;
+      const remainingUnits =
+        bought > 0 ? Math.max(0, bought - sold) : line.plannedUnits;
+      const unlistedUnits = Math.max(0, remainingUnits - line.listedUnits);
+      return unlistedUnits > 0;
     });
   }
 

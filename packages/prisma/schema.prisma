@@ -403,6 +403,7 @@ model CycleLine {
   brokerFeesIsk        Decimal  @default(0) @map("broker_fees_isk") @db.Decimal(28, 2)
   relistFeesIsk        Decimal  @default(0) @map("relist_fees_isk") @db.Decimal(28, 2)
   currentSellPriceIsk  Decimal? @map("current_sell_price_isk") @db.Decimal(28, 2)
+  listedUnits          Int      @default(0) @map("listed_units")
   createdAt            DateTime @default(now()) @map("created_at")
   updatedAt            DateTime @updatedAt @map("updated_at")
 

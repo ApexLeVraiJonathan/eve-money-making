@@ -432,23 +432,26 @@ export class PricingService {
       suggestedSellPriceTicked: number | null;
     }>
   > {
-    // Get cycle lines that haven't been listed yet (no currentSellPriceIsk set)
+    // Get cycle lines with unlisted units (using new quantity-based logic)
     const lines = await this.cycleLineService.getUnlistedCycleLines(
       params.cycleId,
     );
 
-    // Calculate remaining units (bought - sold, or fall back to planned if nothing bought yet)
-    const remainingMap = new Map<string, number>();
+    // Calculate unlisted units per line and aggregate by type+destination
+    // unlistedUnits = remainingUnits - listedUnits
+    const unlistedMap = new Map<string, number>();
     for (const l of lines) {
       const bought = l.unitsBought ?? 0;
       const sold = l.unitsSold ?? 0;
-      // If items have been bought, show remaining inventory (bought - sold)
-      // Otherwise, show planned units to allow pre-listing price checks
-      const remaining =
+      // If items have been bought, use actual inventory (bought - sold)
+      // Otherwise, use planned units to allow pre-listing price checks
+      const remainingUnits =
         bought > 0 ? Math.max(0, bought - sold) : l.plannedUnits;
-      if (remaining > 0) {
+      const unlistedUnits = Math.max(0, remainingUnits - l.listedUnits);
+      
+      if (unlistedUnits > 0) {
         const k = `${l.destinationStationId}:${l.typeId}`;
-        remainingMap.set(k, (remainingMap.get(k) ?? 0) + remaining);
+        unlistedMap.set(k, (unlistedMap.get(k) ?? 0) + unlistedUnits);
       }
     }
 
@@ -484,7 +487,7 @@ export class PricingService {
     // Fetch all market data in parallel for speed
     const fetchPromises = lines.map(async (l) => {
       const key = `${l.destinationStationId}:${l.typeId}`;
-      const qty = remainingMap.get(key) ?? 0;
+      const qty = unlistedMap.get(key) ?? 0;
       if (qty <= 0) return null;
 
       const regionId = regionByStation.get(l.destinationStationId);
@@ -523,7 +526,7 @@ export class PricingService {
     quantity: number;
     unitPrice: number;
   }) {
-    // Compute 1.5% broker fee on total value
+    // Compute 1.5% broker fee on total value (based on quantity being listed now)
     const feePct = AppConfig.arbitrage().fees.brokerFeePercent; // default 1.5
     const total = params.quantity * params.unitPrice;
     const amount = (total * (feePct / 100)).toFixed(2);
@@ -534,10 +537,13 @@ export class PricingService {
       amountIsk: amount,
     });
 
-    // Save current sell price for estimated profit calculations
+    // Update current sell price and increment listedUnits by the quantity being listed
     await this.prisma.cycleLine.update({
       where: { id: params.lineId },
-      data: { currentSellPriceIsk: params.unitPrice.toFixed(2) },
+      data: {
+        currentSellPriceIsk: params.unitPrice.toFixed(2),
+        listedUnits: { increment: params.quantity },
+      },
     });
 
     return { ok: true, feeAmountISK: amount };
