@@ -400,7 +400,14 @@ export class ParticipationService {
     return await this.prisma.cycleParticipation.findMany({
       orderBy: { createdAt: 'desc' },
       include: {
-        cycle: { select: { name: true, startedAt: true, closedAt: true } },
+        cycle: {
+          select: {
+            name: true,
+            startedAt: true,
+            closedAt: true,
+            status: true,
+          },
+        },
       },
     });
   }
