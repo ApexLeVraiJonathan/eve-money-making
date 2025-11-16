@@ -548,6 +548,10 @@ export class ArbitrageService {
         params.perDestinationMaxBudgetSharePerItem ?? 0.2,
       maxPackagesHint: params.maxPackagesHint ?? 30,
       maxPackageCollateralISK: params.maxPackageCollateralISK,
+      minPackageNetProfitISK: params.minPackageNetProfitISK,
+      minPackageROIPercent: params.minPackageROIPercent,
+      shippingMarginMultiplier: params.shippingMarginMultiplier,
+      densityWeight: params.densityWeight,
       destinationCaps: params.destinationCaps,
       allocation: params.allocation,
     };
