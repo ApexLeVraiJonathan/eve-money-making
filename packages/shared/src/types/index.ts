@@ -650,6 +650,9 @@ export interface UndercutUpdate {
   currentPrice: number;
   competitorLowest: number;
   suggestedNewPriceTicked: number;
+  estimatedMarginPercentAfter?: number;
+  estimatedProfitIskAfter?: number;
+  wouldBeLossAfter?: boolean;
 }
 
 /**

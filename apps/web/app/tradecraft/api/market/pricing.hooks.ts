@@ -55,6 +55,9 @@ export function useUndercutCheck() {
       characterIds?: number[];
       stationIds?: number[];
       cycleId?: string;
+      groupingMode?: "perOrder" | "perCharacter" | "global";
+      minUndercutVolumeRatio?: number;
+      minUndercutUnits?: number;
     }) =>
       client.post<UndercutCheckResponse>("/pricing/undercut-check", data ?? {}),
   });

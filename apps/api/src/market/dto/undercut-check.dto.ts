@@ -1,5 +1,13 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsInt, IsArray, IsUUID, IsOptional, Min } from 'class-validator';
+import {
+  IsInt,
+  IsArray,
+  IsUUID,
+  IsOptional,
+  Min,
+  IsIn,
+  IsNumber,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class UndercutCheckRequest {
@@ -37,4 +45,36 @@ export class UndercutCheckRequest {
   @IsOptional()
   @IsUUID()
   cycleId?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Grouping mode for orders: perOrder (all orders), perCharacter (one primary order per character/item/station), global (one order per item/station across all characters)',
+    example: 'perCharacter',
+    enum: ['perOrder', 'perCharacter', 'global'],
+  })
+  @IsOptional()
+  @IsIn(['perOrder', 'perCharacter', 'global'])
+  groupingMode?: 'perOrder' | 'perCharacter' | 'global';
+
+  @ApiPropertyOptional({
+    description:
+      'Minimum competitor volume ratio (relative to order volume_total) to trigger a reprice. Default: 0.15 (15%)',
+    example: 0.15,
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  minUndercutVolumeRatio?: number;
+
+  @ApiPropertyOptional({
+    description:
+      'Minimum absolute competitor volume to trigger a reprice. Default: 1',
+    example: 5,
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  minUndercutUnits?: number;
 }

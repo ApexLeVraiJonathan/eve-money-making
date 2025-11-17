@@ -13,6 +13,13 @@ import {
 import { Checkbox } from "@eve/ui";
 import { Input } from "@eve/ui";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@eve/ui";
+import {
   TrendingDown,
   RefreshCw,
   CheckCircle2,
@@ -20,6 +27,9 @@ import {
   Loader2,
   Package,
   Store,
+  AlertTriangle,
+  Copy,
+  Check,
 } from "lucide-react";
 import { Alert, AlertDescription } from "@eve/ui";
 import {
@@ -45,6 +55,10 @@ export default function UndercutCheckerPage() {
   const [useCommit, setUseCommit] = useState<boolean>(true);
   const [cycleId, setCycleId] = useState<string>("");
   const [selected, setSelected] = useState<Record<string, boolean>>({});
+  const [groupingMode, setGroupingMode] = useState<
+    "perOrder" | "perCharacter" | "global"
+  >("perCharacter");
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const RELIST_PCT = Number(process.env.NEXT_PUBLIC_BROKER_RELIST_PCT ?? 0.3);
 
   // React Query hooks
@@ -57,17 +71,6 @@ export default function UndercutCheckerPage() {
   const { data: cycleLines = [] } = useCycleLines(cycleId);
   const addBulkRelistFeesMutation = useAddBulkRelistFees();
   const updateBulkSellPricesMutation = useUpdateBulkSellPrices();
-
-  const buildKeys = (rows: UndercutCheckGroup[] | null): string[] => {
-    if (!Array.isArray(rows)) return [];
-    const keys: string[] = [];
-    for (const g of rows) {
-      for (const u of g.updates) {
-        keys.push(`${g.characterId}:${g.stationId}:${u.orderId}`);
-      }
-    }
-    return keys;
-  };
 
   // Auto-set cycle ID from latest cycles
   useEffect(() => {
@@ -92,13 +95,19 @@ export default function UndercutCheckerPage() {
             ? selectedStations
             : undefined,
         cycleId: useCommit && cycleId ? cycleId : undefined,
+        groupingMode,
       });
       // API returns array directly (UndercutCheckResponse)
       setResult(data);
-      // Default select all items
-      const allKeys = buildKeys(data);
+      // Default select all items except those that would result in a loss
       const initial: Record<string, boolean> = {};
-      for (const k of allKeys) initial[k] = true;
+      for (const g of data) {
+        for (const u of g.updates) {
+          const key = `${g.characterId}:${g.stationId}:${u.orderId}`;
+          // Auto-deselect loss-making reprices
+          initial[key] = u.wouldBeLossAfter !== true;
+        }
+      }
       setSelected(initial);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Request failed");
@@ -107,6 +116,16 @@ export default function UndercutCheckerPage() {
 
   const toggle = (key: string) =>
     setSelected((prev) => ({ ...prev, [key]: !prev[key] }));
+
+  const copyPrice = async (price: number, key: string) => {
+    try {
+      await navigator.clipboard.writeText(price.toFixed(2));
+      setCopiedKey(key);
+      setTimeout(() => setCopiedKey(null), 2000);
+    } catch (err) {
+      console.error("Failed to copy price:", err);
+    }
+  };
 
   const onConfirmReprice = async () => {
     if (!cycleId || !result || cycleLines.length === 0) return;
@@ -224,6 +243,38 @@ export default function UndercutCheckerPage() {
             <Label htmlFor="use-commit" className="cursor-pointer">
               Use latest open cycle
             </Label>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="grouping-mode">Grouping Mode</Label>
+            <Select
+              value={groupingMode}
+              onValueChange={(value) =>
+                setGroupingMode(value as "perOrder" | "perCharacter" | "global")
+              }
+            >
+              <SelectTrigger id="grouping-mode" className="w-full">
+                <SelectValue placeholder="Select grouping mode" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="perOrder">
+                  Per order (show all orders)
+                </SelectItem>
+                <SelectItem value="perCharacter">
+                  Per character (primary order only)
+                </SelectItem>
+                <SelectItem value="global">
+                  Global (single order per item/station)
+                </SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              {groupingMode === "perOrder" && "Show all orders for each item"}
+              {groupingMode === "perCharacter" &&
+                "Show only the primary order per character/item/station (highest volume)"}
+              {groupingMode === "global" &&
+                "Show only one order per item/station across all characters (highest volume)"}
+            </p>
           </div>
 
           {!useCommit && (
@@ -354,11 +405,20 @@ export default function UndercutCheckerPage() {
                                 (u) =>
                                   `${group.characterId}:${group.stationId}:${u.orderId}`,
                               );
-                              const next: Record<string, boolean> = {};
-                              for (const k of keys) next[k] = e.target.checked;
-                              setSelected(next);
+                              setSelected((prev) => {
+                                const next = { ...prev };
+                                for (const k of keys)
+                                  next[k] = e.target.checked;
+                                return next;
+                              });
                             }}
                           />
+                        </th>
+                        <th
+                          className="py-2 px-3 whitespace-nowrap text-center"
+                          title="Warning"
+                        >
+                          ⚠️
                         </th>
                         <th className="py-2 px-3 whitespace-nowrap text-left">
                           Item
@@ -383,14 +443,30 @@ export default function UndercutCheckerPage() {
                     <tbody>
                       {group.updates.map((u, ui) => {
                         const key = `${group.characterId}:${group.stationId}:${u.orderId}`;
+                        const isLoss = u.wouldBeLossAfter === true;
                         return (
-                          <tr key={ui} className="border-b">
+                          <tr
+                            key={ui}
+                            className={`border-b ${isLoss ? "bg-destructive/10" : ""}`}
+                            title={
+                              isLoss
+                                ? `Loss-making: ${u.estimatedMarginPercentAfter?.toFixed(1)}% margin, ${formatIsk(u.estimatedProfitIskAfter ?? 0)} profit`
+                                : u.estimatedMarginPercentAfter !== undefined
+                                  ? `Margin: ${u.estimatedMarginPercentAfter.toFixed(1)}%, Profit: ${formatIsk(u.estimatedProfitIskAfter ?? 0)}`
+                                  : undefined
+                            }
+                          >
                             <td className="py-2 px-3">
                               <input
                                 type="checkbox"
                                 checked={!!selected[key]}
                                 onChange={() => toggle(key)}
                               />
+                            </td>
+                            <td className="py-2 px-3 text-center">
+                              {isLoss && (
+                                <AlertTriangle className="h-4 w-4 text-destructive inline" />
+                              )}
                             </td>
                             <td className="py-2 px-3 text-left whitespace-nowrap">
                               {u.itemName}
@@ -405,7 +481,26 @@ export default function UndercutCheckerPage() {
                               {formatIsk(u.competitorLowest)}
                             </td>
                             <td className="py-2 px-3 font-medium text-right">
-                              {formatIsk(u.suggestedNewPriceTicked)}
+                              <div className="flex items-center justify-end gap-2">
+                                <span>
+                                  {formatIsk(u.suggestedNewPriceTicked)}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    copyPrice(u.suggestedNewPriceTicked, key)
+                                  }
+                                  className="inline-flex items-center justify-center h-6 w-6 rounded hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                  title="Copy suggested price"
+                                  aria-label="Copy suggested price"
+                                >
+                                  {copiedKey === key ? (
+                                    <Check className="h-3.5 w-3.5 text-green-600" />
+                                  ) : (
+                                    <Copy className="h-3.5 w-3.5" />
+                                  )}
+                                </button>
+                              </div>
                             </td>
                             <td className="py-2 px-3 font-medium text-right">
                               {formatIsk(
@@ -420,6 +515,7 @@ export default function UndercutCheckerPage() {
                     </tbody>
                     <tfoot>
                       <tr className="border-t">
+                        <td className="py-2 px-3"></td>
                         <td className="py-2 px-3"></td>
                         <td className="py-2 px-3" colSpan={4}></td>
                         <td className="py-2 px-3 text-right font-medium">

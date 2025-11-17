@@ -263,6 +263,8 @@ cd apps/web && npx shadcn@latest add alert-dialog
 
 **Location**: `/arbitrage/admin/undercut-checker`
 
+**📘 See [UNDERCUT_CHECKER_GUIDE.md](./UNDERCUT_CHECKER_GUIDE.md) for detailed features and best practices.**
+
 ### Check for Undercuts
 
 **Why this matters**: Competitors may list items cheaper than you. The undercut checker identifies your orders that need price updates to remain competitive.
@@ -270,22 +272,32 @@ cd apps/web && npx shadcn@latest add alert-dialog
 **Workflow**:
 
 - [x] Navigate to `/arbitrage/admin/undercut-checker`
-- [x] Check "Use latest open commit" (should auto-load current cycle)
+- [x] Configure:
+  - [x] Check "Use latest open commit" (auto-loads current cycle for profitability tracking)
+  - [x] Select **Grouping Mode** (Per Character recommended - reduces duplicate orders)
 - [x] Click "Run Check" → System compares your sell orders vs market
-- [x] Results grouped by character and station
+- [x] Results grouped by character and station with intelligent filtering:
+  - [x] Only shows orders where competitor volume is significant (15% of original order volume)
+  - [x] Groups duplicate orders per item (shows only primary order with most volume)
+  - [x] Auto-deselects loss-making reprices (red highlight with ⚠️ warning icon)
 - [x] Each row shows:
+  - [x] Warning indicator (⚠️) if reprice would result in a loss
   - [x] Item name
   - [x] Remaining quantity
   - [x] Your current price
-  - [x] Competitor's lowest price
+  - [x] Competitor's lowest price (filtered by volume threshold)
   - [x] Suggested new price (0.01 ISK cheaper, with tick rounding)
   - [x] **Calculated relist fee** (0.3% of new order value)
+  - [x] **Copy button** for one-click price copying
+- [x] Hover over rows to see estimated margin % and profit after reprice
 - [x] Total relist fee shown at bottom for selected items
 
 ### Record Relist Fees
 
 - [x] Review suggested prices and relist fees
+- [x] Loss-making items are pre-deselected - check them only if intentional
 - [x] Select items you want to reprice (checkboxes)
+- [x] Use copy buttons to quickly copy suggested prices
 - [x] Update prices in-game to match suggested prices
 - [x] Return to undercut checker page
 - [x] Click "Confirm Repriced" → Records 0.3% relist fee for selected items

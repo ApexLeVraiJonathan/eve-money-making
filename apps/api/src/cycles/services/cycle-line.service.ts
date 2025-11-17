@@ -175,14 +175,32 @@ export class CycleLineService {
    */
   async getCycleLinesForCycle(cycleId: string): Promise<
     Array<{
+      id: string;
       typeId: number;
       destinationStationId: number;
+      unitsBought: number;
+      buyCostIsk: string;
     }>
   > {
-    return await this.prisma.cycleLine.findMany({
+    const lines = await this.prisma.cycleLine.findMany({
       where: { cycleId },
-      select: { typeId: true, destinationStationId: true },
+      select: {
+        id: true,
+        typeId: true,
+        destinationStationId: true,
+        unitsBought: true,
+        buyCostIsk: true,
+      },
     });
+    
+    // Convert Decimal to string for API compatibility
+    return lines.map((l) => ({
+      id: l.id,
+      typeId: l.typeId,
+      destinationStationId: l.destinationStationId,
+      unitsBought: l.unitsBought,
+      buyCostIsk: l.buyCostIsk.toString(),
+    }));
   }
 
   /**

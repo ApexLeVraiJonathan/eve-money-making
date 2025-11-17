@@ -137,6 +137,9 @@ export class PricingService {
     characterIds?: number[];
     stationIds?: number[];
     cycleId?: string;
+    groupingMode?: 'perOrder' | 'perCharacter' | 'global';
+    minUndercutVolumeRatio?: number;
+    minUndercutUnits?: number;
   }): Promise<
     Array<{
       characterId: number;
@@ -151,10 +154,18 @@ export class PricingService {
         currentPrice: number;
         competitorLowest: number;
         suggestedNewPriceTicked: number;
+        estimatedMarginPercentAfter?: number;
+        estimatedProfitIskAfter?: number;
+        wouldBeLossAfter?: boolean;
       }>;
     }>
   > {
     const startTime = Date.now();
+
+    // Set defaults for new parameters
+    const groupingMode = params.groupingMode ?? 'perOrder';
+    const minUndercutVolumeRatio = params.minUndercutVolumeRatio ?? 0.15; // 15% default
+    const minUndercutUnits = params.minUndercutUnits ?? 1;
 
     // Determine characters to check - default to logistics sellers
     const characters = params.characterIds?.length
@@ -204,6 +215,7 @@ export class PricingService {
       type_id: number;
       price: number;
       volume_remain: number;
+      volume_total: number;
       location_id: number;
       issued?: string;
     }> = [];
@@ -220,6 +232,7 @@ export class PricingService {
             type_id: o.type_id,
             price: o.price,
             volume_remain: o.volume_remain,
+            volume_total: o.volume_total,
             location_id: o.location_id,
             issued: o.issued,
           });
@@ -242,6 +255,12 @@ export class PricingService {
     }
 
     // Optional: filter orders to those belonging to a specific cycle scope
+    // Also build a map of cycle lines for profitability computation
+    const cycleLineMap = new Map<
+      string,
+      { unitCost: number; lineId: string }
+    >();
+
     if (params.cycleId) {
       const lines = await this.cycleLineService.getCycleLinesForCycle(
         params.cycleId,
@@ -253,6 +272,15 @@ export class PricingService {
           lines.map((l) => `${l.destinationStationId}:${l.typeId}`),
         );
 
+        // Build profitability lookup map
+        for (const l of lines) {
+          const unitCost =
+            l.unitsBought > 0 ? Number(l.buyCostIsk) / l.unitsBought : 0;
+          const key = `${l.destinationStationId}:${l.typeId}`;
+          cycleLineMap.set(key, { unitCost, lineId: l.id });
+        }
+
+        // Restrict orders to the cycle scope
         for (let i = ourOrders.length - 1; i >= 0; i--) {
           const o = ourOrders[i];
           const key = `${o.location_id}:${o.type_id}`;
@@ -319,8 +347,69 @@ export class PricingService {
       }>
     >();
 
+    // Apply grouping mode: select primary orders per group
+    const ordersToProcess = new Map<
+      string,
+      Array<(typeof ourOrders)[number]>
+    >();
+
+    if (groupingMode === 'perOrder') {
+      // Keep all orders as-is
+      ordersToProcess.set('all', ourOrders);
+    } else if (groupingMode === 'perCharacter') {
+      // Group by (characterId, stationId, typeId) and pick primary order per group
+      const grouped = new Map<string, Array<(typeof ourOrders)[number]>>();
+      for (const o of ourOrders) {
+        const key = `${o.characterId}:${o.location_id}:${o.type_id}`;
+        const list = grouped.get(key) ?? [];
+        list.push(o);
+        grouped.set(key, list);
+      }
+      const primaryOrders: Array<(typeof ourOrders)[number]> = [];
+      for (const orders of grouped.values()) {
+        // Pick order with highest volume_remain (or highest value)
+        const primary = orders.reduce((best, curr) =>
+          curr.volume_remain > best.volume_remain ? curr : best,
+        );
+        primaryOrders.push(primary);
+      }
+      ordersToProcess.set('all', primaryOrders);
+    } else if (groupingMode === 'global') {
+      // Group by (stationId, typeId) and pick primary order globally
+      const grouped = new Map<string, Array<(typeof ourOrders)[number]>>();
+      for (const o of ourOrders) {
+        const key = `${o.location_id}:${o.type_id}`;
+        const list = grouped.get(key) ?? [];
+        list.push(o);
+        grouped.set(key, list);
+      }
+      const primaryOrders: Array<(typeof ourOrders)[number]> = [];
+      for (const orders of grouped.values()) {
+        // Pick order with highest volume_remain
+        const primary = orders.reduce((best, curr) =>
+          curr.volume_remain > best.volume_remain ? curr : best,
+        );
+        primaryOrders.push(primary);
+      }
+      ordersToProcess.set('all', primaryOrders);
+    }
+
+    const processedOrders = ordersToProcess.get('all') ?? [];
+
+    // Re-build byStationType from processed orders
+    const processedByStationType = new Map<
+      string,
+      Array<(typeof ourOrders)[number]>
+    >();
+    for (const o of processedOrders) {
+      const key = `${o.location_id}:${o.type_id}`;
+      const list = processedByStationType.get(key) ?? [];
+      list.push(o);
+      processedByStationType.set(key, list);
+    }
+
     // Fetch competitor orders in parallel using worker pool
-    const entries = Array.from(byStationType.entries());
+    const entries = Array.from(processedByStationType.entries());
     let idx = 0;
 
     const worker = async () => {
@@ -344,30 +433,74 @@ export class PricingService {
         stationSells.sort((a, b) => a.price - b.price);
         if (!stationSells.length) continue;
 
-        // Compute lowest price that is not one of our orders
+        // Compute lowest price that is not one of our orders, respecting volume thresholds
         const ourPrices = new Set(orders.map((o) => o.price));
-        let competitorLowest: number | null = null;
-        for (const s of stationSells) {
-          if (!ourPrices.has(s.price)) {
-            competitorLowest = s.price;
-            break;
-          }
-        }
-        // If competitorLowest is null, we are cheapest (all sells are our prices)
-        if (competitorLowest === null) continue;
 
         for (const o of orders) {
-          if (o.price <= competitorLowest) continue; // already cheapest
-          const suggested = nextCheaperTick(competitorLowest);
+          // Threshold for this order based on original volume
+          const volumeThreshold = Math.max(
+            minUndercutVolumeRatio * o.volume_total,
+            minUndercutUnits,
+          );
+
+          // Calculate competitor volume below our price
+          let cumulativeCompetitorVolume = 0;
+          let targetCompetitorPrice: number | null = null;
+
+          for (const s of stationSells) {
+            if (s.price >= o.price) break; // Only consider cheaper orders
+            if (!ourPrices.has(s.price)) {
+              cumulativeCompetitorVolume += s.volume;
+
+              if (cumulativeCompetitorVolume >= volumeThreshold) {
+                targetCompetitorPrice = s.price;
+                break;
+              }
+            }
+          }
+
+          // If no price meets threshold, skip this order
+          if (targetCompetitorPrice === null) {
+            // No competitor price level reached the threshold.
+            continue;
+          }
+
+          // Already cheapest at the target competitor price
+          if (o.price <= targetCompetitorPrice) {
+            continue;
+          }
+
+          const suggested = nextCheaperTick(targetCompetitorPrice);
           const itemName = typeNameById.get(o.type_id) ?? String(o.type_id);
+
+          // Compute profitability if cycle line data is available
+          let estimatedMarginPercentAfter: number | undefined;
+          let estimatedProfitIskAfter: number | undefined;
+          let wouldBeLossAfter: boolean | undefined;
+
+          const lineKey = `${stationId}:${o.type_id}`;
+          const lineData = cycleLineMap.get(lineKey);
+          if (lineData && lineData.unitCost > 0) {
+            const feeDefaults = AppConfig.arbitrage().fees;
+            const effectiveSellPrice = getEffectiveSell(suggested, feeDefaults);
+            const profitPerUnit = effectiveSellPrice - lineData.unitCost;
+            estimatedMarginPercentAfter =
+              (profitPerUnit / lineData.unitCost) * 100;
+            estimatedProfitIskAfter = profitPerUnit * o.volume_remain;
+            wouldBeLossAfter = profitPerUnit < 0;
+          }
+
           const entry = {
             orderId: o.order_id,
             typeId: o.type_id,
             itemName,
             remaining: o.volume_remain,
             currentPrice: o.price,
-            competitorLowest: competitorLowest,
+            competitorLowest: targetCompetitorPrice,
             suggestedNewPriceTicked: suggested,
+            estimatedMarginPercentAfter,
+            estimatedProfitIskAfter,
+            wouldBeLossAfter,
           };
           const groupKey = `${o.characterId}:${stationId}`;
           const list = updatesByCharStation.get(groupKey) ?? [];
@@ -379,7 +512,7 @@ export class PricingService {
 
     const workerCount = Math.min(8, entries.length);
     const fetchCompetitorsStart = Date.now();
-    
+
     await this.esi.withMaxConcurrency(workerCount * 2, async () => {
       await Promise.all(Array.from({ length: workerCount }, () => worker()));
     });
@@ -413,10 +546,10 @@ export class PricingService {
 
     const totalTime = Date.now();
     console.log(
-      `UndercutCheck completed: ${results.length} updates across ${byStationType.size} station/type combos | ` +
+      `UndercutCheck completed (mode=${groupingMode}): ${results.length} updates across ${processedByStationType.size} station/type combos | ` +
         `Times: setup=${setupTime - startTime}ms, fetchOrders=${fetchOrdersTime - setupTime}ms, ` +
         `filter=${filterTime - fetchOrdersTime}ms, fetchCompetitors=${fetchCompetitorsTime - fetchCompetitorsStart}ms, ` +
-        `total=${totalTime - startTime}ms`,
+        `total=${totalTime - startTime}ms | Processed ${processedOrders.length} orders (from ${ourOrders.length} total)`,
     );
 
     return results;
@@ -443,7 +576,7 @@ export class PricingService {
     for (const l of lines) {
       const bought = l.unitsBought ?? 0;
       const unlistedUnits = Math.max(0, bought - l.listedUnits);
-      
+
       if (unlistedUnits > 0) {
         const k = `${l.destinationStationId}:${l.typeId}`;
         unlistedMap.set(k, (unlistedMap.get(k) ?? 0) + unlistedUnits);
