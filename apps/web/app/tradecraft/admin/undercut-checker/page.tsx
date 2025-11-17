@@ -121,7 +121,7 @@ export default function UndercutCheckerPage() {
     try {
       await navigator.clipboard.writeText(price.toFixed(2));
       setCopiedKey(key);
-      setTimeout(() => setCopiedKey(null), 2000);
+      // Keep the green check visible until another copy is clicked
     } catch (err) {
       console.error("Failed to copy price:", err);
     }
@@ -387,6 +387,15 @@ export default function UndercutCheckerPage() {
               <CardContent>
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
+                    <colgroup>
+                      <col style={{ width: "48px" }} />
+                      <col style={{ width: "48px" }} />
+                      <col style={{ width: "148px" }} />
+                      <col style={{ width: "110px" }} />
+                      <col style={{ width: "140px" }} />
+                      <col style={{ width: "90px" }} />
+                      <col style={{ width: "120px" }} />
+                    </colgroup>
                     <thead>
                       <tr className="border-b">
                         <th className="py-2 px-3">
@@ -423,19 +432,16 @@ export default function UndercutCheckerPage() {
                         <th className="py-2 px-3 whitespace-nowrap text-left">
                           Item
                         </th>
-                        <th className="py-2 px-3 whitespace-nowrap text-right">
-                          Remain
-                        </th>
-                        <th className="py-2 px-3 whitespace-nowrap text-right">
+                        <th className="py-2 px-3 whitespace-nowrap text-left">
                           Current
                         </th>
-                        <th className="py-2 px-3 whitespace-nowrap text-right">
-                          Competitor Lowest
-                        </th>
-                        <th className="py-2 px-3 whitespace-nowrap text-right">
+                        <th className="py-2 px-3 whitespace-nowrap text-left">
                           Suggested
                         </th>
-                        <th className="py-2 px-3 whitespace-nowrap text-right">
+                        <th className="py-2 px-3 whitespace-nowrap text-left">
+                          Remain
+                        </th>
+                        <th className="py-2 px-3 whitespace-nowrap text-left">
                           Relist Fee ({RELIST_PCT}%)
                         </th>
                       </tr>
@@ -471,26 +477,17 @@ export default function UndercutCheckerPage() {
                             <td className="py-2 px-3 text-left whitespace-nowrap">
                               {u.itemName}
                             </td>
-                            <td className="py-2 px-3 text-right">
-                              {u.remaining}
-                            </td>
-                            <td className="py-2 px-3 text-right">
+                            <td className="py-2 px-3 text-left">
                               {formatIsk(u.currentPrice)}
                             </td>
-                            <td className="py-2 px-3 text-right">
-                              {formatIsk(u.competitorLowest)}
-                            </td>
-                            <td className="py-2 px-3 font-medium text-right">
-                              <div className="flex items-center justify-end gap-2">
-                                <span>
-                                  {formatIsk(u.suggestedNewPriceTicked)}
-                                </span>
+                            <td className="py-2 px-3 font-medium">
+                              <div className="flex items-center gap-2">
                                 <button
                                   type="button"
                                   onClick={() =>
                                     copyPrice(u.suggestedNewPriceTicked, key)
                                   }
-                                  className="inline-flex items-center justify-center h-6 w-6 rounded hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                  className="inline-flex items-center justify-center h-6 w-6 rounded hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring flex-shrink-0"
                                   title="Copy suggested price"
                                   aria-label="Copy suggested price"
                                 >
@@ -500,9 +497,15 @@ export default function UndercutCheckerPage() {
                                     <Copy className="h-3.5 w-3.5" />
                                   )}
                                 </button>
+                                <span>
+                                  {formatIsk(u.suggestedNewPriceTicked)}
+                                </span>
                               </div>
                             </td>
-                            <td className="py-2 px-3 font-medium text-right">
+                            <td className="py-2 px-3 text-left">
+                              {u.remaining}
+                            </td>
+                            <td className="py-2 px-3 font-medium text-left">
                               {formatIsk(
                                 u.remaining *
                                   u.suggestedNewPriceTicked *
@@ -517,11 +520,11 @@ export default function UndercutCheckerPage() {
                       <tr className="border-t">
                         <td className="py-2 px-3"></td>
                         <td className="py-2 px-3"></td>
-                        <td className="py-2 px-3" colSpan={4}></td>
-                        <td className="py-2 px-3 text-right font-medium">
+                        <td className="py-2 px-3" colSpan={3}></td>
+                        <td className="py-2 px-3 text-left font-medium">
                           Total relist fee (selected):
                         </td>
-                        <td className="py-2 px-3 font-semibold text-right">
+                        <td className="py-2 px-3 font-semibold text-left">
                           {formatIsk(
                             group.updates.reduce((s, u) => {
                               const key = `${group.characterId}:${group.stationId}:${u.orderId}`;
