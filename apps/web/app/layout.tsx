@@ -6,6 +6,7 @@ import { Toaster } from "@eve/ui";
 import { QueryProvider } from "@/components/query-provider";
 import { SessionProvider } from "@/components/session-provider";
 import { AuthLoadingBoundary } from "@/components/auth-loading-boundary";
+import { SessionRefreshBoundary } from "@/components/session-refresh-boundary";
 import { AppSidebar } from "@/components/sidebar/app-sidebar";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@eve/ui";
 import { ActiveAppName } from "@/components/active-app-name";
@@ -45,21 +46,23 @@ export default function RootLayout({
         >
           <SessionProvider>
             <AuthLoadingBoundary>
-              <QueryProvider>
-                <SidebarProvider>
-                  <AppSidebar />
-                  <SidebarInset>
-                    <header className="border-b">
-                      <div className="mx-auto max-w-8xl p-4 flex items-center gap-3">
-                        <SidebarTrigger />
-                        <ActiveAppName />
-                        <DynamicBreadcrumbs />
-                      </div>
-                    </header>
-                    {children}
-                  </SidebarInset>
-                </SidebarProvider>
-              </QueryProvider>
+              <SessionRefreshBoundary>
+                <QueryProvider>
+                  <SidebarProvider>
+                    <AppSidebar />
+                    <SidebarInset>
+                      <header className="border-b">
+                        <div className="mx-auto max-w-8xl p-4 flex items-center gap-3">
+                          <SidebarTrigger />
+                          <ActiveAppName />
+                          <DynamicBreadcrumbs />
+                        </div>
+                      </header>
+                      {children}
+                    </SidebarInset>
+                  </SidebarProvider>
+                </QueryProvider>
+              </SessionRefreshBoundary>
             </AuthLoadingBoundary>
           </SessionProvider>
           <Toaster />

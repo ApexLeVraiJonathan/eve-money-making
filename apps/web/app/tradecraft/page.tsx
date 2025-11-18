@@ -39,13 +39,6 @@ export default function ArbitrageHome() {
           >
             View current cycle
           </Link>
-          <span className="text-muted-foreground">•</span>
-          <Link
-            href="/tradecraft/reports"
-            className="underline underline-offset-4"
-          >
-            View reports
-          </Link>
         </div>
       </section>
 

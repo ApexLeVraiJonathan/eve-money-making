@@ -11,7 +11,13 @@ export function SessionProvider({
   session?: Session | null;
 }) {
   return (
-    <NextAuthSessionProvider session={session}>
+    <NextAuthSessionProvider
+      session={session}
+      // Refetch session every 5 minutes as a backup to SessionRefreshBoundary
+      refetchInterval={5 * 60}
+      // Refetch when user returns to the tab (default behavior, made explicit)
+      refetchOnWindowFocus={true}
+    >
       {children}
     </NextAuthSessionProvider>
   );

@@ -84,6 +84,15 @@ export default function UndercutCheckerPage() {
     }
   }, [useCommit, latestCycles]);
 
+  const getProfitCategory = (
+    marginPercent: number | undefined,
+  ): "red" | "yellow" | "normal" => {
+    if (marginPercent === undefined) return "normal";
+    if (marginPercent <= -10) return "red";
+    if (marginPercent < 0) return "yellow";
+    return "normal";
+  };
+
   const onRun = async () => {
     setError(null);
     setResult(null);
@@ -99,13 +108,16 @@ export default function UndercutCheckerPage() {
       });
       // API returns array directly (UndercutCheckResponse)
       setResult(data);
-      // Default select all items except those that would result in a loss
+      // Default select based on profit category
       const initial: Record<string, boolean> = {};
       for (const g of data) {
         for (const u of g.updates) {
           const key = `${g.characterId}:${g.stationId}:${u.orderId}`;
-          // Auto-deselect loss-making reprices
-          initial[key] = u.wouldBeLossAfter !== true;
+          const category = getProfitCategory(u.estimatedMarginPercentAfter);
+          // Red (≤ -10%): unchecked by default
+          // Yellow (-10% < profit < 0%): checked by default
+          // Normal (≥ 0%): checked by default
+          initial[key] = category !== "red";
         }
       }
       setSelected(initial);
@@ -387,15 +399,6 @@ export default function UndercutCheckerPage() {
               <CardContent>
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
-                    <colgroup>
-                      <col style={{ width: "48px" }} />
-                      <col style={{ width: "48px" }} />
-                      <col style={{ width: "148px" }} />
-                      <col style={{ width: "110px" }} />
-                      <col style={{ width: "140px" }} />
-                      <col style={{ width: "90px" }} />
-                      <col style={{ width: "120px" }} />
-                    </colgroup>
                     <thead>
                       <tr className="border-b">
                         <th className="py-2 px-3">
@@ -432,16 +435,16 @@ export default function UndercutCheckerPage() {
                         <th className="py-2 px-3 whitespace-nowrap text-left">
                           Item
                         </th>
-                        <th className="py-2 px-3 whitespace-nowrap text-left">
+                        <th className="py-2 px-3 whitespace-nowrap text-right">
                           Current
                         </th>
-                        <th className="py-2 px-3 whitespace-nowrap text-left">
+                        <th className="py-2 px-3 whitespace-nowrap text-right">
                           Suggested
                         </th>
-                        <th className="py-2 px-3 whitespace-nowrap text-left">
+                        <th className="py-2 px-3 whitespace-nowrap text-right">
                           Remain
                         </th>
-                        <th className="py-2 px-3 whitespace-nowrap text-left">
+                        <th className="py-2 px-3 whitespace-nowrap text-right">
                           Relist Fee ({RELIST_PCT}%)
                         </th>
                       </tr>
@@ -449,17 +452,23 @@ export default function UndercutCheckerPage() {
                     <tbody>
                       {group.updates.map((u, ui) => {
                         const key = `${group.characterId}:${group.stationId}:${u.orderId}`;
-                        const isLoss = u.wouldBeLossAfter === true;
+                        const category = getProfitCategory(
+                          u.estimatedMarginPercentAfter,
+                        );
+                        const rowBgClass =
+                          category === "red"
+                            ? "bg-red-100 dark:bg-red-950/30"
+                            : category === "yellow"
+                              ? "bg-yellow-100 dark:bg-yellow-950/30"
+                              : "";
                         return (
                           <tr
                             key={ui}
-                            className={`border-b ${isLoss ? "bg-destructive/10" : ""}`}
+                            className={`border-b ${rowBgClass}`}
                             title={
-                              isLoss
-                                ? `Loss-making: ${u.estimatedMarginPercentAfter?.toFixed(1)}% margin, ${formatIsk(u.estimatedProfitIskAfter ?? 0)} profit`
-                                : u.estimatedMarginPercentAfter !== undefined
-                                  ? `Margin: ${u.estimatedMarginPercentAfter.toFixed(1)}%, Profit: ${formatIsk(u.estimatedProfitIskAfter ?? 0)}`
-                                  : undefined
+                              u.estimatedMarginPercentAfter !== undefined
+                                ? `Margin: ${u.estimatedMarginPercentAfter.toFixed(1)}%, Profit: ${formatIsk(u.estimatedProfitIskAfter ?? 0)}`
+                                : undefined
                             }
                           >
                             <td className="py-2 px-3">
@@ -470,24 +479,25 @@ export default function UndercutCheckerPage() {
                               />
                             </td>
                             <td className="py-2 px-3 text-center">
-                              {isLoss && (
-                                <AlertTriangle className="h-4 w-4 text-destructive inline" />
+                              {category === "red" && (
+                                <AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400 inline" />
+                              )}
+                              {category === "yellow" && (
+                                <AlertTriangle className="h-4 w-4 text-yellow-600 dark:text-yellow-400 inline" />
                               )}
                             </td>
                             <td className="py-2 px-3 text-left whitespace-nowrap">
                               {u.itemName}
                             </td>
-                            <td className="py-2 px-3 text-left">
-                              {formatIsk(u.currentPrice)}
-                            </td>
-                            <td className="py-2 px-3 font-medium">
-                              <div className="flex items-center gap-2">
+                            <td className="py-2 px-3 text-right">
+                              <div className="flex items-center justify-end gap-2">
+                                <span>{formatIsk(u.currentPrice)}</span>
                                 <button
                                   type="button"
                                   onClick={() =>
                                     copyPrice(u.suggestedNewPriceTicked, key)
                                   }
-                                  className="inline-flex items-center justify-center h-6 w-6 rounded hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring flex-shrink-0"
+                                  className="inline-flex items-center justify-center h-6 w-6 rounded hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                                   title="Copy suggested price"
                                   aria-label="Copy suggested price"
                                 >
@@ -497,15 +507,15 @@ export default function UndercutCheckerPage() {
                                     <Copy className="h-3.5 w-3.5" />
                                   )}
                                 </button>
-                                <span>
-                                  {formatIsk(u.suggestedNewPriceTicked)}
-                                </span>
                               </div>
                             </td>
-                            <td className="py-2 px-3 text-left">
+                            <td className="py-2 px-3 font-medium text-right">
+                              {formatIsk(u.suggestedNewPriceTicked)}
+                            </td>
+                            <td className="py-2 px-3 text-right">
                               {u.remaining}
                             </td>
-                            <td className="py-2 px-3 font-medium text-left">
+                            <td className="py-2 px-3 font-medium text-right">
                               {formatIsk(
                                 u.remaining *
                                   u.suggestedNewPriceTicked *
@@ -521,10 +531,10 @@ export default function UndercutCheckerPage() {
                         <td className="py-2 px-3"></td>
                         <td className="py-2 px-3"></td>
                         <td className="py-2 px-3" colSpan={3}></td>
-                        <td className="py-2 px-3 text-left font-medium">
+                        <td className="py-2 px-3 text-right font-medium">
                           Total relist fee (selected):
                         </td>
-                        <td className="py-2 px-3 font-semibold text-left">
+                        <td className="py-2 px-3 font-semibold text-right">
                           {formatIsk(
                             group.updates.reduce((s, u) => {
                               const key = `${group.characterId}:${group.stationId}:${u.orderId}`;

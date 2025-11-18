@@ -31,13 +31,6 @@ export default function BrokerageHome() {
           >
             Browse your consignments
           </Link>
-          <span className="text-muted-foreground">•</span>
-          <Link
-            href="/brokerage/reports"
-            className="underline underline-offset-4"
-          >
-            View reports
-          </Link>
         </div>
       </section>
 
