@@ -51,6 +51,9 @@ export interface SharedRolloverContext {
 
   /** Transaction counter for generating unique IDs */
   transactionIdCounter: number;
+
+  /** Participation ID in Cycle 4 that will be rolled over (for Scenario 05) */
+  cycle4ParticipationId?: string;
 }
 
 /**

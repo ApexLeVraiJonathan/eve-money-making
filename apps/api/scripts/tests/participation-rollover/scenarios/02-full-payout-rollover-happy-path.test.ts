@@ -31,7 +31,7 @@ import {
   printScenarioHeader,
   printScenarioComplete,
   waitForUser,
-} from '../helpers';
+} from '../helpers/index';
 
 export async function scenario02FullPayoutRollover(
   config: TestConfig,

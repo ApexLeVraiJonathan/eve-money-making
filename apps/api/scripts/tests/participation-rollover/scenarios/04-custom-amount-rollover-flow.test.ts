@@ -30,7 +30,7 @@ import {
   printScenarioHeader,
   printScenarioComplete,
   waitForUser,
-} from '../helpers';
+} from '../helpers/index';
 
 export async function scenario04CustomAmountRollover(
   config: TestConfig,
@@ -114,6 +114,15 @@ export async function scenario04CustomAmountRollover(
     },
   });
   ctx.latestParticipationId = rolloverP.id;
+  
+  // Store the Cycle 3 participation ID for Scenario 05 (20B cap test)
+  // It will need to know which participation to inflate the payout for
+  const cycle3Parts = await getParticipations(apiCall, ctx.cycleIds[2]);
+  const cycle3Part = cycle3Parts.find((p: any) => p.userId === ctx.testUserId);
+  if (cycle3Part) {
+    ctx.cycle4ParticipationId = cycle3Part.id;
+  }
+  
   logSuccess(`Rollover participation created: ${rolloverP.id.substring(0, 8)}`);
   logInfo(`Custom amount: ${formatIsk(customAmount)}`);
 

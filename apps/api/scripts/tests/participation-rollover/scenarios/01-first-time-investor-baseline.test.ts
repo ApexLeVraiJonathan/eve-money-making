@@ -27,7 +27,7 @@ import {
   printScenarioHeader,
   printScenarioComplete,
   waitForUser,
-} from '../helpers';
+} from '../helpers/index';
 
 export async function scenario01FirstTimeInvestor(
   config: TestConfig,
@@ -164,7 +164,7 @@ if (require.main === module) {
     }
 
     const { cleanAllTestData, createSharedContext } = await import(
-      '../helpers'
+      '../helpers/index.js'
     );
 
     // Clean test data first

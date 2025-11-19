@@ -29,7 +29,7 @@ import {
   SharedRolloverContext,
   createSharedContext,
   cleanAllTestData,
-} from './helpers';
+} from './helpers/index';
 
 import { scenario01FirstTimeInvestor } from './scenarios/01-first-time-investor-baseline.test';
 import { scenario02FullPayoutRollover } from './scenarios/02-full-payout-rollover-happy-path.test';

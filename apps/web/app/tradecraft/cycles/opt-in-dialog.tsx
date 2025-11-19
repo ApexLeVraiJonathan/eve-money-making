@@ -285,10 +285,8 @@ export default function OptInDialog(props: OptInDialogProps) {
                           <strong>Amount exceeds maximum allowed</strong>
                           <br />
                           Maximum participation for your account is{" "}
-                          <strong>
-                            {maxParticipation.maxAmountB}B ISK
-                          </strong>
-                          . Please reduce the amount.
+                          <strong>{maxParticipation.maxAmountB}B ISK</strong>.
+                          Please reduce the amount.
                         </div>
                       </div>
                     )}
@@ -481,7 +479,9 @@ export default function OptInDialog(props: OptInDialogProps) {
                                     />
                                   </svg>
                                   <div>
-                                    <strong>Amount exceeds initial investment</strong>
+                                    <strong>
+                                      Amount exceeds initial investment
+                                    </strong>
                                     <br />
                                     Maximum custom rollover is{" "}
                                     <strong>

@@ -353,6 +353,7 @@ model CycleParticipation {
   refundedAt      DateTime?           @map("refunded_at")
   payoutAmountIsk Decimal?            @map("payout_amount_isk") @db.Decimal(28, 2)
   payoutPaidAt    DateTime?           @map("payout_paid_at")
+  rolloverDeductedIsk Decimal?        @map("rollover_deducted_isk") @db.Decimal(28, 2) // Amount deducted from payout for rollover
   createdAt       DateTime            @default(now()) @map("created_at")
   updatedAt       DateTime            @updatedAt @map("updated_at")
 

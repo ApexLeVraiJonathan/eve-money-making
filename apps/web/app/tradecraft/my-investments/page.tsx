@@ -53,6 +53,7 @@ type ParticipationHistory = {
   validatedAt: string | null;
   payoutAmountIsk?: string | null;
   payoutPaidAt?: string | null;
+  rolloverDeductedIsk?: string | null; // Amount that was rolled over to next cycle
 };
 
 export default function MyInvestmentsPage() {
@@ -69,26 +70,49 @@ export default function MyInvestmentsPage() {
   const authRequired = status === "unauthenticated" || error;
 
   // Calculate summary statistics
-  const totalInvested = participations.reduce(
-    (sum, p) => sum + Number(p.amountIsk),
-    0,
+
+  // Filter completed and active cycles
+  const completedCycles = participations.filter(
+    (p) => p.status === "COMPLETED",
   );
-  // Total returned = investment + profit for all completed payouts
-  const totalReturned = participations.reduce((sum, p) => {
-    if (p.payoutAmountIsk && p.payoutPaidAt) {
-      const investment = Number(p.amountIsk);
-      const profitShare = Number(p.payoutAmountIsk);
-      return sum + investment + profitShare;
-    }
-    return sum;
-  }, 0);
-  const netProfit = totalReturned - totalInvested;
-  const activeParticipations = participations.filter(
+  const activeCycles = participations.filter(
     (p) =>
       p.status === "OPTED_IN" ||
       p.status === "AWAITING_INVESTMENT" ||
-      p.status === "AWAITING_VALIDATION",
-  ).length;
+      p.status === "AWAITING_VALIDATION" ||
+      p.status === "AWAITING_PAYOUT",
+  );
+
+  // Total profit from completed cycles (including rolled-over amounts)
+  const totalProfit = completedCycles.reduce((sum, p) => {
+    const payoutReceived = Number(p.payoutAmountIsk || 0);
+    const rolloverDeducted = Number(p.rolloverDeductedIsk || 0);
+    const fullPayout = payoutReceived + rolloverDeducted;
+    const invested = Number(p.amountIsk);
+    const profit = fullPayout > 0 ? fullPayout - invested : 0;
+    return sum + profit;
+  }, 0);
+
+  // Average ROI from completed cycles
+  const totalInvestedInCompletedCycles = completedCycles.reduce(
+    (sum, p) => sum + Number(p.amountIsk),
+    0,
+  );
+  const averageRoi =
+    totalInvestedInCompletedCycles > 0
+      ? (totalProfit / totalInvestedInCompletedCycles) * 100
+      : 0;
+
+  // Active investment amount
+  const activeInvestment = activeCycles.reduce(
+    (sum, p) => sum + Number(p.amountIsk),
+    0,
+  );
+
+  // Total cycles and breakdown
+  const totalCycles = participations.length;
+  const completedCount = completedCycles.length;
+  const activeCount = activeCycles.length;
 
   // Not authenticated or auth required - show login CTA
   if (!session || status !== "authenticated" || authRequired) {
@@ -223,29 +247,18 @@ export default function MyInvestmentsPage() {
       <div className="grid gap-4 md:grid-cols-4">
         <Card>
           <CardHeader className="pb-2">
-            <CardDescription className="flex items-center gap-1.5">
-              <DollarSign className="h-4 w-4" />
-              Total Invested
-            </CardDescription>
+            <CardTitle className="text-sm font-medium flex items-center gap-1.5">
+              <TrendingUp className="h-4 w-4" />
+              Total Profit
+            </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-semibold tabular-nums">
-              {formatIsk(totalInvested)}
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              Across {participations.length} cycle
-              {participations.length !== 1 ? "s" : ""}
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Total Returned</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-semibold tabular-nums">
-              {formatIsk(totalReturned)}
+            <div
+              className={`text-2xl font-semibold tabular-nums ${
+                totalProfit < 0 ? "text-red-500" : "text-emerald-600"
+              }`}
+            >
+              {formatIsk(totalProfit)}
             </div>
             <p className="text-xs text-muted-foreground mt-1">
               From completed cycles
@@ -255,41 +268,52 @@ export default function MyInvestmentsPage() {
 
         <Card>
           <CardHeader className="pb-2">
-            <CardDescription className="flex items-center gap-1.5">
-              <TrendingUp className="h-4 w-4" />
-              Net Profit
-            </CardDescription>
+            <CardTitle className="text-sm font-medium">Average ROI</CardTitle>
           </CardHeader>
           <CardContent>
             <div
               className={`text-2xl font-semibold tabular-nums ${
-                netProfit < 0 ? "text-red-500" : "text-emerald-600"
+                averageRoi < 0 ? "text-red-500" : "text-emerald-600"
               }`}
             >
-              {formatIsk(netProfit)}
+              {completedCycles.length > 0 ? `${averageRoi.toFixed(1)}%` : "—"}
             </div>
-            <p
-              className={`text-xs mt-1 font-medium ${
-                netProfit < 0 ? "text-red-500" : "text-emerald-600"
-              }`}
-            >
-              {totalInvested > 0
-                ? `${((netProfit / totalInvested) * 100).toFixed(1)}% ROI`
-                : "—"}
+            <p className="text-xs text-muted-foreground mt-1">
+              Across completed cycles
             </p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="pb-2">
-            <CardDescription>Active Investments</CardDescription>
+            <CardTitle className="text-sm font-medium flex items-center gap-1.5">
+              <DollarSign className="h-4 w-4" />
+              Active Investment
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-semibold tabular-nums">
-              {activeParticipations}
+              {formatIsk(activeInvestment)}
             </div>
             <p className="text-xs text-muted-foreground mt-1">
               Currently running
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium flex items-center gap-1.5">
+              <History className="h-4 w-4" />
+              Total Cycles
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-semibold tabular-nums">
+              {totalCycles}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              {activeCount} active, {completedCount} completed
             </p>
           </CardContent>
         </Card>
@@ -308,22 +332,33 @@ export default function MyInvestmentsPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Cycle</TableHead>
-                  <TableHead className="text-right">Investment</TableHead>
-                  <TableHead className="text-right">Payout</TableHead>
-                  <TableHead className="text-right">Profit</TableHead>
-                  <TableHead className="text-right">ROI %</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Date</TableHead>
+                  <TableHead className="text-foreground">Cycle</TableHead>
+                  <TableHead className="text-right text-foreground">
+                    Investment
+                  </TableHead>
+                  <TableHead className="text-right text-foreground">
+                    Payout
+                  </TableHead>
+                  <TableHead className="text-right text-foreground">
+                    Profit
+                  </TableHead>
+                  <TableHead className="text-right text-foreground">
+                    ROI %
+                  </TableHead>
+                  <TableHead className="text-foreground">Status</TableHead>
+                  <TableHead className="text-foreground">Date</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {participations.map((p) => {
                   const invested = Number(p.amountIsk);
-                  // payoutAmountIsk is the profit share, total payout = investment + profit
-                  const profitShare = Number(p.payoutAmountIsk || 0);
-                  const totalPayout =
-                    profitShare > 0 ? invested + profitShare : 0;
+                  // Calculate actual profit including any amount rolled over
+                  const payoutReceived = Number(p.payoutAmountIsk || 0);
+                  const rolloverDeducted = Number(p.rolloverDeductedIsk || 0);
+                  const fullPayout = payoutReceived + rolloverDeducted;
+                  const profitShare =
+                    fullPayout > 0 ? fullPayout - invested : 0;
+                  const totalPayout = fullPayout > 0 ? fullPayout : 0;
                   const roi = invested > 0 ? (profitShare / invested) * 100 : 0;
                   const isPaid = !!p.payoutPaidAt;
 
@@ -339,14 +374,23 @@ export default function MyInvestmentsPage() {
                         {totalPayout > 0 ? (
                           <div>
                             <div className="font-semibold">
-                              {formatIsk(totalPayout)}
+                              {rolloverDeducted > 0 ? (
+                                <span className="text-amber-600">0.00 ISK</span>
+                              ) : (
+                                formatIsk(totalPayout)
+                              )}
                             </div>
-                            {!isPaid && (
+                            {rolloverDeducted > 0 && (
+                              <div className="text-xs text-emerald-600">
+                                Rolled Over
+                              </div>
+                            )}
+                            {!isPaid && rolloverDeducted === 0 && (
                               <div className="text-xs text-amber-600">
                                 Awaiting Payment
                               </div>
                             )}
-                            {isPaid && (
+                            {isPaid && rolloverDeducted === 0 && (
                               <div className="text-xs text-emerald-600">
                                 Paid
                               </div>

@@ -310,6 +310,7 @@ export class PayoutService {
         where: { id: fromParticipation.id },
         data: {
           payoutAmountIsk: payoutAmount.toFixed(2),
+          rolloverDeductedIsk: rolloverAmount.toFixed(2), // Track how much was rolled over
           status: payoutAmount > 0 ? 'AWAITING_PAYOUT' : 'COMPLETED',
           payoutPaidAt: payoutAmount === 0 ? new Date() : null, // Auto-mark as paid if nothing to pay
         },

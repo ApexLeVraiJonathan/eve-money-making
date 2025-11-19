@@ -21,6 +21,8 @@ import {
   createParticipation,
   getParticipations,
   createProfitableSells,
+  createFakeDonation,
+  matchDonations,
   allocateTransactions,
   formatIsk,
   assertApproxEqual,
@@ -32,7 +34,7 @@ import {
   printScenarioHeader,
   printScenarioComplete,
   waitForUser,
-} from '../helpers';
+} from '../helpers/index';
 
 export async function scenario05ExcessPayoutAbove20B(
   config: TestConfig,
@@ -41,151 +43,163 @@ export async function scenario05ExcessPayoutAbove20B(
   printScenarioHeader('💎', 'SCENARIO 05: Excess Payout Above 20B');
 
   const apiCall = createApiCall(config);
-  const testContext = { characterId: config.characterId, transactionIdCounter: ctx.transactionIdCounter };
 
   if (!ctx.currentOpenCycleId || ctx.cycleIds.length < 4) {
-    throw new Error('❌ Scenario 05 requires Scenario 04 to run first (Cycle 4 must be OPEN)');
+    throw new Error(
+      '❌ Scenario 05 requires Scenario 04 to run first (Cycle 4 must be OPEN)',
+    );
+  }
+
+  if (!ctx.cycle4ParticipationId) {
+    throw new Error(
+      '❌ Scenario 05 requires ctx.cycle4ParticipationId from Scenario 04',
+    );
   }
 
   const cycle4Id = ctx.cycleIds[3];
 
-  // Step 1: Generate massive profit in Cycle 4 (target > 20B payout)
-  logStep('1️⃣', 'Generating massive profit in Cycle 4 (target: >20B payout)...');
-  const lines = await getCycleLines(apiCall, cycle4Id);
-  logInfo(`Found ${lines.length} cycle lines`);
+  // Step 1: Artificially set Cycle 4 participation payout to 25B (deterministic >20B test)
+  logStep(
+    '1️⃣',
+    'Setting Cycle 4 participation payout to 25B (for >20B rollover test)...',
+  );
 
-  // Sell 80% at 4x price (300% profit)
-  const sellCount = await createProfitableSells(testContext, lines, 0.8, 4.0);
-  ctx.transactionIdCounter = testContext.transactionIdCounter;
-  logSuccess(`Created ${sellCount} highly profitable sell transactions`);
+  const { PrismaClient } = await import('@eve/prisma');
+  const prisma = new PrismaClient();
 
-  await allocateTransactions(apiCall, cycle4Id);
-  logSuccess('Sales allocated');
+  // Get the Cycle 4 participation for the test user
+  const cycle4Parts = await prisma.cycleParticipation.findMany({
+    where: {
+      cycleId: cycle4Id,
+      userId: ctx.testUserId,
+    },
+  });
 
-  const overview4 = await getCycleOverview(apiCall);
-  const profit = Number(overview4.current.profit.current);
-  const investorProfitShare = profit * 0.5;
-  const initialAmount = ctx.lastInitialAmount || 5000000000;
-  const totalPayout = initialAmount + investorProfitShare;
-
-  logInfo(`Cycle 4 Profit: ${formatIsk(profit)}`);
-  logInfo(`Investor Share (50%): ${formatIsk(investorProfitShare)}`);
-  logInfo(`Initial Amount: ${formatIsk(initialAmount)}`);
-  logInfo(`Total Payout: ${formatIsk(totalPayout)}`);
-
-  if (totalPayout <= 20000000000) {
-    logWarning(
-      `Payout is ${formatIsk(totalPayout)} (≤20B). This scenario requires >20B to fully validate excess handling.`,
-    );
-    logWarning('Continuing test anyway to verify logic handles this case correctly...');
-  } else {
-    logSuccess(`Payout is ${formatIsk(totalPayout)} (>20B) - perfect for testing!`);
+  if (cycle4Parts.length === 0) {
+    throw new Error('❌ No participation found in Cycle 4 for test user');
   }
 
-  // Step 2: Create Cycle 5
-  logStep('2️⃣', 'Creating Cycle 5...');
+  const cycle4Participation = cycle4Parts[0];
+
+  // Set the payout to 25B so we can test the 20B cap
+  await prisma.cycleParticipation.update({
+    where: { id: cycle4Participation.id },
+    data: {
+      payoutAmountIsk: '25000000000.00', // 25B total payout
+      status: 'AWAITING_PAYOUT',
+    },
+  });
+
+  logSuccess('Cycle 4 participation payout set to 25B');
+  logInfo('Expected rollover: 20B (capped), Excess payout: 5B');
+
+  // Step 2: Create Cycle 5 with FULL_PAYOUT rollover
+  logStep('2️⃣', 'Creating Cycle 5 with FULL_PAYOUT rollover...');
   const cycle5 = await createCycle(apiCall, 'Rollover Suite - Cycle 5');
   ctx.cycleIds.push(cycle5.id);
-  logSuccess(`Cycle 5 created: ${cycle5.id.substring(0, 8)}`);
-
-  // Step 3: Create FULL_PAYOUT rollover participation
-  logStep('3️⃣', 'Creating FULL_PAYOUT rollover with 20B cap test...');
+  
+  // Create FULL_PAYOUT rollover participation
   const rolloverP = await createParticipation(apiCall, {
     cycleId: cycle5.id,
     characterName: 'Rollover Test User',
-    amountIsk: Math.min(totalPayout, 20000000000).toFixed(2),
+    amountIsk: '1.00', // Placeholder, will be auto-calculated
     testUserId: ctx.testUserId,
     rollover: {
       type: 'FULL_PAYOUT',
     },
   });
-  ctx.latestParticipationId = rolloverP.id;
-  logSuccess(`Rollover participation created: ${rolloverP.id.substring(0, 8)}`);
+  
+  logSuccess(`Cycle 5 created with FULL_PAYOUT rollover: ${cycle5.id.substring(0, 8)}`);
 
-  // Step 4: Open Cycle 5 (closes Cycle 4, processes rollover with cap)
-  logStep('4️⃣', 'Opening Cycle 5 (closes Cycle 4, processes capped rollover)...');
+  // Step 3: Open Cycle 5 (closes Cycle 4, processes the 25B payout → 20B rollover + 5B excess)
+  logStep('3️⃣', 'Opening Cycle 5 (closes Cycle 4, processes 20B cap)...');
   await openCycle(apiCall, cycle5.id);
   ctx.currentOpenCycleId = cycle5.id;
   logSuccess('Cycle 5 opened, Cycle 4 closed');
 
   await new Promise((resolve) => setTimeout(resolve, 2000));
 
-  // Step 5: Verify 20B cap and excess payout
-  logStep('5️⃣', 'Verifying 20B cap and excess payout...');
-  const cycle5Participations = await getParticipations(apiCall, cycle5.id);
-  const processedRollover = cycle5Participations.find((p: any) => p.id === rolloverP.id);
+  // Step 4: Verify 20B cap and 5B excess payout
+  logStep('4️⃣', 'Verifying 20B cap and 5B excess payout...');
 
-  if (!processedRollover) {
+  // Check the FULL_PAYOUT rollover participation in Cycle 5
+  const cycle5Participations = await getParticipations(apiCall, cycle5.id);
+  const rolloverParticipation = cycle5Participations.find(
+    (p: any) =>
+      p.userId === ctx.testUserId &&
+      p.memo &&
+      p.memo.includes('ROLLOVER') &&
+      p.memo.includes('FULL'),
+  );
+
+  if (!rolloverParticipation) {
+    logWarning('Rollover participation not found, dumping all cycle 5 participations:');
+    console.log(JSON.stringify(cycle5Participations, null, 2));
     throw new Error('❌ Rollover participation not found in Cycle 5');
   }
 
-  if (processedRollover.status !== 'OPTED_IN') {
-    throw new Error(`❌ Expected OPTED_IN, got ${processedRollover.status}`);
+  if (rolloverParticipation.status !== 'OPTED_IN') {
+    throw new Error(
+      `❌ Expected OPTED_IN, got ${rolloverParticipation.status}`,
+    );
   }
-  logSuccess('Auto-validated to OPTED_IN');
+  logSuccess('Rollover participation auto-validated to OPTED_IN');
 
-  const rolledAmount = Number(processedRollover.amountIsk);
+  const rolledAmount = Number(rolloverParticipation.amountIsk);
   logInfo(`Rolled over amount: ${formatIsk(rolledAmount)}`);
 
-  // Verify rollover didn't exceed 20B
-  if (rolledAmount > 20000000000) {
-    throw new Error(`❌ Rollover exceeded 20B cap: ${formatIsk(rolledAmount)}`);
-  }
-  logSuccess(`Rollover capped at: ${formatIsk(rolledAmount)}`);
-
-  // Calculate expected values
-  const expectedRollover = Math.min(totalPayout, 20000000000);
-  const expectedExcess = totalPayout - expectedRollover;
-
+  // Verify 20B cap was applied
   assertApproxEqual(
     rolledAmount,
-    expectedRollover,
-    1.0,
-    'Rollover amount mismatch',
+    20000000000,
+    1000,
+    'Rollover amount (20B cap)',
   );
-  logSuccess(`Rollover amount correct: ${formatIsk(rolledAmount)}`);
+  logSuccess(`✓ Rollover correctly capped at 20B`);
+
+  // Check original Cycle 4 participation for excess payout
+  const updatedCycle4Participation = await prisma.cycleParticipation.findUnique({
+    where: { id: cycle4Participation.id },
+  });
+
+  if (!updatedCycle4Participation) {
+    throw new Error('❌ Original Cycle 4 participation not found');
+  }
+
+  const excessPayout = Number(updatedCycle4Participation.payoutAmountIsk || 0);
+  const rolloverDeducted = Number(updatedCycle4Participation.rolloverDeductedIsk || 0);
+
+  logInfo(
+    `Original payout (25B) - Rolled over (20B) = Excess: ${formatIsk(excessPayout)}`,
+  );
+  logInfo(`Rollover deducted tracking: ${formatIsk(rolloverDeducted)}`);
+
+  // Verify excess = 25B - 20B = 5B
+  assertApproxEqual(excessPayout, 5000000000, 1000, 'Excess payout');
+  logSuccess(`✓ Excess payout correctly set to 5B`);
+
+  // Verify rollover deduction tracking
+  assertApproxEqual(rolloverDeducted, 20000000000, 1000, 'Rollover deducted');
+  logSuccess(`✓ Rollover deduction correctly tracked as 20B`);
+
+  // Status should be AWAITING_PAYOUT since there's 5B excess to pay
+  if (updatedCycle4Participation.status !== 'AWAITING_PAYOUT') {
+    logWarning(
+      `Expected status AWAITING_PAYOUT, got ${updatedCycle4Participation.status}`,
+    );
+  } else {
+    logSuccess(
+      '✓ Status correctly set to AWAITING_PAYOUT (5B excess needs payment)',
+    );
+  }
 
   ctx.lastInitialAmount = rolledAmount;
 
-  // Step 6: Verify excess payout
-  const cycle4Participations = await getParticipations(apiCall, cycle4Id);
-  const cycle4P = cycle4Participations.find((p: any) => p.userId === ctx.testUserId);
-
-  if (cycle4P) {
-    const payoutAmount = Number(cycle4P.payoutAmountIsk || '0');
-
-    logInfo(`Total Payout: ${formatIsk(totalPayout)}`);
-    logInfo(`Rolled Over: ${formatIsk(rolledAmount)}`);
-    logInfo(`Expected Excess: ${formatIsk(expectedExcess)}`);
-    logInfo(`Actual Payout: ${formatIsk(payoutAmount)}`);
-
-    assertApproxEqual(
-      payoutAmount,
-      expectedExcess,
-      1.0,
-      'Excess payout amount mismatch',
-    );
-
-    if (totalPayout > 20000000000) {
-      logSuccess(
-        `Correctly handled >20B payout: ${formatIsk(rolledAmount)} rolled, ${formatIsk(payoutAmount)} paid out`,
-      );
-    } else {
-      logSuccess(
-        `Logic correctly handled ${formatIsk(totalPayout)} payout (under 20B cap)`,
-      );
-    }
-
-    if (payoutAmount > 0 && cycle4P.status !== 'AWAITING_PAYOUT') {
-      logInfo(`Status: ${cycle4P.status} (note: expected AWAITING_PAYOUT for ${formatIsk(payoutAmount)})`);
-    } else {
-      logSuccess(`Status: ${cycle4P.status}`);
-    }
-  }
+  await prisma.$disconnect();
 
   await waitForUser(
     config,
-    'Verify in UI:\n   - Cycle 4 is COMPLETED\n   - Cycle 5 is OPEN with 20B rollover (capped)\n   - Excess amount shows as payout in Cycle 4',
+    'Verify in UI:\n   - Cycle 4 is COMPLETED with 5B excess payout\n   - Cycle 5 is OPEN with 20B rollover (capped)\n   - My Investments shows Cycle 4 profit correctly',
   );
 
   printScenarioComplete();
@@ -193,8 +207,11 @@ export async function scenario05ExcessPayoutAbove20B(
 
 // Allow standalone execution for debugging (requires Scenario 04 state)
 if (require.main === module) {
-  console.error('❌ Scenario 05 must be run via the suite runner (requires Scenario 04 state)');
-  console.log('   Use: pnpm exec ts-node scripts/tests/participation-rollover/participation-rollover.suite.ts');
+  console.error(
+    '❌ Scenario 05 must be run via the suite runner (requires Scenario 04 state)',
+  );
+  console.log(
+    '   Use: pnpm exec ts-node scripts/tests/participation-rollover/participation-rollover.suite.ts',
+  );
   process.exit(1);
 }
-

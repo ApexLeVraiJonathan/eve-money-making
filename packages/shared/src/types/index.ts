@@ -144,6 +144,7 @@ export interface CycleParticipation {
   walletJournalId: bigint | null;
   payoutAmountIsk: string | null;
   payoutPaidAt: string | null;
+  rolloverDeductedIsk: string | null;
   refundAmountIsk: string | null;
   refundedAt: string | null;
   optedOutAt: string | null;
@@ -226,7 +227,7 @@ export interface LiquidityItemStatsResponse {
 }
 
 // Arbitrage Types
-export type PriceValidationSource = 'ESI' | 'LiquidityAvg' | 'None';
+export type PriceValidationSource = "ESI" | "LiquidityAvg" | "None";
 
 export interface ArbitrageCheckRequest {
   sourceStationId?: number;
@@ -331,12 +332,9 @@ export interface PlanPackagesRequest {
   minPackageROIPercent?: number;
   shippingMarginMultiplier?: number;
   densityWeight?: number;
-  destinationCaps?: Record<
-    string,
-    { maxShare?: number; maxISK?: number }
-  >;
+  destinationCaps?: Record<string, { maxShare?: number; maxISK?: number }>;
   allocation?: {
-    mode?: 'best' | 'targetWeighted' | 'roundRobin';
+    mode?: "best" | "targetWeighted" | "roundRobin";
     targets?: Record<string, number>;
     spreadBias?: number;
   };

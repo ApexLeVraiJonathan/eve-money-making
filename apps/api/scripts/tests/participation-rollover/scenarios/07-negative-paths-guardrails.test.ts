@@ -20,7 +20,7 @@ import {
   logInfo,
   printScenarioHeader,
   printScenarioComplete,
-} from '../helpers';
+} from '../helpers/index';
 
 export async function scenario07NegativePathsGuardrails(
   config: TestConfig,
@@ -193,7 +193,7 @@ if (require.main === module) {
       process.exit(1);
     }
 
-    const { createSharedContext } = await import('../helpers');
+    const { createSharedContext } = await import('../helpers/index.js');
     const ctx = createSharedContext('negative-test-user');
 
     try {
