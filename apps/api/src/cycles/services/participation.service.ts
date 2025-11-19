@@ -227,19 +227,28 @@ export class ParticipationService {
         }
       }
 
-      // Generate rollover memo: ROLLOVER-{cycleId:8}-{fromParticipationId:8}
-      const rolloverMemo = `ROLLOVER-${cycle.id.substring(0, 8)}-${activeParticipation.id.substring(0, 8)}`;
+      // Generate rollover memo: ROLLOVER-{cycleId:8}-{fromParticipationId:8}-{TYPE}
+      const rolloverTypeShort = input.rollover.type === 'FULL_PAYOUT' ? 'FULL' : 
+                                 input.rollover.type === 'INITIAL_ONLY' ? 'INITIAL' : 'CUSTOM';
+      const rolloverMemo = `ROLLOVER-${cycle.id.substring(0, 8)}-${activeParticipation.id.substring(0, 8)}-${rolloverTypeShort}`;
 
-      // Calculate requested rollover amount
+      // Calculate requested rollover amount and display amount
       let rolloverRequestedAmount: string;
+      let displayAmount: number; // Amount to show in the participation record
+      
       if (input.rollover.type === 'FULL_PAYOUT') {
         // Will be calculated on cycle close, store as 0 for now
         rolloverRequestedAmount = '0.00';
+        displayAmount = 1; // Placeholder that frontend will recognize
       } else if (input.rollover.type === 'INITIAL_ONLY') {
-        rolloverRequestedAmount = String(activeParticipation.amountIsk);
+        const initialAmount = Number(activeParticipation.amountIsk);
+        rolloverRequestedAmount = String(initialAmount);
+        displayAmount = initialAmount;
       } else {
         // CUSTOM_AMOUNT
+        const customAmount = Number(input.rollover.customAmountIsk!);
         rolloverRequestedAmount = input.rollover.customAmountIsk!;
+        displayAmount = customAmount;
       }
 
       return await this.prisma.cycleParticipation.create({
@@ -247,7 +256,7 @@ export class ParticipationService {
           cycleId: input.cycleId,
           userId: input.userId, // Already set to testUserId in controller if provided
           characterName,
-          amountIsk: requestedAmount.toFixed(2),
+          amountIsk: displayAmount.toFixed(2),
           memo: rolloverMemo,
           status: 'AWAITING_INVESTMENT', // Will be auto-validated on cycle close
           rolloverType: input.rollover.type,

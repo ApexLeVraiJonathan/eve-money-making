@@ -217,6 +217,11 @@ export default function OptInDialog(props: OptInDialogProps) {
               <div className="space-y-3">
                 <Label htmlFor="optin-amount" className="text-base font-medium">
                   Investment Amount
+                  {useRollover && (
+                    <span className="ml-2 text-xs font-normal text-muted-foreground">
+                      (auto-filled from rollover)
+                    </span>
+                  )}
                 </Label>
                 <div className="space-y-2">
                   <div className="relative">
@@ -225,20 +230,68 @@ export default function OptInDialog(props: OptInDialogProps) {
                       type="text"
                       placeholder="0"
                       aria-describedby="optin-amount-hint"
-                      value={amountInput}
+                      value={
+                        useRollover
+                          ? rolloverType === "CUSTOM_AMOUNT"
+                            ? formatNumberWithCommas(customRolloverAmount)
+                            : rolloverType === "INITIAL_ONLY"
+                              ? formatNumberWithCommas(
+                                  Number(currentParticipation!.amountIsk),
+                                )
+                              : "Auto-calculated"
+                          : amountInput
+                      }
                       onChange={(e) => handleAmountChange(e.target.value)}
-                      className="pr-16 text-lg font-mono"
+                      disabled={useRollover}
+                      className={`pr-16 text-lg font-mono ${
+                        useRollover
+                          ? "bg-muted cursor-not-allowed opacity-75"
+                          : ""
+                      } ${
+                        maxParticipation &&
+                        amount > Number(maxParticipation.maxAmountIsk)
+                          ? "border-red-500 focus-visible:ring-red-500"
+                          : ""
+                      }`}
                     />
                     <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3 text-sm text-muted-foreground">
                       ISK
                     </div>
                   </div>
-                  <div
-                    id="optin-amount-hint"
-                    className="text-sm font-medium text-primary"
-                  >
-                    {formatIsk(amount)}
-                  </div>
+                  {!useRollover && (
+                    <div
+                      id="optin-amount-hint"
+                      className="text-sm font-medium text-primary"
+                    >
+                      {formatIsk(amount)}
+                    </div>
+                  )}
+                  {maxParticipation &&
+                    amount > Number(maxParticipation.maxAmountIsk) && (
+                      <div className="flex items-start gap-2 rounded-md bg-red-50 dark:bg-red-950/20 p-3 text-sm text-red-600 dark:text-red-400">
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          viewBox="0 0 20 20"
+                          fill="currentColor"
+                          className="h-5 w-5 flex-shrink-0"
+                        >
+                          <path
+                            fillRule="evenodd"
+                            d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-5a.75.75 0 01.75.75v4.5a.75.75 0 01-1.5 0v-4.5A.75.75 0 0110 5zm0 10a1 1 0 100-2 1 1 0 000 2z"
+                            clipRule="evenodd"
+                          />
+                        </svg>
+                        <div>
+                          <strong>Amount exceeds maximum allowed</strong>
+                          <br />
+                          Maximum participation for your account is{" "}
+                          <strong>
+                            {maxParticipation.maxAmountB}B ISK
+                          </strong>
+                          . Please reduce the amount.
+                        </div>
+                      </div>
+                    )}
                   <div className="flex flex-wrap gap-2">
                     {presetAmounts.map((preset) => (
                       <Button
@@ -324,60 +377,74 @@ export default function OptInDialog(props: OptInDialogProps) {
                                 | "CUSTOM_AMOUNT",
                             )
                           }
-                          className="space-y-2"
+                          className="space-y-3"
                         >
-                          <div className="flex items-start space-x-2">
-                            <RadioGroupItem value="FULL_PAYOUT" id="full" />
-                            <Label
-                              htmlFor="full"
-                              className="cursor-pointer font-normal text-sm"
-                            >
-                              <div className="font-medium">
+                          <div className="flex gap-3">
+                            <RadioGroupItem
+                              value="FULL_PAYOUT"
+                              id="full"
+                              className="mt-1"
+                            />
+                            <div className="flex-1 space-y-1">
+                              <Label
+                                htmlFor="full"
+                                className="cursor-pointer font-medium text-sm block"
+                              >
                                 Full Payout (Initial + Profit)
-                              </div>
-                              <div className="text-xs text-muted-foreground">
+                              </Label>
+                              <p className="text-xs text-muted-foreground">
                                 Roll over your entire payout, capped at 20B ISK
-                              </div>
-                            </Label>
+                              </p>
+                            </div>
                           </div>
 
-                          <div className="flex items-start space-x-2">
-                            <RadioGroupItem value="INITIAL_ONLY" id="initial" />
-                            <Label
-                              htmlFor="initial"
-                              className="cursor-pointer font-normal text-sm"
-                            >
-                              <div className="font-medium">
+                          <div className="flex gap-3">
+                            <RadioGroupItem
+                              value="INITIAL_ONLY"
+                              id="initial"
+                              className="mt-1"
+                            />
+                            <div className="flex-1 space-y-1">
+                              <Label
+                                htmlFor="initial"
+                                className="cursor-pointer font-medium text-sm block"
+                              >
                                 Initial Investment Only
-                              </div>
-                              <div className="text-xs text-muted-foreground">
+                              </Label>
+                              <p className="text-xs text-muted-foreground">
                                 Roll over only your initial{" "}
                                 {formatIsk(
                                   Number(currentParticipation!.amountIsk),
                                 )}
                                 , receive profit as payout
-                              </div>
-                            </Label>
+                              </p>
+                            </div>
                           </div>
 
-                          <div className="flex items-start space-x-2">
-                            <RadioGroupItem value="CUSTOM_AMOUNT" id="custom" />
-                            <Label
-                              htmlFor="custom"
-                              className="cursor-pointer font-normal text-sm"
-                            >
-                              <div className="font-medium">Custom Amount</div>
-                              <div className="text-xs text-muted-foreground">
+                          <div className="flex gap-3">
+                            <RadioGroupItem
+                              value="CUSTOM_AMOUNT"
+                              id="custom"
+                              className="mt-1"
+                            />
+                            <div className="flex-1 space-y-1">
+                              <Label
+                                htmlFor="custom"
+                                className="cursor-pointer font-medium text-sm block"
+                              >
+                                Custom Amount
+                              </Label>
+                              <p className="text-xs text-muted-foreground">
                                 Specify amount ≤ your initial investment
-                              </div>
-                            </Label>
+                              </p>
+                            </div>
                           </div>
 
                           {rolloverType === "CUSTOM_AMOUNT" && (
-                            <div className="pl-6 pt-2">
+                            <div className="pl-8 pt-1 space-y-2">
                               <Input
                                 type="text"
-                                placeholder="Custom amount"
+                                placeholder="Enter custom amount"
                                 value={
                                   customRolloverAmount > 0
                                     ? formatNumberWithCommas(
@@ -391,8 +458,41 @@ export default function OptInDialog(props: OptInDialogProps) {
                                   );
                                   setCustomRolloverAmount(val);
                                 }}
-                                className="font-mono"
+                                className={`font-mono ${
+                                  customRolloverAmount >
+                                  Number(currentParticipation!.amountIsk)
+                                    ? "border-red-500 focus-visible:ring-red-500"
+                                    : ""
+                                }`}
                               />
+                              {customRolloverAmount >
+                                Number(currentParticipation!.amountIsk) && (
+                                <div className="flex items-start gap-2 rounded-md bg-red-50 dark:bg-red-950/20 p-2 text-xs text-red-600 dark:text-red-400">
+                                  <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    viewBox="0 0 20 20"
+                                    fill="currentColor"
+                                    className="h-4 w-4 flex-shrink-0 mt-0.5"
+                                  >
+                                    <path
+                                      fillRule="evenodd"
+                                      d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-5a.75.75 0 01.75.75v4.5a.75.75 0 01-1.5 0v-4.5A.75.75 0 0110 5zm0 10a1 1 0 100-2 1 1 0 000 2z"
+                                      clipRule="evenodd"
+                                    />
+                                  </svg>
+                                  <div>
+                                    <strong>Amount exceeds initial investment</strong>
+                                    <br />
+                                    Maximum custom rollover is{" "}
+                                    <strong>
+                                      {formatIsk(
+                                        Number(currentParticipation!.amountIsk),
+                                      )}
+                                    </strong>
+                                    . Please reduce the amount.
+                                  </div>
+                                </div>
+                              )}
                             </div>
                           )}
                         </RadioGroup>
@@ -426,7 +526,16 @@ export default function OptInDialog(props: OptInDialogProps) {
                 </Button>
                 <Button
                   type="submit"
-                  disabled={submitting || amount <= 0}
+                  disabled={
+                    submitting ||
+                    amount <= 0 ||
+                    (maxParticipation &&
+                      amount > Number(maxParticipation.maxAmountIsk)) ||
+                    (useRollover &&
+                      rolloverType === "CUSTOM_AMOUNT" &&
+                      customRolloverAmount >
+                        Number(currentParticipation!.amountIsk))
+                  }
                   className="gap-2"
                 >
                   {submitting ? (
@@ -460,24 +569,50 @@ export default function OptInDialog(props: OptInDialogProps) {
                   <div className="text-sm text-muted-foreground">
                     Investment Amount
                   </div>
-                  <div className="text-xl font-bold text-primary">
-                    {formatIsk(amount)}
-                  </div>
+                  {useRollover ? (
+                    <div className="space-y-2">
+                      {rolloverType === "FULL_PAYOUT" ? (
+                        <>
+                          <div className="text-xl font-bold text-amber-600">
+                            Calculated at cycle close
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            Your full payout will be automatically reinvested
+                            (max 20B)
+                          </div>
+                        </>
+                      ) : rolloverType === "INITIAL_ONLY" ? (
+                        <>
+                          <div className="text-xl font-bold text-amber-600">
+                            {formatIsk(Number(currentParticipation!.amountIsk))}
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            Only your initial investment will be rolled over
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div className="text-xl font-bold text-amber-600">
+                            {formatIsk(customRolloverAmount)}
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            Custom amount will be rolled over from your payout
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="text-xl font-bold text-primary">
+                      {formatIsk(amount)}
+                    </div>
+                  )}
                   {useRollover && (
-                    <div className="mt-3 pt-3 border-t space-y-1">
+                    <div className="mt-3 pt-3 border-t">
                       <div className="flex items-center gap-2 text-sm text-amber-600">
                         <RefreshCw className="h-4 w-4" />
                         <span className="font-medium">
                           Automatic Reinvestment Enabled
                         </span>
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        {rolloverType === "FULL_PAYOUT" &&
-                          "Your full payout will be automatically reinvested (max 20B)"}
-                        {rolloverType === "INITIAL_ONLY" &&
-                          "Only your initial investment will be rolled over"}
-                        {rolloverType === "CUSTOM_AMOUNT" &&
-                          `${formatIsk(customRolloverAmount)} will be rolled over`}
                       </div>
                     </div>
                   )}

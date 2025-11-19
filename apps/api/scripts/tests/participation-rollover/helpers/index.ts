@@ -1,6 +1,6 @@
 /**
  * Participation Rollover Test Helpers
- * 
+ *
  * Central export point for all helper functions.
  */
 
@@ -17,6 +17,7 @@ export interface TestConfig {
   apiKey?: string;
   characterId: number;
   skipPauses?: boolean;
+  interactive?: boolean;
 }
 
 export interface TestContext {
@@ -26,12 +27,39 @@ export interface TestContext {
 }
 
 /**
+ * Shared context that is passed between scenarios in the suite
+ * Allows scenarios to build on each other's state
+ */
+export interface SharedRolloverContext {
+  /** Test user ID used consistently across scenarios */
+  testUserId: string;
+
+  /** Created cycle IDs in order */
+  cycleIds: string[];
+
+  /** Latest participation ID for the test user */
+  latestParticipationId?: string;
+
+  /** Current OPEN cycle ID */
+  currentOpenCycleId?: string;
+
+  /** Last known payout amount from a closed cycle */
+  lastPayoutAmount?: number;
+
+  /** Last known initial investment amount */
+  lastInitialAmount?: number;
+
+  /** Transaction counter for generating unique IDs */
+  transactionIdCounter: number;
+}
+
+/**
  * Create API call function bound to config
  */
 export function createApiCall(config: TestConfig) {
   return async (method: string, path: string, body?: any): Promise<any> => {
     const url = `${config.apiUrl}${path}`;
-    
+
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
     };
@@ -68,10 +96,47 @@ export function createApiCall(config: TestConfig) {
     } catch (error) {
       clearTimeout(timeout);
       if (error instanceof Error && error.name === 'AbortError') {
-        throw new Error(`API call timed out after 2 minutes: ${method} ${path}`);
+        throw new Error(
+          `API call timed out after 2 minutes: ${method} ${path}`,
+        );
       }
       throw error;
     }
   };
 }
 
+/**
+ * Wait for user to press ENTER (for interactive UI verification)
+ */
+export function waitForUser(
+  config: TestConfig,
+  message: string,
+): Promise<void> {
+  if (!config.interactive) {
+    return Promise.resolve();
+  }
+
+  const readline = require('readline');
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+
+  return new Promise((resolve) => {
+    rl.question(`\n⏸️  ${message}\n   Press ENTER to continue...`, () => {
+      rl.close();
+      resolve();
+    });
+  });
+}
+
+/**
+ * Create a shared rollover context for the test suite
+ */
+export function createSharedContext(testUserId: string): SharedRolloverContext {
+  return {
+    testUserId,
+    cycleIds: [],
+    transactionIdCounter: 0,
+  };
+}

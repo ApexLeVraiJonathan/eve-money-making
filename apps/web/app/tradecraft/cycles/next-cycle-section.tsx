@@ -152,75 +152,141 @@ export default function NextCycleSection({ next }: { next: NextCycle | null }) {
           Checking your participation…
         </div>
       ) : participation ? (
-        <div className="mt-3 rounded-lg border border-primary/20 bg-primary/5 p-4">
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex-1 space-y-2">
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-medium">
-                  You&apos;re participating in this cycle
-                </span>
-                {getStatusBadge(participation.status)}
-              </div>
-              <div className="space-y-1 text-sm text-muted-foreground">
-                <div>
-                  <span className="font-medium text-foreground">
-                    Character:
-                  </span>{" "}
-                  {participation.characterName}
-                </div>
-                <div>
-                  <span className="font-medium text-foreground">Amount:</span>{" "}
-                  {formatIsk(participation.amountIsk)} ISK
-                </div>
-                <div>
-                  <span className="font-medium text-foreground">
-                    Submitted:
-                  </span>{" "}
-                  {new Date(participation.createdAt).toLocaleString()}
-                </div>
-                {participation.status === "AWAITING_INVESTMENT" && (
-                  <div className="mt-2 rounded-md bg-amber-500/10 p-3 text-amber-900 dark:text-amber-100">
-                    <div className="font-medium mb-3 text-sm">
-                      ⚠️ Don&apos;t forget to send{" "}
-                      {formatIsk(participation.amountIsk)} ISK to complete your
-                      participation
-                    </div>
-                    <div className="space-y-2">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm">
-                          To:{" "}
-                          <strong className="font-mono">LeVraiTrader</strong>
-                        </span>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="h-7 px-2 text-xs hover:bg-amber-500/20"
-                          onClick={() =>
-                            copyToClipboard("LeVraiTrader", "Character name")
-                          }
-                        >
-                          <Copy className="h-3.5 w-3.5" />
-                        </Button>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm flex-shrink-0">Memo:</span>
-                        <code className="rounded bg-background px-2 py-1 font-mono text-xs max-w-md truncate">
-                          {participation.memo}
-                        </code>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="h-7 px-2 text-xs hover:bg-amber-500/20 flex-shrink-0"
-                          onClick={() =>
-                            copyToClipboard(participation.memo ?? "", "Memo")
-                          }
-                        >
-                          <Copy className="h-3.5 w-3.5" />
-                        </Button>
-                      </div>
-                    </div>
+        (() => {
+          // Parse rollover type from memo (format: ROLLOVER-cycleId-participationId-TYPE)
+          const isRollover = participation.memo.startsWith("ROLLOVER-");
+          const rolloverType = isRollover
+            ? participation.memo.split("-")[3]
+            : null;
+
+          return (
+            <div className="mt-3 rounded-lg border border-primary/20 bg-primary/5 p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex-1 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium">
+                      You&apos;re participating in this cycle
+                    </span>
+                    {isRollover &&
+                    participation.status === "AWAITING_INVESTMENT" ? (
+                      <Badge
+                        variant="outline"
+                        className="bg-green-500/10 text-green-600"
+                      >
+                        Auto-funded
+                      </Badge>
+                    ) : (
+                      getStatusBadge(participation.status)
+                    )}
                   </div>
-                )}
+                  <div className="space-y-1 text-sm text-muted-foreground">
+                    <div>
+                      <span className="font-medium text-foreground">
+                        Character:
+                      </span>{" "}
+                      {participation.characterName}
+                    </div>
+                    <div>
+                      <span className="font-medium text-foreground">
+                        Amount:
+                      </span>{" "}
+                      {isRollover ? (
+                        <div className="inline-flex flex-col gap-0.5">
+                          <span>
+                            {rolloverType === "FULL" ? (
+                              <span className="text-amber-600">
+                                Calculated at cycle close
+                              </span>
+                            ) : (
+                              <>{formatIsk(participation.amountIsk)} ISK</>
+                            )}
+                          </span>
+                          <span className="text-xs text-muted-foreground">
+                            Rollover:{" "}
+                            {rolloverType === "FULL"
+                              ? "Full Payout"
+                              : rolloverType === "INITIAL"
+                                ? "Initial Only"
+                                : "Custom Amount"}
+                          </span>
+                        </div>
+                      ) : (
+                        <>{formatIsk(participation.amountIsk)} ISK</>
+                      )}
+                    </div>
+                    <div>
+                      <span className="font-medium text-foreground">
+                        Submitted:
+                      </span>{" "}
+                      {new Date(participation.createdAt).toLocaleString()}
+                    </div>
+                {participation.status === "AWAITING_INVESTMENT" &&
+                  (participation.memo.startsWith("ROLLOVER-") ? (
+                    <div className="mt-2 rounded-md bg-green-500/10 p-3 text-green-900 dark:text-green-100">
+                      <div className="font-medium mb-2 text-sm flex items-center gap-2">
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          viewBox="0 0 20 20"
+                          fill="currentColor"
+                          className="h-4 w-4"
+                        >
+                          <path
+                            fillRule="evenodd"
+                            d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z"
+                            clipRule="evenodd"
+                          />
+                        </svg>
+                        No payment needed!
+                      </div>
+                      <p className="text-xs">
+                        Your participation will be automatically funded from your
+                        payout when the current cycle closes. The admin will
+                        handle everything for you.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="mt-2 rounded-md bg-amber-500/10 p-3 text-amber-900 dark:text-amber-100">
+                      <div className="font-medium mb-3 text-sm">
+                        ⚠️ Don&apos;t forget to send{" "}
+                        {formatIsk(participation.amountIsk)} ISK to complete
+                        your participation
+                      </div>
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm">
+                            To:{" "}
+                            <strong className="font-mono">LeVraiTrader</strong>
+                          </span>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 px-2 text-xs hover:bg-amber-500/20"
+                            onClick={() =>
+                              copyToClipboard("LeVraiTrader", "Character name")
+                            }
+                          >
+                            <Copy className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm flex-shrink-0">Memo:</span>
+                          <code className="rounded bg-background px-2 py-1 font-mono text-xs max-w-md truncate">
+                            {participation.memo}
+                          </code>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 px-2 text-xs hover:bg-amber-500/20 flex-shrink-0"
+                            onClick={() =>
+                              copyToClipboard(participation.memo ?? "", "Memo")
+                            }
+                          >
+                            <Copy className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
                 {participation.status === "OPTED_IN" && (
                   <div className="mt-2 rounded-md bg-emerald-500/10 p-2 text-xs text-emerald-900 dark:text-emerald-100">
                     ✓ Your investment has been confirmed and will be included in
@@ -262,7 +328,9 @@ export default function NextCycleSection({ next }: { next: NextCycle | null }) {
               )}
             </div>
           )}
-        </div>
+            </div>
+          );
+        })()
       ) : status === "unauthenticated" ? (
         <div className="mt-3 rounded-lg border border-primary/20 bg-primary/5 p-4">
           <div className="flex items-start gap-3">

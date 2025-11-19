@@ -1,6 +1,6 @@
 /**
  * Transaction Management Helper Functions
- * 
+ *
  * Provides utilities for creating donations, buy/sell transactions, and allocations.
  */
 
@@ -49,7 +49,11 @@ export async function matchDonations(
   apiCall: (method: string, path: string, body?: any) => Promise<any>,
   cycleId: string,
 ): Promise<any> {
-  return await apiCall('POST', `/ledger/participations/match?cycleId=${cycleId}`, {});
+  return await apiCall(
+    'POST',
+    `/ledger/participations/match?cycleId=${cycleId}`,
+    {},
+  );
 }
 
 /**
@@ -75,13 +79,17 @@ export async function createProfitableSells(
     if (sellUnits === 0) continue;
 
     // Calculate buy price from either buyCostIsk (fresh) or rolloverCostIsk (rollover)
-    const totalCost = parseFloat(line.buyCostIsk || line.rolloverCostIsk || '0');
+    const totalCost = parseFloat(
+      line.buyCostIsk || line.rolloverCostIsk || '0',
+    );
     if (totalCost === 0) continue;
-    
+
     const buyPrice = totalCost / availableUnits;
     const sellPrice = buyPrice * profitMultiplier;
 
-    const sellTxId = BigInt(Date.now() * 1000 + ctx.transactionIdCounter++ * 10);
+    const sellTxId = BigInt(
+      Date.now() * 1000 + ctx.transactionIdCounter++ * 10,
+    );
 
     await prisma.walletTransaction.create({
       data: {
@@ -123,3 +131,27 @@ export async function createPayouts(
   return await apiCall('POST', `/ledger/cycles/${cycleId}/payouts`, {});
 }
 
+/**
+ * Clean all test data (cycles, participations, wallet entries)
+ * WARNING: Use only in dev/test environments!
+ */
+export async function cleanAllTestData(): Promise<void> {
+  console.log('\n🗑️  [CLEANUP] Removing all test data...');
+
+  // Delete in correct order to avoid FK constraint violations
+  await prisma.sellAllocation.deleteMany({});
+  await prisma.buyAllocation.deleteMany({});
+  await prisma.packageCycleLine.deleteMany({});
+  await prisma.committedPackage.deleteMany({});
+  await prisma.cycleLine.deleteMany({});
+  await prisma.cycleFeeEvent.deleteMany({});
+  await prisma.cycleSnapshot.deleteMany({});
+  await prisma.cycleLedgerEntry.deleteMany({});
+  await prisma.cycleParticipation.deleteMany({});
+  await prisma.cycleCapitalCache.deleteMany({});
+  await prisma.cycle.deleteMany({});
+  await prisma.walletTransaction.deleteMany({});
+  await prisma.walletJournalEntry.deleteMany({});
+
+  console.log('  ✓ All test data cleaned');
+}
