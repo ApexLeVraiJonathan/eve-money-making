@@ -1,4 +1,4 @@
-import { INestApplication, Logger } from '@nestjs/common';
+import { INestApplication, Logger, ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
@@ -23,13 +23,29 @@ describe('Support & Feedback (e2e)', () => {
     app = moduleRef.createNestApplication({ bufferLogs: true });
     const logger = app.get(Logger);
     app.useLogger(logger);
+    
+    // Enable validation pipe like in main.ts
+    app.useGlobalPipes(
+      new ValidationPipe({
+        whitelist: true,
+        forbidNonWhitelisted: true,
+        transform: true,
+        transformOptions: {
+          enableImplicitConversion: true,
+        },
+      }),
+    );
+    
     await app.init();
 
     discordService = app.get(DiscordNotificationService);
 
-    // Mock Discord webhook calls to avoid real network calls
+    // Mock Discord methods to avoid real network calls
     jest
-      .spyOn(discordService as any, 'sendWebhook')
+      .spyOn(discordService, 'sendSupportRequest')
+      .mockResolvedValue(undefined);
+    jest
+      .spyOn(discordService, 'sendFeedback')
       .mockResolvedValue(undefined);
   });
 
@@ -66,7 +82,7 @@ describe('Support & Feedback (e2e)', () => {
       });
 
       // Verify Discord service was called
-      expect(discordService['sendWebhook']).toHaveBeenCalled();
+      expect(discordService.sendSupportRequest).toHaveBeenCalled();
     });
 
     it('should accept support request with optional context', async () => {
@@ -176,7 +192,7 @@ describe('Support & Feedback (e2e)', () => {
       });
 
       // Verify Discord service was called
-      expect(discordService['sendWebhook']).toHaveBeenCalled();
+      expect(discordService.sendFeedback).toHaveBeenCalled();
     });
 
     it('should accept feedback with optional rating', async () => {
