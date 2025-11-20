@@ -155,3 +155,29 @@ The backend's `CompositeAuthGuard` tries cookie-based auth first, then falls bac
   - `DEFAULT_RELIST_FEE_PCT=0.3`
 - WALLET_RESERVE_PER_CHAR: ISK to reserve per character when calculating available capital (default 100000000 = 100M ISK).
   - `WALLET_RESERVE_PER_CHAR=100000000`
+
+### Discord Integration (optional)
+
+Support and Feedback notifications via Discord webhooks:
+
+- DISCORD_SUPPORT_WEBHOOK_URL: Discord webhook URL for support requests channel
+  - Example: `DISCORD_SUPPORT_WEBHOOK_URL=https://discord.com/api/webhooks/123456789/abcdefghijklmnop`
+  - To create: Discord Server Settings > Integrations > Webhooks > New Webhook
+  - Optional: If not set, support requests will be accepted but not sent to Discord
+- DISCORD_FEEDBACK_WEBHOOK_URL: Discord webhook URL for feedback channel
+  - Example: `DISCORD_FEEDBACK_WEBHOOK_URL=https://discord.com/api/webhooks/987654321/zyxwvutsrqponmlk`
+  - To create: Discord Server Settings > Integrations > Webhooks > New Webhook
+  - Optional: If not set, feedback will be accepted but not sent to Discord
+
+**Setup Instructions:**
+
+1. In your Discord server, go to Server Settings > Integrations > Webhooks
+2. Click "New Webhook" and create two separate webhooks:
+   - One for the #support channel (or your preferred support channel)
+   - One for the #feedback channel (or your preferred feedback channel)
+3. For each webhook:
+   - Give it a name (e.g., "Support Bot", "Feedback Bot")
+   - Select the target channel
+   - Copy the webhook URL
+   - Add it to your `.env` file as shown above
+4. Test the integration by submitting a support request or feedback through the app

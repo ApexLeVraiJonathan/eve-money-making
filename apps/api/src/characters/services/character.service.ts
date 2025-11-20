@@ -201,9 +201,7 @@ export class CharacterService {
    *
    * @throws NotFoundException if character doesn't exist
    */
-  async getCharacterOrders(
-    characterId: number,
-  ): Promise<
+  async getCharacterOrders(characterId: number): Promise<
     Array<{
       order_id: number;
       type_id: number;
@@ -224,9 +222,7 @@ export class CharacterService {
     });
 
     if (!character) {
-      throw new NotFoundException(
-        `Character with ID ${characterId} not found`,
-      );
+      throw new NotFoundException(`Character with ID ${characterId} not found`);
     }
 
     // Fetch orders from ESI (handles token refresh automatically)

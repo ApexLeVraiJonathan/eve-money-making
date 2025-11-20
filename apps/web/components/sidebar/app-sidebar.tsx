@@ -16,7 +16,15 @@ import { NavMain } from "@/components/sidebar/nav-main";
 import { NavAdmin } from "@/components/sidebar/nav-admin";
 import { NavSecondary } from "@/components/sidebar/nav-secondary";
 import { NavUser } from "@/components/sidebar/nav-user";
-import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader } from "@eve/ui";
+import { SupportDialog } from "@/components/support-dialog";
+import { FeedbackDialog } from "@/components/feedback-dialog";
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarHeader,
+  SidebarMenuButton,
+} from "@eve/ui";
 import { Button } from "@eve/ui";
 import {
   DropdownMenu,
@@ -29,8 +37,14 @@ import {
 import { getApps, getActiveAppByPathname } from "@/app/apps.config";
 import { useCurrentUser } from "@/app/tradecraft/api/characters";
 
-const data = {
-  navSecondary: [
+export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
+  const pathname = usePathname();
+  const apps = getApps();
+  const activeApp = getActiveAppByPathname(pathname ?? "/");
+  const { data: currentUser } = useCurrentUser();
+  const isAdmin = currentUser?.role === "ADMIN" || false;
+
+  const navSecondaryItems = [
     {
       title: "Account Settings",
       url: "/account-settings",
@@ -38,23 +52,29 @@ const data = {
     },
     {
       title: "Support",
-      url: "#",
       icon: LifeBuoy,
+      customButton: (
+        <SupportDialog>
+          <SidebarMenuButton size="sm" className="w-full">
+            <LifeBuoy />
+            <span>Support</span>
+          </SidebarMenuButton>
+        </SupportDialog>
+      ),
     },
     {
       title: "Feedback",
-      url: "#",
       icon: Send,
+      customButton: (
+        <FeedbackDialog>
+          <SidebarMenuButton size="sm" className="w-full">
+            <Send />
+            <span>Feedback</span>
+          </SidebarMenuButton>
+        </FeedbackDialog>
+      ),
     },
-  ],
-};
-
-export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
-  const pathname = usePathname();
-  const apps = getApps();
-  const activeApp = getActiveAppByPathname(pathname ?? "/");
-  const { data: currentUser } = useCurrentUser();
-  const isAdmin = currentUser?.role === "ADMIN" || false;
+  ];
 
   return (
     <Sidebar variant="inset" {...props}>
@@ -114,7 +134,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         {activeApp?.admin && isAdmin ? (
           <NavAdmin items={activeApp.admin} />
         ) : null}
-        <NavSecondary items={data.navSecondary} className="mt-auto" />
+        <NavSecondary items={navSecondaryItems} className="mt-auto" />
       </SidebarContent>
       <SidebarFooter>
         <NavUser />

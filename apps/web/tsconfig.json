@@ -24,6 +24,8 @@
       "@eve/shared/*": ["../../packages/shared/src/*"],
       "@eve/api-client": ["../../packages/api-client/src/index.ts"],
       "@eve/api-client/*": ["../../packages/api-client/src/*"],
+      "@eve/api-contracts": ["../../packages/api-contracts/src/index.ts"],
+      "@eve/api-contracts/*": ["../../packages/api-contracts/src/*"],
       "@eve/ui": ["../../packages/ui/src/index.ts"],
       "@eve/ui/*": ["../../packages/ui/src/*"]
     }

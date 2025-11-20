@@ -350,7 +350,7 @@ export class ProfitService {
       const wac =
         line.unitsBought > 0 ? Number(line.buyCostIsk) / line.unitsBought : 0;
       const cogs = wac * line.unitsSold;
-      
+
       const currentLineProfit =
         Number(line.salesNetIsk) -
         cogs -
@@ -371,10 +371,10 @@ export class ProfitService {
         const salesTax = grossRevenue * (feeDefaults.salesTaxPercent / 100);
         const netRevenue = grossRevenue - salesTax;
         const costBasis = wac * remainingUnits;
-        
+
         // Additional profit = net revenue from remaining units - their cost basis
         estimatedAdditionalProfit = netRevenue - costBasis;
-        
+
         // Track components for breakdown visibility
         estimatedRevenue = netRevenue;
         estimatedFees = salesTax;

@@ -192,7 +192,7 @@ export class CycleLineService {
         buyCostIsk: true,
       },
     });
-    
+
     // Convert Decimal to string for API compatibility
     return lines.map((l) => ({
       id: l.id,
