@@ -461,6 +461,7 @@ export function useAddTransportFee() {
       ),
     onSuccess: (_, { cycleId }) => {
       queryClient.invalidateQueries({ queryKey: qk.fees.transport(cycleId) });
+      queryClient.invalidateQueries({ queryKey: qk.cycles.profit(cycleId) });
     },
   });
 }

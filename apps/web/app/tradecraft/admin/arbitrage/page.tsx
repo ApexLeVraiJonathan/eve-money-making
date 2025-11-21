@@ -236,9 +236,14 @@ export default function ArbitragePage() {
                 {dest.stationName ?? `Station ${dest.destinationStationId}`}
               </CardTitle>
               <CardDescription>
-                {dest.items.length} opportunit
-                {dest.items.length !== 1 ? "ies" : "y"} • Total Profit:{" "}
-                {formatIsk(dest.totalProfitISK)}
+                <div className="space-y-1">
+                  <div>
+                    {dest.items.length} opportunit
+                    {dest.items.length !== 1 ? "ies" : "y"}
+                  </div>
+                  <div>Total Buy Price: {formatIsk(dest.totalCostISK)}</div>
+                  <div>Total Profit: {formatIsk(dest.totalProfitISK)}</div>
+                </div>
               </CardDescription>
             </CardHeader>
             <CardContent>

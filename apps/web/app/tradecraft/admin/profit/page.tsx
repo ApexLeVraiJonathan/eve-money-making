@@ -7,6 +7,8 @@ import * as React from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@eve/ui";
 import { Card, CardContent, CardHeader, CardTitle } from "@eve/ui";
+import { Input } from "@eve/ui";
+import { Label } from "@eve/ui";
 import {
   ArrowLeft,
   TrendingUp,
@@ -14,10 +16,11 @@ import {
   Package,
   Truck,
   Percent,
+  Plus,
 } from "lucide-react";
 import { formatIsk } from "@/lib/utils";
 import { Skeleton } from "@eve/ui";
-import { useCycles, useProfitBreakdown } from "../../api";
+import { useCycles, useProfitBreakdown, useAddTransportFee } from "../../api";
 
 export default function CycleProfitPage() {
   return (
@@ -33,6 +36,9 @@ function CycleProfitContent() {
   const queryParamCycleId = searchParams.get("cycleId");
 
   const [cycleId, setCycleId] = React.useState<string>("");
+  const [transportAmount, setTransportAmount] = React.useState<string>("");
+  const [transportMemo, setTransportMemo] = React.useState<string>("");
+  const [successMessage, setSuccessMessage] = React.useState<string>("");
 
   // Auto-load latest open cycle
   const { data: cycles = [] } = useCycles();
@@ -48,6 +54,43 @@ function CycleProfitContent() {
 
   // Use new profit breakdown API
   const { data: breakdown, isLoading, error } = useProfitBreakdown(cycleId);
+
+  // Transport fee mutation
+  const addTransportFeeMutation = useAddTransportFee();
+
+  const handleAddTransportFee = async () => {
+    if (!cycleId || !transportAmount) return;
+
+    // Parse and format amount to ensure it matches ^\d+\.\d{2}$
+    const amountNum = parseFloat(transportAmount);
+    if (isNaN(amountNum) || amountNum <= 0) {
+      alert("Please enter a valid positive amount");
+      return;
+    }
+    const formattedAmount = amountNum.toFixed(2);
+
+    try {
+      await addTransportFeeMutation.mutateAsync({
+        cycleId,
+        data: {
+          amountIsk: formattedAmount,
+          memo: transportMemo || undefined,
+        },
+      });
+
+      // Clear inputs and show success
+      setTransportAmount("");
+      setTransportMemo("");
+      setSuccessMessage("Shipping cost recorded successfully!");
+
+      // Clear success message after 3 seconds
+      setTimeout(() => setSuccessMessage(""), 3000);
+    } catch (err) {
+      alert(
+        `Failed to add transport fee: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  };
 
   if (error) {
     return (
@@ -342,6 +385,65 @@ function CycleProfitContent() {
                 </span>
               </div>
             </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Shipping/Transport Cost Form */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base font-medium flex items-center gap-2">
+            <Truck className="h-5 w-5" />
+            Add Shipping / Transport Cost
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4 max-w-2xl">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="transport-amount">Amount (ISK)</Label>
+                <Input
+                  id="transport-amount"
+                  type="number"
+                  placeholder="0.00"
+                  value={transportAmount}
+                  onChange={(e) => setTransportAmount(e.target.value)}
+                  disabled={addTransportFeeMutation.isPending}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="transport-memo">Memo (optional)</Label>
+                <Input
+                  id="transport-memo"
+                  type="text"
+                  placeholder="e.g., Jita to Amarr"
+                  value={transportMemo}
+                  onChange={(e) => setTransportMemo(e.target.value)}
+                  disabled={addTransportFeeMutation.isPending}
+                />
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <Button
+                onClick={handleAddTransportFee}
+                disabled={!transportAmount || addTransportFeeMutation.isPending}
+                className="gap-2"
+              >
+                <Plus className="h-4 w-4" />
+                Add Shipping Cost
+              </Button>
+              {successMessage && (
+                <span className="text-sm text-emerald-600 font-medium">
+                  {successMessage}
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Total recorded transport fees:{" "}
+              <span className="font-medium tabular-nums">
+                {formatIsk(Number(breakdown.expenses.transportFees))}
+              </span>
+            </p>
           </div>
         </CardContent>
       </Card>
