@@ -16,7 +16,11 @@ export class ImportController {
   @Roles('ADMIN')
   @UseGuards(RolesGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Import EVE type IDs' })
+  @ApiOperation({
+    summary: 'Import EVE type IDs',
+    description:
+      'Imports type IDs from Adam4Eve CSV. Creates missing types and updates names/published flags for existing ones. Safe to re-run to fix incorrect item names.',
+  })
   async importTypeIds(@Body() body?: BatchSizeDto) {
     return this.importService.importTypeIds(body?.batchSize);
   }
@@ -61,7 +65,11 @@ export class ImportController {
   @Roles('ADMIN')
   @UseGuards(RolesGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Import type volumes from EVE' })
+  @ApiOperation({
+    summary: 'Import type volumes from EVE',
+    description:
+      'Fetches volume/size data from ESI for all published types. Updates existing volumes to fix incorrect shipment sizes. Safe to re-run.',
+  })
   async importTypeVolumes() {
     return this.importService.importTypeVolumes();
   }

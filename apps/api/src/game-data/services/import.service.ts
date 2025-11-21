@@ -25,7 +25,7 @@ export class ImportService {
       context,
     );
 
-    let inserted = 0,
+    let upserted = 0,
       skipped = 0,
       totalRows = 0;
 
@@ -45,12 +45,17 @@ export class ImportService {
       }>({
         size: batchSize,
         flush: async (items) => {
-          const { count } = await this.prisma.typeId.createMany({
-            data: items,
-            skipDuplicates: true,
-          });
-          inserted += count;
-          this.logger.log(`Inserted ${count} type_ids`, context);
+          await this.prisma.$transaction(
+            items.map((item) =>
+              this.prisma.typeId.upsert({
+                where: { id: item.id },
+                create: { id: item.id, published: item.published, name: item.name },
+                update: { name: item.name, published: item.published },
+              }),
+            ),
+          );
+          upserted += items.length;
+          this.logger.log(`Upserted ${items.length} type_ids`, context);
         },
       });
 
@@ -87,12 +92,12 @@ export class ImportService {
     } finally {
       const durationMs = Date.now() - startedAt;
       this.logger.log(
-        `Finished import:type_ids in ${durationMs}ms (inserted=${inserted}, skipped=${skipped}, totalRows=${totalRows}, batchSize=${batchSize})`,
+        `Finished import:type_ids in ${durationMs}ms (upserted=${upserted}, skipped=${skipped}, totalRows=${totalRows}, batchSize=${batchSize})`,
         context,
       );
     }
 
-    return { inserted, skipped, totalRows, batchSize };
+    return { upserted, skipped, totalRows, batchSize };
   }
 
   async importRegionIds(batchSize = 5000) {
@@ -401,12 +406,11 @@ export class ImportService {
     const pageSize = 5000;
     let lastId: number | undefined;
 
-    // Process all missing types in ascending id pages
+    // Process all published types in ascending id pages
     for (;;) {
       const types = await this.prisma.typeId.findMany({
         where: {
           published: true,
-          volume: null,
           ...(lastId ? { id: { gt: lastId } } : {}),
         },
         select: { id: true },
