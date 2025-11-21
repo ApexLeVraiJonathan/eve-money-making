@@ -31,6 +31,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@eve/ui";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@eve/ui";
 import { ChevronDown } from "lucide-react";
 import { usePlanArbitrage, useCommitArbitrage } from "../../api";
+import { ParameterProfileManager } from "../../components/ParameterProfileManager";
 import type {
   PlanResult,
   PackagePlan,
@@ -257,6 +258,121 @@ export default function PlannerPage() {
     }
   };
 
+  // Helper to get current parameters as an object
+  const getCurrentParams = () => {
+    try {
+      const basePayload = JSON.parse(json);
+      return {
+        ...basePayload,
+        // Include advanced options state
+        liquidityOptions: {
+          windowDays: liquidityWindowDays,
+          minCoverageRatio: liquidityMinCoverageRatio,
+          minLiquidityThresholdISK: liquidityMinLiquidityThresholdISK,
+          minWindowTrades: liquidityMinWindowTrades,
+        },
+        arbitrageOptions: {
+          maxInventoryDays: arb_maxInventoryDays,
+          minMarginPercent: arb_minMarginPercent,
+          maxPriceDeviationMultiple: arb_maxPriceDeviationMultiple,
+          minTotalProfitISK: arb_minTotalProfitISK,
+          disableInventoryLimit: arb_disableInventoryLimit,
+          allowInventoryTopOff: arb_allowInventoryTopOff,
+        },
+        allocation: {
+          mode: allocationMode,
+          spreadBias,
+        },
+        minPackageNetProfitISK,
+        minPackageROIPercent,
+        shippingMarginMultiplier,
+        densityWeight,
+      };
+    } catch {
+      return {};
+    }
+  };
+
+  // Helper to load parameters from a profile
+  const handleLoadProfile = (params: Record<string, unknown>) => {
+    // Load base parameters - always set them
+    setCapacityDisplay(
+      formatNumber((params.packageCapacityM3 as number) || 60000),
+    );
+    setInvestmentDisplay(
+      formatNumber((params.investmentISK as number) || 10000000000),
+    );
+    setMaxPackagesDisplay(
+      ((params.maxPackagesHint as number) || 20).toString(),
+    );
+    setShareDisplay(
+      (
+        ((params.perDestinationMaxBudgetSharePerItem as number) || 0.2) * 100
+      ).toString(),
+    );
+    setCollateralDisplay(
+      formatNumber((params.maxPackageCollateralISK as number) || 5000000000),
+    );
+
+    // Load liquidity options - clear if not in profile
+    const liqOpts = (params.liquidityOptions as Record<string, unknown>) || {};
+    setLiquidityWindowDays((liqOpts.windowDays as number) || undefined);
+    setLiquidityMinCoverageRatio(
+      (liqOpts.minCoverageRatio as number) || undefined,
+    );
+    setLiquidityMinLiquidityThresholdISK(
+      (liqOpts.minLiquidityThresholdISK as number) || undefined,
+    );
+    setLiquidityMinWindowTrades(
+      (liqOpts.minWindowTrades as number) || undefined,
+    );
+
+    // Load arbitrage options - clear if not in profile
+    const arbOpts = (params.arbitrageOptions as Record<string, unknown>) || {};
+    setArb_maxInventoryDays((arbOpts.maxInventoryDays as number) || undefined);
+    setArb_minMarginPercent((arbOpts.minMarginPercent as number) || undefined);
+    setArb_maxPriceDeviationMultiple(
+      (arbOpts.maxPriceDeviationMultiple as number) || undefined,
+    );
+    setArb_minTotalProfitISK(
+      (arbOpts.minTotalProfitISK as number) || undefined,
+    );
+    setArb_disableInventoryLimit(
+      (arbOpts.disableInventoryLimit as boolean) || false,
+    );
+    setArb_allowInventoryTopOff(
+      (arbOpts.allowInventoryTopOff as boolean) || false,
+    );
+
+    // Load allocation options
+    const alloc = (params.allocation as Record<string, unknown>) || {};
+    setAllocationMode(
+      (alloc.mode as "best" | "targetWeighted" | "roundRobin") || "best",
+    );
+    setSpreadBias((alloc.spreadBias as number) || undefined);
+
+    // Load package quality thresholds - clear if not in profile
+    setMinPackageNetProfitISK(
+      (params.minPackageNetProfitISK as number) || undefined,
+    );
+    setMinPackageROIPercent(
+      (params.minPackageROIPercent as number) || undefined,
+    );
+    setShippingMarginMultiplier(
+      (params.shippingMarginMultiplier as number) || undefined,
+    );
+    setDensityWeight((params.densityWeight as number) || undefined);
+
+    // Update JSON to match
+    try {
+      const j = JSON.parse(json);
+      const updated = { ...j, ...params };
+      setJson(JSON.stringify(updated, null, 2));
+    } catch {
+      // If JSON is invalid, just skip updating it
+    }
+  };
+
   const handleSubmit = async () => {
     setError(null);
     setData(null);
@@ -438,13 +554,22 @@ export default function PlannerPage() {
         <TabsContent value="simple" className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Package className="h-5 w-5" />
-                Planning Parameters
-              </CardTitle>
-              <CardDescription>
-                Configure the constraints and limits for package generation
-              </CardDescription>
+              <div className="flex items-start justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <Package className="h-5 w-5" />
+                    Planning Parameters
+                  </CardTitle>
+                  <CardDescription>
+                    Configure the constraints and limits for package generation
+                  </CardDescription>
+                </div>
+                <ParameterProfileManager
+                  scope="PLANNER"
+                  currentParams={getCurrentParams()}
+                  onLoadProfile={handleLoadProfile}
+                />
+              </div>
             </CardHeader>
             <CardContent>
               <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">

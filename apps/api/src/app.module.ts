@@ -18,6 +18,7 @@ import { WalletModule } from './wallet/wallet.module';
 import { GameDataModule } from './game-data/game-data.module';
 import { MarketModule } from './market/market.module';
 import { SupportModule } from './support/support.module';
+import { ParameterProfilesModule } from './parameter-profiles/parameter-profiles.module';
 import { CompositeAuthGuard } from './characters/guards/composite-auth.guard';
 import { Public } from './characters/decorators/public.decorator';
 
@@ -49,6 +50,7 @@ class HealthController {
     GameDataModule,
     MarketModule,
     SupportModule,
+    ParameterProfilesModule,
   ],
   controllers: [HealthController],
   providers: [

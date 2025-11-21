@@ -34,6 +34,7 @@ import {
   useLiquidityItemStats,
   useTrackedStations,
 } from "../../api";
+import { ParameterProfileManager } from "../../components/ParameterProfileManager";
 import type {
   LiquidityCheckRequest,
   LiquidityCheckResponse,
@@ -79,6 +80,27 @@ export default function LiquidityPage() {
   const { data: stations = [] } = useTrackedStations();
   const liquidityCheckMutation = useLiquidityCheck();
   const liquidityItemStatsMutation = useLiquidityItemStats();
+
+  // Helper to get current parameters as an object
+  const getCurrentParams = () => ({
+    stationId,
+    windowDays,
+    minCoverageRatio,
+    minLiquidityThresholdISK,
+    minWindowTrades,
+  });
+
+  // Helper to load parameters from a profile
+  const handleLoadProfile = (params: Record<string, unknown>) => {
+    // Always set all values, including clearing optional ones if not in profile
+    setStationId((params.stationId as number) || null);
+    setWindowDays((params.windowDays as number) || 30);
+    setMinCoverageRatio((params.minCoverageRatio as number) || 0.57);
+    setMinLiquidityThresholdISK(
+      (params.minLiquidityThresholdISK as number) || 1000000,
+    );
+    setMinWindowTrades((params.minWindowTrades as number) || 5);
+  };
 
   const onRunCheck = async () => {
     setError(null);
@@ -184,14 +206,23 @@ export default function LiquidityPage() {
         <TabsContent value="check" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <BarChart3 className="h-5 w-5" />
-                Scan Configuration
-              </CardTitle>
-              <CardDescription>
-                Find liquid items at tracked stations based on trading volume
-                and frequency
-              </CardDescription>
+              <div className="flex items-start justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <BarChart3 className="h-5 w-5" />
+                    Scan Configuration
+                  </CardTitle>
+                  <CardDescription>
+                    Find liquid items at tracked stations based on trading
+                    volume and frequency
+                  </CardDescription>
+                </div>
+                <ParameterProfileManager
+                  scope="LIQUIDITY"
+                  currentParams={getCurrentParams()}
+                  onLoadProfile={handleLoadProfile}
+                />
+              </div>
             </CardHeader>
             <CardContent className="space-y-4">
               <LabeledInput

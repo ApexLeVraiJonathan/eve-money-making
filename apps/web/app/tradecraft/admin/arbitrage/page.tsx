@@ -31,6 +31,7 @@ import {
 import { Checkbox } from "@eve/ui";
 import { useArbitrageCheck } from "../../api/market";
 import { useTrackedStations } from "../../api/market";
+import { ParameterProfileManager } from "../../components/ParameterProfileManager";
 import type {
   ArbitrageCheckRequest,
   ArbitrageCheckResponse,
@@ -81,6 +82,51 @@ export default function ArbitragePage() {
     null,
   );
   const [error, setError] = useState<string>("");
+
+  // Helper to get current parameters as an object
+  const getCurrentParams = () => ({
+    liquidityWindowDays,
+    liquidityMinCoverageRatio,
+    liquidityMinLiquidityThresholdISK,
+    liquidityMinWindowTrades,
+    sourceStationId,
+    maxInventoryDays,
+    minMarginPercent,
+    maxPriceDeviationMultiple,
+    minTotalProfitISK,
+    salesTaxPercent,
+    brokerFeePercent,
+    disableInventoryLimit,
+    allowInventoryTopOff,
+  });
+
+  // Helper to load parameters from a profile
+  const handleLoadProfile = (params: Record<string, unknown>) => {
+    // Always set all values, including clearing optional ones if not in profile
+    setLiquidityWindowDays((params.liquidityWindowDays as number) || 30);
+    setLiquidityMinCoverageRatio(
+      (params.liquidityMinCoverageRatio as number) || 0.7,
+    );
+    setLiquidityMinLiquidityThresholdISK(
+      (params.liquidityMinLiquidityThresholdISK as number) || 50000000,
+    );
+    setLiquidityMinWindowTrades(
+      (params.liquidityMinWindowTrades as number) || 5,
+    );
+    setSourceStationId((params.sourceStationId as number) || undefined);
+    setMaxInventoryDays((params.maxInventoryDays as number) || 3);
+    setMinMarginPercent((params.minMarginPercent as number) || 10);
+    setMaxPriceDeviationMultiple(
+      (params.maxPriceDeviationMultiple as number) || undefined,
+    );
+    setMinTotalProfitISK((params.minTotalProfitISK as number) || 1000000);
+    setSalesTaxPercent((params.salesTaxPercent as number) || undefined);
+    setBrokerFeePercent((params.brokerFeePercent as number) || undefined);
+    setDisableInventoryLimit(
+      (params.disableInventoryLimit as boolean) || false,
+    );
+    setAllowInventoryTopOff((params.allowInventoryTopOff as boolean) || false);
+  };
 
   const onRunCheck = async () => {
     setError("");
@@ -302,14 +348,23 @@ export default function ArbitragePage() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Package className="h-5 w-5" />
-            Arbitrage Parameters
-          </CardTitle>
-          <CardDescription>
-            Configure liquidity filters and arbitrage constraints to find
-            profitable opportunities
-          </CardDescription>
+          <div className="flex items-start justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <Package className="h-5 w-5" />
+                Arbitrage Parameters
+              </CardTitle>
+              <CardDescription>
+                Configure liquidity filters and arbitrage constraints to find
+                profitable opportunities
+              </CardDescription>
+            </div>
+            <ParameterProfileManager
+              scope="ARBITRAGE"
+              currentParams={getCurrentParams()}
+              onLoadProfile={handleLoadProfile}
+            />
+          </div>
         </CardHeader>
         <CardContent className="space-y-6">
           {/* Liquidity Section */}

@@ -47,6 +47,13 @@ enum ParticipationStatus {
   REFUNDED
 }
 
+/// Scope for parameter profiles (which tool/page they belong to)
+enum ParameterProfileScope {
+  LIQUIDITY
+  ARBITRAGE
+  PLANNER
+}
+
 /// Rollover type for automatic reinvestment
 enum RolloverType {
   FULL_PAYOUT // Roll over entire payout (initial + profit), capped at 20B
@@ -557,4 +564,20 @@ model PackageCycleLine {
   @@index([packageId])
   @@index([cycleLineId])
   @@map("package_cycle_lines")
+}
+
+/// Reusable parameter profiles for tradecraft admin tools
+model ParameterProfile {
+  id          String                 @id @default(uuid()) @map("id")
+  name        String                 @map("name")
+  description String?                @map("description")
+  scope       ParameterProfileScope  @map("scope")
+  params      Json                   @map("params")
+  createdAt   DateTime               @default(now()) @map("created_at")
+  updatedAt   DateTime               @updatedAt @map("updated_at")
+  createdBy   String?                @map("created_by") // User ID of creator
+
+  @@unique([scope, name])
+  @@index([scope])
+  @@map("parameter_profiles")
 }
