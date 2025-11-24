@@ -42,4 +42,3 @@ export class CreateProfileDto {
   @IsObject()
   params: Record<string, any>;
 }
-

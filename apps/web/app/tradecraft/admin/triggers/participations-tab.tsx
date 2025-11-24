@@ -17,14 +17,12 @@ import { useImportWallet } from "../../api";
 
 type ParticipationsTabProps = {
   loading: TriggerState;
-  setLoading: React.Dispatch<React.SetStateAction<TriggerState>>;
   matchResult: MatchResult | null;
   matchParticipationPayments: (cycleId?: string) => Promise<void>;
 };
 
 export function ParticipationsTab({
   loading,
-  setLoading,
   matchResult,
   matchParticipationPayments,
 }: ParticipationsTabProps) {

@@ -36,7 +36,11 @@ export class ParameterProfilesController {
   @Public()
   @Get()
   @ApiOperation({ summary: 'List all parameter profiles' })
-  @ApiQuery({ name: 'scope', required: false, enum: ['LIQUIDITY', 'ARBITRAGE', 'PLANNER'] })
+  @ApiQuery({
+    name: 'scope',
+    required: false,
+    enum: ['LIQUIDITY', 'ARBITRAGE', 'PLANNER'],
+  })
   async findAll(@Query() query: ListProfilesQueryDto) {
     return this.parameterProfilesService.findAll(query.scope);
   }
@@ -81,4 +85,3 @@ export class ParameterProfilesController {
     return this.parameterProfilesService.remove(id);
   }
 }
-

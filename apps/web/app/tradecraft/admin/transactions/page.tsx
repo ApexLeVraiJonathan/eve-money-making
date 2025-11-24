@@ -23,20 +23,6 @@ import {
 } from "lucide-react";
 import { useWalletTransactions } from "../../api";
 
-type Tx = {
-  characterId: number;
-  characterName: string | null;
-  transactionId: string; // bigint serialized
-  date: string;
-  isBuy: boolean;
-  locationId: number;
-  stationName: string | null;
-  typeId: number;
-  typeName: string | null;
-  quantity: number;
-  unitPrice: string;
-};
-
 export default function TransactionsPage() {
   const [charId, setCharId] = React.useState("");
   const [filterCharId, setFilterCharId] = React.useState<number | undefined>(
@@ -48,7 +34,6 @@ export default function TransactionsPage() {
     data: rows = [],
     isLoading: loading,
     error,
-    refetch,
   } = useWalletTransactions(filterCharId);
 
   const load = () => {

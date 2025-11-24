@@ -17,4 +17,3 @@ export class ListProfilesQueryDto {
   @IsEnum(ParameterProfileScope)
   scope?: ParameterProfileScope;
 }
-

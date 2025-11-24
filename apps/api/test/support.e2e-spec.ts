@@ -23,7 +23,7 @@ describe('Support & Feedback (e2e)', () => {
     app = moduleRef.createNestApplication({ bufferLogs: true });
     const logger = app.get(Logger);
     app.useLogger(logger);
-    
+
     // Enable validation pipe like in main.ts
     app.useGlobalPipes(
       new ValidationPipe({
@@ -35,7 +35,7 @@ describe('Support & Feedback (e2e)', () => {
         },
       }),
     );
-    
+
     await app.init();
 
     discordService = app.get(DiscordNotificationService);
@@ -44,9 +44,7 @@ describe('Support & Feedback (e2e)', () => {
     jest
       .spyOn(discordService, 'sendSupportRequest')
       .mockResolvedValue(undefined);
-    jest
-      .spyOn(discordService, 'sendFeedback')
-      .mockResolvedValue(undefined);
+    jest.spyOn(discordService, 'sendFeedback').mockResolvedValue(undefined);
   });
 
   afterAll(async () => {

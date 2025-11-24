@@ -32,7 +32,7 @@ import {
 } from "../tradecraft/api/characters/users.hooks";
 
 export default function AccountSettingsPage() {
-  const { data: me, error, isLoading } = useCurrentUser();
+  const { data: me, error } = useCurrentUser();
   const { data: chars = [] } = useMyCharacters();
 
   const setPrimaryMutation = useSetPrimaryCharacter();

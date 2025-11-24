@@ -29,40 +29,6 @@ import {
   useMarkPayoutSent,
 } from "../../api";
 
-type Participation = {
-  id: string;
-  cycleId: string;
-  userId: string | null;
-  characterName: string;
-  amountIsk: string;
-  memo: string;
-  status: string;
-  walletJournalId: string | null;
-  validatedAt: string | null;
-  optedOutAt: string | null;
-  refundAmountIsk: string | null;
-  refundedAt: string | null;
-  payoutAmountIsk: string | null;
-  payoutPaidAt: string | null;
-  createdAt: string;
-  cycle: {
-    id: string;
-    name: string | null;
-    status: "PLANNED" | "OPEN" | "COMPLETED";
-    startedAt: string;
-    closedAt: string | null;
-  };
-};
-
-type UnmatchedDonation = {
-  journalId: string;
-  characterId: number;
-  characterName?: string;
-  amount: string;
-  description: string | null;
-  date: string;
-};
-
 export default function ParticipationsPage() {
   // Use new API hooks
   const { data: participations = [], isLoading: loading } =

@@ -141,7 +141,7 @@ export function useDeleteParameterProfile() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ id, scope }: { id: string; scope: ParameterProfileScope }) =>
+    mutationFn: ({ id }: { id: string; scope: ParameterProfileScope }) =>
       client.delete<void>(`/parameter-profiles/${id}`),
     onSuccess: (_, variables) => {
       // Invalidate the list queries

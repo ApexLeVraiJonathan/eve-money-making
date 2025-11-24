@@ -1,15 +1,9 @@
 "use client";
 
 import * as React from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { Button } from "@eve/ui";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@eve/ui";
+import { Card, CardContent, CardHeader, CardTitle } from "@eve/ui";
 import {
   Dialog,
   DialogContent,
@@ -30,13 +24,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@eve/ui";
-import {
-  AlertCircle,
-  Package,
-  PackageX,
-  Loader2,
-  CheckCircle2,
-} from "lucide-react";
+import { AlertCircle, Package, PackageX, Loader2 } from "lucide-react";
 import { Alert, AlertDescription } from "@eve/ui";
 import { formatIsk } from "@/lib/utils";
 import { useArbitrageCommits } from "../../api/market";
@@ -61,8 +49,15 @@ type PackageDetails = {
   linkedCycleLines: Array<{
     cycleLineId: string;
     typeId: number;
+    typeName: string | null;
     unitsCommitted: number;
+    plannedUnits: number;
+    unitsBought: number;
     unitsSold: number;
+    buyCostIsk: string;
+    hasSales: boolean;
+    maxRemovableUnits: number;
+    lostUnitsCandidate: number;
   }>;
   canMarkFailed: boolean;
   validationMessage: string | null;
@@ -77,7 +72,6 @@ export default function PackagesPage() {
 }
 
 function PackagesContent() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const initialCycleId = searchParams.get("cycleId");
   const client = useApiClient();
@@ -116,6 +110,14 @@ function PackagesContent() {
 
   // Group packages by destination
   const packagesByDestination = React.useMemo(() => {
+    const HUB_ORDER = ["Dodixie", "Hek", "Rens", "Amarr"];
+
+    const getHubIndex = (destination: string) => {
+      const hubName = destination.split(" ")[0];
+      const idx = HUB_ORDER.indexOf(hubName);
+      return idx === -1 ? HUB_ORDER.length : idx;
+    };
+
     const grouped = new Map<string, CommittedPackage[]>();
     packages.forEach((pkg) => {
       const key = pkg.destinationName || `Station ${pkg.destinationStationId}`;
@@ -124,12 +126,26 @@ function PackagesContent() {
       }
       grouped.get(key)!.push(pkg);
     });
-    // Sort destinations alphabetically and packages by index
+    // Sort destinations by configured hub order, then alphabetically,
+    // and packages by committedAt (newest first) within each destination
     return Array.from(grouped.entries())
-      .sort(([a], [b]) => a.localeCompare(b))
+      .sort(([a], [b]) => {
+        const aIndex = getHubIndex(a);
+        const bIndex = getHubIndex(b);
+        if (aIndex !== bIndex) {
+          return aIndex - bIndex;
+        }
+        return a.localeCompare(b);
+      })
       .map(([destination, pkgs]) => ({
         destination,
-        packages: pkgs.sort((a, b) => a.packageIndex - b.packageIndex),
+        packages: pkgs
+          .slice()
+          .sort(
+            (a, b) =>
+              new Date(b.committedAt).getTime() -
+              new Date(a.committedAt).getTime(),
+          ),
       }));
   }, [packages]);
 
@@ -413,8 +429,12 @@ function PackagesContent() {
 
           {selectedPackage && (
             <div className="space-y-4">
-              {!selectedPackage.canMarkFailed && (
-                <Alert variant="destructive">
+              {selectedPackage.validationMessage && (
+                <Alert
+                  variant={
+                    selectedPackage.canMarkFailed ? "default" : "destructive"
+                  }
+                >
                   <AlertCircle className="h-4 w-4" />
                   <AlertDescription>
                     {selectedPackage.validationMessage}
@@ -444,6 +464,40 @@ function PackagesContent() {
                         <span className="tabular-nums text-muted-foreground">
                           {item.units.toLocaleString()} units
                         </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Linked Cycle Lines diagnostics */}
+              <div className="space-y-2">
+                <Label>Linked Cycle Lines</Label>
+                <div className="border rounded-md max-h-48 overflow-y-auto text-xs">
+                  <div className="divide-y">
+                    {selectedPackage.linkedCycleLines.map((link) => (
+                      <div
+                        key={link.cycleLineId}
+                        className="flex flex-col gap-1 p-2"
+                      >
+                        <div className="flex justify-between">
+                          <span className="font-medium">
+                            {link.typeName ?? `Type ${link.typeId}`}
+                          </span>
+                          <span className="text-muted-foreground">
+                            Will mark {link.lostUnitsCandidate.toLocaleString()}{" "}
+                            as lost
+                          </span>
+                        </div>
+                        <div className="flex justify-between text-muted-foreground">
+                          <span>
+                            Committed: {link.unitsCommitted.toLocaleString()}
+                          </span>
+                          <span>
+                            Bought: {link.unitsBought.toLocaleString()} / Sold:{" "}
+                            {link.unitsSold.toLocaleString()}
+                          </span>
+                        </div>
                       </div>
                     ))}
                   </div>

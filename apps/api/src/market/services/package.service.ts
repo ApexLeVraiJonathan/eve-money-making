@@ -122,10 +122,57 @@ export class PackageService {
       throw new NotFoundException(`Package ${packageId} not found`);
     }
 
-    // Check if any linked cycle lines have sales (validation for mark-failed)
-    const hasSales = pkg.cycleLineLinks.some(
-      (link) => link.cycleLine.unitsSold > 0,
-    );
+    // Build detailed linked cycle line diagnostics
+    const linkedCycleLines = pkg.cycleLineLinks.map((link) => {
+      const cycleLine = link.cycleLine;
+      const hasSalesForLine = cycleLine.unitsSold > 0;
+
+      // How many units from this cycle line can be removed while preserving sales
+      const maxRemovable = Math.max(
+        0,
+        cycleLine.unitsBought - cycleLine.unitsSold,
+      );
+      const lostUnitsCandidate = Math.min(link.unitsCommitted, maxRemovable);
+
+      // Try to enrich with type name from package items (if present)
+      const matchedItem = pkg.items.find(
+        (item) => item.typeId === cycleLine.typeId,
+      );
+
+      return {
+        cycleLineId: cycleLine.id,
+        typeId: cycleLine.typeId,
+        typeName: matchedItem?.typeName ?? null,
+        unitsCommitted: link.unitsCommitted,
+        plannedUnits: cycleLine.plannedUnits,
+        unitsBought: cycleLine.unitsBought,
+        unitsSold: cycleLine.unitsSold,
+        buyCostIsk: cycleLine.buyCostIsk.toString(),
+        hasSales: hasSalesForLine,
+        maxRemovableUnits: maxRemovable,
+        lostUnitsCandidate,
+      };
+    });
+
+    const hasSales = linkedCycleLines.some((link) => link.hasSales);
+
+    // By default, allow marking failed while package is active.
+    let canMarkFailed = pkg.status === 'active';
+    let validationMessage: string | null = null;
+
+    if (!canMarkFailed) {
+      validationMessage = `Package is already ${pkg.status} and cannot be marked as failed`;
+    } else if (hasSales) {
+      const linesWithSales = linkedCycleLines.filter((l) => l.hasSales);
+      const example = linesWithSales[0];
+      const exampleName =
+        example?.typeName ?? `typeId=${example?.typeId ?? 'unknown'}`;
+      const count = linesWithSales.length;
+      validationMessage =
+        count === 1
+          ? `Warning: 1 linked cycle line (${exampleName}) already has sales. Only unsold units will be marked as lost.`
+          : `Warning: ${count} linked cycle lines (e.g. ${exampleName}) already have sales. Only unsold units will be marked as lost.`;
+    }
 
     return {
       id: pkg.id,
@@ -149,19 +196,9 @@ export class PackageService {
         unitCost: item.unitCost.toString(),
         unitProfit: item.unitProfit.toString(),
       })),
-      linkedCycleLines: pkg.cycleLineLinks.map((link) => ({
-        cycleLineId: link.cycleLine.id,
-        typeId: link.cycleLine.typeId,
-        unitsCommitted: link.unitsCommitted,
-        plannedUnits: link.cycleLine.plannedUnits,
-        unitsBought: link.cycleLine.unitsBought,
-        unitsSold: link.cycleLine.unitsSold,
-        buyCostIsk: link.cycleLine.buyCostIsk.toString(),
-      })),
-      canMarkFailed: pkg.status === 'active' && !hasSales,
-      validationMessage: hasSales
-        ? 'Cannot mark as failed: some items have already been sold'
-        : null,
+      linkedCycleLines,
+      canMarkFailed,
+      validationMessage,
     };
   }
 
@@ -305,17 +342,6 @@ export class PackageService {
         );
       }
 
-      // Safety check: ensure no items have been sold
-      const hasSales = pkg.cycleLineLinks.some(
-        (link) => link.cycleLine.unitsSold > 0,
-      );
-
-      if (hasSales) {
-        throw new Error(
-          'Cannot mark package as failed: some items have already been sold',
-        );
-      }
-
       // Track total cost reduction (capital recovered by reducing buyCostIsk)
       let totalCostReduction = 0;
 
@@ -335,14 +361,40 @@ export class PackageService {
           continue;
         }
 
-        // Calculate cost reduction
-        const costReduction =
-          link.unitsCommitted * Number(packageItem.unitCost);
+        const unitCost = Number(packageItem.unitCost);
+
+        // Calculate how many units can be removed while preserving sold units
+        const maxRemovable = Math.max(
+          0,
+          cycleLine.unitsBought - cycleLine.unitsSold,
+        );
+        const lostUnits = Math.min(link.unitsCommitted, maxRemovable);
+
+        if (lostUnits <= 0) {
+          this.logger.warn(
+            `No removable unsold units for cycle line ${cycleLine.id} when failing package ${input.packageId} (unitsBought=${cycleLine.unitsBought}, unitsSold=${cycleLine.unitsSold}, unitsCommitted=${link.unitsCommitted})`,
+          );
+
+          // We still remove the junction so this package no longer appears
+          // linked to the cycle line, but we do not change the line totals.
+          await tx.packageCycleLine.deleteMany({
+            where: { id: link.id },
+          });
+          continue;
+        }
+
+        // Calculate cost reduction using only the removable (unsold) units
+        const costReduction = lostUnits * unitCost;
         totalCostReduction += costReduction;
 
         // Update cycle line
-        const newPlannedUnits = cycleLine.plannedUnits - link.unitsCommitted;
-        const newUnitsBought = cycleLine.unitsBought - link.unitsCommitted;
+        const newUnitsBought = cycleLine.unitsBought - lostUnits;
+        const newPlannedUnitsRaw = cycleLine.plannedUnits - lostUnits;
+        // Never drop planned units below unitsSold; preserve at least sold qty
+        const newPlannedUnits = Math.max(
+          newPlannedUnitsRaw,
+          cycleLine.unitsSold,
+        );
         const newBuyCostIsk = Number(cycleLine.buyCostIsk) - costReduction;
 
         // Delete the junction record first (before deleting cycle line)
@@ -350,8 +402,13 @@ export class PackageService {
           where: { id: link.id },
         });
 
-        if (newUnitsBought <= 0 || newPlannedUnits <= 0) {
-          // Delete the cycle line entirely
+        const shouldDeleteLine =
+          cycleLine.unitsSold === 0 &&
+          newUnitsBought <= 0 &&
+          newPlannedUnits <= 0;
+
+        if (shouldDeleteLine) {
+          // Delete the cycle line entirely (only when there are no sales)
           await tx.cycleLine.delete({
             where: { id: cycleLine.id },
           });
@@ -369,7 +426,7 @@ export class PackageService {
             },
           });
           this.logger.log(
-            `Reduced cycle line ${cycleLine.id}: -${link.unitsCommitted} units, -${costReduction.toFixed(2)} ISK`,
+            `Reduced cycle line ${cycleLine.id}: -${lostUnits} units, -${costReduction.toFixed(2)} ISK`,
           );
         }
       }

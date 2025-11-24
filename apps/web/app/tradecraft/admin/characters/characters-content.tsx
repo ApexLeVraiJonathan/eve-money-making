@@ -1,7 +1,6 @@
 "use client";
 
 import * as React from "react";
-import { useSession } from "next-auth/react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Button } from "@eve/ui";
 import {
@@ -44,7 +43,6 @@ import {
 import {
   useAdminCharacters,
   useAllUsers,
-  useRefreshCharacterToken,
   useAdminDeleteCharacter,
   useUpdateCharacterProfile,
   useSetUserRole,
@@ -54,31 +52,7 @@ import {
   useAdminUnlinkCharacter,
 } from "../../api";
 
-type LinkedCharacter = {
-  characterId: number;
-  characterName: string;
-  ownerHash: string;
-  userId: string | null;
-  accessTokenExpiresAt: string | null;
-  scopes: string | null;
-  role?: string;
-  function?: string | null;
-  location?: string | null;
-  managedBy?: string;
-  notes?: string | null;
-};
-
-type AdminUserRow = {
-  id: string;
-  role: "USER" | "ADMIN";
-  primaryCharacterId: number | null;
-  characters: Array<{ id: number; name: string }>;
-};
-
-// Removed fetch functions - now using React Query hooks
-
 export default function CharactersPageContent() {
-  const { data: session } = useSession();
   const searchParams = useSearchParams();
   const router = useRouter();
 
@@ -104,7 +78,6 @@ export default function CharactersPageContent() {
       : null;
 
   // Mutations
-  const refreshTokenMutation = useRefreshCharacterToken();
   const deleteCharacterMutation = useAdminDeleteCharacter();
   const updateProfileMutation = useUpdateCharacterProfile();
   const setUserRoleMutation = useSetUserRole();

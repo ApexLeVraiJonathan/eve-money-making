@@ -17,7 +17,6 @@ import { useRunWalletsJob, useReconcileWallet } from "../../api";
 
 type FinancialTabProps = {
   loading: TriggerState;
-  setLoading: React.Dispatch<React.SetStateAction<TriggerState>>;
   currentCycleId: string;
   snapshots: CycleSnapshot[];
   createSnapshot: () => Promise<void>;
@@ -25,7 +24,6 @@ type FinancialTabProps = {
 
 export function FinancialTab({
   loading,
-  setLoading,
   currentCycleId,
   snapshots,
   createSnapshot,

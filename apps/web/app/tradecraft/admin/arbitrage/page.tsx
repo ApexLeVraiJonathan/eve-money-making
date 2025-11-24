@@ -36,7 +36,6 @@ import type {
   ArbitrageCheckRequest,
   ArbitrageCheckResponse,
   Opportunity,
-  DestinationGroup,
 } from "@eve/shared/types";
 
 export default function ArbitragePage() {

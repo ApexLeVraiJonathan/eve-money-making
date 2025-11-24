@@ -39,23 +39,6 @@ import { Badge } from "@eve/ui";
 import { Skeleton } from "@eve/ui";
 import { useMyParticipationHistory } from "../api";
 
-type ParticipationHistory = {
-  cycleId: string;
-  cycle: {
-    id: string;
-    name: string | null;
-    startedAt: string;
-    closedAt: string | null;
-  };
-  amountIsk: string;
-  status: string;
-  createdAt: string;
-  validatedAt: string | null;
-  payoutAmountIsk?: string | null;
-  payoutPaidAt?: string | null;
-  rolloverDeductedIsk?: string | null; // Amount that was rolled over to next cycle
-};
-
 export default function MyInvestmentsPage() {
   const { data: session, status } = useSession();
   const router = useRouter();

@@ -32,13 +32,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@eve/ui";
 import { ChevronDown } from "lucide-react";
 import { usePlanArbitrage, useCommitArbitrage } from "../../api";
 import { ParameterProfileManager } from "../../components/ParameterProfileManager";
-import type {
-  PlanResult,
-  PackagePlan,
-  PackedUnit,
-  LiquidityOptions,
-  ArbitrageOptions,
-} from "@eve/shared";
+import type { PlanResult, PackagePlan } from "@eve/shared";
 import { LabeledInput } from "@eve/ui";
 import { Checkbox } from "@eve/ui";
 import {
@@ -470,42 +464,6 @@ export default function PlannerPage() {
       return acc;
     }, {});
   }, [data]);
-
-  // Aggregate items per destination (sum units of identical items)
-  const aggregatedItemsByDest = React.useMemo(() => {
-    const out: Record<
-      string,
-      Array<{ typeId: number; name: string; units: number }>
-    > = {};
-    for (const [dest, pkgs] of Object.entries(groupedByDest)) {
-      const map = new Map<
-        string,
-        { typeId: number; name: string; units: number }
-      >();
-      for (const p of pkgs) {
-        for (const it of p.items) {
-          const key = `${it.typeId}|${it.name}`;
-          const existing = map.get(key);
-          if (existing) existing.units += it.units;
-          else
-            map.set(key, { typeId: it.typeId, name: it.name, units: it.units });
-        }
-      }
-      out[dest] = Array.from(map.values()).sort((a, b) =>
-        a.name.localeCompare(b.name),
-      );
-    }
-    return out;
-  }, [groupedByDest]);
-
-  // Build copy lists by destination from aggregated items
-  const copyTextByDest = React.useMemo(() => {
-    const map: Record<string, string> = {};
-    for (const [dest, items] of Object.entries(aggregatedItemsByDest)) {
-      map[dest] = items.map((it) => `${it.name}\t${it.units}`).join("\n");
-    }
-    return map;
-  }, [aggregatedItemsByDest]);
 
   // Build copy lists per package
   const copyTextByPackage = React.useMemo(() => {
@@ -1254,8 +1212,6 @@ export default function PlannerPage() {
             {Object.values(groupedByDest).map((pkgs, idx) => {
               const destId = pkgs[0].destinationStationId;
               const destName = pkgs[0].destinationName || `Station ${destId}`;
-              const copyText = copyTextByDest[String(destId)] || "";
-              const aggItems = aggregatedItemsByDest[String(destId)] || [];
               const totalSpend = pkgs.reduce((s, p) => s + p.spendISK, 0);
               const totalProfit = pkgs.reduce((s, p) => s + p.netProfitISK, 0);
 

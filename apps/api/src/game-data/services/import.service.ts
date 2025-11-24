@@ -49,7 +49,11 @@ export class ImportService {
             items.map((item) =>
               this.prisma.typeId.upsert({
                 where: { id: item.id },
-                create: { id: item.id, published: item.published, name: item.name },
+                create: {
+                  id: item.id,
+                  published: item.published,
+                  name: item.name,
+                },
                 update: { name: item.name, published: item.published },
               }),
             ),

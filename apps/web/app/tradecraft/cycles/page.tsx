@@ -1,38 +1,31 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { Recycle, TrendingUp } from "lucide-react";
-import { Badge } from "@eve/ui";
-import { Button } from "@eve/ui";
-import { formatIsk } from "@/lib/utils";
-import NextCycleSection from "./next-cycle-section";
+import { Recycle, TrendingUp, CircleHelp } from "lucide-react";
 import {
+  Badge,
+  Button,
+  Skeleton,
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
   Empty,
   EmptyDescription,
   EmptyHeader,
   EmptyMedia,
   EmptyTitle,
 } from "@eve/ui";
-import { CircleHelp } from "lucide-react";
-import { Skeleton } from "@eve/ui";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@eve/ui";
-import { useCycleOverview, useCycleSnapshots } from "../api";
+import { formatIsk } from "@/lib/utils";
+import NextCycleSection from "./next-cycle-section";
+import { useCycleOverview } from "../api";
 
 export default function CyclesOverviewPage() {
   const router = useRouter();
 
-  // Use new API hooks instead of manual fetch
+  // Use new API hook instead of manual fetch
   const { data, isLoading } = useCycleOverview();
-  const { data: snapshots = [] } = useCycleSnapshots(
-    data?.current?.id ?? "",
-    10,
-  );
 
   const formatTimeLeft = (end: string | number | Date) => {
     const endMs = new Date(end).getTime();
@@ -48,36 +41,6 @@ export default function CyclesOverviewPage() {
     const secs = Math.floor((diffMs % (60 * 1000)) / 1000);
     return `${mins}m ${secs}s left`;
   };
-
-  // Prepare pie chart data - showing capital distribution
-  const pieData = data?.current
-    ? [
-        {
-          name: "Cash",
-          value: data.current.capital.cash,
-          fill: "#059669", // Emerald-600
-        },
-        {
-          name: "Inventory",
-          value: data.current.capital.inventory,
-          fill: "#92400e", // Amber-800
-        },
-      ]
-    : [];
-
-  // Prepare profit line chart data
-  const sortedSnapshots = [...snapshots].sort(
-    (a, b) =>
-      new Date(a.snapshotAt).getTime() - new Date(b.snapshotAt).getTime(),
-  );
-
-  const profitOverTimeData = sortedSnapshots.map((snap) => ({
-    date: new Date(snap.snapshotAt).toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-    }),
-    profit: parseFloat(snap.cycleProfitIsk) / 1_000_000, // Convert to millions
-  }));
 
   return (
     <div className="p-6 space-y-6">

@@ -11,4 +11,3 @@ import { ParameterProfilesController } from './parameter-profiles.controller';
   exports: [ParameterProfilesService],
 })
 export class ParameterProfilesModule {}
-

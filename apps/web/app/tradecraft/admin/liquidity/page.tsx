@@ -43,12 +43,6 @@ import type {
   LiquidityItemDto,
 } from "@eve/shared/types";
 
-type TrackedStation = {
-  id: string;
-  stationId: number;
-  station: { name: string };
-};
-
 export default function LiquidityPage() {
   const [mode, setMode] = useState<"check" | "itemStats">("check");
   const [error, setError] = useState<string | null>(null);

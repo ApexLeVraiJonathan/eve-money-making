@@ -14,7 +14,6 @@ import {
 import { ArrowLeft } from "lucide-react";
 import { formatIsk } from "@/lib/utils";
 import { useCycleProfit, useTransportFees } from "@/app/tradecraft/api";
-import type { CycleProfit } from "@eve/shared";
 import { Skeleton } from "@eve/ui";
 
 export default function CycleProfitPage() {

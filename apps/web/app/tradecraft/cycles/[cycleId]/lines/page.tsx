@@ -36,7 +36,6 @@ import {
 } from "@/app/tradecraft/api";
 import type { CycleLine } from "@eve/shared";
 import { toast } from "sonner";
-import { Badge } from "@eve/ui";
 import { Skeleton } from "@eve/ui";
 import {
   AlertDialog,

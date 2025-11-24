@@ -16,19 +16,6 @@ import {
 } from "@eve/ui";
 import { useMyParticipation, useOptOutParticipation } from "../api";
 
-type Participation = {
-  id: string;
-  cycleId: string;
-  characterName: string;
-  amountIsk: string;
-  memo: string;
-  status: string;
-  walletJournalId: string | null;
-  createdAt: string;
-  validatedAt: string | null;
-  optedOutAt: string | null;
-};
-
 type NextCycle = {
   id: string;
   name: string | null;
@@ -65,7 +52,7 @@ export default function NextCycleSection({ next }: { next: NextCycle | null }) {
           ? "Participation cancelled successfully"
           : "Participation cancelled. A refund will be processed by an admin.",
       );
-    } catch (error) {
+    } catch {
       toast.error("Failed to cancel participation. Please try again.");
     }
   };

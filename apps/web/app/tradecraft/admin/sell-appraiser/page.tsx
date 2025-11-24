@@ -20,7 +20,6 @@ import {
   Loader2,
   FileText,
   Store,
-  Package,
 } from "lucide-react";
 import { Alert, AlertDescription } from "@eve/ui";
 import {
@@ -43,12 +42,6 @@ import type {
   SellAppraiseItem,
   SellAppraiseByCommitItem,
 } from "@eve/shared/types";
-
-type TrackedStation = {
-  id: string;
-  stationId: number;
-  station: { name: string };
-};
 
 // Use shared types from @eve/shared/types
 type PasteRow = SellAppraiseItem;

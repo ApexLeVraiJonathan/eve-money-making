@@ -26,8 +26,8 @@ import {
   XAxis,
   YAxis,
   CartesianGrid,
-  ResponsiveContainer,
   ReferenceLine,
+  ResponsiveContainer,
 } from "recharts";
 import { Skeleton } from "@eve/ui";
 import { Badge } from "@eve/ui";
@@ -45,41 +45,6 @@ import {
   useCycleSnapshots,
   useMyParticipation,
 } from "../api";
-
-type CycleDetails = {
-  id: string;
-  name: string | null;
-  startedAt: string;
-  closedAt: string | null;
-  status: string;
-  profit: {
-    current: number;
-    estimated: number;
-    portfolioValue: number;
-  };
-  capital: {
-    cash: number;
-    inventory: number;
-    total: number;
-  };
-  initialCapitalIsk: number;
-  participantCount: number;
-  totalInvestorCapital: number;
-  myParticipation?: {
-    amountIsk: string;
-    payoutAmountIsk: string | null;
-    status: string;
-  };
-};
-
-type CycleSnapshot = {
-  id: string;
-  cycleId: string;
-  snapshotAt: string;
-  walletCashIsk: string;
-  inventoryIsk: string;
-  cycleProfitIsk: string;
-};
 
 const chartConfig = {
   cash: {

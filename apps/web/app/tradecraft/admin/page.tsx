@@ -28,14 +28,11 @@ import {
   YAxis,
   CartesianGrid,
   ReferenceLine,
-  ResponsiveContainer,
 } from "recharts";
 import { formatIsk } from "@/lib/utils";
 import { useCycles, useCycleCapital, useCycleSnapshots } from "../api";
 import { useMarketStaleness } from "../api/jobs";
 import { useEsiMetrics } from "../api/esi";
-import type { Cycle, CycleSnapshot } from "@eve/shared";
-
 const chartConfig = {
   cash: {
     label: "Cash",

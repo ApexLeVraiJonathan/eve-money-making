@@ -10,7 +10,6 @@ import {
   DollarSign,
   Percent,
   Target,
-  TrendingDown,
 } from "lucide-react";
 import { formatIsk } from "@/lib/utils";
 import {

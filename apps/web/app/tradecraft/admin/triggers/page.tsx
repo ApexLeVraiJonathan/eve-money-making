@@ -221,6 +221,7 @@ export default function TriggersPage() {
     void loadImportSummary();
     void loadMarketStaleness();
     void loadLatestCycle();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
@@ -272,20 +273,18 @@ export default function TriggersPage() {
 
         <ParticipationsTab
           loading={loading}
-          setLoading={setLoading}
           matchResult={matchResult}
           matchParticipationPayments={matchParticipationPayments}
         />
 
         <FinancialTab
           loading={loading}
-          setLoading={setLoading}
           currentCycleId={currentCycleId}
           snapshots={snapshots}
           createSnapshot={createSnapshot}
         />
 
-        <SystemCleanupTab loading={loading} setLoading={setLoading} />
+        <SystemCleanupTab />
       </Tabs>
     </div>
   );

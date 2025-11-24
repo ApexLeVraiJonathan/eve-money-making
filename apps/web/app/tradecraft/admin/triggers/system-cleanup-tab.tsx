@@ -12,18 +12,9 @@ import {
 import { TabsContent } from "@eve/ui";
 import { toast } from "sonner";
 import { Loader2, Trash2, Shield } from "lucide-react";
-import type { TriggerState } from "./types";
 import { useCleanupEsiCache, useCleanupOAuthState } from "../../api";
 
-type SystemCleanupTabProps = {
-  loading: TriggerState;
-  setLoading: React.Dispatch<React.SetStateAction<TriggerState>>;
-};
-
-export function SystemCleanupTab({
-  loading,
-  setLoading,
-}: SystemCleanupTabProps) {
+export function SystemCleanupTab() {
   const cleanupEsiCacheMutation = useCleanupEsiCache();
   const cleanupOAuthStateMutation = useCleanupOAuthState();
 

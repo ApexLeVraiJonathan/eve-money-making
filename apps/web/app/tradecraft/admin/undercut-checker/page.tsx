@@ -25,7 +25,6 @@ import {
   CheckCircle2,
   AlertCircle,
   Loader2,
-  Package,
   Store,
   AlertTriangle,
   Copy,
@@ -41,12 +40,6 @@ import {
   useUpdateBulkSellPrices,
 } from "../../api";
 import type { UndercutCheckGroup } from "@eve/shared/types";
-
-type TrackedStation = {
-  id: string;
-  stationId: number;
-  station: { name: string };
-};
 
 export default function UndercutCheckerPage() {
   const [selectedStations, setSelectedStations] = useState<number[]>([]);

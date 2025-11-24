@@ -3,7 +3,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ApiError } from "@eve/api-client";
 import { qk } from "@eve/api-client/queryKeys";
-import type { User, EveCharacter } from "@eve/shared";
 import { useApiClient } from "@/app/api-hooks/useApiClient";
 import { useAuthenticatedQuery } from "@/app/api-hooks/useAuthenticatedQuery";
 
