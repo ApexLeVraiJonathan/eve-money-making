@@ -467,6 +467,31 @@ export function useAddTransportFee() {
 }
 
 /**
+ * Add collateral recovery fee (income) to cycle
+ */
+export function useAddCollateralRecoveryFee() {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      cycleId,
+      data,
+    }: {
+      cycleId: string;
+      data: { amountIsk: string; memo?: string };
+    }) =>
+      client.post<CycleFeeEvent>(
+        `/ledger/cycles/${cycleId}/collateral-recovery-fee`,
+        data,
+      ),
+    onSuccess: (_, { cycleId }) => {
+      queryClient.invalidateQueries({ queryKey: qk.cycles.profit(cycleId) });
+    },
+  });
+}
+
+/**
  * Finalize payouts for a cycle
  */
 export function useFinalizePayouts() {

@@ -18,7 +18,6 @@ export class MarkFailedRequest {
     description: 'Collateral profit in ISK',
     example: '50000.00',
     pattern: '^\\d+(\\.\\d{1,2})?$',
-    default: '0',
   })
   @IsOptional()
   @IsString()
@@ -26,7 +25,7 @@ export class MarkFailedRequest {
     message:
       'collateralProfitIsk must be a valid number with up to 2 decimal places',
   })
-  collateralProfitIsk?: string = '0';
+  collateralProfitIsk?: string;
 
   @ApiPropertyOptional({
     description: 'Optional memo about the failure',

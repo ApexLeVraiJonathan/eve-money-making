@@ -20,7 +20,12 @@ import {
 } from "lucide-react";
 import { formatIsk } from "@/lib/utils";
 import { Skeleton } from "@eve/ui";
-import { useCycles, useProfitBreakdown, useAddTransportFee } from "../../api";
+import {
+  useCycles,
+  useProfitBreakdown,
+  useAddTransportFee,
+  useAddCollateralRecoveryFee,
+} from "../../api";
 
 export default function CycleProfitPage() {
   return (
@@ -38,6 +43,8 @@ function CycleProfitContent() {
   const [cycleId, setCycleId] = React.useState<string>("");
   const [transportAmount, setTransportAmount] = React.useState<string>("");
   const [transportMemo, setTransportMemo] = React.useState<string>("");
+  const [collateralAmount, setCollateralAmount] = React.useState<string>("");
+  const [collateralMemo, setCollateralMemo] = React.useState<string>("");
   const [successMessage, setSuccessMessage] = React.useState<string>("");
 
   // Auto-load latest open cycle
@@ -55,8 +62,9 @@ function CycleProfitContent() {
   // Use new profit breakdown API
   const { data: breakdown, isLoading, error } = useProfitBreakdown(cycleId);
 
-  // Transport fee mutation
+  // Transport / collateral fee mutations
   const addTransportFeeMutation = useAddTransportFee();
+  const addCollateralRecoveryFeeMutation = useAddCollateralRecoveryFee();
 
   const handleAddTransportFee = async () => {
     if (!cycleId || !transportAmount) return;
@@ -88,6 +96,39 @@ function CycleProfitContent() {
     } catch (err) {
       alert(
         `Failed to add transport fee: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  };
+
+  const handleAddCollateralRecoveryFee = async () => {
+    if (!cycleId || !collateralAmount) return;
+
+    const amountNum = parseFloat(collateralAmount);
+    if (isNaN(amountNum) || amountNum <= 0) {
+      alert("Please enter a valid positive amount");
+      return;
+    }
+    const formattedAmount = amountNum.toFixed(2);
+
+    try {
+      await addCollateralRecoveryFeeMutation.mutateAsync({
+        cycleId,
+        data: {
+          amountIsk: formattedAmount,
+          memo: collateralMemo || undefined,
+        },
+      });
+
+      setCollateralAmount("");
+      setCollateralMemo("");
+      setSuccessMessage("Collateral recovery recorded successfully!");
+
+      setTimeout(() => setSuccessMessage(""), 3000);
+    } catch (err) {
+      alert(
+        `Failed to add collateral recovery: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
       );
     }
   };
@@ -442,6 +483,72 @@ function CycleProfitContent() {
               Total recorded transport fees:{" "}
               <span className="font-medium tabular-nums">
                 {formatIsk(Number(breakdown.expenses.transportFees))}
+              </span>
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Collateral Recovery Form (manual adjustments) */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base font-medium flex items-center gap-2">
+            <DollarSign className="h-5 w-5" />
+            Add Collateral Recovery (Manual)
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4 max-w-2xl">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="collateral-amount">Profit Amount (ISK)</Label>
+                <Input
+                  id="collateral-amount"
+                  type="number"
+                  placeholder="0.00"
+                  value={collateralAmount}
+                  onChange={(e) => setCollateralAmount(e.target.value)}
+                  disabled={addCollateralRecoveryFeeMutation.isPending}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="collateral-memo">Memo (optional)</Label>
+                <Input
+                  id="collateral-memo"
+                  type="text"
+                  placeholder="e.g., Collateral profit for failed package"
+                  value={collateralMemo}
+                  onChange={(e) => setCollateralMemo(e.target.value)}
+                  disabled={addCollateralRecoveryFeeMutation.isPending}
+                />
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <Button
+                onClick={handleAddCollateralRecoveryFee}
+                disabled={
+                  !collateralAmount ||
+                  addCollateralRecoveryFeeMutation.isPending
+                }
+                className="gap-2"
+              >
+                <Plus className="h-4 w-4" />
+                Add Collateral Recovery
+              </Button>
+              {successMessage && (
+                <span className="text-sm text-emerald-600 font-medium">
+                  {successMessage}
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Total collateral recovery recorded:{" "}
+              <span className="font-medium tabular-nums">
+                {Number(breakdown.expenses.collateralRecovery) < 0
+                  ? formatIsk(
+                      Math.abs(Number(breakdown.expenses.collateralRecovery)),
+                    )
+                  : "0.00"}
               </span>
             </p>
           </div>

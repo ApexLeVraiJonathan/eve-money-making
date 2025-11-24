@@ -50,6 +50,7 @@ import { CreateCycleLineManualRequest } from './dto/create-cycle-line-manual.dto
 import { UpdateCycleLineRequest } from './dto/update-cycle-line.dto';
 import { AddFeeRequest } from './dto/add-fee.dto';
 import { AddTransportFeeRequest } from './dto/add-transport-fee.dto';
+import { AddCollateralRecoveryFeeRequest } from './dto/add-collateral-recovery-fee.dto';
 import {
   AddBulkBrokerFeesRequest,
   AddBulkRelistFeesRequest,
@@ -557,6 +558,19 @@ export class CyclesController {
     @Body() body: AddTransportFeeRequest,
   ): Promise<unknown> {
     return await this.feeService.addTransportFee({ cycleId, ...body });
+  }
+
+  @Post('cycles/:cycleId/collateral-recovery-fee')
+  @Roles('ADMIN')
+  @UseGuards(RolesGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Add a collateral recovery fee (income) to a cycle' })
+  @ApiParam({ name: 'cycleId', description: 'Cycle ID' })
+  async addCollateralRecoveryFee(
+    @Param('cycleId') cycleId: string,
+    @Body() body: AddCollateralRecoveryFeeRequest,
+  ): Promise<unknown> {
+    return await this.feeService.addCollateralRecoveryFee({ cycleId, ...body });
   }
 
   @Get('cycles/:cycleId/transport-fees')

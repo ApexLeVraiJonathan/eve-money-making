@@ -99,4 +99,30 @@ export class FeeService {
       orderBy: { occurredAt: 'desc' },
     });
   }
+
+  /**
+   * Add a collateral recovery fee (income) to a cycle.
+   * The amount is stored as a negative value so that it is treated
+   * as income in profit calculations, consistent with markPackageFailed.
+   */
+  async addCollateralRecoveryFee(input: {
+    cycleId: string;
+    amountIsk: string;
+    memo?: string;
+  }) {
+    const amount =
+      input.amountIsk.startsWith('-') && Number(input.amountIsk) <= 0
+        ? input.amountIsk
+        : `-${input.amountIsk}`;
+
+    return await this.prisma.cycleFeeEvent.create({
+      data: {
+        cycleId: input.cycleId,
+        feeType: 'collateral_recovery',
+        amountIsk: amount,
+        memo: input.memo ?? null,
+        occurredAt: new Date(),
+      },
+    });
+  }
 }
