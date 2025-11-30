@@ -103,6 +103,7 @@ This verification ensures changes meet design standards and user requirements.
 ### Contrast & Readability
 
 - Meet/aim for WCAG contrast. Avoid low-contrast text and ensure interactive elements stand out.
+- **CRITICAL: Avoid Overusing Muted Text** — `text-muted-foreground` should ONLY be used for truly secondary/tertiary information (e.g., metadata timestamps, helper text). Primary content, labels, values, and user-facing information must use `text-foreground` or higher-contrast variants like `text-foreground/70` or `text-foreground/80`. Every new page/component should be reviewed to ensure important information is not muted.
 
 ### Thematic Accents
 
@@ -116,11 +117,19 @@ This verification ensures changes meet design standards and user requirements.
 
 ### Shadows & Elevation
 
-- Subtle shadows (`shadow-sm/md`) and rounded corners (`rounded-md/lg`) to indicate layering.
+- Subtle shadows (`shadow-sm/md/lg`) and rounded corners (`rounded-md/lg/xl`) to indicate layering.
+- Use `shadow-md` for cards at rest, `shadow-lg` for hover states or elevated components.
 
-### Consistent Lighting
+### Consistent Lighting Model
 
-- Keep a uniform lighting direction (assume light from above). Elevation matches importance.
+- **Light Source**: Assume light comes from the top-middle of the screen, slightly elevated.
+- **Layering Principle**: Components closer to the user (higher in the stack) should be lighter, with more shadow underneath. Use gradients like `bg-gradient-to-b from-background to-muted/20` to create subtle depth.
+- **Elevation matches importance**: More important/interactive elements get stronger shadows and lighter backgrounds.
+
+### Gradient Backgrounds
+
+- Use subtle gradients (`from-background to-muted/10` or `to-muted/20`) on cards and containers to create depth without being heavy-handed.
+- Combine gradients with shadows for a polished, layered effect.
 
 ### Avoid Overdoing
 

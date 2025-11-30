@@ -75,7 +75,7 @@ export default function TriggersPage() {
     }
   };
 
-  const loadTrackedStations = async () => {
+  const loadTrackedStations = React.useCallback(async () => {
     try {
       const data = await client.get<TrackedStation[]>("/tracked-stations");
       setTrackedStations(data);
@@ -86,7 +86,7 @@ export default function TriggersPage() {
           : "Failed to load tracked stations",
       );
     }
-  };
+  }, [client]);
 
   const addTrackedStation = async () => {
     if (!stationId) return;
@@ -123,25 +123,40 @@ export default function TriggersPage() {
     }
   };
 
-  const loadImportSummary = async () => {
+  const loadImportSummary = React.useCallback(async () => {
     try {
       const data = await client.get<ImportSummary>("/import/summary");
       setImportSummary(data);
     } catch (error) {
       console.error("Error loading import summary:", error);
     }
-  };
+  }, [client]);
 
-  const loadMarketStaleness = async () => {
+  const loadMarketStaleness = React.useCallback(async () => {
     try {
       const data = await client.get<MarketStaleness>("/jobs/staleness");
       setMarketStaleness(data);
     } catch (error) {
       console.error("Error loading market staleness:", error);
     }
-  };
+  }, [client]);
 
-  const loadLatestCycle = async () => {
+  const loadSnapshots = React.useCallback(
+    async (cycleId: string) => {
+      try {
+        const data = await client.get<CycleSnapshot[]>(
+          `/ledger/cycles/${cycleId}/snapshots`,
+        );
+        setSnapshots(data.slice(0, 10));
+      } catch (error) {
+        console.error("Failed to load snapshots:", error);
+        setSnapshots([]);
+      }
+    },
+    [client],
+  );
+
+  const loadLatestCycle = React.useCallback(async () => {
     try {
       const rows = await client.get<
         Array<{
@@ -160,19 +175,7 @@ export default function TriggersPage() {
     } catch (error) {
       console.error("Failed to load latest cycle:", error);
     }
-  };
-
-  const loadSnapshots = async (cycleId: string) => {
-    try {
-      const data = await client.get<CycleSnapshot[]>(
-        `/ledger/cycles/${cycleId}/snapshots`,
-      );
-      setSnapshots(data.slice(0, 10));
-    } catch (error) {
-      console.error("Failed to load snapshots:", error);
-      setSnapshots([]);
-    }
-  };
+  }, [client, loadSnapshots]);
 
   const createSnapshot = async () => {
     if (!currentCycleId) {
@@ -221,8 +224,12 @@ export default function TriggersPage() {
     void loadImportSummary();
     void loadMarketStaleness();
     void loadLatestCycle();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [
+    loadTrackedStations,
+    loadImportSummary,
+    loadMarketStaleness,
+    loadLatestCycle,
+  ]);
 
   return (
     <div className="container mx-auto max-w-7xl p-6 space-y-6">

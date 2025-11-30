@@ -2,7 +2,6 @@
 
 import * as React from "react";
 import { ChevronsUpDown, LogIn, LogOut } from "lucide-react";
-import { signIn, signOut } from "next-auth/react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@eve/ui";
 import {
@@ -20,6 +19,11 @@ import {
   useSidebar,
 } from "@eve/ui";
 import { Button } from "@eve/ui";
+import {
+  logout,
+  startCharacterLink,
+  startUserLogin,
+} from "@/app/tradecraft/api/characters/users.hooks";
 import { useMyCharacters } from "@/app/tradecraft/api/characters";
 
 export function NavUser() {
@@ -27,10 +31,9 @@ export function NavUser() {
   const { data: characters, isLoading: loading } = useMyCharacters();
 
   const handleLogin = () => {
-    // Use NextAuth to sign in with EVE Online
-    void signIn("eveonline", {
-      callbackUrl: typeof window !== "undefined" ? window.location.href : "/",
-    });
+    const returnUrl =
+      typeof window !== "undefined" ? window.location.href : "/";
+    startUserLogin(returnUrl);
   };
 
   // Not linked yet → show sign-in button
@@ -122,12 +125,18 @@ export function NavUser() {
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={handleLogin}>
+            <DropdownMenuItem
+              onClick={() => {
+                const returnUrl =
+                  typeof window !== "undefined" ? window.location.href : "/";
+                startCharacterLink(returnUrl);
+              }}
+            >
               Link another character
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem
-              onClick={() => signOut({ callbackUrl: "/" })}
+              onClick={() => void logout()}
               className="text-destructive focus:text-destructive"
             >
               <LogOut className="mr-2 h-4 w-4" />

@@ -5,7 +5,6 @@ import { Copy, Lock, X, LogIn } from "lucide-react";
 import { Badge } from "@eve/ui";
 import { Button } from "@eve/ui";
 import { toast } from "sonner";
-import { useSession, signIn } from "next-auth/react";
 import OptInDialog from "./opt-in-dialog";
 import {
   Empty,
@@ -15,6 +14,7 @@ import {
   EmptyTitle,
 } from "@eve/ui";
 import { useMyParticipation, useOptOutParticipation } from "../api";
+import { startUserLogin, useCurrentUser } from "../api/characters/users.hooks";
 
 type NextCycle = {
   id: string;
@@ -24,7 +24,7 @@ type NextCycle = {
 };
 
 export default function NextCycleSection({ next }: { next: NextCycle | null }) {
-  const { status } = useSession();
+  const { data: currentUser, isLoading: userLoading } = useCurrentUser();
 
   // Use new API hook
   const { data: participation, isLoading: loading } = useMyParticipation(
@@ -328,7 +328,7 @@ export default function NextCycleSection({ next }: { next: NextCycle | null }) {
             </div>
           );
         })()
-      ) : status === "unauthenticated" ? (
+      ) : !userLoading && !currentUser ? (
         <div className="mt-3 rounded-lg border border-primary/20 bg-primary/5 p-4">
           <div className="flex items-start gap-3">
             <LogIn className="h-5 w-5 text-primary mt-0.5" />
@@ -341,14 +341,11 @@ export default function NextCycleSection({ next }: { next: NextCycle | null }) {
                 upcoming tradecraft cycles.
               </p>
               <Button
-                onClick={() =>
-                  void signIn("eveonline", {
-                    callbackUrl:
-                      typeof window !== "undefined"
-                        ? window.location.href
-                        : "/",
-                  })
-                }
+                onClick={() => {
+                  const returnUrl =
+                    typeof window !== "undefined" ? window.location.href : "/";
+                  startUserLogin(returnUrl);
+                }}
                 className="gap-2"
               >
                 <LogIn className="h-4 w-4" />

@@ -43,6 +43,8 @@ import {
   SelectValue,
 } from "@eve/ui";
 
+const PLANNER_DRAFT_STORAGE_KEY = "planner-draft-v1";
+
 const defaultPayload = {
   shippingCostByStation: {
     60008494: 45000000,
@@ -80,6 +82,9 @@ export default function PlannerPage() {
   const [commitSuccess, setCommitSuccess] = React.useState<{
     cycleId: string;
     packageCount: number;
+  } | null>(null);
+  const [restoredFromDraft, setRestoredFromDraft] = React.useState<{
+    restoredAt: string;
   } | null>(null);
 
   // React Query mutations
@@ -167,6 +172,128 @@ export default function PlannerPage() {
   // Helper to format number with commas
   const formatNumber = (value: number): string => {
     return value.toLocaleString();
+  };
+
+  const hasUncommittedPlan = !!data && !commitSuccess;
+
+  // Warn on page unload if there is an uncommitted plan
+  React.useEffect(() => {
+    if (!hasUncommittedPlan) {
+      return;
+    }
+
+    const handler = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      // Required for some browsers to show the prompt
+      event.returnValue = "";
+    };
+
+    window.addEventListener("beforeunload", handler);
+    return () => {
+      window.removeEventListener("beforeunload", handler);
+    };
+  }, [hasUncommittedPlan]);
+
+  // Restore draft from localStorage on mount (if any)
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const raw = window.localStorage.getItem(PLANNER_DRAFT_STORAGE_KEY);
+      if (!raw) return;
+
+      const parsed = JSON.parse(raw) as {
+        params?: Record<string, unknown>;
+        data?: PlanResult | null;
+        memo?: string;
+        showAdvancedOptions?: boolean;
+        restoredAt?: string;
+      };
+
+      if (parsed.params) {
+        handleLoadProfile(parsed.params);
+      }
+      if (typeof parsed.showAdvancedOptions === "boolean") {
+        setShowAdvancedOptions(parsed.showAdvancedOptions);
+      }
+      if (parsed.data) {
+        setData(parsed.data);
+      }
+      if (typeof parsed.memo === "string") {
+        setMemo(parsed.memo);
+      }
+
+      setRestoredFromDraft({
+        restoredAt:
+          parsed.restoredAt ??
+          new Date().toLocaleString(undefined, {
+            dateStyle: "short",
+            timeStyle: "short",
+          }),
+      });
+    } catch {
+      // If anything goes wrong, just ignore draft and start fresh
+    }
+  }, []);
+
+  // Persist current planner draft to localStorage
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const draft = {
+        params: getCurrentParams(),
+        data,
+        memo,
+        showAdvancedOptions,
+        restoredAt: new Date().toISOString(),
+      };
+      window.localStorage.setItem(
+        PLANNER_DRAFT_STORAGE_KEY,
+        JSON.stringify(draft),
+      );
+    } catch {
+      // Ignore storage errors (e.g., quota exceeded)
+    }
+  }, [data, memo, showAdvancedOptions, json, liquidityWindowDays, liquidityMinCoverageRatio, liquidityMinLiquidityThresholdISK, liquidityMinWindowTrades, arb_maxInventoryDays, arb_minMarginPercent, arb_maxPriceDeviationMultiple, arb_minTotalProfitISK, arb_disableInventoryLimit, arb_allowInventoryTopOff, allocationMode, spreadBias, minPackageNetProfitISK, minPackageROIPercent, shippingMarginMultiplier, densityWeight]);
+
+  const handleClearPlan = () => {
+    // Reset core payload & display fields
+    setJson(JSON.stringify(defaultPayload, null, 2));
+    setCapacityDisplay(defaultPayload.packageCapacityM3.toLocaleString());
+    setInvestmentDisplay(defaultPayload.investmentISK.toLocaleString());
+    setMaxPackagesDisplay(defaultPayload.maxPackagesHint.toString());
+    setShareDisplay(
+      (defaultPayload.perDestinationMaxBudgetSharePerItem * 100).toString(),
+    );
+    setCollateralDisplay(defaultPayload.maxPackageCollateralISK.toLocaleString());
+
+    // Reset advanced options
+    setShowAdvancedOptions(false);
+    setLiquidityWindowDays(undefined);
+    setLiquidityMinCoverageRatio(undefined);
+    setLiquidityMinLiquidityThresholdISK(undefined);
+    setLiquidityMinWindowTrades(undefined);
+    setArb_maxInventoryDays(undefined);
+    setArb_minMarginPercent(undefined);
+    setArb_maxPriceDeviationMultiple(undefined);
+    setArb_minTotalProfitISK(undefined);
+    setArb_disableInventoryLimit(false);
+    setArb_allowInventoryTopOff(false);
+    setAllocationMode("best");
+    setSpreadBias(undefined);
+    setMinPackageNetProfitISK(undefined);
+    setMinPackageROIPercent(undefined);
+    setShippingMarginMultiplier(undefined);
+    setDensityWeight(undefined);
+
+    // Clear plan results & memo
+    setData(null);
+    setMemo("");
+    setCommitSuccess(null);
+    setRestoredFromDraft(null);
+
+    if (typeof window !== "undefined") {
+      window.localStorage.removeItem(PLANNER_DRAFT_STORAGE_KEY);
+    }
   };
 
   // Update handlers for each field
@@ -501,6 +628,27 @@ export default function PlannerPage() {
           </p>
         </div>
       </div>
+
+      {restoredFromDraft && (
+        <Alert>
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <span>
+              Restored your last uncommitted plan
+              {restoredFromDraft.restoredAt
+                ? ` (saved at ${restoredFromDraft.restoredAt})`
+                : ""}.
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleClearPlan}
+            >
+              Clear plan
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
 
       {/* Configuration Section */}
       <Tabs defaultValue="simple" className="w-full">

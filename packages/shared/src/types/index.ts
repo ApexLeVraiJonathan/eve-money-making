@@ -20,6 +20,12 @@ export type CharacterLocation =
   | "RENS"
   | "CN";
 export type CycleStatus = "PLANNED" | "OPEN" | "COMPLETED";
+export type NotificationChannel = "DISCORD_DM";
+export type NotificationType =
+  | "CYCLE_PLANNED"
+  | "CYCLE_STARTED"
+  | "CYCLE_RESULTS"
+  | "CYCLE_PAYOUT_SENT";
 export type ParticipationStatus =
   | "AWAITING_INVESTMENT"
   | "AWAITING_VALIDATION"
@@ -39,6 +45,28 @@ export interface User {
   email: string | null;
   role: string;
   primaryCharacterId: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface DiscordAccount {
+  id: string;
+  userId: string;
+  discordUserId: string;
+  username: string;
+  discriminator: string | null;
+  avatarUrl: string | null;
+  linkedAt: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface NotificationPreference {
+  id: string;
+  userId: string;
+  channel: NotificationChannel;
+  notificationType: NotificationType;
+  enabled: boolean;
   createdAt: string;
   updatedAt: string;
 }

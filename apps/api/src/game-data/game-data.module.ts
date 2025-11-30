@@ -5,7 +5,7 @@ import { ImportController } from './import.controller';
 import { PrismaModule } from '../prisma/prisma.module';
 import { DataImportModule } from '@shared/data-import';
 import { EsiModule } from '../esi/esi.module';
-import { MarketModule } from '../market/market.module';
+import { MarketModule } from '../tradecraft/market/market.module';
 
 @Module({
   imports: [

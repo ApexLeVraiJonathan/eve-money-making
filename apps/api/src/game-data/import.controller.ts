@@ -1,11 +1,12 @@
 import { Controller, Post, Body, Get, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
-import { Roles } from '../characters/decorators/roles.decorator';
-import { RolesGuard } from '../characters/guards/roles.guard';
+import { Roles } from '@api/characters/decorators/roles.decorator';
+import { RolesGuard } from '@api/characters/guards/roles.guard';
 import { ImportService } from './services/import.service';
 import { BatchSizeDto } from './dto/batch-size.dto';
 import { ImportDayDto } from './dto/import-day.dto';
 import { ImportMissingDto } from './dto/import-missing.dto';
+import { ImportSdeSkillsDto } from './dto/import-sde-skills.dto';
 
 @ApiTags('admin')
 @Controller('import')
@@ -72,6 +73,35 @@ export class ImportController {
   })
   async importTypeVolumes() {
     return this.importService.importTypeVolumes();
+  }
+
+  @Post('sde/skills')
+  @Roles('ADMIN')
+  @UseGuards(RolesGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Import skill definitions from a locally downloaded EVE SDE',
+    description:
+      'Reads types.jsonl from the provided SDE base path and records all skills (categoryID=16) into the SkillDefinition table.',
+  })
+  async importSdeSkills(@Body() body: ImportSdeSkillsDto) {
+    return this.importService.importSkillDefinitionsFromSde(
+      body.basePath,
+      body.batchSize,
+    );
+  }
+
+  @Post('sde/skills/latest')
+  @Roles('ADMIN')
+  @UseGuards(RolesGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Download latest SDE JSONL from CCP and import skill definitions',
+    description:
+      'Fetches eve-online-static-data-latest-jsonl.zip, extracts it under the API app folder, and imports all skills into SkillDefinition.',
+  })
+  async importSdeSkillsLatest(@Body() body?: BatchSizeDto) {
+    return this.importService.downloadLatestSdeAndImportSkills(body?.batchSize);
   }
 
   @Post('market-trades/day')

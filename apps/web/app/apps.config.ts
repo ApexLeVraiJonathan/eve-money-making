@@ -15,6 +15,10 @@ import {
   Zap,
   TrendingUp,
   ArrowLeftRight,
+  BookOpen,
+  Network,
+  FolderTree,
+  Search,
 } from "lucide-react";
 
 export type NavItem = {
@@ -38,7 +42,7 @@ export type AdminItem = {
 };
 
 export type AppConfig = {
-  id: "arbitrage" | "brokerage";
+  id: "arbitrage" | "brokerage" | "characters";
   label: string;
   basePath: string;
   // Any path that should mark this app as active
@@ -177,6 +181,30 @@ export const APPS: AppConfig[] = [
         icon: Users,
       },
       { name: "Triggers", url: "/tradecraft/admin/triggers", icon: Zap },
+    ],
+  },
+  {
+    id: "characters",
+    label: "Characters",
+    basePath: "/characters",
+    pathPrefixes: ["/characters"],
+    icon: Users,
+    navMain: [
+      {
+        title: "Overview",
+        url: "/characters",
+        icon: Users,
+      },
+      {
+        title: "Skills & Training",
+        url: "",
+        icon: NotebookPen,
+        items: [
+          { title: "Skill Browser", url: "/characters/skills/browser" },
+          { title: "Training Overview", url: "/characters/skills" },
+          { title: "Skill Plans", url: "/characters/skills/plans" },
+        ],
+      },
     ],
   },
 ];

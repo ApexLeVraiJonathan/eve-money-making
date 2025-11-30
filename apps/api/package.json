@@ -33,6 +33,8 @@
     "backfill:listed-units": "tsx scripts/reset-and-backfill-listed-units.ts"
   },
   "dependencies": {
+    "@eve/eve-core": "workspace:*",
+    "@eve/eve-esi": "workspace:*",
     "@eve/prisma": "workspace:*",
     "@nestjs/common": "^11.0.1",
     "@nestjs/config": "^4.0.2",
@@ -59,7 +61,8 @@
     "passport-jwt": "^4.0.1",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
-    "zod": "^4.1.11"
+    "zod": "^4.1.11",
+    "unzipper": "^0.11.4"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",
@@ -118,7 +121,14 @@
     "moduleNameMapper": {
       "^@app/arbitrage-packager(|/.*)$": "<rootDir>/libs/arbitrage-packager/src/$1",
       "^@app/lib(|/.*)$": "<rootDir>/libs/lib/src/$1",
-      "^@shared/data-import(|/.*)$": "<rootDir>/libs/data-import/src/$1"
+      "^@shared/data-import(|/.*)$": "<rootDir>/libs/data-import/src/$1",
+      "^@api/common/(.*)$": "<rootDir>/src/common/$1",
+      "^@api/characters/(.*)$": "<rootDir>/src/characters/$1",
+      "^@api/esi/(.*)$": "<rootDir>/src/esi/$1",
+      "^@api/game-data/(.*)$": "<rootDir>/src/game-data/$1",
+      "^@api/prisma/(.*)$": "<rootDir>/src/prisma/$1",
+      "^@api/support/(.*)$": "<rootDir>/src/support/$1",
+      "^@api/tradecraft/(.*)$": "<rootDir>/src/tradecraft/$1"
     }
   }
 }

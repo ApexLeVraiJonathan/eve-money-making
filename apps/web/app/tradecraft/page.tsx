@@ -7,10 +7,12 @@ import {
   BarChart3,
   AlertCircle,
 } from "lucide-react";
+import { NotificationsPrompt } from "@/components/notifications/notifications-prompt";
 
 export default function ArbitrageHome() {
   return (
     <div className="p-6 space-y-8">
+      <NotificationsPrompt />
       {/* Hero */}
       <section className="rounded-lg border bg-card p-6">
         <h1 className="text-2xl font-semibold tracking-tight inline-flex items-center gap-3">

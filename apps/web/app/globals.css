@@ -169,6 +169,15 @@
   body {
     @apply bg-background text-foreground;
   }
+  /* Keyboard focus indicators for accessibility */
+  *:focus-visible {
+    @apply outline-2 outline-offset-2 outline-primary ring-2 ring-primary/20;
+  }
+  button:focus-visible,
+  a:focus-visible,
+  [role="button"]:focus-visible {
+    @apply outline-2 outline-offset-2 outline-primary;
+  }
   /* Subtle layered surfaces for card-like sections */
   .surface-1 {
     background-color: color-mix(in oklab, var(--card) 96%, black 4%);
@@ -182,5 +191,26 @@
   option {
     background-color: var(--background);
     color: var(--foreground);
+  }
+
+  /* Animation for newly added plan steps */
+  @keyframes highlight {
+    0% {
+      background-color: oklch(from var(--primary) l c h / 0.2);
+    }
+    100% {
+      background-color: transparent;
+    }
+  }
+
+  .animate-highlight {
+    animation: highlight 1s ease-out;
+  }
+
+  /* Respect user preference for reduced motion */
+  @media (prefers-reduced-motion: reduce) {
+    .animate-highlight {
+      animation: none;
+    }
   }
 }

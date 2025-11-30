@@ -1,41 +1,32 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 
 const API_URL = process.env.API_URL || "http://localhost:3000";
 
 export async function GET(req: NextRequest) {
   try {
-    // Get the current session to ensure user is authenticated
-    const session = await getServerSession(authOptions);
-
-    if (!session?.accessToken) {
-      return NextResponse.redirect(new URL("/", req.url));
-    }
     const returnUrl =
       req.nextUrl.searchParams.get("returnUrl") || "/account-settings";
 
-    // Call NestJS /auth/link-character/start with Bearer token
-    // NestJS will store state in DB and redirect to EVE SSO (App 2)
+    // Call NestJS /auth/link-character/start; backend will authenticate
+    // using the session cookie forwarded via the `cookie` header.
     const url = new URL(`${API_URL}/auth/link-character/start`);
     url.searchParams.set("returnUrl", returnUrl);
 
     const response = await fetch(url.toString(), {
       headers: {
-        Authorization: `Bearer ${session.accessToken}`,
+        cookie: req.headers.get("cookie") ?? "",
       },
       redirect: "manual", // Don't follow redirects automatically
+      credentials: "include",
     });
 
-    // Get the redirect location (EVE SSO URL)
     const location = response.headers.get("location");
 
     if (location) {
-      // Redirect browser to EVE SSO
       return NextResponse.redirect(location);
     }
 
-    // If no redirect, something went wrong
+    // If no redirect, surface error
     return NextResponse.json(
       { error: "Failed to initiate character linking" },
       { status: 500 },

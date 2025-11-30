@@ -46,9 +46,9 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 
   const navSecondaryItems = [
     {
-      title: "Account Settings",
-      url: "/account-settings",
+      title: "Notifications",
       icon: Cog,
+      url: "/settings/notifications",
     },
     {
       title: "Support",

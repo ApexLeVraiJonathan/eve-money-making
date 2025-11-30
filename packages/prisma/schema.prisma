@@ -68,6 +68,21 @@ enum CycleStatus {
   COMPLETED
 }
 
+/// Notification delivery channels (extensible)
+enum NotificationChannel {
+  DISCORD_DM
+}
+
+/// High-level notification types for user-facing events
+enum NotificationType {
+  CYCLE_PLANNED
+  CYCLE_STARTED
+  CYCLE_RESULTS
+  CYCLE_PAYOUT_SENT
+  SKILL_PLAN_REMAP_REMINDER
+  SKILL_PLAN_COMPLETION
+}
+
 model TypeId {
   id        Int      @id @map("type_id")
   published Boolean
@@ -76,7 +91,8 @@ model TypeId {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  marketTrades MarketOrderTradeDaily[]
+  marketTrades    MarketOrderTradeDaily[]
+  SkillDefinition SkillDefinition[]
 
   @@map("item_types")
 }
@@ -190,6 +206,11 @@ model User {
   updatedAt          DateTime      @updatedAt @map("updated_at")
 
   characters EveCharacter[] @relation("UserCharacters")
+  EveAccount EveAccount[]
+  SkillPlan  SkillPlan[]
+
+  discordAccounts         DiscordAccount[]
+  notificationPreferences NotificationPreference[]
 
   @@map("app_users")
 }
@@ -202,6 +223,8 @@ model EveCharacter {
   userId           String?            @map("user_id")
   user             User?              @relation("UserCharacters", fields: [userId], references: [id], onDelete: SetNull)
   userAsPrimaryFor User?              @relation("UserPrimaryCharacter")
+  eveAccountId     String?            @map("eve_account_id")
+  eveAccount       EveAccount?        @relation(fields: [eveAccountId], references: [id], onDelete: SetNull)
   role             CharacterRole      @default(USER) @map("role")
   function         CharacterFunction? @map("function")
   location         CharacterLocation? @map("location")
@@ -210,7 +233,9 @@ model EveCharacter {
   createdAt        DateTime           @default(now()) @map("created_at")
   updatedAt        DateTime           @updatedAt @map("updated_at")
 
-  token CharacterToken?
+  token                  CharacterToken?
+  CharacterBoosterPeriod CharacterBoosterPeriod[]
+  SkillPlanAssignment    SkillPlanAssignment[]
 
   @@index([ownerHash])
   @@index([userId])
@@ -234,6 +259,130 @@ model CharacterToken {
   updatedAt            DateTime     @updatedAt @map("updated_at")
 
   @@map("character_tokens")
+}
+
+/// Logical EVE accounts (user-defined groups of up to 3 characters)
+model EveAccount {
+  id        String   @id @default(uuid()) @map("id")
+  userId    String   @map("user_id")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// Optional user-defined label for this account (e.g., “Main skill farm account”)
+  label     String?  @map("label")
+  notes     String?  @map("notes")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  subscriptions EveAccountSubscription[]
+  characters    EveCharacter[]
+
+  @@index([userId])
+  @@map("eve_accounts")
+}
+
+/// Type of subscription tracked for an EVE account (currently PLEX only)
+enum EveAccountSubscriptionType {
+  PLEX
+  MCT
+}
+
+/// Manual tracking of PLEX / subscription periods per EVE account
+model EveAccountSubscription {
+  id               String                     @id @default(uuid()) @map("id")
+  eveAccountId     String                     @map("eve_account_id")
+  eveAccount       EveAccount                 @relation(fields: [eveAccountId], references: [id], onDelete: Cascade)
+  type             EveAccountSubscriptionType @map("type")
+  /// Optional explicit start date; when null, UI can treat this as “open-ended until expiresAt”
+  startsAt         DateTime?                  @map("starts_at")
+  /// Required expiry date for the subscription/PLEX period
+  expiresAt        DateTime                   @map("expires_at")
+  renewalCycleDays Int?                       @map("renewal_cycle_days")
+  expectedCostIsk  Decimal?                   @map("expected_cost_isk") @db.Decimal(28, 2)
+  isActive         Boolean                    @default(true) @map("is_active")
+  notes            String?                    @map("notes")
+  createdAt        DateTime                   @default(now()) @map("created_at")
+  updatedAt        DateTime                   @updatedAt @map("updated_at")
+
+  @@index([eveAccountId])
+  @@map("eve_account_subscriptions")
+}
+
+/// Manual tracking of training boosters per character
+model CharacterBoosterPeriod {
+  id          String       @id @default(uuid()) @map("id")
+  characterId Int          @map("character_id")
+  character   EveCharacter @relation(fields: [characterId], references: [id], onDelete: Cascade)
+  boosterName String       @map("booster_name")
+  /// Source of this booster entry (e.g., manual, promotion, other system), free-form
+  source      String?      @map("source")
+  startsAt    DateTime     @map("starts_at")
+  expiresAt   DateTime     @map("expires_at")
+  notes       String?      @map("notes")
+  createdAt   DateTime     @default(now()) @map("created_at")
+  updatedAt   DateTime     @updatedAt @map("updated_at")
+
+  @@index([characterId])
+  @@map("character_booster_periods")
+}
+
+/// User-owned skill plans for training/optimization (game-importable)
+model SkillPlan {
+  id                        String    @id @default(uuid()) @map("id")
+  userId                    String    @map("user_id")
+  user                      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name                      String    @map("name")
+  description               String?   @map("description")
+  /// Optional cached total estimated training time in seconds for this plan
+  totalEstimatedTimeSeconds Int?      @map("total_estimated_time_seconds")
+  /// Optional free-form tags for organizing plans (stored as JSON string array)
+  tags                      Json?     @map("tags")
+  /// Optional archived timestamp; when set, the plan is hidden from default lists
+  archivedAt                DateTime? @map("archived_at")
+  /// Optional JSON configuration for plan-wide settings (attributes/implants/remaps, etc.)
+  config                    Json?     @map("config")
+  createdAt                 DateTime  @default(now()) @map("created_at")
+  updatedAt                 DateTime  @updatedAt @map("updated_at")
+
+  steps       SkillPlanStep[]
+  assignments SkillPlanAssignment[]
+
+  @@index([userId])
+  @@map("skill_plans")
+}
+
+/// Ordered steps within a skill plan (maps to EVE skill type IDs)
+model SkillPlanStep {
+  id          String    @id @default(uuid()) @map("id")
+  planId      String    @map("plan_id")
+  plan        SkillPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  /// 0-based or 1-based order of this step within the plan (UI can choose convention)
+  order       Int       @map("order")
+  /// EVE skill type ID (maps to TypeId.id / EVE skill type)
+  skillId     Int       @map("skill_id")
+  /// Target level I–V (1–5) for this skill
+  targetLevel Int       @map("target_level")
+  notes       String?   @map("notes")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  @@index([planId])
+  @@map("skill_plan_steps")
+}
+
+/// Assignment linking a skill plan to a specific EVE character, with per-assignment settings
+model SkillPlanAssignment {
+  id          String       @id @default(uuid()) @map("id")
+  skillPlanId String       @map("skill_plan_id")
+  skillPlan   SkillPlan    @relation(fields: [skillPlanId], references: [id], onDelete: Cascade)
+  characterId Int          @map("character_id")
+  character   EveCharacter @relation(fields: [characterId], references: [id], onDelete: Cascade)
+  /// Optional JSON settings for this assignment (e.g. implant/booster assumptions, notification prefs)
+  settings    Json?        @map("settings")
+  createdAt   DateTime     @default(now()) @map("created_at")
+  updatedAt   DateTime     @updatedAt @map("updated_at")
+
+  @@index([skillPlanId])
+  @@index([characterId])
+  @@map("skill_plan_assignments")
 }
 
 /// Investment cycles for grouping commits and cash flows
@@ -345,24 +494,24 @@ model WalletJournalEntry {
 
 /// User participation (opt-in) for upcoming investment cycles
 model CycleParticipation {
-  id              String              @id @default(uuid()) @map("id")
-  cycleId         String              @map("cycle_id")
-  cycle           Cycle               @relation(fields: [cycleId], references: [id], onDelete: Cascade)
-  userId          String?             @map("user_id")
-  characterName   String              @map("character_name")
-  amountIsk       Decimal             @map("amount_isk") @db.Decimal(28, 2)
-  memo            String              @map("memo") // Removed @unique - same memo for all users in a cycle
-  status          ParticipationStatus @map("status")
-  walletJournalId BigInt?             @map("wallet_journal_id")
-  validatedAt     DateTime?           @map("validated_at")
-  optedOutAt      DateTime?           @map("opted_out_at")
-  refundAmountIsk Decimal?            @map("refund_amount_isk") @db.Decimal(28, 2)
-  refundedAt      DateTime?           @map("refunded_at")
-  payoutAmountIsk Decimal?            @map("payout_amount_isk") @db.Decimal(28, 2)
-  payoutPaidAt    DateTime?           @map("payout_paid_at")
-  rolloverDeductedIsk Decimal?        @map("rollover_deducted_isk") @db.Decimal(28, 2) // Amount deducted from payout for rollover
-  createdAt       DateTime            @default(now()) @map("created_at")
-  updatedAt       DateTime            @updatedAt @map("updated_at")
+  id                  String              @id @default(uuid()) @map("id")
+  cycleId             String              @map("cycle_id")
+  cycle               Cycle               @relation(fields: [cycleId], references: [id], onDelete: Cascade)
+  userId              String?             @map("user_id")
+  characterName       String              @map("character_name")
+  amountIsk           Decimal             @map("amount_isk") @db.Decimal(28, 2)
+  memo                String              @map("memo") // Removed @unique - same memo for all users in a cycle
+  status              ParticipationStatus @map("status")
+  walletJournalId     BigInt?             @map("wallet_journal_id")
+  validatedAt         DateTime?           @map("validated_at")
+  optedOutAt          DateTime?           @map("opted_out_at")
+  refundAmountIsk     Decimal?            @map("refund_amount_isk") @db.Decimal(28, 2)
+  refundedAt          DateTime?           @map("refunded_at")
+  payoutAmountIsk     Decimal?            @map("payout_amount_isk") @db.Decimal(28, 2)
+  payoutPaidAt        DateTime?           @map("payout_paid_at")
+  rolloverDeductedIsk Decimal?            @map("rollover_deducted_isk") @db.Decimal(28, 2) // Amount deducted from payout for rollover
+  createdAt           DateTime            @default(now()) @map("created_at")
+  updatedAt           DateTime            @updatedAt @map("updated_at")
 
   // Rollover fields for automatic reinvestment
   rolloverType                RolloverType?        @map("rollover_type")
@@ -392,6 +541,40 @@ model OAuthState {
   @@index([state])
   @@index([expiresAt])
   @@map("oauth_states")
+}
+
+/// Linked Discord account for a user (via OAuth)
+model DiscordAccount {
+  id            String   @id @default(uuid()) @map("id")
+  userId        String   @map("user_id")
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  discordUserId String   @map("discord_user_id")
+  username      String   @map("username")
+  discriminator String?  @map("discriminator")
+  avatarUrl     String?  @map("avatar_url")
+  linkedAt      DateTime @default(now()) @map("linked_at")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@unique([discordUserId], name: "discord_user_unique")
+  @@index([userId])
+  @@map("discord_accounts")
+}
+
+/// Per-user notification preferences per channel / type
+model NotificationPreference {
+  id               String              @id @default(uuid()) @map("id")
+  userId           String              @map("user_id")
+  user             User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  channel          NotificationChannel @map("channel")
+  notificationType NotificationType    @map("notification_type")
+  enabled          Boolean             @default(false) @map("enabled")
+  createdAt        DateTime            @default(now()) @map("created_at")
+  updatedAt        DateTime            @updatedAt @map("updated_at")
+
+  @@unique([userId, channel, notificationType], name: "user_channel_type_unique")
+  @@index([userId])
+  @@map("notification_preferences")
 }
 
 /// Buy commitment line per item per destination for a cycle
@@ -566,16 +749,52 @@ model PackageCycleLine {
   @@map("package_cycle_lines")
 }
 
+/// Normalized catalog of skill types derived from the EVE SDE
+model SkillDefinition {
+  /// EVE type ID for this skill
+  typeId             Int      @id @map("type_id")
+  type               TypeId   @relation(fields: [typeId], references: [id], onDelete: Cascade)
+  /// Group ID for this skill (e.g. Gunnery, Spaceship Command)
+  groupId            Int      @map("group_id")
+  /// English display name for the skill (denormalized from SDE types.jsonl)
+  nameEn             String?  @map("name_en")
+  /// English description text for the skill (denormalized from SDE types.jsonl)
+  descriptionEn      String?  @map("description_en")
+  /// Skill rank (1,2,3,...) derived from dogma skillTimeConstant
+  rank               Int?     @map("rank")
+  /// Primary attribute name for this skill (intelligence, perception, etc.)
+  primaryAttribute   String?  @map("primary_attribute")
+  /// Secondary attribute name for this skill
+  secondaryAttribute String?  @map("secondary_attribute")
+  /// First prerequisite skill ID (from dogma attribute 182)
+  prerequisite1Id    Int?     @map("prerequisite1_id")
+  /// Required level for first prerequisite (from dogma attribute 277)
+  prerequisite1Level Int?     @map("prerequisite1_level")
+  /// Second prerequisite skill ID (from dogma attribute 183)
+  prerequisite2Id    Int?     @map("prerequisite2_id")
+  /// Required level for second prerequisite (from dogma attribute 278)
+  prerequisite2Level Int?     @map("prerequisite2_level")
+  /// Third prerequisite skill ID (from dogma attribute 184)
+  prerequisite3Id    Int?     @map("prerequisite3_id")
+  /// Required level for third prerequisite (from dogma attribute 279)
+  prerequisite3Level Int?     @map("prerequisite3_level")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  @@index([groupId])
+  @@map("skill_definitions")
+}
+
 /// Reusable parameter profiles for tradecraft admin tools
 model ParameterProfile {
-  id          String                 @id @default(uuid()) @map("id")
-  name        String                 @map("name")
-  description String?                @map("description")
-  scope       ParameterProfileScope  @map("scope")
-  params      Json                   @map("params")
-  createdAt   DateTime               @default(now()) @map("created_at")
-  updatedAt   DateTime               @updatedAt @map("updated_at")
-  createdBy   String?                @map("created_by") // User ID of creator
+  id          String                @id @default(uuid()) @map("id")
+  name        String                @map("name")
+  description String?               @map("description")
+  scope       ParameterProfileScope @map("scope")
+  params      Json                  @map("params")
+  createdAt   DateTime              @default(now()) @map("created_at")
+  updatedAt   DateTime              @updatedAt @map("updated_at")
+  createdBy   String?               @map("created_by") // User ID of creator
 
   @@unique([scope, name])
   @@index([scope])

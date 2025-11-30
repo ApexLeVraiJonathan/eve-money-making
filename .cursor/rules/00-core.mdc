@@ -21,3 +21,13 @@ EXAMPLES
 
 - ❌ Re-declare User in an app. ✅ `import type { User } from "@shared/types"`
 - ❌ Create a new fetch wrapper. ✅ `import { clientForApp } from "@api-client"`
+
+## Visual Change Verification
+
+When making UI/layout changes:
+
+1. ALWAYS take before/after screenshots
+2. ALWAYS check for unwanted scrollbars (page scroll vs section scroll)
+3. ALWAYS verify at the requested resolution (e.g., 1920x1080)
+4. "Filling space" means using viewport space efficiently, NOT expanding beyond viewport
+5. Mark TODOs complete only when the PROBLEM is solved, not when code changes execute

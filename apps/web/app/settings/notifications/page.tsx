@@ -1,0 +1,483 @@
+"use client";
+
+import * as React from "react";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  Button,
+  Badge,
+  Separator,
+  Skeleton,
+  Checkbox,
+} from "@eve/ui";
+import { toast } from "sonner";
+import {
+  Bell,
+  BellOff,
+  Loader2,
+  Shield,
+  UserX,
+  MessageCircle,
+} from "lucide-react";
+import {
+  useDiscordAccount,
+  useNotificationPreferences,
+  useUpdateNotificationPreferences,
+  useDisconnectDiscord,
+  useSendTestNotification,
+  startDiscordConnect,
+  type NotificationPreferenceDto,
+} from "@/app/tradecraft/api/notifications.hooks";
+import { useCurrentUser } from "@/app/tradecraft/api/characters/users.hooks";
+
+function useReturnUrl() {
+  const [url, setUrl] = React.useState<string | undefined>(undefined);
+  React.useEffect(() => {
+    if (typeof window !== "undefined") {
+      setUrl(window.location.origin + "/settings/notifications");
+    }
+  }, []);
+  return url;
+}
+
+export default function NotificationSettingsPage() {
+  const returnUrl = useReturnUrl();
+  const { data: me } = useCurrentUser();
+  const {
+    data: discord,
+    isLoading: loadingDiscord,
+    refetch: refetchDiscord,
+  } = useDiscordAccount();
+  const {
+    data: preferences = [],
+    isLoading: loadingPrefs,
+    refetch: refetchPrefs,
+  } = useNotificationPreferences();
+
+  const updatePrefs = useUpdateNotificationPreferences();
+  const disconnectDiscord = useDisconnectDiscord();
+  const sendTest = useSendTestNotification();
+
+  const [localPrefs, setLocalPrefs] = React.useState<
+    NotificationPreferenceDto[]
+  >([]);
+
+  React.useEffect(() => {
+    setLocalPrefs(preferences);
+  }, [preferences]);
+
+  const handleToggle = (pref: NotificationPreferenceDto, enabled: boolean) => {
+    setLocalPrefs((prev) =>
+      prev.map((p) =>
+        p.channel === pref.channel &&
+        p.notificationType === pref.notificationType
+          ? { ...p, enabled }
+          : p,
+      ),
+    );
+  };
+
+  const handleSave = async () => {
+    try {
+      // Count changes for feedback
+      const changedPrefs = localPrefs.filter((local) => {
+        const original = preferences.find(
+          (p) =>
+            p.channel === local.channel &&
+            p.notificationType === local.notificationType,
+        );
+        return original?.enabled !== local.enabled;
+      });
+
+      await updatePrefs.mutateAsync(localPrefs);
+      await Promise.all([refetchPrefs(), refetchDiscord()]);
+
+      const enabledCount = changedPrefs.filter((p) => p.enabled).length;
+      const disabledCount = changedPrefs.filter((p) => !p.enabled).length;
+
+      let message = "Notification preferences updated";
+      if (enabledCount > 0 && disabledCount > 0) {
+        message = `${enabledCount} enabled, ${disabledCount} disabled`;
+      } else if (enabledCount > 0) {
+        message = `${enabledCount} notification${enabledCount > 1 ? "s" : ""} enabled`;
+      } else if (disabledCount > 0) {
+        message = `${disabledCount} notification${disabledCount > 1 ? "s" : ""} disabled`;
+      }
+
+      toast.success(message);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const handleDisconnect = async () => {
+    if (
+      !confirm(
+        "Are you sure you want to disconnect Discord? All notification preferences will be disabled until you reconnect.",
+      )
+    ) {
+      return;
+    }
+
+    try {
+      await disconnectDiscord.mutateAsync();
+      await Promise.all([refetchDiscord(), refetchPrefs()]);
+      toast.success("Discord account disconnected");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const isSaving =
+    updatePrefs.isPending || disconnectDiscord.isPending || sendTest.isPending;
+
+  const hasAnyEnabled =
+    localPrefs?.some((p) => p.channel === "DISCORD_DM" && p.enabled) ?? false;
+
+  const hasChanges = React.useMemo(() => {
+    return JSON.stringify(localPrefs) !== JSON.stringify(preferences);
+  }, [localPrefs, preferences]);
+
+  return (
+    <div className="container mx-auto max-w-4xl space-y-6 p-6 md:p-8">
+      <div className="space-y-2">
+        <h1 className="text-3xl font-bold tracking-tight">
+          Notification Settings
+        </h1>
+        <p className="text-muted-foreground">
+          Control how you receive updates about arbitrage cycles and payouts.
+        </p>
+      </div>
+
+      {/* Discord Connection and Notification Toggles - Combined Card */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div className="space-y-1.5">
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <MessageCircle className="h-5 w-5 text-indigo-400" />
+                Discord Notifications
+              </CardTitle>
+              <CardDescription className="text-sm">
+                Connect Discord to receive direct messages about cycles and
+                payouts.
+              </CardDescription>
+            </div>
+            {me && (
+              <Badge variant="outline" className="hidden gap-1 md:inline-flex">
+                <Shield className="h-3 w-3" />
+                User ID: {me.userId ?? "anonymous"}
+              </Badge>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          {/* Connection Status */}
+          {loadingDiscord ? (
+            <div className="flex items-center gap-3 rounded-lg border bg-muted/30 p-3">
+              <Skeleton className="h-8 w-8 rounded-full" />
+              <div className="space-y-1.5">
+                <Skeleton className="h-4 w-32" />
+                <Skeleton className="h-3 w-48" />
+              </div>
+            </div>
+          ) : discord ? (
+            <div className="flex flex-col gap-3 rounded-lg border border-indigo-500/30 bg-gradient-to-br from-indigo-500/10 to-indigo-500/5 p-3 shadow-sm shadow-indigo-500/10 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-2.5">
+                <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-indigo-500/20 text-indigo-400 ring-2 ring-indigo-500/20">
+                  <MessageCircle className="h-4 w-4" />
+                </span>
+                <div>
+                  <div className="text-sm font-semibold">
+                    {discord.username}
+                    {discord.discriminator ? `#${discord.discriminator}` : null}
+                  </div>
+                  <div className="text-xs text-muted-foreground/90">
+                    Connected {new Date(discord.linkedAt).toLocaleDateString()}
+                  </div>
+                </div>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleDisconnect}
+                disabled={isSaving}
+                className="shrink-0 transition-all hover:border-destructive hover:text-destructive"
+              >
+                {isSaving ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <UserX className="h-3.5 w-3.5" />
+                )}
+                Disconnect
+              </Button>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-3 rounded-lg border border-dashed border-muted-foreground/30 bg-muted/20 p-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-2.5">
+                <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
+                  <MessageCircle className="h-4 w-4" />
+                </span>
+                <div>
+                  <div className="text-sm font-semibold">Not connected</div>
+                  <div className="text-xs text-muted-foreground/90">
+                    Connect to enable notifications
+                  </div>
+                </div>
+              </div>
+              <Button
+                size="sm"
+                onClick={() => startDiscordConnect(returnUrl)}
+                className="shrink-0"
+              >
+                <MessageCircle className="h-3.5 w-3.5" />
+                Connect Discord
+              </Button>
+            </div>
+          )}
+
+          <Separator />
+
+          {/* Notification Preferences */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold">Notification Types</h3>
+              {discord && (
+                <div className="flex items-center gap-1.5 text-xs">
+                  {hasAnyEnabled ? (
+                    <>
+                      <Bell className="h-3.5 w-3.5 text-green-500" />
+                      <span className="font-medium text-green-600 dark:text-green-400">
+                        Active
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <BellOff className="h-3.5 w-3.5 text-amber-500" />
+                      <span className="font-medium text-amber-600 dark:text-amber-400">
+                        All off
+                      </span>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {loadingPrefs ? (
+              <div className="space-y-2">
+                {[1, 2, 3, 4].map((i) => (
+                  <Skeleton key={i} className="h-14 w-full" />
+                ))}
+              </div>
+            ) : !discord ? (
+              <div className="rounded-lg border border-dashed bg-muted/20 p-4 text-center text-sm text-muted-foreground">
+                Connect Discord above to configure notification preferences
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <PreferenceRow
+                  title="Cycle planned"
+                  description="New investment cycle opens for opt-in"
+                  pref={localPrefs.find(
+                    (p) =>
+                      p.channel === "DISCORD_DM" &&
+                      p.notificationType === "CYCLE_PLANNED",
+                  )}
+                  onChange={handleToggle}
+                />
+                <Separator className="my-2 opacity-50" />
+                <PreferenceRow
+                  title="Cycle started"
+                  description="Trading begins on your opted-in cycle"
+                  pref={localPrefs.find(
+                    (p) =>
+                      p.channel === "DISCORD_DM" &&
+                      p.notificationType === "CYCLE_STARTED",
+                  )}
+                  onChange={handleToggle}
+                />
+                <Separator className="my-2 opacity-50" />
+                <PreferenceRow
+                  title="Cycle results ready"
+                  description="Performance summary is finalized"
+                  pref={localPrefs.find(
+                    (p) =>
+                      p.channel === "DISCORD_DM" &&
+                      p.notificationType === "CYCLE_RESULTS",
+                  )}
+                  onChange={handleToggle}
+                />
+                <Separator className="my-2 opacity-50" />
+                <PreferenceRow
+                  title="Payout sent"
+                  description="Your cycle payout has been processed"
+                  pref={localPrefs.find(
+                    (p) =>
+                      p.channel === "DISCORD_DM" &&
+                      p.notificationType === "CYCLE_PAYOUT_SENT",
+                  )}
+                  onChange={handleToggle}
+                />
+                <Separator className="my-2 opacity-50" />
+                <PreferenceRow
+                  title="Skill plan remap reminders"
+                  description="Discord DMs before planned attribute remaps for assigned skill plans"
+                  pref={localPrefs.find(
+                    (p) =>
+                      p.channel === "DISCORD_DM" &&
+                      p.notificationType === "SKILL_PLAN_REMAP_REMINDER",
+                  )}
+                  onChange={handleToggle}
+                />
+                <Separator className="my-2 opacity-50" />
+                <PreferenceRow
+                  title="Skill plan completion"
+                  description="Discord DMs shortly before assigned skill plans complete"
+                  pref={localPrefs.find(
+                    (p) =>
+                      p.channel === "DISCORD_DM" &&
+                      p.notificationType === "SKILL_PLAN_COMPLETION",
+                  )}
+                  onChange={handleToggle}
+                />
+              </div>
+            )}
+          </div>
+
+          {/* Test Button - Compact inline */}
+          {discord && (
+            <>
+              <Separator />
+              <div className="flex items-center justify-between gap-3 rounded-lg bg-muted/30 p-3">
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <Shield className="h-3.5 w-3.5" />
+                  <span>Test your notification setup</span>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={sendTest.isPending || !discord}
+                  onClick={async () => {
+                    try {
+                      const res = await sendTest.mutateAsync();
+                      if (res.ok) {
+                        toast.success("Test DM sent successfully!");
+                      } else {
+                        toast.error(
+                          res.error ?? "Failed to send test notification",
+                        );
+                      }
+                    } catch (e) {
+                      toast.error(e instanceof Error ? e.message : String(e));
+                    }
+                  }}
+                  className="h-8 shrink-0"
+                >
+                  {sendTest.isPending ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Bell className="h-3.5 w-3.5" />
+                  )}
+                  Send Test
+                </Button>
+              </div>
+            </>
+          )}
+
+          {/* Save Changes Footer */}
+          {discord && (
+            <>
+              <Separator />
+              <div className="flex items-center justify-between gap-3">
+                {hasChanges ? (
+                  <div className="flex items-center gap-2 text-xs text-amber-600 dark:text-amber-400">
+                    <div className="h-2 w-2 animate-pulse rounded-full bg-amber-600 dark:bg-amber-400" />
+                    <span className="font-medium">Unsaved changes</span>
+                  </div>
+                ) : (
+                  <div className="text-xs text-muted-foreground">
+                    All changes saved
+                  </div>
+                )}
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={isSaving || !hasChanges}
+                  onClick={handleSave}
+                  className="h-9"
+                >
+                  {isSaving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                  Save Preferences
+                </Button>
+              </div>
+            </>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Help Section - Collapsible */}
+      <details className="group rounded-lg border bg-card p-4 text-sm">
+        <summary className="flex cursor-pointer items-center justify-between font-medium">
+          <span className="flex items-center gap-2">
+            <MessageCircle className="h-4 w-4 text-muted-foreground" />
+            About Discord Notifications
+          </span>
+          <span className="text-muted-foreground transition-transform group-open:rotate-180">
+            ▼
+          </span>
+        </summary>
+        <div className="mt-3 space-y-2 text-xs text-muted-foreground">
+          <p>
+            When you connect Discord, we automatically add you to our official
+            server so our bot can send you direct messages. You must stay in the
+            server until you receive at least one message from the bot.
+          </p>
+          <p>
+            After receiving your first message, you can leave the server if you
+            wish. However, if you block the bot or disable DMs from server
+            members in your Discord privacy settings, notifications will stop
+            working.
+          </p>
+          <p className="pt-1 font-medium text-foreground">
+            We only request minimum Discord permissions: identity and DM access.
+            You can disconnect anytime.
+          </p>
+        </div>
+      </details>
+    </div>
+  );
+}
+
+type PreferenceRowProps = {
+  title: string;
+  description: string;
+  pref: NotificationPreferenceDto | undefined;
+  onChange: (pref: NotificationPreferenceDto, enabled: boolean) => void;
+};
+
+function PreferenceRow({
+  title,
+  description,
+  pref,
+  onChange,
+}: PreferenceRowProps) {
+  if (!pref) return null;
+
+  return (
+    <label className="flex w-full cursor-pointer items-start justify-between gap-4 rounded-lg p-2 text-left transition-colors hover:bg-muted/40">
+      <div className="space-y-0.5">
+        <div className="text-sm font-semibold leading-tight">{title}</div>
+        <p className="text-xs leading-snug text-foreground/80">{description}</p>
+      </div>
+      <Checkbox
+        checked={pref.enabled}
+        onCheckedChange={(value) => onChange(pref, Boolean(value))}
+        className="mt-0.5 h-5 w-5 transition-all duration-200"
+      />
+    </label>
+  );
+}

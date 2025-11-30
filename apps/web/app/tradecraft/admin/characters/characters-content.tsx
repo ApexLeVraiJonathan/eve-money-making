@@ -183,11 +183,12 @@ export default function CharactersPageContent() {
   const [loginUserUrl, setLoginUserUrl] = React.useState<string>("");
   React.useEffect(() => {
     try {
-      // Build login URL via Next.js route to avoid hardcoded base
       const params = new URLSearchParams();
       params.set("tab", activeTab);
       const returnUrl = `${window.location.origin}${window.location.pathname}?${params.toString()}`;
-      setLoginUserUrl(`/auth/login?returnUrl=${encodeURIComponent(returnUrl)}`);
+      setLoginUserUrl(
+        `/api/auth/login/admin?returnUrl=${encodeURIComponent(returnUrl)}`,
+      );
     } catch {
       // ignore
     }

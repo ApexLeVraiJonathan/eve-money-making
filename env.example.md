@@ -1,183 +1,215 @@
 ## Environment variables
 
-Copy this file to `.env` and fill in the values you need. Only the required ones are necessary to start; the optional ones have sensible defaults in code.
+Copy this file to `.env` and fill in the values you need. Only the **required** ones are necessary to start; the **optional** ones have sensible defaults in code.
 
-### Required
+---
 
-- ESI_USER_AGENT: User-Agent string sent to EVE ESI per best practices.
-  - Recommended format: `AppName/1.0.0 (contact@example.com; +https://github.com/you/repo)`
-  - Example:
-    - `ESI_USER_AGENT=EveMoneyMaker/0.1.0 (you@example.com; +https://github.com/you/eve-money-making)`
+### Backend (NestJS API – `apps/api`)
 
-### Optional (ESI client)
+#### Required (API will fail fast if missing)
 
-- ESI_BASE_URL: Base URL for ESI. Default: `https://esi.evetech.net`
-  - `ESI_BASE_URL=https://esi.evetech.net`
-- ESI_TIMEOUT_MS: Per-request timeout in milliseconds. Default: `15000`
-  - `ESI_TIMEOUT_MS=15000`
-- ESI_MAX_CONCURRENCY: Max number of concurrent ESI calls. Default: `4`
-  - `ESI_MAX_CONCURRENCY=4`
-- ESI_ERROR_SLOWDOWN_REMAIN_THRESHOLD: Slow down when error budget remain is at/below this number. Default: `5`
-  - `ESI_ERROR_SLOWDOWN_REMAIN_THRESHOLD=5`
-- ESI_ERROR_SLOWDOWN_DELAY_MS: Delay in ms when slowing down. Default: `500`
-  - `ESI_ERROR_SLOWDOWN_DELAY_MS=500`
-
-### Database
-
-- DATABASE_URL: Prisma connection string to your Postgres database.
-  - Example:
-    - `DATABASE_URL=postgresql://user:password@localhost:5432/eve_money?schema=public`
-
-#### Dev/Test presets (Docker Compose dev DB)
-
-- DATABASE_URL_DEV: Prisma URL for local dev DB on port 5433.
-  - `DATABASE_URL_DEV=postgresql://postgres:postgres@localhost:5433/eve_money_dev?schema=public`
-- DATABASE_URL_TEST: Prisma URL base for tests. We will append per-worker schemas.
-  - `DATABASE_URL_TEST=postgresql://postgres:postgres@localhost:5433/eve_money_test?schema=public`
-
-### API server
-
-- PORT: Port for the API application. Default: `3000`
-  - `PORT=3000`
-
-Notes:
-
-- ESI best practices: include a real contact in your User-Agent to help CCP identify and reach you if needed.
-  - `AppName/semver (contact; +source-url)` is a good pattern.
-
-### Security
-
-- ENCRYPTION_KEY: Secret used to derive the AES-GCM key for token encryption.
-  - Example:
-    - `ENCRYPTION_KEY=please-use-a-long-random-secret`
-
-### ESI (Dev/Test)
-
-- ESI_CLIENT_ID_DEV: Dev ESI client id
-- ESI_CLIENT_SECRET_DEV: Dev ESI client secret
-- ESI_REDIRECT_URI_DEV: Dev redirect URI (e.g., `http://localhost:3000/api/auth/callback`)
-- ESI_SSO_SCOPES_USER: Minimal scopes for end users (often empty)
-- ESI_SSO_SCOPES_ADMIN: Full admin scopes for trading characters
-
-Notes:
-
-- In tests, ESI calls are mocked unless explicitly opted to hit dev credentials.
-
-### NextAuth (Auth.js) & EVE SSO
-
-**Three EVE SSO Applications Required:**
-
-#### App 1: Initial Login (NextAuth)
-
-- EVE_CLIENT_ID: Your EVE SSO application client ID for initial login
-  - Example: `EVE_CLIENT_ID=abc123def456`
-  - Callback URL: `http://localhost:3001/api/auth/callback/eveonline`
-- EVE_CLIENT_SECRET: Your EVE SSO application client secret
-  - Example: `EVE_CLIENT_SECRET=your-secret-here`
-
-#### App 2: Character Linking (NestJS)
-
-- EVE_CLIENT_ID_LINKING: Your SECOND EVE SSO application client ID for linking additional characters
-  - Example: `EVE_CLIENT_ID_LINKING=xyz789ghi012`
-  - Callback URL: `http://localhost:3000/auth/link-character/callback`
-- EVE_CLIENT_SECRET_LINKING: Your SECOND EVE SSO application client secret
-  - Example: `EVE_CLIENT_SECRET_LINKING=your-linking-secret-here`
-
-#### App 3: Admin System Characters (NestJS)
-
-- EVE_CLIENT_ID_SYSTEM: Your THIRD EVE SSO application client ID for admin linking of system characters
-  - Example: `EVE_CLIENT_ID_SYSTEM=jkl456mno789`
-  - Callback URL: `http://localhost:3000/auth/admin/system-characters/callback`
-- EVE_CLIENT_SECRET_SYSTEM: Your THIRD EVE SSO application client secret
-  - Example: `EVE_CLIENT_SECRET_SYSTEM=your-system-secret-here`
-- ESI_SSO_SCOPES_SYSTEM: Comma-separated list of ESI scopes for system characters
-  - Example: `ESI_SSO_SCOPES_SYSTEM=esi-wallet.read_character_wallet.v1,esi-assets.read_assets.v1,esi-markets.read_character_orders.v1`
-  - These scopes must be enabled in your App 3 EVE SSO application
-
-#### NextAuth Configuration
-
-- NEXTAUTH_URL: Public URL of your Next.js application
-  - Dev: `NEXTAUTH_URL=http://localhost:3001`
-  - Prod: `NEXTAUTH_URL=https://yourdomain.com`
-- NEXTAUTH_SECRET: Secret for signing NextAuth session tokens
-  - Generate with: `[Convert]::ToBase64String((1..32 | ForEach-Object { Get-Random -Maximum 256 }))` (PowerShell)
+- **DATABASE_URL**: Prisma connection string to your Postgres database.
+  - Example: `DATABASE_URL=postgresql://user:password@localhost:5432/eve_money?schema=public`
+- **ENCRYPTION_KEY**: Secret used to derive the AES-GCM key for token encryption.
+  - Example: `ENCRYPTION_KEY=please-use-a-long-random-secret`
+- **NEXTAUTH_SECRET**: Shared secret used by both NextAuth and the API for session / token crypto.
   - Example: `NEXTAUTH_SECRET=your-random-secret-here`
+- **ESI_SSO_CLIENT_ID**: Unified EVE SSO application client ID (used by the API for all SSO flows).
+- **ESI_SSO_CLIENT_SECRET**: Unified EVE SSO application client secret.
 
-#### NestJS API Integration
+> These required vars are enforced by `apps/api/src/common/env-validation.ts` and `apps/api/scripts/check-env.ts`.
 
-- API_URL: Internal URL where NestJS API is accessible from Next.js server-side components
+#### Recommended / common backend vars
+
+- **APP_ENV**: Logical environment used by the API (`dev | test | prod`). Default: from `NODE_ENV` (prod).
+- **NODE_ENV**: Node environment (`development | production | test`). Affects logging and job defaults.
+- **PORT**: Port for the API application. Default: `3000`.
+  - Example: `PORT=3000`
+- **API_BASE_URL**: Base URL of the API, used to construct OAuth callback URLs.
+  - Dev: `API_BASE_URL=http://localhost:3000`
+  - Prod: `API_BASE_URL=https://your-api-domain.railway.app`
+- **WEB_BASE_URL**: Base URL of the web app, used for return URLs and CORS defaults.
+  - Dev: `WEB_BASE_URL=http://localhost:3001`
+  - Prod: `WEB_BASE_URL=https://yourdomain.com`
+- **API_URL**: Public URL where the API is reachable from the web app and scripts.
   - Dev: `API_URL=http://localhost:3000`
   - Prod: `API_URL=https://your-api-domain.railway.app`
-  - **Note**: Do NOT include `/api` suffix - the backend routes handle the path
-  - Used by server-side Next.js code to call the NestJS backend
-- NEXT_PUBLIC_API_URL: Public URL of your NestJS API (used by browser clients)
+- **CORS_ORIGINS**: Comma-separated list of extra allowed origins for the API.
+  - Example: `CORS_ORIGINS=https://yourdomain.com,https://admin.yourdomain.com`
+
+#### Database (dev / test helpers)
+
+- **DATABASE_URL_DEV**: Prisma URL for local dev DB (used when `APP_ENV` starts with `dev`).
+  - Example: `DATABASE_URL_DEV=postgresql://postgres:postgres@localhost:5433/eve_money_dev?schema=public`
+- **DATABASE_URL_TEST**: Prisma URL base for tests (used when `APP_ENV` starts with `test`).
+  - Example: `DATABASE_URL_TEST=postgresql://postgres:postgres@localhost:5433/eve_money_test?schema=public`
+
+#### Security / JWT (optional, but strongly recommended for prod)
+
+- **JWT_SECRET**: Secret for signing API JWTs.
+  - Default (dev-only): `"dev-secret-change-in-production"`
+- **JWT_EXPIRES_IN**: JWT expiry duration (e.g. `7d`, `24h`).
+  - Default: `7d`
+
+#### ESI HTTP client (backend)
+
+- **ESI_USER_AGENT** (recommended): User-Agent string sent to EVE ESI per best practices.
+  - Recommended format: `AppName/1.0.0 (contact@example.com; +https://github.com/you/repo)`
+  - Example: `ESI_USER_AGENT=EveMoneyMaker/0.1.0 (you@example.com; +https://github.com/you/eve-money-making)`
+- **ESI_BASE_URL**: Base URL for ESI.
+  - Default: `https://esi.evetech.net`
+- **ESI_TIMEOUT_MS**: Per-request timeout in milliseconds.
+  - Default: `15000`
+- **ESI_MAX_CONCURRENCY**: Max number of concurrent ESI calls.
+  - Default: `4`
+- **ESI_MIN_CONCURRENCY**: Minimum concurrency when backing off.
+  - Default: `2`
+- **ESI_MAX_RETRIES**: Max retry attempts for failed ESI calls.
+  - Default: `3`
+- **ESI_RETRY_BASE_DELAY_MS**: Base delay (ms) between retries.
+  - Default: `400`
+- **ESI_ERROR_SLOWDOWN_REMAIN_THRESHOLD**: Slow down when error budget remain is at/below this number.
+  - Default: `5`
+- **ESI_ERROR_SLOWDOWN_DELAY_MS**: Delay (ms) when slowing down.
+  - Default: `500`
+- **ESI_CONCURRENCY_DECAY**: Factor (0–1) controlling how quickly concurrency decays on errors.
+  - Default: `0.5`
+- **ESI_ERROR_LOG_THROTTLE_MS**: Throttle window (ms) for logging repeated ESI errors.
+  - Default: `5000`
+- **ESI_MEM_CACHE_MAX**: Max number of items in in-memory ESI cache.
+  - Default: `5000`
+- **ESI_MEM_CACHE_SWEEP_MS**: Sweep interval (ms) for in-memory ESI cache.
+  - Default: `300000` (5 minutes)
+
+#### ESI SSO (backend)
+
+These control scopes and return URLs for the unified SSO app:
+
+- **ESI_SSO_SCOPES**: Base comma-separated list of ESI scopes (optional).
+- **ESI_SSO_SCOPES_ADMIN**: Scopes for admin flows. Default: falls back to `ESI_SSO_SCOPES`.
+- **ESI_SSO_SCOPES_USER**: Scopes for regular user characters (optional, can be empty for auth-only).
+- **ESI_SSO_SCOPES_SYSTEM**: Scopes for system characters (logistics / admin).
+- **ESI_SSO_SCOPES_LOGIN**: Explicit scopes for login flows. Default: falls back to `ESI_SSO_SCOPES_USER` / `ESI_SSO_SCOPES`.
+- **ESI_SSO_SCOPES_CHARACTER**: Explicit scopes for character-link flows. Default: falls back to `ESI_SSO_SCOPES_USER`.
+- **ESI_SSO_RETURN_URL_ALLOWLIST**: Comma-separated list of allowed return URLs for SSO.
+  - Default: `http://localhost:3001,http://127.0.0.1:3001` plus `WEB_BASE_URL` / `NEXT_PUBLIC_WEB_BASE_URL`.
+- **ESI_SSO_DEFAULT_RETURN_URL**: Default return URL when no explicit returnUrl is provided (optional).
+
+#### Legacy / dev ESI credentials (optional)
+
+These are still supported for local/dev or migration scenarios:
+
+- **ESI_CLIENT_ID_DEV**
+- **ESI_CLIENT_SECRET_DEV**
+- **ESI_REDIRECT_URI_DEV**
+- **ESI_SSO_USER_AGENT** (alternative to `ESI_USER_AGENT`)
+
+#### Jobs (optional toggles)
+
+- **ENABLE_JOBS**: Enable all cron jobs.
+  - Default: enabled when `NODE_ENV === "production"`, disabled otherwise.
+- **JOB_SKILL_PLAN_NOTIFICATIONS_ENABLED**: Enable skill plan notification job. Default: `true`.
+- **JOB_CLEANUP_ENABLED**: Enable hourly ESI cache & OAuth-state cleanup. Default: `true`.
+- **JOB_DAILY_IMPORTS_ENABLED**: Enable daily market backfill check. Default: `true`.
+- **JOB_WALLETS_ENABLED**: Enable hourly wallet import + reconciliation. Default: `true`.
+- **JOB_CAPITAL_ENABLED**: Enable hourly capital recompute for open cycles. Default: `true`.
+- **JOB_SYSTEM_TOKENS_ENABLED**: Enable monthly refresh of SYSTEM character tokens. Default: `true`.
+
+#### Cycle Accounting (optional tuning)
+
+- **DEFAULT_SALES_TAX_PCT**: Sales tax percentage.
+  - Default: `3.37`
+- **DEFAULT_BROKER_FEE_PCT**: Broker fee percentage.
+  - Default: `1.5`
+- **DEFAULT_RELIST_FEE_PCT**: Relist fee percentage.
+  - Default: `0.3`
+- **WALLET_RESERVE_PER_CHAR**: ISK to reserve per character when calculating available capital.
+  - Default: `100000000` (100M ISK)
+- **DEFAULT_SOURCE_STATION_ID**, **DEFAULT_MAX_INVENTORY_DAYS**, **DEFAULT_MARGIN_VALIDATE_THRESHOLD**, **DEFAULT_MIN_TOTAL_PROFIT_ISK**, **DEFAULT_MIN_MARGIN_PERCENT**, **DEFAULT_STATION_CONCURRENCY**, **DEFAULT_ITEM_CONCURRENCY**: Advanced planner / tradecraft tuning (optional).
+
+#### Discord Integration (optional)
+
+These power Discord DM notifications and in-app support/feedback flows. All are **optional**; if omitted, the app degrades gracefully.
+
+- **DISCORD_CLIENT_ID**: OAuth client ID for linking Discord accounts.
+- **DISCORD_CLIENT_SECRET**: OAuth client secret for Discord.
+- **DISCORD_REDIRECT_URI**: Redirect URL for Discord OAuth callback.
+  - Default: `<API_BASE_URL>/notifications/discord/callback`
+- **DISCORD_BOT_TOKEN**: Bot token used to send DMs.
+- **DISCORD_GUILD_ID**: Guild/server ID for validation (optional).
+- **DISCORD_SUPPORT_WEBHOOK_URL**: Discord webhook URL for support requests channel.
+  - Optional: If not set, support requests will be accepted but not sent to Discord.
+- **DISCORD_FEEDBACK_WEBHOOK_URL**: Discord webhook URL for feedback channel.
+  - Optional: If not set, feedback will be accepted but not sent to Discord.
+
+**Webhook setup (support/feedback):**
+
+1. In your Discord server, go to _Server Settings → Integrations → Webhooks_.
+2. Create separate webhooks for support and feedback channels.
+3. Copy each webhook URL into `DISCORD_SUPPORT_WEBHOOK_URL` and `DISCORD_FEEDBACK_WEBHOOK_URL`.
+
+---
+
+### Frontend (Next.js web – `apps/web`)
+
+The web app reads most of its configuration from the same `.env`, but only `NEXT_PUBLIC_*` vars are exposed to the browser.
+
+#### Required for production
+
+- **NEXTAUTH_URL**: Public URL of your Next.js application.
+  - Dev: `NEXTAUTH_URL=http://localhost:3001`
+  - Prod: `NEXTAUTH_URL=https://yourdomain.com`
+- **NEXTAUTH_SECRET**: Same value as the backend; used by NextAuth.
+- **NEXT_PUBLIC_API_URL**: Public URL of your NestJS API (used by browser and shared client).
   - Dev: `NEXT_PUBLIC_API_URL=http://localhost:3000`
   - Prod: `NEXT_PUBLIC_API_URL=https://your-api-domain.railway.app`
-  - **Critical**: This must be accessible from the user's browser
-  - **Note**: Do NOT include `/api` suffix
-  - **Important**: This must match the callback URLs registered in your EVE SSO applications:
-    - App 2 uses: `{NEXT_PUBLIC_API_URL}/auth/link-character/callback`
-    - App 3 uses: `{NEXT_PUBLIC_API_URL}/auth/admin/system-characters/callback`
-- NEXT_PUBLIC_WEB_BASE_URL: Public URL of your Next.js web application
+  - **Note**: Do **not** include `/api` suffix.
+- **NEXT_PUBLIC_WEB_BASE_URL**: Public URL of your Next.js web application.
   - Dev: `NEXT_PUBLIC_WEB_BASE_URL=http://localhost:3001`
   - Prod: `NEXT_PUBLIC_WEB_BASE_URL=https://yourdomain.com`
-- ESI_SSO_SCOPES_USER: Comma-separated list of ESI scopes for user characters (optional, can be empty for auth-only)
-  - Example: `ESI_SSO_SCOPES_USER=` (empty for authentication only)
-  - With scopes: `ESI_SSO_SCOPES_USER=esi-wallet.read_character_wallet.v1,esi-assets.read_assets.v1`
 
-**Authentication Model:**
+#### Optional / advanced frontend vars
 
-The application uses a **dual authentication strategy**:
+- **APP_ENV**: Logical environment (`dev | test | prod`) used to set `NEXT_PUBLIC_APP_ENV` at build time.
+  - Default: `NODE_ENV` (mapped to `prod` / `dev`).
+- **NEXT_PUBLIC_APP_ENV**: Exposed environment label for client-side code (normally derived from `APP_ENV`).
+- **NEXT_PUBLIC_ADMIN_API_URL**: Base URL for any separate admin API, if used.
+  - Default: `http://localhost:3002`
+- **API_URL**: Internal URL where the NestJS API is accessible from Next.js API routes and NextAuth server code.
+  - Dev: `API_URL=http://localhost:3000`
+  - Prod: `API_URL=https://your-api-domain.railway.app`
+  - Used by:
+    - `apps/web/lib/auth.ts` (NextAuth → API)
+    - `apps/web/app/api/*` proxy routes
+- **API_BASE_URL** / **NEXT_PUBLIC_API_BASE**: Legacy/auxiliary base URLs used in `apps/web/app/auth/login/route.ts` (optional; can usually reuse `API_URL` / `NEXT_PUBLIC_API_URL`).
 
-1. **Cookie-based sessions (primary)**: After logging in via NextAuth, users get an encrypted session cookie that's automatically sent with all requests (`credentials: 'include'`). This is the default authentication method.
+#### Frontend ESI / trading tweaks (optional)
 
-2. **Bearer tokens (fallback)**: The API also accepts `Authorization: Bearer <token>` headers for programmatic access or when cookies are unavailable. NextAuth provides access tokens that can be used for server-side API calls.
+These mirror backend defaults but are only used in specific UI helpers:
 
-The backend's `CompositeAuthGuard` tries cookie-based auth first, then falls back to Bearer token validation. This provides flexibility while maintaining security.
+- **NEXT_PUBLIC_BROKER_FEE_PCT**: Broker fee percentage for UI tools (e.g., sell appraiser).
+  - Default: `1.5`
+- **NEXT_PUBLIC_BROKER_RELIST_PCT**: Relist fee percentage for UI tools.
+  - Default: `0.3`
 
-### Jobs (optional toggles)
+#### Shared helpers (packages/shared)
 
-- ENABLE_JOBS: Enable all cron jobs (default true in production). `true|false|1|0|yes|no`.
-  - `ENABLE_JOBS=true`
-- JOB_CLEANUP_ENABLED: Enable hourly ESI cache cleanup (default true).
-- JOB_DAILY_IMPORTS_ENABLED: Enable daily market backfill check (default true).
-- JOB_WALLETS_ENABLED: Enable hourly wallet import + reconciliation (default true).
-- JOB_CAPITAL_ENABLED: Enable hourly capital recompute for open cycles (default true).
-- JOB_SYSTEM_TOKENS_ENABLED: Enable monthly refresh of SYSTEM character tokens (default true).
+`packages/shared/src/env.ts` exposes:
 
-### Cycle Accounting
+- `NEXT_PUBLIC_API_URL`
+- `NEXT_PUBLIC_ADMIN_API_URL`
+- `NEXT_PUBLIC_WEB_BASE_URL`
+- `NEXTAUTH_URL`
 
-- DEFAULT_SALES_TAX_PCT: Sales tax percentage (default 3.37).
-  - `DEFAULT_SALES_TAX_PCT=3.37`
-- DEFAULT_BROKER_FEE_PCT: Broker fee percentage (default 1.5).
-  - `DEFAULT_BROKER_FEE_PCT=1.5`
-- DEFAULT_RELIST_FEE_PCT: Relist fee percentage (default 0.3).
-  - `DEFAULT_RELIST_FEE_PCT=0.3`
-- WALLET_RESERVE_PER_CHAR: ISK to reserve per character when calculating available capital (default 100000000 = 100M ISK).
-  - `WALLET_RESERVE_PER_CHAR=100000000`
+These are already covered in the sections above.
 
-### Discord Integration (optional)
+---
 
-Support and Feedback notifications via Discord webhooks:
+### EVE SSO / Auth overview
 
-- DISCORD_SUPPORT_WEBHOOK_URL: Discord webhook URL for support requests channel
-  - Example: `DISCORD_SUPPORT_WEBHOOK_URL=https://discord.com/api/webhooks/123456789/abcdefghijklmnop`
-  - To create: Discord Server Settings > Integrations > Webhooks > New Webhook
-  - Optional: If not set, support requests will be accepted but not sent to Discord
-- DISCORD_FEEDBACK_WEBHOOK_URL: Discord webhook URL for feedback channel
-  - Example: `DISCORD_FEEDBACK_WEBHOOK_URL=https://discord.com/api/webhooks/987654321/zyxwvutsrqponmlk`
-  - To create: Discord Server Settings > Integrations > Webhooks > New Webhook
-  - Optional: If not set, feedback will be accepted but not sent to Discord
+The current implementation uses a **unified ESI SSO app** for the backend (`ESI_SSO_CLIENT_ID` / `ESI_SSO_CLIENT_SECRET`) plus NextAuth’s own app (`EVE_CLIENT_ID` / `EVE_CLIENT_SECRET`) for the initial login flow.
 
-**Setup Instructions:**
+- **EVE_CLIENT_ID**: EVE SSO client ID for the NextAuth login provider (web).
+- **EVE_CLIENT_SECRET**: EVE SSO client secret for the NextAuth login provider (web).
 
-1. In your Discord server, go to Server Settings > Integrations > Webhooks
-2. Click "New Webhook" and create two separate webhooks:
-   - One for the #support channel (or your preferred support channel)
-   - One for the #feedback channel (or your preferred feedback channel)
-3. For each webhook:
-   - Give it a name (e.g., "Support Bot", "Feedback Bot")
-   - Select the target channel
-   - Copy the webhook URL
-   - Add it to your `.env` file as shown above
-4. Test the integration by submitting a support request or feedback through the app
+> Older envs like `EVE_CLIENT_ID_LINKING`, `EVE_CLIENT_SECRET_LINKING`, `EVE_CLIENT_ID_SYSTEM`, `EVE_CLIENT_SECRET_SYSTEM` are now considered **legacy**; the backend primarily uses the unified `ESI_SSO_CLIENT_ID` / `ESI_SSO_CLIENT_SECRET` plus the scope variables above. You can leave the legacy vars unset unless you rely on older flows.

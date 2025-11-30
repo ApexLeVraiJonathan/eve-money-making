@@ -10,15 +10,15 @@ import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { PrismaModule } from './prisma/prisma.module';
 import { DataImportModule } from '@shared/data-import';
 import { EsiModule } from './esi/esi.module';
-import { JobsModule } from './jobs/jobs.module';
 import { RequestIdMiddleware } from './common/request-id.middleware';
 import { CharactersModule } from './characters/characters.module';
-import { CyclesModule } from './cycles/cycles.module';
-import { WalletModule } from './wallet/wallet.module';
 import { GameDataModule } from './game-data/game-data.module';
-import { MarketModule } from './market/market.module';
 import { SupportModule } from './support/support.module';
-import { ParameterProfilesModule } from './parameter-profiles/parameter-profiles.module';
+import { CharacterManagementModule } from './character-management/character-management.module';
+import { SkillFarmModule } from './skill-farm/skill-farm.module';
+import { TradecraftModule } from './tradecraft/tradecraft.module';
+import { SkillPlansModule } from './skill-plans/skill-plans.module';
+import { NotificationsModule } from './notifications/notifications.module';
 import { CompositeAuthGuard } from './characters/guards/composite-auth.guard';
 import { Public } from './characters/decorators/public.decorator';
 
@@ -43,14 +43,15 @@ class HealthController {
     PrismaModule,
     DataImportModule,
     EsiModule,
-    JobsModule,
     CharactersModule,
-    CyclesModule,
-    WalletModule,
     GameDataModule,
-    MarketModule,
     SupportModule,
-    ParameterProfilesModule,
+    NotificationsModule,
+    // Product-level modules for separate apps
+    TradecraftModule,
+    CharacterManagementModule,
+    SkillFarmModule,
+    SkillPlansModule,
   ],
   controllers: [HealthController],
   providers: [

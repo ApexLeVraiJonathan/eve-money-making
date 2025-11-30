@@ -40,6 +40,12 @@ export type EsiConfig = {
   memCacheSweepMs: number;
 };
 
+export type DiscordOauthConfig = {
+  clientId: string;
+  clientSecret: string;
+  redirectUri: string;
+};
+
 export const AppConfig = {
   /**
    * Resolve application environment. Accepts APP_ENV (dev|test|prod) or falls back to NODE_ENV.
@@ -58,6 +64,35 @@ export const AppConfig = {
    */
   port(): number {
     return Number(process.env.PORT ?? 3000);
+  },
+
+  /**
+   * Discord OAuth configuration (for user account linking)
+   */
+  discordOauth(): DiscordOauthConfig {
+    const clientId = process.env.DISCORD_CLIENT_ID ?? '';
+    const clientSecret = process.env.DISCORD_CLIENT_SECRET ?? '';
+    const redirectUri =
+      process.env.DISCORD_REDIRECT_URI ??
+      new URL(
+        '/notifications/discord/callback',
+        AppConfig.apiBaseUrl(),
+      ).toString();
+
+    if (!clientId || !clientSecret) {
+      // Intentionally do not throw here – feature is optional and guarded elsewhere
+      return { clientId, clientSecret, redirectUri };
+    }
+
+    return { clientId, clientSecret, redirectUri };
+  },
+
+  /**
+   * Discord bot token used for DM notifications
+   */
+  discordBotToken(): string | null {
+    const token = process.env.DISCORD_BOT_TOKEN ?? null;
+    return token && token.trim().length > 0 ? token : null;
   },
 
   /**
@@ -171,27 +206,41 @@ export const AppConfig = {
    * ESI SSO scopes configuration
    */
   esiScopes() {
-    return {
-      default: (process.env.ESI_SSO_SCOPES ?? '')
+    const parse = (value: string | undefined | null) =>
+      (value ?? '')
         .split(',')
         .map((s) => s.trim())
-        .filter(Boolean),
-      admin: (
-        process.env.ESI_SSO_SCOPES_ADMIN ??
+        .filter(Boolean);
+
+    const defaultScopes = parse(process.env.ESI_SSO_SCOPES ?? '');
+    const adminScopes = parse(
+      process.env.ESI_SSO_SCOPES_ADMIN ?? process.env.ESI_SSO_SCOPES ?? '',
+    );
+    const userScopes = parse(process.env.ESI_SSO_SCOPES_USER ?? '');
+    const systemScopes = parse(process.env.ESI_SSO_SCOPES_SYSTEM ?? '');
+
+    // New per-flow helpers – prefer dedicated envs, fall back to existing ones
+    const loginScopes = parse(
+      process.env.ESI_SSO_SCOPES_LOGIN ??
+        process.env.ESI_SSO_SCOPES_USER ??
         process.env.ESI_SSO_SCOPES ??
-        ''
-      )
-        .split(',')
-        .map((s) => s.trim())
-        .filter(Boolean),
-      user: (process.env.ESI_SSO_SCOPES_USER ?? '')
-        .split(',')
-        .map((s) => s.trim())
-        .filter(Boolean),
-      system: (process.env.ESI_SSO_SCOPES_SYSTEM ?? '')
-        .split(',')
-        .map((s) => s.trim())
-        .filter(Boolean),
+        '',
+    );
+    const characterScopes = parse(
+      process.env.ESI_SSO_SCOPES_CHARACTER ??
+        process.env.ESI_SSO_SCOPES_USER ??
+        '',
+    );
+
+    return {
+      // Backwards-compatible fields
+      default: defaultScopes,
+      admin: adminScopes,
+      user: userScopes,
+      system: systemScopes,
+      // New, clearer fields
+      login: loginScopes,
+      character: characterScopes,
     };
   },
 
@@ -266,12 +315,13 @@ export const AppConfig = {
    * Used for USER-managed characters linked via /auth/link-character/*.
    */
   esiSsoLinking() {
-    const esiConfig = AppConfig.esi();
+    const base = AppConfig.esiSso();
     return {
-      clientId: process.env.EVE_CLIENT_ID_LINKING ?? '',
-      clientSecret: process.env.EVE_CLIENT_SECRET_LINKING ?? '',
-      redirectUri: `${AppConfig.apiBaseUrl()}/auth/link-character/callback`,
-      userAgent: esiConfig.userAgent,
+      clientId: base.clientId,
+      clientSecret: base.clientSecret,
+      // Use the unified callback URL; routing is handled by state in the callback handler.
+      redirectUri: base.redirectUri,
+      userAgent: base.userAgent,
     } as const;
   },
 
@@ -280,12 +330,13 @@ export const AppConfig = {
    * Used for SYSTEM-managed characters (managedBy=SYSTEM, role=LOGISTICS).
    */
   esiSsoSystem() {
-    const esiConfig = AppConfig.esi();
+    const base = AppConfig.esiSso();
     return {
-      clientId: process.env.EVE_CLIENT_ID_SYSTEM ?? '',
-      clientSecret: process.env.EVE_CLIENT_SECRET_SYSTEM ?? '',
-      redirectUri: `${AppConfig.apiBaseUrl()}/auth/admin/system-characters/callback`,
-      userAgent: esiConfig.userAgent,
+      clientId: base.clientId,
+      clientSecret: base.clientSecret,
+      // Use the unified callback URL; routing is handled by state in the callback handler.
+      redirectUri: base.redirectUri,
+      userAgent: base.userAgent,
     } as const;
   },
 
@@ -340,5 +391,13 @@ export const AppConfig = {
         relistFeePercent: Number(process.env.DEFAULT_RELIST_FEE_PCT ?? 0.3),
       },
     };
+  },
+  /**
+   * Discord guild (server) ID for auto-joining users
+   */
+  discordGuildId(): string | null {
+    const guildId = process.env.DISCORD_GUILD_ID ?? '';
+    const trimmed = guildId.trim();
+    return trimmed.length > 0 ? trimmed : null;
   },
 } as const;

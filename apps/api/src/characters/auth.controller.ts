@@ -92,7 +92,7 @@ export class AuthController {
       }
     }
 
-    const scopes = AppConfig.esiScopes().default;
+    const scopes = AppConfig.esiScopes().login;
     const url = this.auth.getAuthorizeUrl(state, codeChallenge, scopes);
     res.redirect(url);
   }
@@ -135,10 +135,7 @@ export class AuthController {
       },
     });
 
-    const scopes = (process.env.ESI_SSO_SCOPES_USER ?? '')
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean);
+    const scopes = AppConfig.esiScopes().character;
 
     // Use App 2 (Character Linking) OAuth URL
     const url = this.auth.getAuthorizeLinkingUrl(state, codeChallenge, scopes);
@@ -216,10 +213,8 @@ export class AuthController {
         JSON.stringify(idTokenLike),
       ).toString('base64')}.x`;
 
-      const scopes = (process.env.ESI_SSO_SCOPES_USER ?? '')
-        .split(',')
-        .map((s) => s.trim())
-        .filter(Boolean);
+      // Store the scopes configured for character linking (for diagnostics/UI).
+      const scopes = AppConfig.esiScopes().character;
 
       // Upsert character and token
       const linked = await this.auth.upsertCharacterWithToken(
@@ -292,10 +287,7 @@ export class AuthController {
       sameSite: 'lax',
       maxAge: 10 * 60 * 1000,
     });
-    const scopes = (process.env.ESI_SSO_SCOPES_USER ?? '')
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean);
+    const scopes = AppConfig.esiScopes().login;
     const url = this.auth.getAuthorizeUrl(state, codeChallenge, scopes);
     res.redirect(url);
   }
@@ -337,20 +329,14 @@ export class AuthController {
       sameSite: 'lax',
       maxAge: 10 * 60 * 1000,
     });
-    const scopes = (
-      process.env.ESI_SSO_SCOPES_ADMIN ??
-      process.env.ESI_SSO_SCOPES ??
-      ''
-    )
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean);
+    const scopes = AppConfig.esiScopes().admin;
     const url = this.auth.getAuthorizeUrl(state, codeChallenge, scopes);
     res.redirect(url);
   }
 
   /**
    * CCP redirects here with authorization code.
+   * Single callback for login, character linking, and system characters.
    */
   @Public()
   @Public()
@@ -361,6 +347,210 @@ export class AuthController {
     @Req() req: Request,
     @Res() res: Response,
   ) {
+    if (!code || !state) {
+      res.status(400).send('Missing code or state');
+      return;
+    }
+
+    // First try OAuthState - used for character linking (USER) and system characters
+    const oauthState = await this.prisma.oAuthState.findUnique({
+      where: { state },
+    });
+
+    if (oauthState) {
+      // OAuthState-based flows: link-character or system-character
+      if (oauthState.expiresAt < new Date()) {
+        await this.prisma.oAuthState.delete({ where: { id: oauthState.id } });
+        res.status(400).send('OAuth state expired');
+        return;
+      }
+
+      // Delete immediately (single use)
+      await this.prisma.oAuthState.delete({ where: { id: oauthState.id } });
+
+      // USER-managed character linking (has userId)
+      if (oauthState.userId) {
+        try {
+          const token = await this.auth.exchangeCodeForTokenLinking(
+            code,
+            oauthState.codeVerifier,
+          );
+          const verify = await fetch(
+            'https://login.eveonline.com/oauth/verify',
+            {
+              headers: { Authorization: `Bearer ${token.access_token}` },
+            },
+          ).then(
+            (r) =>
+              r.json() as Promise<{
+                CharacterID: number;
+                CharacterName: string;
+                CharacterOwnerHash: string;
+              }>,
+          );
+
+          const idTokenLike = {
+            sub: `EVE:CHARACTER:${verify.CharacterID}`,
+            name: verify.CharacterName,
+            owner: verify.CharacterOwnerHash,
+          };
+          const fakeJwt = `${Buffer.from('x').toString('base64')}.${Buffer.from(
+            JSON.stringify(idTokenLike),
+          ).toString('base64')}.x`;
+
+          const scopes = AppConfig.esiScopes().character;
+
+          const linked = await this.auth.upsertCharacterWithToken(
+            fakeJwt,
+            token,
+            scopes,
+          );
+
+          // Link to user
+          await this.auth.linkCharacterToUser(
+            linked.characterId,
+            oauthState.userId,
+          );
+
+          if (oauthState.returnUrl) {
+            res.redirect(oauthState.returnUrl);
+            return;
+          }
+
+          res.send(`
+            <html>
+              <body style="font-family: sans-serif; text-align: center; padding: 50px;">
+                <h1>✅ Character Linked Successfully!</h1>
+                <p>Character <strong>${linked.characterName}</strong> has been linked to your account.</p>
+                <a href="/" style="color: blue; text-decoration: underline;">Return to App</a>
+              </body>
+            </html>
+          `);
+          return;
+        } catch (error) {
+          console.error('Error linking character:', error);
+          res.status(500).send('Failed to link character. Please try again.');
+          return;
+        }
+      }
+
+      // SYSTEM-managed character linking (no userId)
+      try {
+        const tokens = await this.auth.exchangeCodeForTokenSystem(
+          code,
+          oauthState.codeVerifier,
+        );
+
+        const decoded = jwt.decode(tokens.access_token) as {
+          sub: string;
+          name: string;
+          owner: string;
+          scp?: string | string[];
+        } | null;
+
+        if (!decoded) {
+          res.status(400).send('Invalid access token');
+          return;
+        }
+
+        const characterId = Number(decoded.sub.split(':').pop());
+        const characterName = decoded.name;
+        const ownerHash = decoded.owner;
+
+        const scopes = Array.isArray(decoded.scp)
+          ? decoded.scp.join(' ')
+          : decoded.scp || '';
+
+        const refreshTokenEnc = await CryptoUtil.encrypt(tokens.refresh_token);
+
+        let notes = 'System character';
+        let storedReturnUrl: string | null = null;
+        try {
+          const stateData = JSON.parse(oauthState.returnUrl || '{}') as {
+            notes?: string | null;
+            returnUrl?: string | null;
+          };
+          notes = stateData.notes || 'System character';
+          storedReturnUrl = stateData.returnUrl || null;
+        } catch {
+          notes = oauthState.returnUrl || 'System character';
+        }
+
+        await this.prisma.$transaction(async (tx) => {
+          await tx.eveCharacter.upsert({
+            where: { id: characterId },
+            update: {
+              name: characterName,
+              ownerHash,
+              managedBy: 'SYSTEM',
+              // IMPORTANT: do not clear existing userId on update so a system
+              // character can also be attached to a user for the Characters app.
+              role: 'LOGISTICS',
+              notes,
+            },
+            create: {
+              id: characterId,
+              name: characterName,
+              ownerHash,
+              managedBy: 'SYSTEM',
+              userId: null,
+              role: 'LOGISTICS',
+              notes,
+            },
+          });
+
+          await tx.characterToken.upsert({
+            where: { characterId },
+            update: {
+              tokenType: 'Bearer',
+              accessToken: tokens.access_token,
+              accessTokenExpiresAt: new Date(
+                Date.now() + tokens.expires_in * 1000,
+              ),
+              refreshTokenEnc,
+              scopes,
+              lastRefreshAt: new Date(),
+            },
+            create: {
+              characterId,
+              tokenType: 'Bearer',
+              accessToken: tokens.access_token,
+              accessTokenExpiresAt: new Date(
+                Date.now() + tokens.expires_in * 1000,
+              ),
+              refreshTokenEnc,
+              scopes,
+            },
+          });
+        });
+
+        if (storedReturnUrl) {
+          const redirectUrl = new URL(storedReturnUrl);
+          redirectUrl.searchParams.set('systemCharLinked', characterName);
+          res.redirect(redirectUrl.toString());
+        } else {
+          const redirectUrl = new URL(
+            '/arbitrage/admin/characters',
+            AppConfig.nextAuthUrl(),
+          );
+          redirectUrl.searchParams.set('systemCharLinked', characterName);
+          res.redirect(redirectUrl.toString());
+        }
+        return;
+      } catch (e) {
+        console.error('Error linking system character:', e);
+        res
+          .status(500)
+          .send(
+            `Error linking system character: ${
+              e instanceof Error ? e.message : String(e)
+            }`,
+          );
+        return;
+      }
+    }
+
+    // Fallback: normal login flow using cookies (no OAuthState row)
     const cookies: Record<string, string> = (req.cookies ?? {}) as Record<
       string,
       string
@@ -371,15 +561,12 @@ export class AuthController {
       res.status(400).send('Invalid SSO state');
       return;
     }
+
     // Clear cookies
     res.clearCookie('sso_state');
     res.clearCookie('sso_verifier');
 
-    // Exchange code for tokens
     const token = await this.auth.exchangeCodeForToken(code, codeVerifier);
-    // CCP sends id_token via an OpenID connect flow if requested; otherwise we can fetch character via /verify endpoint.
-    // Here we use the JWT present in access token response headers if available, else call verify endpoint.
-    // For simplicity, call the ESI verify endpoint.
     const verify = await fetch('https://login.eveonline.com/oauth/verify', {
       headers: { Authorization: `Bearer ${token.access_token}` },
     }).then(
@@ -396,13 +583,15 @@ export class AuthController {
       name: verify.CharacterName,
       owner: verify.CharacterOwnerHash,
     };
-    const fakeJwt = `${Buffer.from('x').toString('base64')}.${Buffer.from(JSON.stringify(idTokenLike)).toString('base64')}.x`;
+    const fakeJwt = `${Buffer.from('x').toString('base64')}.${Buffer.from(
+      JSON.stringify(idTokenLike),
+    ).toString('base64')}.x`;
     const kindCookie: string | undefined = cookies['sso_kind'];
     const scopesEnv =
       kindCookie === 'admin'
         ? AppConfig.esiScopes().admin
         : kindCookie === 'user'
-          ? AppConfig.esiScopes().user
+          ? AppConfig.esiScopes().login
           : AppConfig.esiScopes().default;
     const scopes = scopesEnv;
     const linked = await this.auth.upsertCharacterWithToken(
@@ -410,6 +599,7 @@ export class AuthController {
       token,
       scopes,
     );
+
     // Role tagging based on login kind
     let resolvedRole: 'LOGISTICS' | 'USER' = 'USER';
     try {
@@ -457,7 +647,7 @@ export class AuthController {
       res.redirect(redirectTo);
       return;
     }
-    // Fallback: redirect to a default URL if configured, or first allowed origin
+
     const allowFromEnv = (
       process.env.ESI_SSO_RETURN_URL_ALLOWLIST ||
       'http://localhost:3001,http://127.0.0.1:3001'
@@ -945,11 +1135,8 @@ export class AuthController {
     @Query('notes') notes?: string,
     @Query('returnUrl') returnUrl?: string,
   ): Promise<{ url: string }> {
-    // Read scopes from environment variable
-    const scopes = (process.env.ESI_SSO_SCOPES_SYSTEM ?? '')
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean);
+    // Read scopes from centralized config
+    const scopes = AppConfig.esiScopes().system;
 
     // Generate OAuth state
     const state = crypto.randomUUID();
@@ -1064,7 +1251,9 @@ export class AuthController {
         notes = oauthState.returnUrl || 'System character';
       }
 
-      // Upsert character and token with managedBy=SYSTEM, userId=null, role=LOGISTICS
+      // Upsert character and token with managedBy=SYSTEM, role=LOGISTICS.
+      // IMPORTANT: on update we do NOT clear userId so a system character can
+      // also be attached to a user for the Characters app.
       await this.prisma.$transaction(async (tx) => {
         await tx.eveCharacter.upsert({
           where: { id: characterId },
@@ -1072,7 +1261,6 @@ export class AuthController {
             name: characterName,
             ownerHash,
             managedBy: 'SYSTEM',
-            userId: null,
             role: 'LOGISTICS',
             notes,
           },

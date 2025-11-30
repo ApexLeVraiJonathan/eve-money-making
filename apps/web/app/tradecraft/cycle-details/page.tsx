@@ -31,7 +31,6 @@ import {
 } from "recharts";
 import { Skeleton } from "@eve/ui";
 import { Badge } from "@eve/ui";
-import { useSession } from "next-auth/react";
 import {
   Empty,
   EmptyDescription,
@@ -62,8 +61,6 @@ const chartConfig = {
 };
 
 export default function CycleDetailsPage() {
-  const { status } = useSession();
-
   // Use new API hooks
   const { data: overview, isLoading: loading } = useCycleOverview();
   const { data: snapshots = [] } = useCycleSnapshots(

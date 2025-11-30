@@ -31,7 +31,22 @@
       "@eve/prisma": ["../../packages/prisma/client/index.d.ts"],
       "@eve/prisma/*": ["../../packages/prisma/client/*"],
       "@eve/api-client": ["../../packages/api-client/src/index.ts"],
-      "@eve/api-client/*": ["../../packages/api-client/src/*"]
+      "@eve/api-client/*": ["../../packages/api-client/src/*"],
+      "@eve/eve-core": ["../../packages/eve-core/src/index.ts"],
+      "@eve/eve-core/*": ["../../packages/eve-core/src/*"],
+      "@eve/eve-esi": ["../../packages/eve-esi/src/index.ts"],
+      "@eve/eve-esi/*": ["../../packages/eve-esi/src/*"],
+      "@eve/api-contracts": ["../../packages/api-contracts/src/index.ts"],
+      "@eve/api-contracts/*": ["../../packages/api-contracts/src/*"],
+      "@api/common/*": ["src/common/*"],
+      "@api/characters/*": ["src/characters/*"],
+      "@api/notifications/*": ["src/notifications/*"],
+      "@api/esi/*": ["src/esi/*"],
+      "@api/game-data/*": ["src/game-data/*"],
+      "@api/prisma/*": ["src/prisma/*"],
+      "@api/support/*": ["src/support/*"],
+      "@api/tradecraft/*": ["src/tradecraft/*"],
+      "@api/skill-plans/*": ["src/skill-plans/*"]
     }
   }
 }

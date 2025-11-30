@@ -6,15 +6,10 @@ import { CryptoUtil } from '../../common/crypto.util';
 
 @Injectable()
 export class TokenService {
-  private readonly userAgent = AppConfig.esiSso().userAgent;
-
-  // App 2: Character linking credentials (for managedBy=USER)
-  private readonly linkingClientId = AppConfig.esiSsoLinking().clientId;
-  private readonly linkingClientSecret = AppConfig.esiSsoLinking().clientSecret;
-
-  // App 3: System character credentials (for managedBy=SYSTEM)
-  private readonly systemClientId = AppConfig.esiSsoSystem().clientId;
-  private readonly systemClientSecret = AppConfig.esiSsoSystem().clientSecret;
+  private readonly ssoConfig = AppConfig.esiSso();
+  private readonly clientId = this.ssoConfig.clientId;
+  private readonly clientSecret = this.ssoConfig.clientSecret;
+  private readonly userAgent = this.ssoConfig.userAgent;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -49,17 +44,10 @@ export class TokenService {
     const needsRefresh = !expMs || expMs - now < 30_000;
     if (!needsRefresh) return token.accessToken ?? null;
 
-    // Use App 3 credentials for SYSTEM-managed chars, App 2 for USER-managed chars
-    const isSystemChar = character.managedBy === 'SYSTEM';
-    const clientId = isSystemChar ? this.systemClientId : this.linkingClientId;
-    const clientSecret = isSystemChar
-      ? this.systemClientSecret
-      : this.linkingClientSecret;
-
     try {
-      const basic = Buffer.from(`${clientId}:${clientSecret}`).toString(
-        'base64',
-      );
+      const basic = Buffer.from(
+        `${this.clientId}:${this.clientSecret}`,
+      ).toString('base64');
       const refreshPlain = await CryptoUtil.decrypt(
         String(token.refreshTokenEnc ?? ''),
       );
@@ -97,9 +85,11 @@ export class TokenService {
         },
       });
       return data.access_token;
-    } catch (e) {
+    } catch (e: any) {
+      const details =
+        e?.response?.data ?? (e instanceof Error ? e.message : String(e));
       this.logger.warn(
-        `Token refresh failed for character ${characterId}: ${e instanceof Error ? e.message : String(e)}`,
+        `Token refresh failed for character ${characterId}: ${JSON.stringify(details)}`,
       );
       return token.accessToken ?? null;
     }
@@ -123,17 +113,10 @@ export class TokenService {
     });
     if (!character?.token) return null;
 
-    // Use App 3 credentials for SYSTEM-managed chars, App 2 for USER-managed chars
-    const isSystemChar = character.managedBy === 'SYSTEM';
-    const clientId = isSystemChar ? this.systemClientId : this.linkingClientId;
-    const clientSecret = isSystemChar
-      ? this.systemClientSecret
-      : this.linkingClientSecret;
-
     try {
-      const basic = Buffer.from(`${clientId}:${clientSecret}`).toString(
-        'base64',
-      );
+      const basic = Buffer.from(
+        `${this.clientId}:${this.clientSecret}`,
+      ).toString('base64');
       const refreshPlain = await CryptoUtil.decrypt(
         String(character.token.refreshTokenEnc ?? ''),
       );
@@ -171,9 +154,11 @@ export class TokenService {
         },
       });
       return data.access_token;
-    } catch (e) {
+    } catch (e: any) {
+      const details =
+        e?.response?.data ?? (e instanceof Error ? e.message : String(e));
       this.logger.warn(
-        `Force token refresh failed for character ${characterId}: ${e instanceof Error ? e.message : String(e)}`,
+        `Force token refresh failed for character ${characterId}: ${JSON.stringify(details)}`,
       );
       return null;
     }

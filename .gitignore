@@ -3,3 +3,5 @@ dist
 build
 .env
 .playwright-mcp
+prompts
+apps/api/sde-jsonl

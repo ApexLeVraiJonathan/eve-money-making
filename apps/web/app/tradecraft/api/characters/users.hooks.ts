@@ -105,6 +105,12 @@ export function useUnlinkCharacter() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: qk.users.me() });
       queryClient.invalidateQueries({ queryKey: qk.characters.linked() });
+      queryClient.invalidateQueries({
+        queryKey: qk.characterManagement.accounts(),
+      });
+      queryClient.invalidateQueries({
+        queryKey: qk.characterManagement.overview(),
+      });
     },
   });
 }
@@ -114,7 +120,9 @@ export function useUnlinkCharacter() {
  */
 export function startCharacterLink(returnUrl?: string) {
   const url = returnUrl
-    ? `/api/auth/link-character/start?returnUrl=${encodeURIComponent(returnUrl)}`
+    ? `/api/auth/link-character/start?returnUrl=${encodeURIComponent(
+        returnUrl,
+      )}`
     : `/api/auth/link-character/start`;
   window.location.href = url;
 }
@@ -123,7 +131,27 @@ export function startCharacterLink(returnUrl?: string) {
  * Logout user
  */
 export async function logout() {
-  // Can't use hook here since it's not a React component
-  // This is a helper function, not a hook
+  // Backend clears the HTTP-only session cookie and responds with JSON.
+  // This route proxies to the API /auth/logout endpoint.
   window.location.href = "/api/auth/signout";
+}
+
+/**
+ * Start user login via backend SSO (USER role)
+ */
+export function startUserLogin(returnUrl?: string) {
+  const url = returnUrl
+    ? `/api/auth/login/user?returnUrl=${encodeURIComponent(returnUrl)}`
+    : `/api/auth/login/user`;
+  window.location.href = url;
+}
+
+/**
+ * Start admin login via backend SSO (LOGISTICS role)
+ */
+export function startAdminLogin(returnUrl?: string) {
+  const url = returnUrl
+    ? `/api/auth/login/admin?returnUrl=${encodeURIComponent(returnUrl)}`
+    : `/api/auth/login/admin`;
+  window.location.href = url;
 }

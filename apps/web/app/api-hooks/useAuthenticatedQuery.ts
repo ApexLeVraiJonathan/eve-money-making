@@ -5,26 +5,12 @@ import {
   type UseQueryOptions,
   type QueryKey,
 } from "@tanstack/react-query";
-import { useSession } from "next-auth/react";
 
 /**
- * Wrapper around useQuery that automatically waits for session to be ready
- *
- * This prevents the race condition where queries run before the user's
- * authentication token is available, causing 401 errors that get cached.
- *
- * Use this instead of useQuery for any queries that require authentication.
- *
- * @example
- * ```typescript
- * export function useCurrentUser() {
- *   const client = useApiClient();
- *   return useAuthenticatedQuery({
- *     queryKey: qk.users.me(),
- *     queryFn: () => client.get("/auth/me"),
- *   });
- * }
- * ```
+ * Thin wrapper around `useQuery` that keeps the same API but allows callers
+ * to optionally control when the query is enabled. Authentication is handled
+ * by the backend via cookies; unauthenticated responses (401/403) should be
+ * handled in the `queryFn` (e.g. by mapping to `null` or `[]`).
  */
 export function useAuthenticatedQuery<
   TQueryFnData = unknown,
@@ -34,20 +20,14 @@ export function useAuthenticatedQuery<
 >(
   options: Omit<
     UseQueryOptions<TQueryFnData, TError, TData, TQueryKey>,
-    "enabled"
+    "queryKey"
   > & {
-    /**
-     * Additional enabled condition (will be combined with session check)
-     * @example enabled: !!userId
-     */
+    queryKey: TQueryKey;
     enabled?: boolean;
   },
 ) {
-  const { status } = useSession();
-
   return useQuery({
     ...options,
-    // Combine session check with any additional enabled condition
-    enabled: status !== "loading" && (options.enabled ?? true),
+    enabled: options.enabled ?? true,
   });
 }

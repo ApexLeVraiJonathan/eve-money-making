@@ -5,6 +5,56 @@ import { EsiService } from './esi.service';
 export class EsiCharactersService {
   constructor(private readonly esi: EsiService) {}
 
+  /**
+   * Basic public character metadata from ESI.
+   *
+   * Uses the unauthenticated public character endpoint and returns a
+   * lightweight shape that is safe to expose to the frontend.
+   */
+  async getCharacterMetadata(
+    characterId: number,
+    reqId?: string,
+  ): Promise<{
+    corporation_id?: number;
+    alliance_id?: number;
+    security_status?: number;
+  }> {
+    const { data } = await this.esi.fetchJson<{
+      corporation_id?: number;
+      alliance_id?: number;
+      security_status?: number;
+    }>(`/latest/characters/${characterId}/`, {
+      reqId,
+    });
+    return data ?? {};
+  }
+
+  async getCorporationInfo(
+    corporationId: number,
+    reqId?: string,
+  ): Promise<{ name?: string; ticker?: string }> {
+    const { data } = await this.esi.fetchJson<{
+      name?: string;
+      ticker?: string;
+    }>(`/latest/corporations/${corporationId}/`, {
+      reqId,
+    });
+    return data ?? {};
+  }
+
+  async getAllianceInfo(
+    allianceId: number,
+    reqId?: string,
+  ): Promise<{ name?: string; ticker?: string }> {
+    const { data } = await this.esi.fetchJson<{
+      name?: string;
+      ticker?: string;
+    }>(`/latest/alliances/${allianceId}/`, {
+      reqId,
+    });
+    return data ?? {};
+  }
+
   async getWallet(characterId: number, reqId?: string): Promise<number> {
     const { data } = await this.esi.fetchJson<number>(
       `/latest/characters/${characterId}/wallet`,
@@ -375,5 +425,122 @@ export class EsiCharactersService {
       if (status === 404) return { rows: [], totalPages: undefined };
       throw err;
     }
+  }
+
+  /**
+   * Character training queue (authenticated).
+   *
+   * Wraps ESI `/latest/characters/{character_id}/skillqueue/`.
+   */
+  async getSkillQueue(
+    characterId: number,
+    reqId?: string,
+  ): Promise<
+    Array<{
+      skill_id: number;
+      queue_position: number;
+      finish_date?: string;
+      start_date?: string;
+      // ESI fields – see:
+      // https://esi.evetech.net/ui/#/Skills/get_characters_character_id_skillqueue
+      training_start_sp?: number;
+      // Not always present in live responses, but keep for forward-compat.
+      training_end_sp?: number;
+      // ESI uses level_start_sp / level_end_sp + finished_level. There is
+      // no numeric "level_start" / "level_end" field.
+      level_start_sp?: number;
+      level_end_sp?: number;
+      finished_level?: number;
+    }>
+  > {
+    const { data } = await this.esi.fetchJson<
+      Array<{
+        skill_id: number;
+        queue_position: number;
+        finish_date?: string;
+        start_date?: string;
+        training_start_sp?: number;
+        training_end_sp?: number;
+        level_start_sp?: number;
+        level_end_sp?: number;
+        finished_level?: number;
+      }>
+    >(`/latest/characters/${characterId}/skillqueue/`, {
+      characterId,
+      reqId,
+    });
+    return Array.isArray(data) ? data : [];
+  }
+
+  /**
+   * Character skills snapshot (authenticated).
+   *
+   * Wraps ESI `/latest/characters/{character_id}/skills/`.
+   */
+  async getSkills(
+    characterId: number,
+    reqId?: string,
+  ): Promise<{
+    total_sp?: number;
+    unallocated_sp?: number;
+    skills: Array<{
+      skill_id: number;
+      skillpoints_in_skill?: number;
+      trained_skill_level?: number;
+      active_skill_level?: number;
+    }>;
+  }> {
+    const { data } = await this.esi.fetchJson<{
+      total_sp?: number;
+      unallocated_sp?: number;
+      skills?: Array<{
+        skill_id: number;
+        skillpoints_in_skill?: number;
+        trained_skill_level?: number;
+        active_skill_level?: number;
+      }>;
+    }>(`/latest/characters/${characterId}/skills/`, {
+      characterId,
+      reqId,
+    });
+    return {
+      total_sp: data?.total_sp,
+      unallocated_sp: data?.unallocated_sp,
+      skills: Array.isArray(data?.skills) ? data.skills : [],
+    };
+  }
+
+  /**
+   * Character attributes & remap info (authenticated).
+   *
+   * Wraps ESI `/latest/characters/{character_id}/attributes/`.
+   */
+  async getAttributes(
+    characterId: number,
+    reqId?: string,
+  ): Promise<{
+    charisma: number;
+    intelligence: number;
+    memory: number;
+    perception: number;
+    willpower: number;
+    bonus_remaps?: number;
+    last_remap_date?: string;
+    accrued_remap_cooldown_date?: string;
+  }> {
+    const { data } = await this.esi.fetchJson<{
+      charisma: number;
+      intelligence: number;
+      memory: number;
+      perception: number;
+      willpower: number;
+      bonus_remaps?: number;
+      last_remap_date?: string;
+      accrued_remap_cooldown_date?: string;
+    }>(`/latest/characters/${characterId}/attributes/`, {
+      characterId,
+      reqId,
+    });
+    return data;
   }
 }

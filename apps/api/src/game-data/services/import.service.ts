@@ -1,6 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import axios from 'axios';
 import type { Readable } from 'node:stream';
+import { createReadStream, promises as fsp } from 'node:fs';
+import * as path from 'node:path';
+import * as readline from 'node:readline';
+import * as unzipper from 'unzipper';
 
 import { PrismaService } from '../../prisma/prisma.service';
 import { DataImportService } from '@shared/data-import';
@@ -16,6 +20,29 @@ export class ImportService {
     private readonly dataImportService: DataImportService,
     private readonly esi: EsiService,
   ) {}
+
+  private async streamJsonLines(
+    filePath: string,
+    onRow: (row: unknown) => Promise<void> | void,
+  ): Promise<void> {
+    const input = createReadStream(filePath, { encoding: 'utf8' });
+    const rl = readline.createInterface({
+      input,
+      crlfDelay: Number.POSITIVE_INFINITY,
+    });
+    for await (const line of rl) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      const obj = JSON.parse(trimmed) as unknown;
+      await onRow(obj);
+    }
+  }
+
+  private getDefaultSdeDir(): string {
+    // Store SDE under the API app folder (dist at runtime).
+    // __dirname is apps/api/dist at runtime, so ../sde-jsonl => apps/api/sde-jsonl
+    return path.resolve(__dirname, '../sde-jsonl');
+  }
 
   async importTypeIds(batchSize = 5000) {
     const context = ImportService.name;
@@ -347,6 +374,478 @@ export class ImportService {
     }
 
     return { inserted, skipped, totalRows, batchSize };
+  }
+
+  /**
+   * Import skill definitions from a locally downloaded EVE SDE JSONL folder.
+   *
+   * This currently identifies all type IDs that belong to the Skills category
+   * (categoryID=16) and stores them in the SkillDefinition table.
+   *
+   * Later we can extend this to also pull rank and primary/secondary attributes
+   * from typeDogma.jsonl and dogmaAttributes.jsonl.
+   */
+  async importSkillDefinitionsFromSde(basePath?: string, batchSize = 5000) {
+    const context = ImportService.name;
+    const startedAt = Date.now();
+    const effectiveBase =
+      basePath && basePath.trim().length > 0
+        ? basePath
+        : this.getDefaultSdeDir();
+    const typesPath = path.resolve(effectiveBase, 'types.jsonl');
+    const groupsPath = path.resolve(effectiveBase, 'groups.jsonl');
+    const typeDogmaPath = path.resolve(effectiveBase, 'typeDogma.jsonl');
+
+    this.logger.log(
+      `Starting import of skill definitions from SDE at ${effectiveBase} (batchSize=${batchSize})`,
+      context,
+    );
+
+    let upserted = 0;
+    let skippedTypes = 0;
+    let totalTypeRows = 0;
+
+    const typeBatcher = this.dataImportService.createBatcher<{
+      typeId: number;
+      groupId: number;
+      nameEn: string | null;
+      descriptionEn: string | null;
+    }>({
+      size: batchSize,
+      flush: async (items) => {
+        if (!items.length) return;
+        await this.prisma.$transaction(
+          items.map((item) =>
+            this.prisma.skillDefinition.upsert({
+              where: { typeId: item.typeId },
+              create: {
+                typeId: item.typeId,
+                groupId: item.groupId,
+                nameEn: item.nameEn ?? undefined,
+                descriptionEn: item.descriptionEn ?? undefined,
+              },
+              update: {
+                groupId: item.groupId,
+                nameEn: item.nameEn ?? undefined,
+                descriptionEn: item.descriptionEn ?? undefined,
+              },
+            }),
+          ),
+        );
+        upserted += items.length;
+        this.logger.log(
+          `Upserted ${items.length} skill definitions (types.jsonl)`,
+          context,
+        );
+      },
+    });
+
+    try {
+      // First pass: identify all skill groups (categoryID === 16) from groups.jsonl,
+      // then find all types that belong to those groups from types.jsonl.
+      const skillGroupIds = new Set<number>();
+
+      await this.streamJsonLines(groupsPath, async (row) => {
+        const rec = row as { _key?: unknown; categoryID?: unknown };
+        const groupIdRaw = rec._key;
+        const categoryIdRaw = rec.categoryID;
+
+        const groupId =
+          typeof groupIdRaw === 'number'
+            ? groupIdRaw
+            : typeof groupIdRaw === 'string'
+              ? Number(groupIdRaw)
+              : NaN;
+        const categoryId =
+          typeof categoryIdRaw === 'number'
+            ? categoryIdRaw
+            : typeof categoryIdRaw === 'string'
+              ? Number(categoryIdRaw)
+              : NaN;
+
+        if (!Number.isFinite(groupId) || !Number.isFinite(categoryId)) {
+          return;
+        }
+
+        if (categoryId === 16) {
+          skillGroupIds.add(groupId);
+        }
+      });
+
+      this.logger.log(
+        `Identified ${skillGroupIds.size} skill groups (categoryID=16) from groups.jsonl`,
+        context,
+      );
+
+      // Now stream types.jsonl and keep only types whose groupID is one of the
+      // identified skill groups.
+      await this.streamJsonLines(typesPath, async (row) => {
+        totalTypeRows++;
+        const rec = row as {
+          _key?: unknown;
+          groupID?: unknown;
+          name?: unknown;
+          description?: unknown;
+        };
+        const typeIdRaw = rec._key;
+        const groupIdRaw = rec.groupID;
+        const nameRaw = rec.name as string | { en?: unknown } | undefined;
+        const descRaw = rec.description as
+          | string
+          | { en?: unknown }
+          | undefined;
+
+        const typeId =
+          typeof typeIdRaw === 'number'
+            ? typeIdRaw
+            : typeof typeIdRaw === 'string'
+              ? Number(typeIdRaw)
+              : NaN;
+        const groupId =
+          typeof groupIdRaw === 'number'
+            ? groupIdRaw
+            : typeof groupIdRaw === 'string'
+              ? Number(groupIdRaw)
+              : NaN;
+
+        let nameEn: string | null = null;
+        if (typeof nameRaw === 'string') {
+          nameEn = nameRaw;
+        } else if (
+          nameRaw &&
+          typeof nameRaw === 'object' &&
+          'en' in nameRaw &&
+          typeof (nameRaw as { en?: unknown }).en === 'string'
+        ) {
+          // We know .en is a string here, so assert non-optional
+          nameEn = (nameRaw as { en: string }).en ?? null;
+        }
+
+        let descriptionEn: string | null = null;
+        if (typeof descRaw === 'string') {
+          descriptionEn = descRaw;
+        } else if (
+          descRaw &&
+          typeof descRaw === 'object' &&
+          'en' in descRaw &&
+          typeof (descRaw as { en?: unknown }).en === 'string'
+        ) {
+          // We know .en is a string here, so assert non-optional
+          descriptionEn = (descRaw as { en: string }).en ?? null;
+        }
+
+        if (
+          !Number.isFinite(typeId) ||
+          !Number.isFinite(groupId) ||
+          !skillGroupIds.has(groupId)
+        ) {
+          skippedTypes++;
+          return;
+        }
+
+        await typeBatcher.push({
+          typeId,
+          groupId,
+          nameEn,
+          descriptionEn,
+        });
+      });
+
+      await typeBatcher.finish();
+    } catch (error) {
+      if (error instanceof Error) {
+        this.logger.error(
+          `Failed during import of skill definitions (groups/types jsonl) at ${effectiveBase}`,
+          error.stack,
+          context,
+        );
+      } else {
+        this.logger.error(
+          `Failed during import of skill definitions (groups/types jsonl) at ${effectiveBase}: ${String(
+            error,
+          )}`,
+          undefined,
+          context,
+        );
+      }
+      throw error;
+    }
+
+    // Second pass: enrich skill definitions with rank and primary/secondary attributes from typeDogma.jsonl
+    const skillTypes = await this.prisma.skillDefinition.findMany({
+      select: { typeId: true },
+    });
+    const skillTypeIds = new Set(skillTypes.map((s) => s.typeId));
+
+    let updatedMeta = 0;
+    let skippedDogma = 0;
+    let totalDogmaRows = 0;
+
+    const dogmaBatcher = this.dataImportService.createBatcher<{
+      typeId: number;
+      rank: number;
+      primaryAttribute: string;
+      secondaryAttribute: string;
+      prerequisite1Id?: number;
+      prerequisite1Level?: number;
+      prerequisite2Id?: number;
+      prerequisite2Level?: number;
+      prerequisite3Id?: number;
+      prerequisite3Level?: number;
+    }>({
+      size: batchSize,
+      flush: async (items) => {
+        if (!items.length) return;
+        await this.prisma.$transaction(
+          items.map((item) =>
+            this.prisma.skillDefinition.update({
+              where: { typeId: item.typeId },
+              data: {
+                rank: item.rank,
+                primaryAttribute: item.primaryAttribute,
+                secondaryAttribute: item.secondaryAttribute,
+                prerequisite1Id: item.prerequisite1Id ?? null,
+                prerequisite1Level: item.prerequisite1Level ?? null,
+                prerequisite2Id: item.prerequisite2Id ?? null,
+                prerequisite2Level: item.prerequisite2Level ?? null,
+                prerequisite3Id: item.prerequisite3Id ?? null,
+                prerequisite3Level: item.prerequisite3Level ?? null,
+              },
+            }),
+          ),
+        );
+        updatedMeta += items.length;
+        this.logger.log(
+          `Updated ${items.length} skill definitions with rank/attributes/prerequisites (typeDogma.jsonl)`,
+          context,
+        );
+      },
+    });
+
+    const mapAttributeCodeToName = (code: number): string | null => {
+      // Modern JSONL SDE uses dogma attribute IDs 164–168 for character
+      // attributes; some older formats used 1–5. Support both.
+      switch (code) {
+        case 165:
+        case 1:
+          return 'intelligence';
+        case 164:
+        case 2:
+          return 'charisma';
+        case 167:
+        case 3:
+          return 'perception';
+        case 166:
+        case 4:
+          return 'memory';
+        case 168:
+        case 5:
+          return 'willpower';
+        default:
+          return null;
+      }
+    };
+
+    try {
+      await this.streamJsonLines(typeDogmaPath, async (row) => {
+        totalDogmaRows++;
+        const rec = row as {
+          _key?: unknown;
+          dogmaAttributes?: Array<{ attributeID: number; value: number }>;
+        };
+        const typeIdRaw = rec._key;
+        const typeId =
+          typeof typeIdRaw === 'number'
+            ? typeIdRaw
+            : typeof typeIdRaw === 'string'
+              ? Number(typeIdRaw)
+              : NaN;
+        if (!Number.isFinite(typeId) || !skillTypeIds.has(typeId)) {
+          return;
+        }
+
+        const attrs = rec.dogmaAttributes ?? [];
+        const timeConstAttr = attrs.find((a) => a.attributeID === 275);
+        const primaryAttr = attrs.find((a) => a.attributeID === 180);
+        const secondaryAttr = attrs.find((a) => a.attributeID === 181);
+
+        // Prerequisite attributes
+        const prereq1SkillAttr = attrs.find((a) => a.attributeID === 182);
+        const prereq1LevelAttr = attrs.find((a) => a.attributeID === 277);
+        const prereq2SkillAttr = attrs.find((a) => a.attributeID === 183);
+        const prereq2LevelAttr = attrs.find((a) => a.attributeID === 278);
+        const prereq3SkillAttr = attrs.find((a) => a.attributeID === 184);
+        const prereq3LevelAttr = attrs.find((a) => a.attributeID === 279);
+
+        if (
+          !timeConstAttr ||
+          typeof timeConstAttr.value !== 'number' ||
+          !primaryAttr ||
+          !secondaryAttr
+        ) {
+          skippedDogma++;
+          return;
+        }
+
+        // In the JSONL SDE, skillTimeConstant (attr 275) is the skill rank
+        // expressed as a small integer (1,2,3,4,5,...).
+        const rank = Math.round(timeConstAttr.value);
+        const primaryName = mapAttributeCodeToName(primaryAttr.value);
+        const secondaryName = mapAttributeCodeToName(secondaryAttr.value);
+
+        if (!rank || !primaryName || !secondaryName) {
+          skippedDogma++;
+          return;
+        }
+
+        await dogmaBatcher.push({
+          typeId,
+          rank,
+          primaryAttribute: primaryName,
+          secondaryAttribute: secondaryName,
+          prerequisite1Id: prereq1SkillAttr
+            ? Math.round(prereq1SkillAttr.value)
+            : undefined,
+          prerequisite1Level: prereq1LevelAttr
+            ? Math.round(prereq1LevelAttr.value)
+            : undefined,
+          prerequisite2Id: prereq2SkillAttr
+            ? Math.round(prereq2SkillAttr.value)
+            : undefined,
+          prerequisite2Level: prereq2LevelAttr
+            ? Math.round(prereq2LevelAttr.value)
+            : undefined,
+          prerequisite3Id: prereq3SkillAttr
+            ? Math.round(prereq3SkillAttr.value)
+            : undefined,
+          prerequisite3Level: prereq3LevelAttr
+            ? Math.round(prereq3LevelAttr.value)
+            : undefined,
+        });
+      });
+
+      await dogmaBatcher.finish();
+    } catch (error) {
+      if (error instanceof Error) {
+        this.logger.error(
+          `Failed during enrichment of skill definitions from typeDogma.jsonl at ${typeDogmaPath}`,
+          error.stack,
+          context,
+        );
+      } else {
+        this.logger.error(
+          `Failed during enrichment of skill definitions from typeDogma.jsonl at ${typeDogmaPath}: ${String(error)}`,
+          undefined,
+          context,
+        );
+      }
+      throw error;
+    } finally {
+      const durationMs = Date.now() - startedAt;
+      this.logger.log(
+        `Finished import:skill_definitions from SDE in ${durationMs}ms (skills upserted=${upserted}, typesSkipped=${skippedTypes}, typeRows=${totalTypeRows}, metaUpdated=${updatedMeta}, dogmaSkipped=${skippedDogma}, dogmaRows=${totalDogmaRows}, batchSize=${batchSize})`,
+        context,
+      );
+    }
+
+    return {
+      upserted,
+      skippedTypes,
+      totalTypeRows,
+      updatedMeta,
+      skippedDogma,
+      totalDogmaRows,
+      batchSize,
+      basePath: effectiveBase,
+    };
+  }
+
+  /**
+   * Download the latest SDE JSONL zip from CCP, extract it under the API app
+   * folder, and import skill definitions from it.
+   *
+   * Uses the shorthand URL documented at:
+   * https://developers.eveonline.com/docs/services/static-data/
+   */
+  async downloadLatestSdeAndImportSkills(batchSize = 5000) {
+    const context = ImportService.name;
+    const startedAt = Date.now();
+    const sdeDir = this.getDefaultSdeDir();
+    const zipUrl =
+      'https://developers.eveonline.com/static-data/eve-online-static-data-latest-jsonl.zip';
+
+    this.logger.log(
+      `Downloading latest SDE JSONL from ${zipUrl} into ${sdeDir}`,
+      context,
+    );
+
+    await fsp.mkdir(sdeDir, { recursive: true });
+
+    // Download and extract zip into sdeDir
+    try {
+      const res = await axios.get<Readable>(zipUrl, {
+        responseType: 'stream',
+      });
+
+      await new Promise<void>((resolve, reject) => {
+        const stream = (res.data as unknown as Readable)
+          .pipe(unzipper.Extract({ path: sdeDir }))
+          .on('error', (err: unknown) => reject(err))
+          .on('close', () => resolve());
+        // In case the stream is already flowing, ensure listeners are attached
+        stream.on('finish', () => resolve());
+      });
+    } catch (error) {
+      if (error instanceof Error) {
+        this.logger.error(
+          `Failed to download or extract latest SDE JSONL from ${zipUrl}`,
+          error.stack,
+          context,
+        );
+      } else {
+        this.logger.error(
+          `Failed to download or extract latest SDE JSONL from ${zipUrl}: ${String(
+            error,
+          )}`,
+          undefined,
+          context,
+        );
+      }
+      throw error;
+    }
+
+    // After extraction, prefer a nested eve-online-static-data-*-jsonl folder
+    // when present (older SDE zips), otherwise fall back to sdeDir itself
+    // (when the zip extracts files directly, as in your current layout).
+    const entries = await fsp.readdir(sdeDir, { withFileTypes: true });
+    const candidateDir = entries.find(
+      (e) =>
+        e.isDirectory() &&
+        e.name.startsWith('eve-online-static-data-') &&
+        e.name.endsWith('-jsonl'),
+    );
+
+    const basePath = candidateDir
+      ? path.resolve(sdeDir, candidateDir.name)
+      : sdeDir;
+    this.logger.log(
+      `Using extracted SDE folder ${basePath} for skill import`,
+      context,
+    );
+
+    const result = await this.importSkillDefinitionsFromSde(
+      basePath,
+      batchSize,
+    );
+
+    const durationMs = Date.now() - startedAt;
+    this.logger.log(
+      `Finished download+import of SDE skill definitions in ${durationMs}ms`,
+      context,
+    );
+
+    // result already contains basePath; just attach sdeDir alongside it
+    return { sdeDir, ...result };
   }
 
   async importAll(batchSize = 5000) {

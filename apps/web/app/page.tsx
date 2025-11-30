@@ -14,6 +14,8 @@ const descriptions: Record<string, string> = {
     "Create and track consignments, and view delivery and earnings reports.",
   arbitrage:
     "Track your invested capital and profit share across arbitrage cycles.",
+  characters:
+    "Manage your linked characters and plan future character and skill farm setups.",
 };
 
 export default function LandingPage() {

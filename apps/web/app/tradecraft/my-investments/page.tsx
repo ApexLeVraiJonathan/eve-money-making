@@ -1,7 +1,6 @@
 "use client";
 
 import * as React from "react";
-import { useSession, signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { formatIsk } from "@/lib/utils";
 import {
@@ -38,9 +37,10 @@ import { Button } from "@eve/ui";
 import { Badge } from "@eve/ui";
 import { Skeleton } from "@eve/ui";
 import { useMyParticipationHistory } from "../api";
+import { startUserLogin, useCurrentUser } from "../api/characters/users.hooks";
 
 export default function MyInvestmentsPage() {
-  const { data: session, status } = useSession();
+  const { data: currentUser, isLoading: userLoading } = useCurrentUser();
   const router = useRouter();
 
   // Use new API hook
@@ -50,7 +50,7 @@ export default function MyInvestmentsPage() {
     error,
   } = useMyParticipationHistory();
 
-  const authRequired = status === "unauthenticated" || error;
+  const authRequired = (!userLoading && !currentUser) || !!error;
 
   // Calculate summary statistics
 
@@ -98,7 +98,7 @@ export default function MyInvestmentsPage() {
   const activeCount = activeCycles.length;
 
   // Not authenticated or auth required - show login CTA
-  if (!session || status !== "authenticated" || authRequired) {
+  if (!currentUser || authRequired) {
     return (
       <div className="p-6 space-y-6">
         <div className="flex items-center gap-2">
@@ -123,14 +123,13 @@ export default function MyInvestmentsPage() {
                   history, returns, and investment performance.
                 </EmptyDescription>
                 <Button
-                  onClick={() =>
-                    signIn("eveonline", {
-                      callbackUrl:
-                        typeof window !== "undefined"
-                          ? window.location.href
-                          : "/tradecraft/my-investments",
-                    })
-                  }
+                  onClick={() => {
+                    const returnUrl =
+                      typeof window !== "undefined"
+                        ? window.location.href
+                        : "/tradecraft/my-investments";
+                    startUserLogin(returnUrl);
+                  }}
                   className="mt-4 gap-2"
                 >
                   <LogIn className="h-4 w-4" />

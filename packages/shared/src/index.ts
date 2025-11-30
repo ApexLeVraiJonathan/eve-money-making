@@ -5,5 +5,6 @@
  * It should remain lightweight with no external dependencies or environment access.
  */
 
-export * from './types/index.js';
+export * from './types';
+export * from './skills';
 

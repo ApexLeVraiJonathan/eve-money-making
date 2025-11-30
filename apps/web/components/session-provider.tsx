@@ -1,24 +1,15 @@
 "use client";
 
-import { SessionProvider as NextAuthSessionProvider } from "next-auth/react";
-import type { Session } from "next-auth";
-
+/**
+ * No-op session provider now that authentication is handled entirely by the
+ * backend via HTTP-only cookies and React Query hooks. Kept to avoid large
+ * changes in the layout tree.
+ */
 export function SessionProvider({
   children,
-  session,
 }: {
   children: React.ReactNode;
-  session?: Session | null;
+  session?: unknown;
 }) {
-  return (
-    <NextAuthSessionProvider
-      session={session}
-      // Refetch session every 5 minutes as a backup to SessionRefreshBoundary
-      refetchInterval={5 * 60}
-      // Refetch when user returns to the tab (default behavior, made explicit)
-      refetchOnWindowFocus={true}
-    >
-      {children}
-    </NextAuthSessionProvider>
-  );
+  return <>{children}</>;
 }

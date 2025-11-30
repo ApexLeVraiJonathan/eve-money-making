@@ -33,6 +33,7 @@ import { formatIsk } from "@/lib/utils";
 import { useCycles, useCycleCapital, useCycleSnapshots } from "../api";
 import { useMarketStaleness } from "../api/jobs";
 import { useEsiMetrics } from "../api/esi";
+
 const chartConfig = {
   cash: {
     label: "Cash",

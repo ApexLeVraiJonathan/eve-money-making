@@ -14,22 +14,15 @@ type TokenResponse = {
 
 @Injectable()
 export class AuthService {
-  private readonly clientId = AppConfig.esiSso().clientId;
-  private readonly clientSecret = AppConfig.esiSso().clientSecret;
-  private readonly redirectUri = AppConfig.esiSso().redirectUri;
-  private readonly userAgent = AppConfig.esiSso().userAgent;
+  private readonly ssoConfig = AppConfig.esiSso();
+  private readonly clientId = this.ssoConfig.clientId;
+  private readonly clientSecret = this.ssoConfig.clientSecret;
+  private readonly redirectUri = this.ssoConfig.redirectUri;
+  private readonly userAgent = this.ssoConfig.userAgent;
 
-  // App 2: Character Linking credentials
-  private readonly linkingConfig = AppConfig.esiSsoLinking();
-  private readonly linkingClientId = this.linkingConfig.clientId;
-  private readonly linkingClientSecret = this.linkingConfig.clientSecret;
-  private readonly linkingRedirectUri = this.linkingConfig.redirectUri;
-
-  // App 3: Admin System Character credentials
-  private readonly systemConfig = AppConfig.esiSsoSystem();
-  private readonly systemClientId = this.systemConfig.clientId;
-  private readonly systemClientSecret = this.systemConfig.clientSecret;
-  private readonly systemRedirectUri = this.systemConfig.redirectUri;
+  // Unified client with per-flow redirect URIs
+  private readonly linkingRedirectUri = AppConfig.esiSsoLinking().redirectUri;
+  private readonly systemRedirectUri = AppConfig.esiSsoSystem().redirectUri;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -65,7 +58,7 @@ export class AuthService {
     const url = new URL(base);
     url.searchParams.set('response_type', 'code');
     url.searchParams.set('redirect_uri', this.linkingRedirectUri);
-    url.searchParams.set('client_id', this.linkingClientId);
+    url.searchParams.set('client_id', this.clientId);
     if (scopes.length) url.searchParams.set('scope', scopes.join(' '));
     url.searchParams.set('state', state);
     url.searchParams.set('code_challenge', codeChallenge);
@@ -108,9 +101,9 @@ export class AuthService {
     codeVerifier: string,
   ): Promise<TokenResponse> {
     const tokenUrl = 'https://login.eveonline.com/v2/oauth/token';
-    const basic = Buffer.from(
-      `${this.linkingClientId}:${this.linkingClientSecret}`,
-    ).toString('base64');
+    const basic = Buffer.from(`${this.clientId}:${this.clientSecret}`).toString(
+      'base64',
+    );
     const res = await axios.post<TokenResponse>(
       tokenUrl,
       new URLSearchParams({
@@ -142,7 +135,7 @@ export class AuthService {
     const url = new URL(base);
     url.searchParams.set('response_type', 'code');
     url.searchParams.set('redirect_uri', this.systemRedirectUri);
-    url.searchParams.set('client_id', this.systemClientId);
+    url.searchParams.set('client_id', this.clientId);
     if (scopes.length) url.searchParams.set('scope', scopes.join(' '));
     url.searchParams.set('state', state);
     url.searchParams.set('code_challenge', codeChallenge);
@@ -158,9 +151,9 @@ export class AuthService {
     codeVerifier: string,
   ): Promise<TokenResponse> {
     const tokenUrl = 'https://login.eveonline.com/v2/oauth/token';
-    const basic = Buffer.from(
-      `${this.systemClientId}:${this.systemClientSecret}`,
-    ).toString('base64');
+    const basic = Buffer.from(`${this.clientId}:${this.clientSecret}`).toString(
+      'base64',
+    );
     const res = await axios.post<TokenResponse>(
       tokenUrl,
       new URLSearchParams({
@@ -223,6 +216,25 @@ export class AuthService {
     const refreshTokenEnc = await CryptoUtil.encrypt(token.refresh_token);
     const expiresAt = new Date(Date.now() + token.expires_in * 1000);
 
+    // Merge newly granted scopes with any existing scopes so we never
+    // accidentally drop permissions that were granted during character
+    // linking (e.g. skills/wallet scopes). Logging in with a minimal
+    // scope set like "publicData" should not overwrite the richer
+    // character-management scopes that are required elsewhere.
+    const existingToken = await this.prisma.characterToken.findUnique({
+      where: { characterId },
+      select: { scopes: true },
+    });
+    const existingScopes = (existingToken?.scopes ?? '')
+      .split(' ')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const nextScopes = scopes ?? [];
+    const mergedScopes = Array.from(
+      new Set<string>([...existingScopes, ...nextScopes]),
+    );
+    const mergedScopesStr = mergedScopes.join(' ');
+
     await this.prisma.$transaction(async (tx) => {
       await tx.eveCharacter.upsert({
         where: { id: characterId },
@@ -236,7 +248,7 @@ export class AuthService {
           accessToken: token.access_token,
           accessTokenExpiresAt: expiresAt,
           refreshTokenEnc,
-          scopes: scopes.join(' '),
+          scopes: mergedScopesStr,
         },
         create: {
           characterId,
@@ -244,7 +256,7 @@ export class AuthService {
           accessToken: token.access_token,
           accessTokenExpiresAt: expiresAt,
           refreshTokenEnc,
-          scopes: scopes.join(' '),
+          scopes: mergedScopesStr,
         },
       });
     });
