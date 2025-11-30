@@ -30,5 +30,3 @@ export class AddCollateralRecoveryFeeRequest {
   @MinLength(1)
   memo?: string;
 }
-
-

@@ -586,17 +586,6 @@ function SkillPlanDetailView({
     });
   };
 
-  const changeLevel = (index: number, nextLevel: number) => {
-    setStepsDraft((prev) => {
-      const next = [...prev];
-      next[index] = {
-        ...next[index],
-        targetLevel: nextLevel,
-      };
-      return next;
-    });
-  };
-
   const isSaving =
     updatePlan.isPending ||
     exportText.isPending ||
@@ -1068,8 +1057,11 @@ function SkillBrowserPanel({
   const [query, setQuery] = useState("");
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
-  // Move useMemo hooks to top level, before any conditionals
-  const skills = encyclopedia?.skills ?? [];
+  // Stable skills reference for memoized computations
+  const skills = useMemo(
+    () => encyclopedia?.skills ?? [],
+    [encyclopedia?.skills],
+  );
 
   const groupedSkills = useMemo(() => {
     const groups = new Map<string, typeof skills>();

@@ -77,7 +77,7 @@ export function useUpdateSkillPlan(planId: string) {
           notes: s.notes,
         })),
       }),
-    onSuccess: (_, vars) => {
+    onSuccess: () => {
       qc.invalidateQueries({ queryKey: qk.skillPlans._root });
       qc.invalidateQueries({ queryKey: qk.skillPlans.byId(planId) });
     },

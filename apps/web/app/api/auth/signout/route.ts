@@ -8,7 +8,7 @@ const API_URL =
 export async function GET(req: NextRequest) {
   const url = new URL(`${API_URL}/auth/logout`);
 
-  const res = await fetch(url.toString(), {
+  await fetch(url.toString(), {
     method: "GET",
     headers: {
       // Forward cookies so the API can clear the session cookie

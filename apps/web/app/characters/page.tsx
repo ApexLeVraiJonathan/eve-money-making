@@ -100,7 +100,10 @@ export default function CharactersHome() {
   const primaryChar =
     linkedChars.find((c) => c.isPrimary) ?? linkedChars[0] ?? null;
 
-  const accounts = accountsData?.accounts ?? [];
+  const accounts = useMemo(
+    () => accountsData?.accounts ?? [],
+    [accountsData?.accounts],
+  );
   const unassigned = accountsData?.unassignedCharacters ?? [];
   const overviewCharacters = overview?.characters ?? [];
   const isHeroLoading =

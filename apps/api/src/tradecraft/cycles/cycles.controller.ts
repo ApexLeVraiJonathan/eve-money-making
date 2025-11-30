@@ -564,7 +564,9 @@ export class CyclesController {
   @Roles('ADMIN')
   @UseGuards(RolesGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Add a collateral recovery fee (income) to a cycle' })
+  @ApiOperation({
+    summary: 'Add a collateral recovery fee (income) to a cycle',
+  })
   @ApiParam({ name: 'cycleId', description: 'Cycle ID' })
   async addCollateralRecoveryFee(
     @Param('cycleId') cycleId: string,

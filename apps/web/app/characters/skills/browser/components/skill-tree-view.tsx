@@ -43,7 +43,7 @@ export function SkillTreeView({ skillStatusById, attrs }: SkillTreeViewProps) {
     return map;
   }, [data]);
 
-  const allSkills = data?.skills ?? [];
+  const allSkills = useMemo(() => data?.skills ?? [], [data?.skills]);
   const hasCharacterOverlay =
     !!skillStatusById && Object.keys(skillStatusById).length > 0;
 

@@ -15,10 +15,6 @@ import {
   Zap,
   TrendingUp,
   ArrowLeftRight,
-  BookOpen,
-  Network,
-  FolderTree,
-  Search,
 } from "lucide-react";
 
 export type NavItem = {

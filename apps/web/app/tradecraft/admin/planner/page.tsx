@@ -170,9 +170,151 @@ export default function PlannerPage() {
   };
 
   // Helper to format number with commas
-  const formatNumber = (value: number): string => {
+  const formatNumber = React.useCallback((value: number): string => {
     return value.toLocaleString();
-  };
+  }, []);
+
+  // Helper to get current parameters as an object
+  const getCurrentParams = React.useCallback(() => {
+    try {
+      const basePayload = JSON.parse(json);
+      return {
+        ...basePayload,
+        // Include advanced options state
+        liquidityOptions: {
+          windowDays: liquidityWindowDays,
+          minCoverageRatio: liquidityMinCoverageRatio,
+          minLiquidityThresholdISK: liquidityMinLiquidityThresholdISK,
+          minWindowTrades: liquidityMinWindowTrades,
+        },
+        arbitrageOptions: {
+          maxInventoryDays: arb_maxInventoryDays,
+          minMarginPercent: arb_minMarginPercent,
+          maxPriceDeviationMultiple: arb_maxPriceDeviationMultiple,
+          minTotalProfitISK: arb_minTotalProfitISK,
+          disableInventoryLimit: arb_disableInventoryLimit,
+          allowInventoryTopOff: arb_allowInventoryTopOff,
+        },
+        allocation: {
+          mode: allocationMode,
+          spreadBias,
+        },
+        minPackageNetProfitISK,
+        minPackageROIPercent,
+        shippingMarginMultiplier,
+        densityWeight,
+      };
+    } catch {
+      return {};
+    }
+  }, [
+    json,
+    liquidityWindowDays,
+    liquidityMinCoverageRatio,
+    liquidityMinLiquidityThresholdISK,
+    liquidityMinWindowTrades,
+    arb_maxInventoryDays,
+    arb_minMarginPercent,
+    arb_maxPriceDeviationMultiple,
+    arb_minTotalProfitISK,
+    arb_disableInventoryLimit,
+    arb_allowInventoryTopOff,
+    allocationMode,
+    spreadBias,
+    minPackageNetProfitISK,
+    minPackageROIPercent,
+    shippingMarginMultiplier,
+    densityWeight,
+  ]);
+
+  // Helper to load parameters from a profile
+  const handleLoadProfile = React.useCallback(
+    (params: Record<string, unknown>) => {
+      // Load base parameters - always set them
+      setCapacityDisplay(
+        formatNumber((params.packageCapacityM3 as number) || 60000),
+      );
+      setInvestmentDisplay(
+        formatNumber((params.investmentISK as number) || 10000000000),
+      );
+      setMaxPackagesDisplay(
+        ((params.maxPackagesHint as number) || 20).toString(),
+      );
+      setShareDisplay(
+        (
+          ((params.perDestinationMaxBudgetSharePerItem as number) || 0.2) * 100
+        ).toString(),
+      );
+      setCollateralDisplay(
+        formatNumber((params.maxPackageCollateralISK as number) || 5000000000),
+      );
+
+      // Load liquidity options - clear if not in profile
+      const liqOpts =
+        (params.liquidityOptions as Record<string, unknown>) || {};
+      setLiquidityWindowDays((liqOpts.windowDays as number) || undefined);
+      setLiquidityMinCoverageRatio(
+        (liqOpts.minCoverageRatio as number) || undefined,
+      );
+      setLiquidityMinLiquidityThresholdISK(
+        (liqOpts.minLiquidityThresholdISK as number) || undefined,
+      );
+      setLiquidityMinWindowTrades(
+        (liqOpts.minWindowTrades as number) || undefined,
+      );
+
+      // Load arbitrage options - clear if not in profile
+      const arbOpts =
+        (params.arbitrageOptions as Record<string, unknown>) || {};
+      setArb_maxInventoryDays(
+        (arbOpts.maxInventoryDays as number) || undefined,
+      );
+      setArb_minMarginPercent(
+        (arbOpts.minMarginPercent as number) || undefined,
+      );
+      setArb_maxPriceDeviationMultiple(
+        (arbOpts.maxPriceDeviationMultiple as number) || undefined,
+      );
+      setArb_minTotalProfitISK(
+        (arbOpts.minTotalProfitISK as number) || undefined,
+      );
+      setArb_disableInventoryLimit(
+        (arbOpts.disableInventoryLimit as boolean) || false,
+      );
+      setArb_allowInventoryTopOff(
+        (arbOpts.allowInventoryTopOff as boolean) || false,
+      );
+
+      // Load allocation options
+      const alloc = (params.allocation as Record<string, unknown>) || {};
+      setAllocationMode(
+        (alloc.mode as "best" | "targetWeighted" | "roundRobin") || "best",
+      );
+      setSpreadBias((alloc.spreadBias as number) || undefined);
+
+      // Load package quality thresholds - clear if not in profile
+      setMinPackageNetProfitISK(
+        (params.minPackageNetProfitISK as number) || undefined,
+      );
+      setMinPackageROIPercent(
+        (params.minPackageROIPercent as number) || undefined,
+      );
+      setShippingMarginMultiplier(
+        (params.shippingMarginMultiplier as number) || undefined,
+      );
+      setDensityWeight((params.densityWeight as number) || undefined);
+
+      // Update JSON to match
+      try {
+        const j = JSON.parse(json);
+        const updated = { ...j, ...params };
+        setJson(JSON.stringify(updated, null, 2));
+      } catch {
+        // If JSON is invalid, just skip updating it
+      }
+    },
+    [formatNumber, json],
+  );
 
   const hasUncommittedPlan = !!data && !commitSuccess;
 
@@ -233,6 +375,9 @@ export default function PlannerPage() {
     } catch {
       // If anything goes wrong, just ignore draft and start fresh
     }
+    // We intentionally do NOT include handleLoadProfile in deps because this
+    // effect should only run once on mount, and handleLoadProfile is stable.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Persist current planner draft to localStorage
@@ -253,7 +398,7 @@ export default function PlannerPage() {
     } catch {
       // Ignore storage errors (e.g., quota exceeded)
     }
-  }, [data, memo, showAdvancedOptions, json, liquidityWindowDays, liquidityMinCoverageRatio, liquidityMinLiquidityThresholdISK, liquidityMinWindowTrades, arb_maxInventoryDays, arb_minMarginPercent, arb_maxPriceDeviationMultiple, arb_minTotalProfitISK, arb_disableInventoryLimit, arb_allowInventoryTopOff, allocationMode, spreadBias, minPackageNetProfitISK, minPackageROIPercent, shippingMarginMultiplier, densityWeight]);
+  }, [getCurrentParams, data, memo, showAdvancedOptions]);
 
   const handleClearPlan = () => {
     // Reset core payload & display fields
@@ -264,7 +409,9 @@ export default function PlannerPage() {
     setShareDisplay(
       (defaultPayload.perDestinationMaxBudgetSharePerItem * 100).toString(),
     );
-    setCollateralDisplay(defaultPayload.maxPackageCollateralISK.toLocaleString());
+    setCollateralDisplay(
+      defaultPayload.maxPackageCollateralISK.toLocaleString(),
+    );
 
     // Reset advanced options
     setShowAdvancedOptions(false);
@@ -376,121 +523,6 @@ export default function PlannerPage() {
     const numValue = parseFormattedNumber(collateralDisplay);
     if (!isNaN(numValue)) {
       setCollateralDisplay(formatNumber(numValue));
-    }
-  };
-
-  // Helper to get current parameters as an object
-  const getCurrentParams = () => {
-    try {
-      const basePayload = JSON.parse(json);
-      return {
-        ...basePayload,
-        // Include advanced options state
-        liquidityOptions: {
-          windowDays: liquidityWindowDays,
-          minCoverageRatio: liquidityMinCoverageRatio,
-          minLiquidityThresholdISK: liquidityMinLiquidityThresholdISK,
-          minWindowTrades: liquidityMinWindowTrades,
-        },
-        arbitrageOptions: {
-          maxInventoryDays: arb_maxInventoryDays,
-          minMarginPercent: arb_minMarginPercent,
-          maxPriceDeviationMultiple: arb_maxPriceDeviationMultiple,
-          minTotalProfitISK: arb_minTotalProfitISK,
-          disableInventoryLimit: arb_disableInventoryLimit,
-          allowInventoryTopOff: arb_allowInventoryTopOff,
-        },
-        allocation: {
-          mode: allocationMode,
-          spreadBias,
-        },
-        minPackageNetProfitISK,
-        minPackageROIPercent,
-        shippingMarginMultiplier,
-        densityWeight,
-      };
-    } catch {
-      return {};
-    }
-  };
-
-  // Helper to load parameters from a profile
-  const handleLoadProfile = (params: Record<string, unknown>) => {
-    // Load base parameters - always set them
-    setCapacityDisplay(
-      formatNumber((params.packageCapacityM3 as number) || 60000),
-    );
-    setInvestmentDisplay(
-      formatNumber((params.investmentISK as number) || 10000000000),
-    );
-    setMaxPackagesDisplay(
-      ((params.maxPackagesHint as number) || 20).toString(),
-    );
-    setShareDisplay(
-      (
-        ((params.perDestinationMaxBudgetSharePerItem as number) || 0.2) * 100
-      ).toString(),
-    );
-    setCollateralDisplay(
-      formatNumber((params.maxPackageCollateralISK as number) || 5000000000),
-    );
-
-    // Load liquidity options - clear if not in profile
-    const liqOpts = (params.liquidityOptions as Record<string, unknown>) || {};
-    setLiquidityWindowDays((liqOpts.windowDays as number) || undefined);
-    setLiquidityMinCoverageRatio(
-      (liqOpts.minCoverageRatio as number) || undefined,
-    );
-    setLiquidityMinLiquidityThresholdISK(
-      (liqOpts.minLiquidityThresholdISK as number) || undefined,
-    );
-    setLiquidityMinWindowTrades(
-      (liqOpts.minWindowTrades as number) || undefined,
-    );
-
-    // Load arbitrage options - clear if not in profile
-    const arbOpts = (params.arbitrageOptions as Record<string, unknown>) || {};
-    setArb_maxInventoryDays((arbOpts.maxInventoryDays as number) || undefined);
-    setArb_minMarginPercent((arbOpts.minMarginPercent as number) || undefined);
-    setArb_maxPriceDeviationMultiple(
-      (arbOpts.maxPriceDeviationMultiple as number) || undefined,
-    );
-    setArb_minTotalProfitISK(
-      (arbOpts.minTotalProfitISK as number) || undefined,
-    );
-    setArb_disableInventoryLimit(
-      (arbOpts.disableInventoryLimit as boolean) || false,
-    );
-    setArb_allowInventoryTopOff(
-      (arbOpts.allowInventoryTopOff as boolean) || false,
-    );
-
-    // Load allocation options
-    const alloc = (params.allocation as Record<string, unknown>) || {};
-    setAllocationMode(
-      (alloc.mode as "best" | "targetWeighted" | "roundRobin") || "best",
-    );
-    setSpreadBias((alloc.spreadBias as number) || undefined);
-
-    // Load package quality thresholds - clear if not in profile
-    setMinPackageNetProfitISK(
-      (params.minPackageNetProfitISK as number) || undefined,
-    );
-    setMinPackageROIPercent(
-      (params.minPackageROIPercent as number) || undefined,
-    );
-    setShippingMarginMultiplier(
-      (params.shippingMarginMultiplier as number) || undefined,
-    );
-    setDensityWeight((params.densityWeight as number) || undefined);
-
-    // Update JSON to match
-    try {
-      const j = JSON.parse(json);
-      const updated = { ...j, ...params };
-      setJson(JSON.stringify(updated, null, 2));
-    } catch {
-      // If JSON is invalid, just skip updating it
     }
   };
 
@@ -637,13 +669,10 @@ export default function PlannerPage() {
               Restored your last uncommitted plan
               {restoredFromDraft.restoredAt
                 ? ` (saved at ${restoredFromDraft.restoredAt})`
-                : ""}.
+                : ""}
+              .
             </span>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleClearPlan}
-            >
+            <Button variant="outline" size="sm" onClick={handleClearPlan}>
               Clear plan
             </Button>
           </AlertDescription>
