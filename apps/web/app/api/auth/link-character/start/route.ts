@@ -53,7 +53,10 @@ export async function GET(req: NextRequest) {
       { status: 500 },
     );
   } catch (error) {
-    console.error("[link-character/start] Error starting character link:", error);
+    console.error(
+      "[link-character/start] Error starting character link:",
+      error,
+    );
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 },
