@@ -382,8 +382,7 @@ export class NotificationService {
     const enabledByUser = new Map<string, Set<string>>();
     for (const pref of enabledPrefs) {
       if (!pref.userId) continue;
-      const set =
-        enabledByUser.get(pref.userId) ?? new Set<string>();
+      const set = enabledByUser.get(pref.userId) ?? new Set<string>();
       set.add(pref.notificationType);
       enabledByUser.set(pref.userId, set);
     }
@@ -429,8 +428,7 @@ export class NotificationService {
       const stage = classifyStage(expiresAt);
       if (!forceAll && !stage) continue;
 
-      const effectiveStage: ExpiryStage =
-        stage ?? 'preview';
+      const effectiveStage: ExpiryStage = stage ?? 'preview';
 
       const summary = ensureUserSummary(userId);
       summary.plex.push({
@@ -465,8 +463,7 @@ export class NotificationService {
       const stage = classifyStage(expiresAt);
       if (!forceAll && !stage) continue;
 
-      const effectiveStage: ExpiryStage =
-        stage ?? 'preview';
+      const effectiveStage: ExpiryStage = stage ?? 'preview';
 
       const summary = ensureUserSummary(userId);
       summary.mct.push({
@@ -501,8 +498,7 @@ export class NotificationService {
       const stage = classifyStage(expiresAt);
       if (!forceAll && !stage) continue;
 
-      const effectiveStage: ExpiryStage =
-        stage ?? 'preview';
+      const effectiveStage: ExpiryStage = stage ?? 'preview';
 
       const summary = ensureUserSummary(userId);
       summary.boosters.push({
@@ -549,8 +545,9 @@ export class NotificationService {
 
         if (!activeSubs.length) continue;
 
-        const activeMctCount = activeSubs.filter((s) => s.type === 'MCT')
-          .length;
+        const activeMctCount = activeSubs.filter(
+          (s) => s.type === 'MCT',
+        ).length;
 
         let allowedQueues = 1 + activeMctCount;
         if (allowedQueues > 3) allowedQueues = 3;
@@ -627,9 +624,7 @@ export class NotificationService {
       }
 
       const lines: string[] = [];
-      lines.push(
-        `Subscription and booster alerts for your EVE accounts:\n`,
-      );
+      lines.push(`Subscription and booster alerts for your EVE accounts:\n`);
 
       const fmtStage = (stage: ExpiryStage, expiresAt: Date): string => {
         const diffMs = expiresAt.getTime() - now.getTime();
@@ -684,9 +679,7 @@ export class NotificationService {
         lines.push('');
       }
 
-      lines.push(
-        `You can manage or turn off notifications here: ${manageUrl}`,
-      );
+      lines.push(`You can manage or turn off notifications here: ${manageUrl}`);
 
       const content = lines.join('\n');
 

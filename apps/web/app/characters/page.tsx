@@ -73,7 +73,12 @@ import {
   useCharacterSkills,
   useDeleteAccount,
 } from "./api";
-import type { CharacterOverview } from "./api";
+import type {
+  CharacterOverview,
+  EveAccountPlex,
+  EveAccountMct,
+  CharacterBooster,
+} from "./api";
 import type { CharacterTrainingQueueSummary } from "@eve/api-contracts";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -806,7 +811,8 @@ function AccountPlexDialog({
             <>
               <Separator />
               <p className="text-xs text-muted-foreground text-center py-2">
-                Maximum of 1 PLEX period per account. Delete the existing one to add a new period.
+                Maximum of 1 PLEX period per account. Delete the existing one to
+                add a new period.
               </p>
             </>
           )}
@@ -1105,7 +1111,8 @@ function AccountMctDialog({
             <>
               <Separator />
               <p className="text-xs text-muted-foreground text-center py-2">
-                Maximum of 2 MCT slots per account. Delete an existing slot to add a new one.
+                Maximum of 2 MCT slots per account. Delete an existing slot to
+                add a new one.
               </p>
             </>
           )}
@@ -1531,7 +1538,9 @@ function CharacterBoostersDialog({
                   />
                 </div>
                 <div className="space-y-1">
-                  <Label htmlFor={`booster-days-${characterId}`}>Days left</Label>
+                  <Label htmlFor={`booster-days-${characterId}`}>
+                    Days left
+                  </Label>
                   <Input
                     id={`booster-days-${characterId}`}
                     type="number"
@@ -1541,7 +1550,9 @@ function CharacterBoostersDialog({
                   />
                 </div>
                 <div className="space-y-1">
-                  <Label htmlFor={`booster-hours-${characterId}`}>Hours left</Label>
+                  <Label htmlFor={`booster-hours-${characterId}`}>
+                    Hours left
+                  </Label>
                   <Input
                     id={`booster-hours-${characterId}`}
                     type="number"
@@ -1568,7 +1579,8 @@ function CharacterBoostersDialog({
             <>
               <Separator />
               <p className="text-xs text-muted-foreground text-center py-2">
-                Maximum of 1 active booster per character. Delete or wait for the existing one to expire before adding a new booster.
+                Maximum of 1 active booster per character. Delete or wait for
+                the existing one to expire before adding a new booster.
               </p>
             </>
           )}
