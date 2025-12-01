@@ -24,7 +24,11 @@ export type NotificationPreferenceDto = {
     | "CYCLE_RESULTS"
     | "CYCLE_PAYOUT_SENT"
     | "SKILL_PLAN_REMAP_REMINDER"
-    | "SKILL_PLAN_COMPLETION";
+    | "SKILL_PLAN_COMPLETION"
+    | "PLEX_ENDING"
+    | "MCT_ENDING"
+    | "BOOSTER_ENDING"
+    | "TRAINING_QUEUE_IDLE";
   enabled: boolean;
 };
 

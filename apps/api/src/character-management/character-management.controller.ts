@@ -204,6 +204,26 @@ export class CharacterManagementController {
     );
   }
 
+  @Patch('accounts/:accountId/mct/:slotId')
+  @ApiOperation({ summary: 'Update an MCT slot for an account' })
+  @ApiParam({ name: 'accountId', description: 'EVE account id' })
+  @ApiParam({ name: 'slotId', description: 'MCT slot id' })
+  async updateMct(
+    @CurrentUser() user: RequestUser | null,
+    @Param('accountId') accountId: string,
+    @Param('slotId') slotId: string,
+    @Body() body: { expiresAt?: string; notes?: string | null },
+  ) {
+    const userId = user?.userId;
+    if (!userId) return { ok: false as const };
+    return await this.characterManagement.updateMctSlot(
+      userId,
+      accountId,
+      slotId,
+      body,
+    );
+  }
+
   @Patch('accounts/:accountId/plex/:subscriptionId')
   @ApiOperation({ summary: 'Update a PLEX/subscription period for an account' })
   @ApiParam({ name: 'accountId', description: 'EVE account id' })

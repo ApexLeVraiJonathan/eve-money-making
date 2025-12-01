@@ -10,6 +10,8 @@ import {
   Play,
   Pause,
   Trash2,
+  Clock,
+  Calendar,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@eve/ui";
 import { Badge } from "@eve/ui";
@@ -24,6 +26,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@eve/ui";
+import { Popover, PopoverContent, PopoverTrigger } from "@eve/ui";
 import { Avatar, AvatarFallback, AvatarImage } from "@eve/ui";
 import { Separator } from "@eve/ui";
 import { Skeleton } from "@eve/ui";
@@ -53,15 +56,18 @@ import {
   useMyAccounts,
   useAccountPlex,
   useCreatePlexSubscription,
+  useUpdatePlexSubscription,
   useDeletePlexSubscription,
   useCharacterBoosters,
   useCreateBooster,
+  useUpdateBooster,
   useDeleteBooster,
   useCreateAccount,
   useAssignCharacterToAccount,
   useUnassignCharacterFromAccount,
   useAccountMct,
   useCreateMct,
+  useUpdateMct,
   useDeleteMct,
   useCharacterTrainingQueue,
   useCharacterSkills,
@@ -522,6 +528,151 @@ function AccountsSkeleton() {
   );
 }
 
+function PlexExtendPopover({
+  plex,
+  accountId,
+}: {
+  plex: EveAccountPlex;
+  accountId: string;
+}) {
+  const updatePlex = useUpdatePlexSubscription(accountId);
+  const [open, setOpen] = useState(false);
+  const [customDate, setCustomDate] = useState<string>("");
+
+  const handleExtendPreset = async (days: number) => {
+    const baseExpiry = new Date(plex.expiresAt);
+    if (Number.isNaN(baseExpiry.getTime())) {
+      toast.error("Invalid expiry date");
+      return;
+    }
+
+    const extended = new Date(
+      baseExpiry.getTime() + days * 24 * 60 * 60 * 1000,
+    );
+
+    try {
+      await updatePlex.mutateAsync({
+        subscriptionId: plex.id,
+        expiresAt: extended.toISOString(),
+      });
+      toast.success(`PLEX extended by ${days} days`);
+      setOpen(false);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const handleExtendCustom = async () => {
+    if (!customDate) {
+      toast.error("Please pick a date");
+      return;
+    }
+
+    try {
+      await updatePlex.mutateAsync({
+        subscriptionId: plex.id,
+        expiresAt: new Date(customDate).toISOString(),
+      });
+      toast.success("PLEX period updated");
+      setOpen(false);
+      setCustomDate("");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-6 px-2 text-[11px]"
+          disabled={updatePlex.isPending}
+        >
+          <Clock className="h-3 w-3 mr-1" />
+          Extend
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-64 p-3">
+        <div className="space-y-3">
+          <div className="space-y-1.5">
+            <p className="text-xs font-semibold">Preset durations</p>
+            <div className="grid gap-1">
+              <Button
+                size="sm"
+                variant="ghost"
+                className="justify-start h-8 text-xs"
+                onClick={() => void handleExtendPreset(30)}
+                disabled={updatePlex.isPending}
+              >
+                1 month (+30d)
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="justify-start h-8 text-xs"
+                onClick={() => void handleExtendPreset(90)}
+                disabled={updatePlex.isPending}
+              >
+                3 months (+90d)
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="justify-start h-8 text-xs"
+                onClick={() => void handleExtendPreset(180)}
+                disabled={updatePlex.isPending}
+              >
+                6 months (+180d)
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="justify-start h-8 text-xs"
+                onClick={() => void handleExtendPreset(365)}
+                disabled={updatePlex.isPending}
+              >
+                12 months (+365d)
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="justify-start h-8 text-xs"
+                onClick={() => void handleExtendPreset(730)}
+                disabled={updatePlex.isPending}
+              >
+                24 months (+730d)
+              </Button>
+            </div>
+          </div>
+          <Separator />
+          <div className="space-y-2">
+            <Label htmlFor="custom-plex-date" className="text-xs">
+              Custom date
+            </Label>
+            <Input
+              id="custom-plex-date"
+              type="datetime-local"
+              value={customDate}
+              onChange={(e) => setCustomDate(e.target.value)}
+              className="h-8 text-xs"
+            />
+            <Button
+              size="sm"
+              className="w-full h-8"
+              onClick={() => void handleExtendCustom()}
+              disabled={updatePlex.isPending || !customDate}
+            >
+              Set custom date
+            </Button>
+          </div>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 function AccountPlexDialog({
   accountId,
   open,
@@ -566,7 +717,7 @@ function AccountPlexDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[480px]">
+      <DialogContent className="sm:max-w-[520px]">
         <DialogHeader>
           <DialogTitle>PLEX periods</DialogTitle>
         </DialogHeader>
@@ -580,9 +731,9 @@ function AccountPlexDialog({
               {plex.map((p) => (
                 <div
                   key={p.id}
-                  className="flex items-center justify-between gap-2 rounded border bg-background px-2 py-1"
+                  className="flex items-start justify-between gap-2 rounded border bg-background px-2 py-2"
                 >
-                  <div className="space-y-0.5">
+                  <div className="space-y-0.5 flex-1">
                     <div>
                       Expires:{" "}
                       {new Date(p.expiresAt).toLocaleString(undefined, {
@@ -600,49 +751,65 @@ function AccountPlexDialog({
                       </div>
                     )}
                   </div>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    className="h-6 w-6"
-                    onClick={() => void handleDelete(p.id)}
-                  >
-                    ×
-                  </Button>
+                  <div className="flex items-center gap-1">
+                    <PlexExtendPopover plex={p} accountId={accountId} />
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-6 w-6"
+                      onClick={() => void handleDelete(p.id)}
+                      disabled={deletePlex.isPending}
+                    >
+                      ×
+                    </Button>
+                  </div>
                 </div>
               ))}
             </div>
           )}
-          <Separator />
-          <div className="grid gap-2 md:grid-cols-[1.2fr,1.8fr,auto]">
-            <div className="space-y-1">
-              <Label htmlFor={`expires-${accountId}`}>Expires at</Label>
-              <Input
-                id={`expires-${accountId}`}
-                type="datetime-local"
-                value={expiresAt}
-                onChange={(e) => setExpiresAt(e.target.value)}
-              />
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor={`notes-${accountId}`}>Notes</Label>
-              <Input
-                id={`notes-${accountId}`}
-                placeholder="Optional"
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-              />
-            </div>
-            <div className="flex items-end">
-              <Button
-                className="w-full"
-                size="sm"
-                onClick={() => void handleCreate()}
-                disabled={createPlex.isPending}
-              >
-                {createPlex.isPending ? "Saving…" : "Add"}
-              </Button>
-            </div>
-          </div>
+          {plex.length < 1 && (
+            <>
+              <Separator />
+              <div className="grid gap-2 md:grid-cols-[1.2fr,1.8fr,auto]">
+                <div className="space-y-1">
+                  <Label htmlFor={`expires-${accountId}`}>Expires at</Label>
+                  <Input
+                    id={`expires-${accountId}`}
+                    type="datetime-local"
+                    value={expiresAt}
+                    onChange={(e) => setExpiresAt(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor={`notes-${accountId}`}>Notes</Label>
+                  <Input
+                    id={`notes-${accountId}`}
+                    placeholder="Optional"
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                  />
+                </div>
+                <div className="flex items-end">
+                  <Button
+                    className="w-full"
+                    size="sm"
+                    onClick={() => void handleCreate()}
+                    disabled={createPlex.isPending}
+                  >
+                    {createPlex.isPending ? "Saving…" : "Add"}
+                  </Button>
+                </div>
+              </div>
+            </>
+          )}
+          {plex.length >= 1 && (
+            <>
+              <Separator />
+              <p className="text-xs text-muted-foreground text-center py-2">
+                Maximum of 1 PLEX period per account. Delete the existing one to add a new period.
+              </p>
+            </>
+          )}
         </div>
         <DialogFooter>
           <Button
@@ -655,6 +822,154 @@ function AccountPlexDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function MctExtendPopover({
+  slot,
+  accountId,
+}: {
+  slot: EveAccountMct;
+  accountId: string;
+}) {
+  const updateMct = useUpdateMct(accountId);
+  const [open, setOpen] = useState(false);
+  const [customDate, setCustomDate] = useState<string>("");
+
+  const handleExtendPreset = async (days: number) => {
+    const currentExpiry = new Date(slot.expiresAt);
+    if (Number.isNaN(currentExpiry.getTime())) {
+      toast.error("Invalid expiry date");
+      return;
+    }
+
+    const extended = new Date(
+      currentExpiry.getTime() + days * 24 * 60 * 60 * 1000,
+    );
+    const extendedDateOnly = extended.toISOString().slice(0, 10);
+
+    try {
+      await updateMct.mutateAsync({
+        slotId: slot.id,
+        expiresAt: extendedDateOnly,
+        notes: slot.notes,
+      });
+      toast.success(`MCT slot extended by ${days} days`);
+      setOpen(false);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const handleExtendCustom = async () => {
+    if (!customDate) {
+      toast.error("Please pick a date");
+      return;
+    }
+
+    try {
+      await updateMct.mutateAsync({
+        slotId: slot.id,
+        expiresAt: customDate,
+        notes: slot.notes,
+      });
+      toast.success("MCT slot updated");
+      setOpen(false);
+      setCustomDate("");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-6 px-2 text-[11px]"
+          disabled={updateMct.isPending}
+        >
+          <Clock className="h-3 w-3 mr-1" />
+          Extend
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-64 p-3">
+        <div className="space-y-3">
+          <div className="space-y-1.5">
+            <p className="text-xs font-semibold">Preset durations</p>
+            <div className="grid gap-1">
+              <Button
+                size="sm"
+                variant="ghost"
+                className="justify-start h-8 text-xs"
+                onClick={() => void handleExtendPreset(30)}
+                disabled={updateMct.isPending}
+              >
+                1 month (+30d)
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="justify-start h-8 text-xs"
+                onClick={() => void handleExtendPreset(90)}
+                disabled={updateMct.isPending}
+              >
+                3 months (+90d)
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="justify-start h-8 text-xs"
+                onClick={() => void handleExtendPreset(180)}
+                disabled={updateMct.isPending}
+              >
+                6 months (+180d)
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="justify-start h-8 text-xs"
+                onClick={() => void handleExtendPreset(365)}
+                disabled={updateMct.isPending}
+              >
+                12 months (+365d)
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="justify-start h-8 text-xs"
+                onClick={() => void handleExtendPreset(730)}
+                disabled={updateMct.isPending}
+              >
+                24 months (+730d)
+              </Button>
+            </div>
+          </div>
+          <Separator />
+          <div className="space-y-2">
+            <Label htmlFor="custom-mct-date" className="text-xs">
+              Custom date
+            </Label>
+            <Input
+              id="custom-mct-date"
+              type="date"
+              value={customDate}
+              onChange={(e) => setCustomDate(e.target.value)}
+              className="h-8 text-xs"
+            />
+            <Button
+              size="sm"
+              className="w-full h-8"
+              onClick={() => void handleExtendCustom()}
+              disabled={updateMct.isPending || !customDate}
+            >
+              Set custom date
+            </Button>
+          </div>
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -735,49 +1050,65 @@ function AccountMctDialog({
                       </div>
                     )}
                   </div>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    className="h-6 w-6"
-                    onClick={() => void handleDelete(s.id)}
-                  >
-                    ×
-                  </Button>
+                  <div className="flex items-center gap-1">
+                    <MctExtendPopover slot={s} accountId={accountId} />
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-6 w-6"
+                      onClick={() => void handleDelete(s.id)}
+                      disabled={deleteMct.isPending}
+                    >
+                      ×
+                    </Button>
+                  </div>
                 </div>
               ))}
             </div>
           )}
-          <Separator />
-          <div className="grid gap-2 md:grid-cols-[1.2fr,1.8fr,auto]">
-            <div className="space-y-1">
-              <Label htmlFor={`mct-expires-${accountId}`}>Expires on</Label>
-              <Input
-                id={`mct-expires-${accountId}`}
-                type="date"
-                value={expiresAt}
-                onChange={(e) => setExpiresAt(e.target.value)}
-              />
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor={`mct-notes-${accountId}`}>Notes</Label>
-              <Input
-                id={`mct-notes-${accountId}`}
-                placeholder="Optional"
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-              />
-            </div>
-            <div className="flex items-end">
-              <Button
-                className="w-full"
-                size="sm"
-                onClick={() => void handleCreate()}
-                disabled={createMct.isPending}
-              >
-                {createMct.isPending ? "Saving…" : "Add"}
-              </Button>
-            </div>
-          </div>
+          {slots.length < 2 && (
+            <>
+              <Separator />
+              <div className="grid gap-2 md:grid-cols-[1.2fr,1.8fr,auto]">
+                <div className="space-y-1">
+                  <Label htmlFor={`mct-expires-${accountId}`}>Expires on</Label>
+                  <Input
+                    id={`mct-expires-${accountId}`}
+                    type="date"
+                    value={expiresAt}
+                    onChange={(e) => setExpiresAt(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor={`mct-notes-${accountId}`}>Notes</Label>
+                  <Input
+                    id={`mct-notes-${accountId}`}
+                    placeholder="Optional"
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                  />
+                </div>
+                <div className="flex items-end">
+                  <Button
+                    className="w-full"
+                    size="sm"
+                    onClick={() => void handleCreate()}
+                    disabled={createMct.isPending}
+                  >
+                    {createMct.isPending ? "Saving…" : "Add"}
+                  </Button>
+                </div>
+              </div>
+            </>
+          )}
+          {slots.length >= 2 && (
+            <>
+              <Separator />
+              <p className="text-xs text-muted-foreground text-center py-2">
+                Maximum of 2 MCT slots per account. Delete an existing slot to add a new one.
+              </p>
+            </>
+          )}
         </div>
         <DialogFooter>
           <Button
@@ -959,6 +1290,116 @@ function AccountStatusSummary({
   );
 }
 
+function BoosterRenewDialog({
+  booster,
+  characterId,
+}: {
+  booster: CharacterBooster;
+  characterId: number;
+}) {
+  const updateBooster = useUpdateBooster(characterId);
+  const [open, setOpen] = useState(false);
+  const [days, setDays] = useState<string>("");
+  const [hours, setHours] = useState<string>("");
+
+  const handleRenew = async () => {
+    const daysNum = Number(days || "0");
+    const hoursNum = Number(hours || "0");
+
+    if (isNaN(daysNum) || isNaN(hoursNum) || (daysNum <= 0 && hoursNum <= 0)) {
+      toast.error("Please enter a valid duration");
+      return;
+    }
+
+    const totalHours = daysNum * 24 + hoursNum;
+    if (totalHours <= 0) {
+      toast.error("Duration must be greater than 0");
+      return;
+    }
+
+    const newExpiresAt = new Date(Date.now() + totalHours * 60 * 60 * 1000);
+
+    try {
+      await updateBooster.mutateAsync({
+        boosterId: booster.id,
+        startsAt: new Date().toISOString(),
+        expiresAt: newExpiresAt.toISOString(),
+      });
+      toast.success("Booster renewed");
+      setOpen(false);
+      setDays("");
+      setHours("");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button size="sm" variant="outline" className="h-6 px-2 text-[11px]">
+          <Clock className="h-3 w-3 mr-1" />
+          Renew
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-[320px]">
+        <DialogHeader>
+          <DialogTitle>Renew Booster</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          <p className="text-xs text-muted-foreground">
+            Set new duration for <strong>{booster.boosterName}</strong>. This
+            will override any remaining time.
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            <div className="space-y-1">
+              <Label htmlFor="renew-days" className="text-xs">
+                Days
+              </Label>
+              <Input
+                id="renew-days"
+                type="number"
+                min={0}
+                value={days}
+                onChange={(e) => setDays(e.target.value)}
+                placeholder="0"
+                className="h-9"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="renew-hours" className="text-xs">
+                Hours
+              </Label>
+              <Input
+                id="renew-hours"
+                type="number"
+                min={0}
+                max={23}
+                value={hours}
+                onChange={(e) => setHours(e.target.value)}
+                placeholder="0"
+                className="h-9"
+              />
+            </div>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" size="sm" onClick={() => setOpen(false)}>
+            Cancel
+          </Button>
+          <Button
+            size="sm"
+            onClick={() => void handleRenew()}
+            disabled={updateBooster.isPending}
+          >
+            {updateBooster.isPending ? "Renewing…" : "Renew"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function CharacterBoostersDialog({
   characterId,
   characterName,
@@ -1041,9 +1482,9 @@ function CharacterBoostersDialog({
               {boosters.map((b) => (
                 <div
                   key={b.id}
-                  className="flex items-center justify-between gap-2 rounded border bg-background px-2 py-1"
+                  className="flex items-start justify-between gap-2 rounded border bg-background px-2 py-2"
                 >
-                  <div className="space-y-0.5">
+                  <div className="space-y-0.5 flex-1">
                     <div className="font-medium">{b.boosterName}</div>
                     <div className="text-[11px] text-muted-foreground">
                       Until{" "}
@@ -1058,63 +1499,79 @@ function CharacterBoostersDialog({
                       ({b.status})
                     </div>
                   </div>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    className="h-6 w-6"
-                    onClick={() => void handleDelete(b.id)}
-                  >
-                    ×
-                  </Button>
+                  <div className="flex items-center gap-1">
+                    <BoosterRenewDialog booster={b} characterId={characterId} />
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-6 w-6"
+                      onClick={() => void handleDelete(b.id)}
+                      disabled={deleteBooster.isPending}
+                    >
+                      ×
+                    </Button>
+                  </div>
                 </div>
               ))}
             </div>
           )}
-          <Separator />
-          <div className="grid gap-2 md:grid-cols-[1.4fr,0.9fr,0.9fr,auto]">
-            <div className="space-y-1">
-              <Label htmlFor={`booster-name-${characterId}`}>
-                Booster name
-              </Label>
-              <Input
-                id={`booster-name-${characterId}`}
-                placeholder="Example: Cerebral Accelerator"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-              />
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor={`booster-days-${characterId}`}>Days left</Label>
-              <Input
-                id={`booster-days-${characterId}`}
-                type="number"
-                min={0}
-                value={daysLeft}
-                onChange={(e) => setDaysLeft(e.target.value)}
-              />
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor={`booster-hours-${characterId}`}>Hours left</Label>
-              <Input
-                id={`booster-hours-${characterId}`}
-                type="number"
-                min={0}
-                max={23}
-                value={hoursLeft}
-                onChange={(e) => setHoursLeft(e.target.value)}
-              />
-            </div>
-            <div className="flex items-end">
-              <Button
-                className="w-full"
-                size="sm"
-                onClick={() => void handleCreate()}
-                disabled={createBooster.isPending}
-              >
-                {createBooster.isPending ? "Saving…" : "Add"}
-              </Button>
-            </div>
-          </div>
+          {boosters.length < 1 && (
+            <>
+              <Separator />
+              <div className="grid gap-2 md:grid-cols-[1.4fr,0.9fr,0.9fr,auto]">
+                <div className="space-y-1">
+                  <Label htmlFor={`booster-name-${characterId}`}>
+                    Booster name
+                  </Label>
+                  <Input
+                    id={`booster-name-${characterId}`}
+                    placeholder="Example: Cerebral Accelerator"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor={`booster-days-${characterId}`}>Days left</Label>
+                  <Input
+                    id={`booster-days-${characterId}`}
+                    type="number"
+                    min={0}
+                    value={daysLeft}
+                    onChange={(e) => setDaysLeft(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor={`booster-hours-${characterId}`}>Hours left</Label>
+                  <Input
+                    id={`booster-hours-${characterId}`}
+                    type="number"
+                    min={0}
+                    max={23}
+                    value={hoursLeft}
+                    onChange={(e) => setHoursLeft(e.target.value)}
+                  />
+                </div>
+                <div className="flex items-end">
+                  <Button
+                    className="w-full"
+                    size="sm"
+                    onClick={() => void handleCreate()}
+                    disabled={createBooster.isPending}
+                  >
+                    {createBooster.isPending ? "Saving…" : "Add"}
+                  </Button>
+                </div>
+              </div>
+            </>
+          )}
+          {boosters.length >= 1 && (
+            <>
+              <Separator />
+              <p className="text-xs text-muted-foreground text-center py-2">
+                Maximum of 1 active booster per character. Delete or wait for the existing one to expire before adding a new booster.
+              </p>
+            </>
+          )}
         </div>
         <DialogFooter>
           <Button variant="outline" size="sm" onClick={() => setOpen(false)}>
@@ -1501,12 +1958,11 @@ function CharacterCardDisplay({
           <p className="text-xs text-foreground/60">{statusText}</p>
         </div>
         <TrainingProgressBar value={progressPercent} />
-        {additionalQueued > 0 && (
-          <p className="text-[11px] text-foreground/50">
-            {additionalQueued} more skill
-            {additionalQueued === 1 ? "" : "s"} queued
-          </p>
-        )}
+        <p className="text-[11px] text-foreground/50 min-h-[16px]">
+          {additionalQueued > 0
+            ? `${additionalQueued} more skill${additionalQueued === 1 ? "" : "s"} queued`
+            : "\u00A0"}
+        </p>
       </div>
     );
   };
@@ -1558,31 +2014,33 @@ function CharacterCardDisplay({
                 </Badge>
               )}
             </div>
-            {activeBooster ? (
-              <div className="flex flex-col gap-0.5">
-                <Badge variant="secondary" className="text-xs w-fit">
-                  {activeBooster.boosterName}
-                </Badge>
-                {(() => {
-                  const timeInfo = getTimeRemaining(activeBooster.expiresAt);
-                  return (
-                    <p
-                      className={cn(
-                        "text-xs font-semibold",
-                        getExpiryColorClass(timeInfo.days),
-                      )}
-                    >
-                      {timeInfo.text}
-                    </p>
-                  );
-                })()}
-              </div>
-            ) : (
-              <div className="flex items-center gap-1.5 text-xs text-foreground/40">
-                <Minus className="h-3 w-3" />
-                <span>No booster</span>
-              </div>
-            )}
+            <div className="flex flex-col gap-0.5 min-h-[44px]">
+              {activeBooster ? (
+                <>
+                  <Badge variant="secondary" className="text-xs w-fit">
+                    {activeBooster.boosterName}
+                  </Badge>
+                  {(() => {
+                    const timeInfo = getTimeRemaining(activeBooster.expiresAt);
+                    return (
+                      <p
+                        className={cn(
+                          "text-xs font-semibold",
+                          getExpiryColorClass(timeInfo.days),
+                        )}
+                      >
+                        {timeInfo.text}
+                      </p>
+                    );
+                  })()}
+                </>
+              ) : (
+                <div className="flex items-center gap-1.5 text-xs text-foreground/40">
+                  <Minus className="h-3 w-3" />
+                  <span>No booster</span>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
@@ -1638,7 +2096,7 @@ function CharacterCardDisplay({
               </p>
             )}
           </div>
-          <div className="rounded-lg border bg-muted/20 p-3 space-y-2">
+          <div className="rounded-lg border bg-muted/20 p-3 space-y-2 h-[124px] flex flex-col">
             <div className="flex items-center gap-2 text-xs text-foreground/60">
               <span
                 className={cn(
@@ -1652,7 +2110,7 @@ function CharacterCardDisplay({
                 {queueStatusLabel}
               </span>
             </div>
-            {queueContent}
+            <div className="flex-1">{queueContent}</div>
           </div>
         </div>
 

@@ -503,6 +503,67 @@ export class CharacterManagementService {
     };
   }
 
+  async updateMctSlot(
+    userId: string,
+    accountId: string,
+    slotId: string,
+    input: {
+      expiresAt?: string;
+      notes?: string | null;
+    },
+  ) {
+    const slot = await this.prisma.eveAccountSubscription.findFirst({
+      where: {
+        id: slotId,
+        eveAccountId: accountId,
+        eveAccount: { userId },
+        type: 'MCT',
+      },
+      select: { id: true },
+    });
+
+    if (!slot) {
+      throw new ForbiddenException('MCT slot does not belong to current user');
+    }
+
+    const data: {
+      expiresAt?: Date;
+      notes?: string | null;
+    } = {};
+
+    if (input.expiresAt !== undefined) {
+      const iso = input.expiresAt?.trim();
+      if (!iso || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) {
+        throw new BadRequestException(
+          'Invalid expiresAt format, expected YYYY-MM-DD',
+        );
+      }
+      const [yearStr, monthStr, dayStr] = iso.split('-');
+      const year = Number(yearStr);
+      const month = Number(monthStr);
+      const day = Number(dayStr);
+      if (!year || !month || !day) {
+        throw new BadRequestException('Invalid expiresAt date value');
+      }
+      data.expiresAt = new Date(Date.UTC(year, month - 1, day, 0, 0, 0));
+    }
+
+    if (input.notes !== undefined) {
+      data.notes = input.notes;
+    }
+
+    const updated = await this.prisma.eveAccountSubscription.update({
+      where: { id: slotId },
+      data,
+    });
+
+    return {
+      id: updated.id,
+      expiresAt: updated.expiresAt.toISOString(),
+      notes: updated.notes,
+    };
+  }
+
   async deleteMctSlot(userId: string, accountId: string, slotId: string) {
     const slot = await this.prisma.eveAccountSubscription.findFirst({
       where: {

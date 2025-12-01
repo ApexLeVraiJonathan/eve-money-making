@@ -343,6 +343,50 @@ export default function NotificationSettingsPage() {
                   )}
                   onChange={handleToggle}
                 />
+                <Separator className="my-2 opacity-50" />
+                <PreferenceRow
+                  title="PLEX ending"
+                  description="Reminders when tracked PLEX or account subscription time is close to expiring"
+                  pref={localPrefs.find(
+                    (p) =>
+                      p.channel === "DISCORD_DM" &&
+                      p.notificationType === "PLEX_ENDING",
+                  )}
+                  onChange={handleToggle}
+                />
+                <Separator className="my-2 opacity-50" />
+                <PreferenceRow
+                  title="MCT ending"
+                  description="Reminders when tracked MCT training slots are close to expiring"
+                  pref={localPrefs.find(
+                    (p) =>
+                      p.channel === "DISCORD_DM" &&
+                      p.notificationType === "MCT_ENDING",
+                  )}
+                  onChange={handleToggle}
+                />
+                <Separator className="my-2 opacity-50" />
+                <PreferenceRow
+                  title="Booster ending"
+                  description="Reminders when an active character booster is close to expiring"
+                  pref={localPrefs.find(
+                    (p) =>
+                      p.channel === "DISCORD_DM" &&
+                      p.notificationType === "BOOSTER_ENDING",
+                  )}
+                  onChange={handleToggle}
+                />
+                <Separator className="my-2 opacity-50" />
+                <PreferenceRow
+                  title="Training queue idle"
+                  description="Alerts when a character has available training time but no skills queued"
+                  pref={localPrefs.find(
+                    (p) =>
+                      p.channel === "DISCORD_DM" &&
+                      p.notificationType === "TRAINING_QUEUE_IDLE",
+                  )}
+                  onChange={handleToggle}
+                />
               </div>
             )}
           </div>

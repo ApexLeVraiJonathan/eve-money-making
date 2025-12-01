@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ApiError } from "@eve/api-client";
+import { ApiError, clientForApp } from "@eve/api-client";
 import { qk } from "@eve/api-client/queryKeys";
 import { useApiClient } from "@/app/api-hooks/useApiClient";
 import { useAuthenticatedQuery } from "@/app/api-hooks/useAuthenticatedQuery";
@@ -155,9 +155,15 @@ export function startCharacterLink(returnUrl?: string) {
  * Logout user
  */
 export async function logout() {
-  // Backend clears the HTTP-only session cookie and responds with JSON.
-  // This route proxies to the API /auth/logout endpoint.
-  window.location.href = "/api/auth/signout";
+  // Call the API directly from the browser so the API domain receives
+  // the correct session cookie, then navigate back to home.
+  const client = clientForApp("api");
+  try {
+    await client.get<{ ok: boolean }>("/auth/logout");
+  } catch {
+    // Ignore errors – even if the API call fails, we still redirect locally.
+  }
+  window.location.href = "/";
 }
 
 export function useUpdateUserFeatures() {

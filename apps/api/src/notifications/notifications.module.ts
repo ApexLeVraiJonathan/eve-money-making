@@ -5,9 +5,10 @@ import { DiscordOauthService } from './discord-oauth.service';
 import { NotificationPreferencesService } from './notification-preferences.service';
 import { DiscordDmService } from './discord-dm.service';
 import { NotificationService } from './notification.service';
+import { CharacterManagementModule } from '../character-management/character-management.module';
 
 @Module({
-  imports: [PrismaModule],
+  imports: [PrismaModule, CharacterManagementModule],
   controllers: [NotificationsController],
   providers: [
     DiscordOauthService,

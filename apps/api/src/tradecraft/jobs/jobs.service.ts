@@ -168,6 +168,33 @@ export class JobsService {
   }
 
   /**
+   * Daily job to send grouped PLEX/MCT/booster expiry notifications.
+   *
+   * Runs once per day to avoid spamming; thresholds are handled inside
+   * NotificationService.sendExpirySummaries.
+   */
+  @Cron('0 9 * * *')
+  async runExpiryNotifications(): Promise<void> {
+    if (
+      !this.jobsEnabled() ||
+      !this.jobFlag('JOB_EXPIRY_NOTIFICATIONS_ENABLED', true)
+    ) {
+      this.logger.debug('Skipping expiry notifications (jobs disabled)');
+      return;
+    }
+
+    try {
+      await this.notifications.sendExpirySummaries();
+    } catch (e) {
+      this.logger.warn(
+        `Expiry notifications job failed: ${
+          e instanceof Error ? e.message : String(e)
+        }`,
+      );
+    }
+  }
+
+  /**
    * Core wallet import and allocation logic (no jobs-enabled check).
    * Can be called manually via API or from scheduled job.
    */

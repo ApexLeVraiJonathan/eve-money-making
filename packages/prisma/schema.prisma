@@ -81,6 +81,14 @@ enum NotificationType {
   CYCLE_PAYOUT_SENT
   SKILL_PLAN_REMAP_REMINDER
   SKILL_PLAN_COMPLETION
+  /// Reminder when an account's primary PLEX/subscription time is ending
+  PLEX_ENDING
+  /// Reminder when an account's MCT slot is ending
+  MCT_ENDING
+  /// Reminder when a character's active booster is ending
+  BOOSTER_ENDING
+  /// Reminder when a character has training time available but no active queue
+  TRAINING_QUEUE_IDLE
 }
 
 model TypeId {

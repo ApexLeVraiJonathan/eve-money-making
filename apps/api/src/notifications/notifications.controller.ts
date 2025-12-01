@@ -162,4 +162,42 @@ export class NotificationsController {
       };
     }
   }
+
+  @Post('debug/expiries')
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary:
+      'ADMIN: Send a preview of grouped expiry notifications (PLEX/MCT/Boosters) for the current user',
+  })
+  async sendExpiryPreview(@CurrentUser() user: RequestUser | null) {
+    if (!user?.userId) {
+      return {
+        ok: false as const,
+        error: 'Not authenticated',
+      };
+    }
+
+    if (user.role !== 'ADMIN') {
+      return {
+        ok: false as const,
+        error: 'Forbidden: admin only endpoint',
+      };
+    }
+
+    try {
+      await this.notifications.sendExpirySummaries({
+        onlyUserId: user.userId,
+        forceAll: true,
+      });
+      return { ok: true as const };
+    } catch (error) {
+      return {
+        ok: false as const,
+        error:
+          error instanceof Error
+            ? error.message
+            : 'Failed to send expiry notification preview',
+      };
+    }
+  }
 }

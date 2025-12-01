@@ -378,6 +378,31 @@ export function useCreateMct(accountId: string) {
   });
 }
 
+export function useUpdateMct(accountId: string) {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (params: {
+      slotId: string;
+      expiresAt?: string;
+      notes?: string | null;
+    }) =>
+      client.patch(
+        `/character-management/me/accounts/${accountId}/mct/${params.slotId}`,
+        {
+          expiresAt: params.expiresAt,
+          notes: params.notes,
+        },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["characterManagement", "accountMct", accountId],
+      });
+    },
+  });
+}
+
 export function useDeleteMct(accountId: string) {
   const client = useApiClient();
   const queryClient = useQueryClient();

@@ -3,10 +3,51 @@ import { PrismaService } from '@api/prisma/prisma.service';
 import { AppConfig } from '@api/common/config';
 import { DiscordDmService } from './discord-dm.service';
 import type { NotificationType } from './dto/notification-preferences.dto';
+import { CharacterManagementService } from '../character-management/character-management.service';
 
 type UserDiscordTarget = {
   userId: string;
   discordUserId: string;
+};
+
+type ExpiryStage = '3d' | '1d' | 'expired' | 'preview';
+
+type PlexAlertItem = {
+  kind: 'PLEX';
+  accountLabel: string | null;
+  expiresAt: Date;
+  stage: ExpiryStage;
+};
+
+type MctAlertItem = {
+  kind: 'MCT';
+  accountLabel: string | null;
+  expiresAt: Date;
+  stage: ExpiryStage;
+};
+
+type BoosterAlertItem = {
+  kind: 'BOOSTER';
+  characterName: string;
+  boosterName: string;
+  expiresAt: Date;
+  stage: ExpiryStage;
+};
+
+type QueueIdleAlertItem = {
+  kind: 'TRAINING_QUEUE_IDLE';
+  accountLabel: string | null;
+  allowedQueues: number;
+  activeQueues: number;
+  missingQueues: number;
+};
+
+type UserExpirySummary = {
+  userId: string;
+  plex: PlexAlertItem[];
+  mct: MctAlertItem[];
+  boosters: BoosterAlertItem[];
+  queues: QueueIdleAlertItem[];
 };
 
 @Injectable()
@@ -16,6 +57,7 @@ export class NotificationService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly discordDm: DiscordDmService,
+    private readonly characterManagement: CharacterManagementService,
   ) {}
 
   private manageUrl(): string {
@@ -283,6 +325,373 @@ export class NotificationService {
       `Manage or turn off notifications: ${manageUrl}`;
 
     await this.discordDm.sendDirectMessage(target.discordUserId, content);
+  }
+
+  /**
+   * Build and send grouped expiry notifications (PLEX, MCT, Boosters) for users.
+   *
+   * - When forceAll=false (scheduled job), only entries close to thresholds are included:
+   *   - ~3 days remaining
+   *   - ~1 day remaining
+   *   - just expired
+   * - When forceAll=true (admin debug), all current entries are included regardless of timing.
+   */
+  async sendExpirySummaries(options?: {
+    onlyUserId?: string;
+    forceAll?: boolean;
+  }): Promise<void> {
+    const { onlyUserId, forceAll = false } = options ?? {};
+
+    const dayMs = 24 * 60 * 60 * 1000;
+    const halfDayMs = 12 * 60 * 60 * 1000;
+    const now = new Date();
+
+    const classifyStage = (expiresAt: Date): ExpiryStage | null => {
+      const diffMs = expiresAt.getTime() - now.getTime();
+      const threeDays = 3 * dayMs;
+      const oneDay = dayMs;
+
+      if (Math.abs(diffMs - threeDays) <= halfDayMs) return '3d';
+      if (Math.abs(diffMs - oneDay) <= halfDayMs) return '1d';
+      if (Math.abs(diffMs) <= halfDayMs) return 'expired';
+      return null;
+    };
+
+    // Load enabled notification preferences for the three expiry-related types.
+    const enabledPrefs = await this.prisma.notificationPreference.findMany({
+      where: {
+        channel: 'DISCORD_DM',
+        enabled: true,
+        notificationType: {
+          in: [
+            'PLEX_ENDING',
+            'MCT_ENDING',
+            'BOOSTER_ENDING',
+            'TRAINING_QUEUE_IDLE',
+          ],
+        },
+        ...(onlyUserId ? { userId: onlyUserId } : {}),
+      },
+      select: { userId: true, notificationType: true },
+    });
+
+    if (!enabledPrefs.length) {
+      return;
+    }
+
+    const enabledByUser = new Map<string, Set<string>>();
+    for (const pref of enabledPrefs) {
+      if (!pref.userId) continue;
+      const set =
+        enabledByUser.get(pref.userId) ?? new Set<string>();
+      set.add(pref.notificationType);
+      enabledByUser.set(pref.userId, set);
+    }
+
+    if (!enabledByUser.size) {
+      return;
+    }
+
+    const userIds = Array.from(enabledByUser.keys());
+
+    // Prepare summaries per user.
+    const byUser = new Map<string, UserExpirySummary>();
+    const ensureUserSummary = (userId: string): UserExpirySummary => {
+      let summary = byUser.get(userId);
+      if (!summary) {
+        summary = { userId, plex: [], mct: [], boosters: [], queues: [] };
+        byUser.set(userId, summary);
+      }
+      return summary;
+    };
+
+    // PLEX subscriptions
+    const plexSubs = await this.prisma.eveAccountSubscription.findMany({
+      where: {
+        type: 'PLEX',
+        isActive: true,
+        eveAccount: { userId: { in: userIds } },
+      },
+      include: {
+        eveAccount: {
+          select: { userId: true, label: true },
+        },
+      },
+    });
+
+    for (const sub of plexSubs) {
+      const userId = sub.eveAccount.userId;
+      if (!userId) continue;
+      const prefs = enabledByUser.get(userId);
+      if (!prefs?.has('PLEX_ENDING')) continue;
+
+      const expiresAt = sub.expiresAt;
+      const stage = classifyStage(expiresAt);
+      if (!forceAll && !stage) continue;
+
+      const effectiveStage: ExpiryStage =
+        stage ?? 'preview';
+
+      const summary = ensureUserSummary(userId);
+      summary.plex.push({
+        kind: 'PLEX',
+        accountLabel: sub.eveAccount.label,
+        expiresAt,
+        stage: effectiveStage,
+      });
+    }
+
+    // MCT slots
+    const mctSubs = await this.prisma.eveAccountSubscription.findMany({
+      where: {
+        type: 'MCT',
+        isActive: true,
+        eveAccount: { userId: { in: userIds } },
+      },
+      include: {
+        eveAccount: {
+          select: { userId: true, label: true },
+        },
+      },
+    });
+
+    for (const sub of mctSubs) {
+      const userId = sub.eveAccount.userId;
+      if (!userId) continue;
+      const prefs = enabledByUser.get(userId);
+      if (!prefs?.has('MCT_ENDING')) continue;
+
+      const expiresAt = sub.expiresAt;
+      const stage = classifyStage(expiresAt);
+      if (!forceAll && !stage) continue;
+
+      const effectiveStage: ExpiryStage =
+        stage ?? 'preview';
+
+      const summary = ensureUserSummary(userId);
+      summary.mct.push({
+        kind: 'MCT',
+        accountLabel: sub.eveAccount.label,
+        expiresAt,
+        stage: effectiveStage,
+      });
+    }
+
+    // Boosters
+    const boosters = await this.prisma.characterBoosterPeriod.findMany({
+      where: {
+        character: {
+          userId: { in: userIds },
+        },
+      },
+      include: {
+        character: {
+          select: { userId: true, name: true },
+        },
+      },
+    });
+
+    for (const booster of boosters) {
+      const userId = booster.character.userId;
+      if (!userId) continue;
+      const prefs = enabledByUser.get(userId);
+      if (!prefs?.has('BOOSTER_ENDING')) continue;
+
+      const expiresAt = booster.expiresAt;
+      const stage = classifyStage(expiresAt);
+      if (!forceAll && !stage) continue;
+
+      const effectiveStage: ExpiryStage =
+        stage ?? 'preview';
+
+      const summary = ensureUserSummary(userId);
+      summary.boosters.push({
+        kind: 'BOOSTER',
+        characterName: booster.character.name,
+        boosterName: booster.boosterName,
+        expiresAt,
+        stage: effectiveStage,
+      });
+    }
+
+    // Training queue idle alerts
+    const queueIdleUserIds = userIds.filter((uid) =>
+      enabledByUser.get(uid)?.has('TRAINING_QUEUE_IDLE'),
+    );
+
+    if (queueIdleUserIds.length) {
+      const accounts = await this.prisma.eveAccount.findMany({
+        where: { userId: { in: queueIdleUserIds } },
+        include: {
+          subscriptions: true,
+          characters: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+        },
+      });
+
+      for (const account of accounts) {
+        const userId = account.userId;
+        if (!userId) continue;
+
+        const prefs = enabledByUser.get(userId);
+        if (!prefs?.has('TRAINING_QUEUE_IDLE')) continue;
+
+        const activeSubs = account.subscriptions.filter(
+          (s) =>
+            s.isActive &&
+            s.expiresAt > now &&
+            (s.type === 'PLEX' || s.type === 'MCT'),
+        );
+
+        if (!activeSubs.length) continue;
+
+        const activeMctCount = activeSubs.filter((s) => s.type === 'MCT')
+          .length;
+
+        let allowedQueues = 1 + activeMctCount;
+        if (allowedQueues > 3) allowedQueues = 3;
+        if (allowedQueues <= 0) continue;
+
+        const characters = account.characters;
+        if (!characters.length) continue;
+
+        let activeQueues = 0;
+
+        for (const ch of characters) {
+          try {
+            const queue =
+              await this.characterManagement.getCharacterTrainingQueue(
+                userId,
+                ch.id,
+              );
+            if (
+              queue &&
+              !queue.isQueueEmpty &&
+              queue.isTraining &&
+              !queue.isPaused
+            ) {
+              activeQueues++;
+            }
+          } catch {
+            // Ignore errors for individual characters (e.g. missing scopes)
+          }
+        }
+
+        const missingQueues = allowedQueues - activeQueues;
+        if (missingQueues > 0) {
+          const summary = ensureUserSummary(userId);
+          summary.queues.push({
+            kind: 'TRAINING_QUEUE_IDLE',
+            accountLabel: account.label,
+            allowedQueues,
+            activeQueues,
+            missingQueues,
+          });
+        }
+      }
+    }
+
+    if (!byUser.size) {
+      return;
+    }
+
+    // Resolve Discord accounts for all affected users.
+    const accounts = await this.prisma.discordAccount.findMany({
+      where: { userId: { in: Array.from(byUser.keys()) } },
+      select: { userId: true, discordUserId: true },
+    });
+    const discordByUser = new Map<string, string>();
+    for (const a of accounts) {
+      if (!discordByUser.has(a.userId)) {
+        discordByUser.set(a.userId, a.discordUserId);
+      }
+    }
+
+    const manageUrl = this.manageUrl();
+
+    for (const summary of byUser.values()) {
+      const discordUserId = discordByUser.get(summary.userId);
+      if (!discordUserId) continue;
+
+      if (
+        !summary.plex.length &&
+        !summary.mct.length &&
+        !summary.boosters.length &&
+        !summary.queues.length
+      ) {
+        continue;
+      }
+
+      const lines: string[] = [];
+      lines.push(
+        `Subscription and booster alerts for your EVE accounts:\n`,
+      );
+
+      const fmtStage = (stage: ExpiryStage, expiresAt: Date): string => {
+        const diffMs = expiresAt.getTime() - now.getTime();
+        const days = Math.floor(diffMs / dayMs);
+        if (stage === 'expired') return 'Expired';
+        if (stage === '3d') return '3 days remaining';
+        if (stage === '1d') return '1 day remaining';
+        // preview / fallback
+        return `${days >= 0 ? days : 0}d remaining`;
+      };
+
+      if (summary.plex.length) {
+        lines.push(`**PLEX**`);
+        for (const item of summary.plex) {
+          const label = item.accountLabel ?? 'Account';
+          lines.push(
+            `• ${label}: ${fmtStage(item.stage, item.expiresAt)} (expires at ${item.expiresAt.toISOString()})`,
+          );
+        }
+        lines.push('');
+      }
+
+      if (summary.mct.length) {
+        lines.push(`**MCT**`);
+        for (const item of summary.mct) {
+          const label = item.accountLabel ?? 'Account';
+          lines.push(
+            `• ${label}: ${fmtStage(item.stage, item.expiresAt)} (expires at ${item.expiresAt.toISOString()})`,
+          );
+        }
+        lines.push('');
+      }
+
+      if (summary.boosters.length) {
+        lines.push(`**Boosters**`);
+        for (const item of summary.boosters) {
+          lines.push(
+            `• ${item.characterName} – ${item.boosterName}: ${fmtStage(item.stage, item.expiresAt)} (expires at ${item.expiresAt.toISOString()})`,
+          );
+        }
+        lines.push('');
+      }
+
+      if (summary.queues.length) {
+        lines.push(`**Training Queue**`);
+        for (const item of summary.queues) {
+          const label = item.accountLabel ?? 'Account';
+          lines.push(
+            `• ${label}: ${item.missingQueues} queue(s) idle – ${item.activeQueues}/${item.allowedQueues} in use while you have active training time.`,
+          );
+        }
+        lines.push('');
+      }
+
+      lines.push(
+        `You can manage or turn off notifications here: ${manageUrl}`,
+      );
+
+      const content = lines.join('\n');
+
+      await this.discordDm.sendDirectMessage(discordUserId, content);
+    }
   }
 
   /**
