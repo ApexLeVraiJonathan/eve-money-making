@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const API_URL = process.env.API_URL || "http://localhost:3000";
+const API_URL =
+  process.env.API_URL ||
+  process.env.NEXT_PUBLIC_API_URL ||
+  "http://localhost:3000";
 
 export async function GET(req: NextRequest) {
   try {
@@ -9,10 +12,17 @@ export async function GET(req: NextRequest) {
 
     // Call NestJS /auth/link-character/start; backend will authenticate
     // using the session cookie forwarded via the `cookie` header.
-    const url = new URL(`${API_URL}/auth/link-character/start`);
-    url.searchParams.set("returnUrl", returnUrl);
+    const target = new URL(`${API_URL}/auth/link-character/start`);
+    target.searchParams.set("returnUrl", returnUrl);
 
-    const response = await fetch(url.toString(), {
+    console.log(
+      "[link-character/start] API_URL =",
+      API_URL,
+      "target =",
+      target.toString(),
+    );
+
+    const response = await fetch(target.toString(), {
       headers: {
         cookie: req.headers.get("cookie") ?? "",
       },
@@ -20,7 +30,18 @@ export async function GET(req: NextRequest) {
       credentials: "include",
     });
 
+    const text = await response.text();
     const location = response.headers.get("location");
+
+    console.log(
+      "[link-character/start] API response",
+      "status =",
+      response.status,
+      "location =",
+      location,
+      "body =",
+      text,
+    );
 
     if (location) {
       return NextResponse.redirect(location);
@@ -32,7 +53,7 @@ export async function GET(req: NextRequest) {
       { status: 500 },
     );
   } catch (error) {
-    console.error("Error starting character link:", error);
+    console.error("[link-character/start] Error starting character link:", error);
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 },
