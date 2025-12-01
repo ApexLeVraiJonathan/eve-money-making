@@ -960,7 +960,7 @@ export class AuthController {
           'esi-skills.read_skillqueue.v1',
         ]);
 
-        await tx.eveCharacter.upsert({
+        const character = await tx.eveCharacter.upsert({
           where: { id: characterId },
           update: {
             name: characterName,
@@ -975,6 +975,11 @@ export class AuthController {
             userId: user.userId,
           },
         });
+
+        // Do not modify ESI tokens for SYSTEM-managed characters from this flow.
+        if (character.managedBy === 'SYSTEM') {
+          return;
+        }
 
         const existingToken = await tx.characterToken.findUnique({
           where: { characterId },

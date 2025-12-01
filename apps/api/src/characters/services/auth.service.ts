@@ -501,6 +501,12 @@ export class AuthService {
         },
       });
 
+      // Never modify tokens for SYSTEM-managed characters from the NextAuth flow.
+      // Their ESI credentials are controlled via the admin/system SSO flows.
+      if (character.managedBy === 'SYSTEM') {
+        return;
+      }
+
       // Load any existing token to avoid overwriting a wide-scope trading token
       // with a narrower "login-only" token from NextAuth.
       const existingToken = await tx.characterToken.findUnique({
