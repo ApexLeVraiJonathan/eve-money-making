@@ -943,6 +943,23 @@ export class AuthController {
 
       // Upsert character and token, then link to the authenticated user
       await this.prisma.$transaction(async (tx) => {
+        const normalizeScopes = (value: string | null | undefined): string[] =>
+          (value ?? '')
+            .split(' ')
+            .map((s) => s.trim())
+            .filter(Boolean);
+
+        // Important ESI scopes we never want to silently drop for an existing character.
+        const importantScopes = new Set<string>([
+          'esi-markets.read_character_orders.v1',
+          'esi-wallet.read_character_wallet.v1',
+          'esi-assets.read_assets.v1',
+          'esi-contracts.read_character_contracts.v1',
+          'esi-location.read_location.v1',
+          'esi-skills.read_skills.v1',
+          'esi-skills.read_skillqueue.v1',
+        ]);
+
         await tx.eveCharacter.upsert({
           where: { id: characterId },
           update: {
@@ -959,6 +976,32 @@ export class AuthController {
           },
         });
 
+        const existingToken = await tx.characterToken.findUnique({
+          where: { characterId },
+          select: { scopes: true },
+        });
+
+        const existingScopes = normalizeScopes(existingToken?.scopes);
+        const incomingScopes = normalizeScopes(scopes);
+
+        const existingSet = new Set(existingScopes);
+        const incomingSet = new Set(incomingScopes);
+
+        const wouldLoseImportantScope = Array.from(existingSet).some(
+          (s) => importantScopes.has(s) && !incomingSet.has(s),
+        );
+
+        // If this flow would remove important scopes from an existing trading token,
+        // keep the current token as-is and only update the character linkage.
+        if (existingToken && wouldLoseImportantScope) {
+          // Controller has no Logger injected; rely on upstream diagnostics.
+          return;
+        }
+
+        const mergedScopes = Array.from(
+          new Set<string>([...existingScopes, ...incomingScopes]),
+        ).join(' ');
+
         await tx.characterToken.upsert({
           where: { characterId },
           update: {
@@ -966,7 +1009,7 @@ export class AuthController {
             accessToken,
             accessTokenExpiresAt: expiresAt,
             refreshTokenEnc,
-            scopes,
+            scopes: mergedScopes,
             lastRefreshAt: new Date(),
           },
           create: {
@@ -975,7 +1018,7 @@ export class AuthController {
             accessToken,
             accessTokenExpiresAt: expiresAt,
             refreshTokenEnc,
-            scopes,
+            scopes: mergedScopes,
           },
         });
       });

@@ -469,6 +469,23 @@ export class AuthService {
 
     // Upsert character and token in a transaction
     await this.prisma.$transaction(async (tx) => {
+      const normalizeScopes = (value: string | null | undefined): string[] =>
+        (value ?? '')
+          .split(' ')
+          .map((s) => s.trim())
+          .filter(Boolean);
+
+      // Important ESI scopes we never want to silently drop for an existing character.
+      const importantScopes = new Set<string>([
+        'esi-markets.read_character_orders.v1',
+        'esi-wallet.read_character_wallet.v1',
+        'esi-assets.read_assets.v1',
+        'esi-contracts.read_character_contracts.v1',
+        'esi-location.read_location.v1',
+        'esi-skills.read_skills.v1',
+        'esi-skills.read_skillqueue.v1',
+      ]);
+
       // Upsert character
       const character = await tx.eveCharacter.upsert({
         where: { id: characterId },
@@ -484,26 +501,56 @@ export class AuthService {
         },
       });
 
-      // Upsert token
-      await tx.characterToken.upsert({
+      // Load any existing token to avoid overwriting a wide-scope trading token
+      // with a narrower "login-only" token from NextAuth.
+      const existingToken = await tx.characterToken.findUnique({
         where: { characterId },
-        update: {
-          tokenType: 'Bearer',
-          accessToken,
-          accessTokenExpiresAt: expiresAt,
-          refreshTokenEnc,
-          scopes,
-          lastRefreshAt: new Date(),
-        },
-        create: {
-          characterId,
-          tokenType: 'Bearer',
-          accessToken,
-          accessTokenExpiresAt: expiresAt,
-          refreshTokenEnc,
-          scopes,
-        },
+        select: { scopes: true },
       });
+
+      const existingScopes = normalizeScopes(existingToken?.scopes);
+      const incomingScopes = normalizeScopes(scopes);
+
+      const existingSet = new Set(existingScopes);
+      const incomingSet = new Set(incomingScopes);
+
+      const wouldLoseImportantScope = Array.from(existingSet).some(
+        (s) => importantScopes.has(s) && !incomingSet.has(s),
+      );
+
+      // If this NextAuth flow would *remove* important ESI scopes from an
+      // already-linked trading character, keep the existing token as-is.
+      if (existingToken && wouldLoseImportantScope) {
+        this.logger.warn(
+          `Skipping token update from NextAuth for character ${characterId} to avoid dropping important ESI scopes. ` +
+            `Existing="${existingScopes.join(' ')}", incoming="${incomingScopes.join(' ')}"`,
+        );
+      } else {
+        // Merge scopes so we retain the union of what has ever been granted.
+        const mergedScopes = Array.from(
+          new Set<string>([...existingScopes, ...incomingScopes]),
+        ).join(' ');
+
+        await tx.characterToken.upsert({
+          where: { characterId },
+          update: {
+            tokenType: 'Bearer',
+            accessToken,
+            accessTokenExpiresAt: expiresAt,
+            refreshTokenEnc,
+            scopes: mergedScopes,
+            lastRefreshAt: new Date(),
+          },
+          create: {
+            characterId,
+            tokenType: 'Bearer',
+            accessToken,
+            accessTokenExpiresAt: expiresAt,
+            refreshTokenEnc,
+            scopes: mergedScopes,
+          },
+        });
+      }
 
       // Ensure user exists for this character
       if (!character.userId) {
