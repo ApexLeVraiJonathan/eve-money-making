@@ -4,6 +4,12 @@ import axios from 'axios';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AppConfig } from '../../common/config';
 import { CryptoUtil } from '../../common/crypto.util';
+import {
+  AppFeature,
+  getScopesForFeatures,
+  IMPORTANT_ESI_SCOPES,
+  normalizeScopes,
+} from '../../common/app-features';
 
 type TokenResponse = {
   access_token: string;
@@ -369,6 +375,47 @@ export class AuthService {
   }
 
   /**
+   * Returns enabled app features for a user, normalized to known AppFeature keys.
+   * Falls back to CHARACTERS when nothing is configured.
+   */
+  async getUserEnabledFeatures(userId: string): Promise<AppFeature[]> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { enabledFeatures: true },
+    });
+
+    const raw = user?.enabledFeatures;
+    const keys: string[] = Array.isArray(raw)
+      ? (raw as unknown[]).map((v) => String(v))
+      : typeof raw === 'string'
+        ? [raw]
+        : [];
+
+    const features: AppFeature[] = [];
+    for (const k of keys) {
+      if ((Object.values(AppFeature) as string[]).includes(k)) {
+        features.push(k as AppFeature);
+      }
+    }
+
+    if (features.length === 0) {
+      // Default app access is Tradecraft (publicData-only for users).
+      features.push(AppFeature.TRADECRAFT);
+    }
+
+    // De-duplicate while preserving order
+    return Array.from(new Set(features));
+  }
+
+  /**
+   * Computes the union of ESI scopes required for a user's enabled features.
+   */
+  async getUserRequestedScopes(userId: string): Promise<string[]> {
+    const features = await this.getUserEnabledFeatures(userId);
+    return getScopesForFeatures(features);
+  }
+
+  /**
    * Uses stored refresh token to rotate access token (and refresh token when provided).
    */
   async refreshCharacterToken(characterId: number): Promise<{
@@ -469,23 +516,6 @@ export class AuthService {
 
     // Upsert character and token in a transaction
     await this.prisma.$transaction(async (tx) => {
-      const normalizeScopes = (value: string | null | undefined): string[] =>
-        (value ?? '')
-          .split(' ')
-          .map((s) => s.trim())
-          .filter(Boolean);
-
-      // Important ESI scopes we never want to silently drop for an existing character.
-      const importantScopes = new Set<string>([
-        'esi-markets.read_character_orders.v1',
-        'esi-wallet.read_character_wallet.v1',
-        'esi-assets.read_assets.v1',
-        'esi-contracts.read_character_contracts.v1',
-        'esi-location.read_location.v1',
-        'esi-skills.read_skills.v1',
-        'esi-skills.read_skillqueue.v1',
-      ]);
-
       // Upsert character
       const character = await tx.eveCharacter.upsert({
         where: { id: characterId },
@@ -521,7 +551,7 @@ export class AuthService {
       const incomingSet = new Set(incomingScopes);
 
       const wouldLoseImportantScope = Array.from(existingSet).some(
-        (s) => importantScopes.has(s) && !incomingSet.has(s),
+        (s) => IMPORTANT_ESI_SCOPES.has(s) && !incomingSet.has(s),
       );
 
       // If this NextAuth flow would *remove* important ESI scopes from an

@@ -45,6 +45,29 @@ export function useCurrentUser() {
   });
 }
 
+export type UserFeaturesResponse = {
+  enabledFeatures: string[];
+};
+
+export function useUserFeatures() {
+  const client = useApiClient();
+
+  return useAuthenticatedQuery({
+    queryKey: qk.users.features(),
+    queryFn: async () => {
+      try {
+        return await client.get<UserFeaturesResponse>("/auth/me/features");
+      } catch (e) {
+        if (e instanceof ApiError && (e.status === 401 || e.status === 403)) {
+          return { enabledFeatures: [] };
+        }
+        throw e;
+      }
+    },
+    retry: false,
+  });
+}
+
 /**
  * Get current user's linked characters
  * Returns empty array when not authenticated
@@ -88,6 +111,7 @@ export function useSetPrimaryCharacter() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: qk.users.me() });
       queryClient.invalidateQueries({ queryKey: qk.characters.linked() });
+      queryClient.invalidateQueries({ queryKey: qk.users.features() });
     },
   });
 }
@@ -134,6 +158,21 @@ export async function logout() {
   // Backend clears the HTTP-only session cookie and responds with JSON.
   // This route proxies to the API /auth/logout endpoint.
   window.location.href = "/api/auth/signout";
+}
+
+export function useUpdateUserFeatures() {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (enabledFeatures: string[]) =>
+      client.patch<UserFeaturesResponse>("/auth/me/features", {
+        enabledFeatures,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: qk.users.features() });
+    },
+  });
 }
 
 /**

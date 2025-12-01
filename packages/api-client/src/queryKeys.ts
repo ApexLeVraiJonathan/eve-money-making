@@ -29,6 +29,7 @@ export const qk = {
   users: {
     _root: ["users"] as const,
     me: () => ["users", "me"] as const,
+    features: () => ["users", "features"] as const,
     byId: (id: string) => ["users", "byId", id] as const,
     list: () => ["users", "list"] as const,
   },

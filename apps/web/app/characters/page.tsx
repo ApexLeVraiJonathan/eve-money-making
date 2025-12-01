@@ -45,6 +45,8 @@ import {
   useSetPrimaryCharacter,
   useUnlinkCharacter,
   startCharacterLink,
+  useUserFeatures,
+  useUpdateUserFeatures,
 } from "../tradecraft/api/characters/users.hooks";
 import {
   useCharacterOverview,
@@ -72,6 +74,7 @@ import { cn } from "@/lib/utils";
 
 export default function CharactersHome() {
   const { data: me } = useCurrentUser();
+  const { data: features } = useUserFeatures();
   const { data: linkedChars = [], isLoading: linkedCharsLoading } =
     useMyCharacters();
   const { data: overview, isLoading: overviewLoading } = useCharacterOverview();
@@ -79,11 +82,33 @@ export default function CharactersHome() {
 
   const setPrimaryMutation = useSetPrimaryCharacter();
   const unlinkMutation = useUnlinkCharacter();
+  const updateFeatures = useUpdateUserFeatures();
 
   const [searchQuery, setSearchQuery] = useState("");
   const [collapsedAccounts, setCollapsedAccounts] = useState<Set<string>>(
     new Set(),
   );
+  const [featureDialogOpen, setFeatureDialogOpen] = useState(false);
+  const [selectedFeatures, setSelectedFeatures] = useState<string[]>([]);
+
+  const enabledFeatures = features?.enabledFeatures ?? [];
+
+  const toggleFeature = (key: string) => {
+    setSelectedFeatures((prev) =>
+      prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key],
+    );
+  };
+
+  const handleSaveFeatures = async () => {
+    try {
+      const next = selectedFeatures.length ? selectedFeatures : enabledFeatures;
+      await updateFeatures.mutateAsync(next);
+      toast.success("App access updated");
+      setFeatureDialogOpen(false);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e));
+    }
+  };
 
   const toggleAccountCollapse = (accountId: string) => {
     setCollapsedAccounts((prev) => {
@@ -235,6 +260,81 @@ export default function CharactersHome() {
               <UserPlus className="mr-2 h-4 w-4" />
               Link character
             </Button>
+            <Dialog
+              open={featureDialogOpen}
+              onOpenChange={setFeatureDialogOpen}
+            >
+              <DialogTrigger asChild>
+                <Button
+                  variant="outline"
+                  className="whitespace-nowrap shadow-sm"
+                >
+                  App access
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-[420px]">
+                <DialogHeader>
+                  <DialogTitle>App access</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-3 text-sm">
+                  <p className="text-foreground/70">
+                    Choose which parts of the app you want this account to use.
+                    Linking characters will request ESI scopes for the selected
+                    app areas.
+                  </p>
+                  <div className="space-y-2">
+                    <label className="flex items-center justify-between gap-2 rounded-md border bg-background px-3 py-2">
+                      <span className="text-sm font-medium">Characters</span>
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4"
+                        checked={
+                          selectedFeatures.length
+                            ? selectedFeatures.includes("CHARACTERS")
+                            : enabledFeatures.includes("CHARACTERS")
+                        }
+                        onChange={() => toggleFeature("CHARACTERS")}
+                      />
+                    </label>
+                    <label className="flex items-center justify-between gap-2 rounded-md border bg-background px-3 py-2">
+                      <span className="text-sm font-medium">Tradecraft</span>
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4"
+                        checked={
+                          selectedFeatures.length
+                            ? selectedFeatures.includes("TRADECRAFT")
+                            : enabledFeatures.length === 0 ||
+                              enabledFeatures.includes("TRADECRAFT")
+                        }
+                        onChange={() => toggleFeature("TRADECRAFT")}
+                      />
+                    </label>
+                  </div>
+                  <p className="text-xs text-foreground/60">
+                    You can change these options later. New scopes are requested
+                    the next time you link a character.
+                  </p>
+                </div>
+                <DialogFooter>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setFeatureDialogOpen(false)}
+                    type="button"
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={() => void handleSaveFeatures()}
+                    disabled={updateFeatures.isPending}
+                  >
+                    {updateFeatures.isPending ? "Saving…" : "Save"}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
             {linkedCharsLoading ? (
               <div className="mt-2 flex items-center gap-3 rounded-lg border bg-gradient-to-br from-background to-muted/30 p-3 shadow-sm">
                 <Skeleton className="h-10 w-10 rounded-lg" />

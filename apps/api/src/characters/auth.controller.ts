@@ -26,6 +26,11 @@ import { CryptoUtil } from '../common/crypto.util';
 import { EsiService } from '../esi/esi.service';
 import { EsiCharactersService } from '../esi/esi-characters.service';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+  AppFeature,
+  IMPORTANT_ESI_SCOPES,
+  normalizeScopes,
+} from '../common/app-features';
 import { Roles } from './decorators/roles.decorator';
 import { RolesGuard } from './guards/roles.guard';
 import { SetCharacterProfileRequest } from './dto/set-character-profile.dto';
@@ -135,7 +140,11 @@ export class AuthController {
       },
     });
 
-    const scopes = AppConfig.esiScopes().character;
+    // Compute scopes based on the user's enabled app features, merged with
+    // the default character scopes from configuration to avoid surprises.
+    const userScopes = await this.auth.getUserRequestedScopes(user.userId);
+    const baseScopes = AppConfig.esiScopes().character;
+    const scopes = Array.from(new Set([...baseScopes, ...userScopes]));
 
     // Use App 2 (Character Linking) OAuth URL
     const url = this.auth.getAuthorizeLinkingUrl(state, codeChallenge, scopes);
@@ -729,6 +738,67 @@ export class AuthController {
   }
 
   /**
+   * Update enabled app features for the current user.
+   */
+  @Patch('me/features')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Update enabled app features for current user' })
+  async updateMyFeatures(
+    @CurrentUser() user: RequestUser | null,
+    @Body()
+    body: {
+      enabledFeatures?: string[];
+    },
+    @Res() res: Response,
+  ) {
+    if (!user?.userId) {
+      res.status(401).json({ error: 'Not authenticated' });
+      return;
+    }
+
+    const raw = body?.enabledFeatures ?? [];
+    const validSet = new Set(
+      (Object.values(AppFeature) as string[]).map((v) => v.toString()),
+    );
+    const next: AppFeature[] = [];
+    for (const key of raw) {
+      if (typeof key === 'string' && validSet.has(key)) {
+        next.push(key as AppFeature);
+      }
+    }
+
+    // Persist as simple string array JSON; empty means "no explicit choice" and will
+    // fall back to CHARACTERS in helpers.
+    await this.prisma.user.update({
+      where: { id: user.userId },
+      data: {
+        enabledFeatures: next,
+      },
+    });
+
+    res.json({ enabledFeatures: next });
+  }
+
+  /**
+   * Get enabled app features for the current user.
+   */
+  @Get('me/features')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get enabled app features for current user' })
+  async getMyFeatures(
+    @CurrentUser() user: RequestUser | null,
+    @Res() res: Response,
+  ) {
+    if (!user?.userId) {
+      res.status(401).json({ error: 'Not authenticated' });
+      return;
+    }
+
+    const features = await this.auth.getUserEnabledFeatures(user.userId);
+    res.json({ enabledFeatures: features });
+  }
+
+  /**
    * Refresh a character token.
    */
   @Roles('ADMIN')
@@ -943,23 +1013,6 @@ export class AuthController {
 
       // Upsert character and token, then link to the authenticated user
       await this.prisma.$transaction(async (tx) => {
-        const normalizeScopes = (value: string | null | undefined): string[] =>
-          (value ?? '')
-            .split(' ')
-            .map((s) => s.trim())
-            .filter(Boolean);
-
-        // Important ESI scopes we never want to silently drop for an existing character.
-        const importantScopes = new Set<string>([
-          'esi-markets.read_character_orders.v1',
-          'esi-wallet.read_character_wallet.v1',
-          'esi-assets.read_assets.v1',
-          'esi-contracts.read_character_contracts.v1',
-          'esi-location.read_location.v1',
-          'esi-skills.read_skills.v1',
-          'esi-skills.read_skillqueue.v1',
-        ]);
-
         const character = await tx.eveCharacter.upsert({
           where: { id: characterId },
           update: {
@@ -993,7 +1046,7 @@ export class AuthController {
         const incomingSet = new Set(incomingScopes);
 
         const wouldLoseImportantScope = Array.from(existingSet).some(
-          (s) => importantScopes.has(s) && !incomingSet.has(s),
+          (s) => IMPORTANT_ESI_SCOPES.has(s) && !incomingSet.has(s),
         );
 
         // If this flow would remove important scopes from an existing trading token,
