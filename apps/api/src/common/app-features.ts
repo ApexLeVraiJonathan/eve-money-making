@@ -7,9 +7,6 @@ export enum AppFeature {
 const CHARACTER_SCOPES: readonly string[] = [
   'publicData',
   'esi-wallet.read_character_wallet.v1',
-  'esi-assets.read_assets.v1',
-  'esi-contracts.read_character_contracts.v1',
-  'esi-location.read_location.v1',
   'esi-skills.read_skills.v1',
   'esi-skills.read_skillqueue.v1',
 ];

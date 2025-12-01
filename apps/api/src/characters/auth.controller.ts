@@ -140,11 +140,11 @@ export class AuthController {
       },
     });
 
-    // Compute scopes based on the user's enabled app features, merged with
-    // the default character scopes from configuration to avoid surprises.
+    // Compute scopes based on the user's enabled app features. For user-managed
+    // characters we rely solely on per-user feature flags; system characters
+    // still use the ESI_SSO_SCOPES_SYSTEM superset via their own flows.
     const userScopes = await this.auth.getUserRequestedScopes(user.userId);
-    const baseScopes = AppConfig.esiScopes().character;
-    const scopes = Array.from(new Set([...baseScopes, ...userScopes]));
+    const scopes = Array.from(new Set(userScopes));
 
     // Use App 2 (Character Linking) OAuth URL
     const url = this.auth.getAuthorizeLinkingUrl(state, codeChallenge, scopes);
