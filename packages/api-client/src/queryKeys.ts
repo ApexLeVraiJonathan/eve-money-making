@@ -190,6 +190,14 @@ export const qk = {
       ["skillFarm", "profileById", profileId] as const,
     profitEstimate: (profileId: string, horizonDays: number) =>
       ["skillFarm", "profitEstimate", profileId, horizonDays] as const,
+    /** Skill Farm Assistant: per-user settings */
+    settings: () => ["skillFarm", "settings"] as const,
+    /** Skill Farm Assistant: characters + requirement status */
+    characters: () => ["skillFarm", "characters"] as const,
+    /** Skill Farm Assistant: tracking snapshot for active farm characters */
+    tracking: () => ["skillFarm", "tracking"] as const,
+    /** Optional server-side math preview */
+    mathPreview: () => ["skillFarm", "mathPreview"] as const,
   },
 
   /** User-owned skill plans */

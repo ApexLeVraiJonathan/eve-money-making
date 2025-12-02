@@ -3,6 +3,10 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { CharactersModule } from '../characters/characters.module';
 import { EsiModule } from '../esi/esi.module';
 import { SkillFarmController } from './skill-farm.controller';
+import { SkillFarmService } from './skill-farm.service';
+import { SkillFarmMathService } from './skill-farm.math.service';
+import { CharacterManagementModule } from '../character-management/character-management.module';
+import { SkillPlansModule } from '../skill-plans/skill-plans.module';
 
 /**
  * SkillFarmModule
@@ -16,8 +20,14 @@ import { SkillFarmController } from './skill-farm.controller';
  * but keeps product-specific orchestration and HTTP surface localized here.
  */
 @Module({
-  imports: [PrismaModule, CharactersModule, EsiModule],
+  imports: [
+    PrismaModule,
+    CharactersModule,
+    EsiModule,
+    CharacterManagementModule,
+    SkillPlansModule,
+  ],
   controllers: [SkillFarmController],
-  providers: [Logger],
+  providers: [Logger, SkillFarmService, SkillFarmMathService],
 })
 export class SkillFarmModule {}

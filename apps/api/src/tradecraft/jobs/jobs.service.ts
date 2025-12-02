@@ -11,6 +11,8 @@ import { AppConfig } from '@api/common/config';
 import { CharacterService } from '@api/characters/services/character.service';
 import { NotificationService } from '@api/notifications/notification.service';
 import { SkillPlansService } from '@api/skill-plans/skill-plans.service';
+import { SkillFarmService } from '../../skill-farm/skill-farm.service';
+import type { SkillFarmTrackingEntry } from '@eve/api-contracts';
 
 @Injectable()
 export class JobsService {
@@ -26,6 +28,7 @@ export class JobsService {
     private readonly characterService: CharacterService,
     private readonly notifications: NotificationService,
     private readonly skillPlans: SkillPlansService,
+    private readonly skillFarm: SkillFarmService,
   ) {}
 
   private jobsEnabled(): boolean {
@@ -127,6 +130,71 @@ export class JobsService {
     } catch (e) {
       this.logger.warn(
         `Skill plan notifications job failed: ${
+          e instanceof Error ? e.message : String(e)
+        }`,
+      );
+    }
+  }
+
+  @Cron(CronExpression.EVERY_HOUR)
+  async runSkillFarmNotifications(): Promise<void> {
+    if (
+      !this.jobsEnabled() ||
+      !this.jobFlag('JOB_SKILL_FARM_NOTIFICATIONS_ENABLED', true)
+    ) {
+      this.logger.debug('Skipping skill farm notifications (jobs disabled)');
+      return;
+    }
+
+    try {
+      const configs = await this.prisma.skillFarmCharacterConfig.findMany({
+        where: { isActiveFarm: true, includeInNotifications: true },
+        include: {
+          user: { select: { id: true } },
+          character: { select: { id: true, name: true } },
+        },
+      });
+
+      const now = new Date();
+
+      for (const cfg of configs) {
+        const userId = cfg.userId;
+        const characterId = cfg.characterId;
+        const characterName = cfg.character.name;
+
+        const tracking = await this.skillFarm.getTrackingSnapshot(userId);
+        const entry = tracking.characters.find(
+          (c: SkillFarmTrackingEntry) => c.characterId === characterId,
+        );
+        if (!entry) continue;
+
+        // Extractor-ready notifications
+        if (entry.fullExtractorsReady > 0) {
+          await this.notifications.notifySkillFarmExtractorReady({
+            userId,
+            characterName,
+            injectorsReady: entry.fullExtractorsReady,
+          });
+        }
+
+        // Queue low notifications
+        const hoursRemaining = entry.queueSecondsRemaining / 3600;
+        if (
+          entry.queueStatus === 'WARNING' ||
+          entry.queueStatus === 'URGENT' ||
+          entry.queueStatus === 'EMPTY'
+        ) {
+          await this.notifications.notifySkillFarmQueueLow({
+            userId,
+            characterName,
+            status: entry.queueStatus,
+            queueHoursRemaining: hoursRemaining,
+          });
+        }
+      }
+    } catch (e) {
+      this.logger.warn(
+        `Skill farm notifications job failed: ${
           e instanceof Error ? e.message : String(e)
         }`,
       );

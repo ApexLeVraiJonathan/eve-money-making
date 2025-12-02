@@ -327,6 +327,63 @@ export class NotificationService {
     await this.discordDm.sendDirectMessage(target.discordUserId, content);
   }
 
+  async notifySkillFarmExtractorReady(params: {
+    userId: string;
+    characterName: string;
+    injectorsReady: number;
+  }): Promise<void> {
+    const [target] = await this.getDiscordTargetsForPreference(
+      'SKILL_FARM_EXTRACTOR_READY',
+      [params.userId],
+    );
+    if (!target) return;
+
+    const manageUrl = this.manageUrl();
+    const trackingUrl = new URL(
+      '/skill-farms/tracking',
+      AppConfig.webBaseUrl(),
+    ).toString();
+
+    const content =
+      `Character **${params.characterName}** has enough SP for **${params.injectorsReady} injector(s)**.\n\n` +
+      `You can review your farms here: ${trackingUrl}\n` +
+      `Manage or turn off notifications: ${manageUrl}`;
+
+    await this.discordDm.sendDirectMessage(target.discordUserId, content);
+  }
+
+  async notifySkillFarmQueueLow(params: {
+    userId: string;
+    characterName: string;
+    status: 'WARNING' | 'URGENT' | 'EMPTY';
+    queueHoursRemaining: number;
+  }): Promise<void> {
+    const [target] = await this.getDiscordTargetsForPreference(
+      'SKILL_FARM_QUEUE_LOW',
+      [params.userId],
+    );
+    if (!target) return;
+
+    const manageUrl = this.manageUrl();
+    const trackingUrl = new URL(
+      '/skill-farms/tracking',
+      AppConfig.webBaseUrl(),
+    ).toString();
+
+    const hours = Math.max(0, Math.round(params.queueHoursRemaining));
+    const label =
+      params.status === 'EMPTY'
+        ? 'Your training queue is empty.'
+        : `Your training queue is low (~${hours}h remaining).`;
+
+    const content =
+      `Character **${params.characterName}**: ${label}\n\n` +
+      `You can review your farms here: ${trackingUrl}\n` +
+      `Manage or turn off notifications: ${manageUrl}`;
+
+    await this.discordDm.sendDirectMessage(target.discordUserId, content);
+  }
+
   /**
    * Build and send grouped expiry notifications (PLEX, MCT, Boosters) for users.
    *

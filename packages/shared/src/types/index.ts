@@ -31,7 +31,9 @@ export type NotificationType =
   | "PLEX_ENDING"
   | "MCT_ENDING"
   | "BOOSTER_ENDING"
-  | "TRAINING_QUEUE_IDLE";
+  | "TRAINING_QUEUE_IDLE"
+  | "SKILL_FARM_EXTRACTOR_READY"
+  | "SKILL_FARM_QUEUE_LOW";
 export type ParticipationStatus =
   | "AWAITING_INVESTMENT"
   | "AWAITING_VALIDATION"

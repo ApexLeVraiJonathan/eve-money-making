@@ -22,6 +22,8 @@ export const NOTIFICATION_TYPES = [
   'MCT_ENDING',
   'BOOSTER_ENDING',
   'TRAINING_QUEUE_IDLE',
+  'SKILL_FARM_EXTRACTOR_READY',
+  'SKILL_FARM_QUEUE_LOW',
 ] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 

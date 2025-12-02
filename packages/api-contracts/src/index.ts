@@ -374,15 +374,177 @@ export interface SkillEncyclopediaResponse {
   skills: SkillEncyclopediaEntry[];
 }
 
+// Skill Farm Assistant contracts
+
+export type SkillFarmRequirementStatus = "pass" | "fail" | "warning";
+
+export interface SkillFarmRequirementEntry {
+  key: string;
+  label: string;
+  status: SkillFarmRequirementStatus;
+  /**
+   * Optional human-readable explanation for why this requirement
+   * passed, failed, or is in a warning state.
+   */
+  details?: string | null;
+}
+
+/**
+ * Per-character requirement summary and configuration used on the
+ * Skill Farm requirements checker page.
+ */
+export interface SkillFarmCharacterStatus {
+  characterId: number;
+  name: string;
+  portraitUrl?: string | null;
+  /**
+   * Total SP on the character.
+   */
+  totalSp: number;
+  /**
+   * Non-extractable SP (e.g. the first 5.5M SP).
+   */
+  nonExtractableSp: number;
+  requirements: {
+    minSp: SkillFarmRequirementEntry;
+    biology: SkillFarmRequirementEntry;
+    cybernetics: SkillFarmRequirementEntry;
+    remap: SkillFarmRequirementEntry;
+    training: SkillFarmRequirementEntry;
+    implants: SkillFarmRequirementEntry;
+  };
+  config: SkillFarmCharacterConfig;
+}
+
+/**
+ * User-level economic assumptions and defaults used by the Skill Farm planner.
+ */
+export interface SkillFarmSettings {
+  plexPriceIsk: number | null;
+  plexPerOmega: number | null;
+  plexPerMct: number | null;
+  extractorPriceIsk: number | null;
+  injectorPriceIsk: number | null;
+  boosterCostPerCycleIsk: number | null;
+  salesTaxPercent: number | null;
+  brokerFeePercent: number | null;
+  soldViaContracts: boolean;
+  cycleDays: number | null;
+  managementMinutesPerCycle: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type SkillFarmQueueStatus = "OK" | "WARNING" | "URGENT" | "EMPTY";
+
+export interface SkillFarmTrackingEntry {
+  characterId: number;
+  name: string;
+  farmPlanId?: string | null;
+  farmPlanName?: string | null;
+  totalSp: number;
+  nonExtractableSp: number;
+  farmPlanSp: number;
+  extractableSp: number;
+  fullExtractorsReady: number;
+  remainderSp: number;
+  /**
+   * Seconds until the next full extractor is expected, based on
+   * current SP/hour. Null when already ready or cannot be estimated.
+   */
+  etaToNextExtractorSeconds: number | null;
+  queueStatus: SkillFarmQueueStatus;
+  queueSecondsRemaining: number;
+}
+
+export interface SkillFarmTrackingSnapshot {
+  characters: SkillFarmTrackingEntry[];
+  generatedAt: string;
+}
+
+export interface SkillFarmMathInputs {
+  settings: SkillFarmSettings;
+  /**
+   * Number of EVE accounts participating in the farm.
+   */
+  accounts: number;
+  /**
+   * Number of farm characters per account.
+   */
+  farmCharactersPerAccount: number;
+  /**
+   * Account indices (0-based) that should ignore Omega cost because
+   * they are already plexed for other activities.
+   */
+  ignoreOmegaCostAccountIndexes: number[];
+  /**
+   * Optional override for SP/day per character when not derived from
+   * actual characters.
+   */
+  spPerDayPerCharacter?: number | null;
+}
+
+export interface SkillFarmMathResultPerCharacter {
+  spPerDay: number;
+  spPerCycle: number;
+  extractorsPerCycle: number;
+  injectorsPerCycle: number;
+  totalCostsIsk: number;
+  grossRevenueIsk: number;
+  netProfitIsk: number;
+}
+
+export interface SkillFarmMathResult {
+  inputs: SkillFarmMathInputs;
+  /**
+   * Per-character economics for a representative farm character.
+   */
+  perCharacter: SkillFarmMathResultPerCharacter;
+  /**
+   * Aggregated economics per EVE account.
+   */
+  perAccount: SkillFarmMathResultPerCharacter[];
+  /**
+   * Aggregate totals across all farm characters/accounts.
+   */
+  total: SkillFarmMathResultPerCharacter;
+  /**
+   * ISK/hour of player effort for the entire farm based on the
+   * configured management time per cycle.
+   */
+  iskPerHour: number;
+}
+
 /**
  * Configuration for a single skill farm character.
+ *
+ * This is a lightweight representation reused across several areas
+ * (e.g., profiles and requirements views). Additional optional fields
+ * are used by the Skill Farm Assistant flows.
  */
 export interface SkillFarmCharacterConfig {
   characterId: number;
   name: string;
   implantSet?: string | null;
   trainingPlanName?: string | null;
+  /**
+   * Whether this character is currently part of the user's active farm.
+   */
   isActive: boolean;
+  /**
+   * Whether the user has marked this character as a skill-farm
+   * candidate (even if not yet fully ready).
+   */
+  isCandidate?: boolean;
+  /**
+   * Optional linked farm plan for defining farmable skills.
+   */
+  farmPlanId?: string | null;
+  farmPlanName?: string | null;
+  /**
+   * Whether this character is included in skill-farm notifications.
+   */
+  includeInNotifications?: boolean;
 }
 
 /**
