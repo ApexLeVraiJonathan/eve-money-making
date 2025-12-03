@@ -1,13 +1,10 @@
+"use client";
+
 export const dynamic = "force-dynamic";
 
-import { Metadata } from "next";
 import { useSkillFarmTracking } from "../api";
 import { Card, CardContent, CardHeader, CardTitle } from "@eve/ui/card";
 import { Badge } from "@eve/ui/badge";
-
-export const metadata: Metadata = {
-  title: "Skill Farm – Tracking",
-};
 
 function StatusBadge({
   status,

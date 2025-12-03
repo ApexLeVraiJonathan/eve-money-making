@@ -9,6 +9,7 @@ import { CyclesModule } from '@api/tradecraft/cycles/cycles.module';
 import { CharactersModule } from '@api/characters/characters.module';
 import { NotificationsModule } from '@api/notifications/notifications.module';
 import { SkillPlansModule } from '@api/skill-plans/skill-plans.module';
+import { SkillFarmModule } from '@api/skill-farm/skill-farm.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { SkillPlansModule } from '@api/skill-plans/skill-plans.module';
     CharactersModule,
     NotificationsModule,
     SkillPlansModule,
+    SkillFarmModule,
   ],
   providers: [JobsService, Logger],
   controllers: [JobsController],

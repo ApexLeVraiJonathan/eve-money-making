@@ -1,15 +1,12 @@
+"use client";
+
 export const dynamic = "force-dynamic";
 
-import { Metadata } from "next";
 import Link from "next/link";
 import { useSkillFarmCharacters, useUpdateSkillFarmCharacter } from "../api";
 import { Card, CardContent, CardHeader, CardTitle } from "@eve/ui/card";
 import { Badge } from "@eve/ui/badge";
 import { Button } from "@eve/ui/button";
-
-export const metadata: Metadata = {
-  title: "Skill Farm – Characters",
-};
 
 function RequirementBadge({
   label,

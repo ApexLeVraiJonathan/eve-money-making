@@ -11,7 +11,7 @@ import { AppConfig } from '@api/common/config';
 import { CharacterService } from '@api/characters/services/character.service';
 import { NotificationService } from '@api/notifications/notification.service';
 import { SkillPlansService } from '@api/skill-plans/skill-plans.service';
-import { SkillFarmService } from '../../skill-farm/skill-farm.service';
+import { SkillFarmService } from '@api/skill-farm/skill-farm.service';
 import type { SkillFarmTrackingEntry } from '@eve/api-contracts';
 
 @Injectable()

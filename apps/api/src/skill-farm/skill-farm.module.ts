@@ -29,5 +29,6 @@ import { SkillPlansModule } from '../skill-plans/skill-plans.module';
   ],
   controllers: [SkillFarmController],
   providers: [Logger, SkillFarmService, SkillFarmMathService],
+  exports: [SkillFarmService],
 })
 export class SkillFarmModule {}

@@ -201,6 +201,16 @@ export const APPS: AppConfig[] = [
           { title: "Skill Plans", url: "/characters/skills/plans" },
         ],
       },
+      {
+        title: "Skill Farms",
+        url: "/characters/skill-farms",
+        icon: NotebookPen,
+        items: [
+          { title: "Characters", url: "/characters/skill-farms/characters" },
+          { title: "Math", url: "/characters/skill-farms/math" },
+          { title: "Tracking", url: "/characters/skill-farms/tracking" },
+        ],
+      },
     ],
   },
 ];

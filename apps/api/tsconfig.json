@@ -46,7 +46,8 @@
       "@api/prisma/*": ["src/prisma/*"],
       "@api/support/*": ["src/support/*"],
       "@api/tradecraft/*": ["src/tradecraft/*"],
-      "@api/skill-plans/*": ["src/skill-plans/*"]
+      "@api/skill-plans/*": ["src/skill-plans/*"],
+      "@api/skill-farm/*": ["src/skill-farm/*"]
     }
   }
 }
