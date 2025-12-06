@@ -18,6 +18,10 @@ export interface TestConfig {
   characterId: number;
   skipPauses?: boolean;
   interactive?: boolean;
+  /**
+   * Optional test user ID (used in some suites for investor-facing checks)
+   */
+  testUserId?: string;
 }
 
 export interface TestContext {

@@ -5,7 +5,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { PrismaClient } from '@eve/prisma';
-import { AppConfig } from '../common/config';
+import { PrismaPg } from '@prisma/adapter-pg';
 
 /**
  * Prisma database service with slow query logging
@@ -25,9 +25,11 @@ export class PrismaService
   private readonly slowQueryThreshold = 500; // ms
 
   constructor() {
-    const url = AppConfig.databaseUrl();
+    const adapter = new PrismaPg({
+      connectionString: process.env.DATABASE_URL!,
+    });
     super({
-      datasources: url ? { db: { url } } : undefined,
+      adapter,
       log: [
         { emit: 'event', level: 'query' },
         { emit: 'event', level: 'error' },

@@ -151,7 +151,9 @@ export default function SkillFarmsIntroPage() {
           <CardHeader>
             <div className="mb-1 flex items-center gap-2">
               <TrendingUp className="h-5 w-5 text-primary" />
-              <CardTitle className="text-lg">Is skill farming for you?</CardTitle>
+              <CardTitle className="text-lg">
+                Is skill farming for you?
+              </CardTitle>
             </div>
           </CardHeader>
           <CardContent className="grid gap-6 text-sm text-foreground/95 md:grid-cols-2">

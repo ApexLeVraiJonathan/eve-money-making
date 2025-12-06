@@ -631,13 +631,19 @@ export class CycleService {
 
     // All database operations within a transaction
     const openedCycle = await this.prisma.$transaction(async (tx: any) => {
-      // Clean up unpaid and refunded participations
-      // BUT: Keep rollover participations (they have rolloverType set)
+      // Clean up unpaid and refunded participations for this PLANNED cycle.
+      // BUT:
+      // - Keep rollover participations (they have rolloverType set)
+      // - Keep any JingleYield-linked participations (either the root
+      //   participation or children linked via jingleYieldProgramId), because
+      //   those are managed by the JY lifecycle.
       await tx.cycleParticipation.deleteMany({
         where: {
           cycleId: input.cycleId,
           status: { in: ['AWAITING_INVESTMENT', 'REFUNDED'] },
-          rolloverType: null, // Only delete non-rollover participations
+          rolloverType: null,
+          jingleYieldProgramId: null,
+          rootForJingleYieldProgram: null,
         },
       });
 
@@ -1071,49 +1077,87 @@ export class CycleService {
       }>;
     },
   ): Promise<unknown> {
+    const tStart = Date.now();
     this.logger.log(
-      `Closing cycle ${cycleId} - running final wallet import and allocation`,
+      `Closing cycle ${cycleId} - starting wallet import, allocation, buyback, payouts, and rollovers`,
     );
 
+    // 1) Wallet import
+    const tWalletStart = Date.now();
     await walletService.importAllLinked();
-    this.logger.log(`Wallet import completed for cycle ${cycleId}`);
+    const tWalletMs = Date.now() - tWalletStart;
+    this.logger.log(
+      `[CloseCycle] Wallet import completed for cycle ${cycleId} in ${tWalletMs}ms`,
+    );
 
+    // 2) Allocation
+    const tAllocStart = Date.now();
     const allocationResult = await allocationService.allocateAll(cycleId);
+    const tAllocMs = Date.now() - tAllocStart;
     this.logger.log(
-      `Allocation completed for cycle ${cycleId}: buys=${allocationResult.buysAllocated}, sells=${allocationResult.sellsAllocated}`,
+      `[CloseCycle] Allocation completed for cycle ${cycleId} in ${tAllocMs}ms: buys=${allocationResult.buysAllocated}, sells=${allocationResult.sellsAllocated}`,
     );
 
-    // Process rollover buyback BEFORE closing cycle
+    // 3) Rollover buyback BEFORE closing cycle
+    const tBuybackStart = Date.now();
     const buybackResult = await this.processRolloverBuyback(cycleId);
+    const tBuybackMs = Date.now() - tBuybackStart;
     this.logger.log(
-      `Buyback completed: ${buybackResult.itemsBoughtBack} items, ${buybackResult.totalBuybackIsk.toFixed(2)} ISK`,
+      `[CloseCycle] Buyback completed in ${tBuybackMs}ms: ${buybackResult.itemsBoughtBack} items, ${buybackResult.totalBuybackIsk.toFixed(2)} ISK`,
     );
 
+    // 4) Close the cycle
+    const tCloseStart = Date.now();
     const closedCycle = await this.closeCycle(cycleId, new Date());
-    this.logger.log(`Cycle ${cycleId} closed successfully`);
+    const tCloseMs = Date.now() - tCloseStart;
+    this.logger.log(
+      `[CloseCycle] Cycle ${cycleId} marked COMPLETED in ${tCloseMs}ms`,
+    );
 
+    // 5) Create payouts
+    const tPayoutStart = Date.now();
     try {
       const payouts = await this.payoutService.createPayouts(cycleId);
-      this.logger.log(`Created ${payouts.length} payouts for cycle ${cycleId}`);
+      const tPayoutMs = Date.now() - tPayoutStart;
+      this.logger.log(
+        `[CloseCycle] Created ${payouts.length} payouts for cycle ${cycleId} in ${tPayoutMs}ms`,
+      );
     } catch (error) {
+      const tPayoutMs = Date.now() - tPayoutStart;
       this.logger.warn(
-        `Failed to create payouts for cycle ${cycleId}: ${error instanceof Error ? error.message : String(error)}`,
+        `[CloseCycle] Failed to create payouts for cycle ${cycleId} after ${tPayoutMs}ms: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
       );
     }
 
-    // Process rollover participations
+    // 6) Process rollover participations
+    const tRolloverStart = Date.now();
     try {
       const rolloverResult = await this.payoutService.processRollovers(cycleId);
+      const tRolloverMs = Date.now() - tRolloverStart;
       if (rolloverResult.processed > 0) {
         this.logger.log(
-          `Processed ${rolloverResult.processed} rollovers: ${rolloverResult.rolledOver} ISK rolled over, ${rolloverResult.paidOut} ISK paid out`,
+          `[CloseCycle] Processed ${rolloverResult.processed} rollovers in ${tRolloverMs}ms: ${rolloverResult.rolledOver} ISK rolled over, ${rolloverResult.paidOut} ISK paid out`,
+        );
+      } else {
+        this.logger.log(
+          `[CloseCycle] No rollovers to process for cycle ${cycleId} (took ${tRolloverMs}ms)`,
         );
       }
     } catch (error) {
+      const tRolloverMs = Date.now() - tRolloverStart;
       this.logger.warn(
-        `Failed to process rollovers for cycle ${cycleId}: ${error instanceof Error ? error.message : String(error)}`,
+        `[CloseCycle] Failed to process rollovers for cycle ${cycleId} after ${tRolloverMs}ms: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
       );
     }
+
+    const tTotalMs = Date.now() - tStart;
+    this.logger.log(
+      `[CloseCycle] Full closeCycleWithFinalSettlement for cycle ${cycleId} completed in ${tTotalMs}ms`,
+    );
 
     return closedCycle;
   }

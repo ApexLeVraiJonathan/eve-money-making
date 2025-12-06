@@ -2,6 +2,7 @@ import { Injectable, Logger, forwardRef, Inject } from '@nestjs/common';
 import { PrismaService } from '@api/prisma/prisma.service';
 import { ProfitService } from './profit.service';
 import { NotificationService } from '@api/notifications/notification.service';
+import { JingleYieldService } from './jingle-yield.service';
 
 /**
  * PayoutService handles payout computation and creation.
@@ -16,6 +17,7 @@ export class PayoutService {
     @Inject(forwardRef(() => ProfitService))
     private readonly profitService: ProfitService,
     private readonly notifications: NotificationService,
+    private readonly jingleYield: JingleYieldService,
   ) {}
 
   /**
@@ -84,6 +86,9 @@ export class PayoutService {
     profitSharePct = 0.5,
   ): Promise<Array<{ participationId: string; payoutIsk: string }>> {
     const { payouts } = await this.computePayouts(cycleId, profitSharePct);
+
+    // Apply JingleYield interest accumulation for this cycle
+    await this.jingleYield.applyCyclePayouts(cycleId, payouts);
 
     const results: Array<{ participationId: string; payoutIsk: string }> = [];
 
@@ -210,7 +215,12 @@ export class PayoutService {
           rolloverFromParticipationId: { not: null },
         },
         include: {
-          rolloverFromParticipation: true,
+          rolloverFromParticipation: {
+            include: {
+              jingleYieldProgram: true,
+            },
+          },
+          jingleYieldProgram: true,
         },
       });
 
@@ -290,29 +300,57 @@ export class PayoutService {
       const actualPayout = Number(actualPayoutIsk);
       const initialInvestment = Number(initialInvestmentIsk);
 
-      // Determine rollover amount based on type
+      // Determine rollover amount based on type (baseline before JingleYield locks)
       let rolloverAmount: number;
       if (rollover.rolloverType === 'FULL_PAYOUT') {
-        rolloverAmount = Math.min(actualPayout, CAP_20B);
+        rolloverAmount = actualPayout;
       } else if (rollover.rolloverType === 'INITIAL_ONLY') {
-        rolloverAmount = Math.min(initialInvestment, CAP_20B);
+        rolloverAmount = initialInvestment;
       } else {
         // CUSTOM_AMOUNT
-        rolloverAmount = Math.min(
-          Number(rollover.rolloverRequestedAmountIsk),
-          CAP_20B,
-        );
+        rolloverAmount = Number(rollover.rolloverRequestedAmountIsk);
       }
+
+      // Enforce JingleYield locked principal when applicable
+      const jyProgram =
+        rollover.jingleYieldProgram ??
+        rollover.rolloverFromParticipation?.jingleYieldProgram ??
+        null;
+
+      if (jyProgram && jyProgram.status === 'ACTIVE') {
+        const lockedBase = Number(jyProgram.lockedPrincipalIsk);
+
+        if (lockedBase > 0) {
+          if (actualPayout >= lockedBase) {
+            // Ensure we keep at least the locked principal invested
+            rolloverAmount = Math.max(rolloverAmount, lockedBase);
+          } else {
+            // Capital is already below locked base (loss scenario) – cannot enforce further
+            rolloverAmount = Math.min(rolloverAmount, actualPayout);
+          }
+        }
+      }
+
+      // Apply global 20B cap and never exceed actual payout
+      rolloverAmount = Math.min(rolloverAmount, CAP_20B, actualPayout);
 
       const payoutAmount = actualPayout - rolloverAmount;
 
-      // Update rollover participation with actual amounts and auto-validate
+      // Update rollover participation with actual amounts and auto-validate.
+      // If this rollover belongs to an ACTIVE JingleYield program, make sure
+      // the participation is explicitly linked to that program so that
+      // admin reporting can see all JY participations across cycles.
       await this.prisma.cycleParticipation.update({
         where: { id: rollover.id },
         data: {
           amountIsk: rolloverAmount.toFixed(2),
           status: 'OPTED_IN', // Auto-validate rollover participations
           validatedAt: new Date(),
+          ...(jyProgram
+            ? {
+                jingleYieldProgramId: jyProgram.id,
+              }
+            : {}),
         },
       });
 

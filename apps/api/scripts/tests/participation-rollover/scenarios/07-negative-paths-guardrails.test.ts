@@ -167,7 +167,13 @@ export async function scenario07NegativePathsGuardrails(
 // Allow standalone execution
 if (require.main === module) {
   const { PrismaClient } = require('@eve/prisma');
-  const prisma = new PrismaClient();
+  const { PrismaPg } = require('@prisma/adapter-pg');
+  const dbUrl =
+    process.env.DATABASE_URL ??
+    'postgresql://postgres:postgres@localhost:5433/eve_money_dev?schema=public';
+  const prisma = new PrismaClient({
+    adapter: new PrismaPg({ connectionString: dbUrl }),
+  });
 
   (async () => {
     const args = process.argv.slice(2);

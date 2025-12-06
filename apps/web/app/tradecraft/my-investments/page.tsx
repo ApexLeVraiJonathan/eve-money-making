@@ -36,7 +36,7 @@ import {
 import { Button } from "@eve/ui";
 import { Badge } from "@eve/ui";
 import { Skeleton } from "@eve/ui";
-import { useMyParticipationHistory } from "../api";
+import { useMyParticipationHistory, useMyJingleYieldStatus } from "../api";
 import { startUserLogin, useCurrentUser } from "../api/characters/users.hooks";
 
 export default function MyInvestmentsPage() {
@@ -49,6 +49,8 @@ export default function MyInvestmentsPage() {
     isLoading: loading,
     error,
   } = useMyParticipationHistory();
+
+  const { data: jingleStatus } = useMyJingleYieldStatus();
 
   const authRequired = (!userLoading && !currentUser) || !!error;
 
@@ -224,6 +226,48 @@ export default function MyInvestmentsPage() {
           My Investments
         </h1>
       </div>
+
+      {/* JingleYield status banner */}
+      {jingleStatus && (
+        <Card className="border-emerald-500/40 bg-emerald-500/5">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <DollarSign className="h-4 w-4 text-emerald-600" />
+              JingleYield Promotion Active
+            </CardTitle>
+            <CardDescription className="text-xs">
+              You are currently participating in the JingleYield program with a
+              locked 2B ISK principal provided by Tradecraft. You can withdraw
+              profits above 2B while the base remains invested.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="text-xs sm:text-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="space-y-1">
+              <div className="text-muted-foreground">
+                Locked principal (admin-funded)
+              </div>
+              <div className="font-semibold">
+                {formatIsk(Number(jingleStatus.lockedPrincipalIsk))}
+              </div>
+            </div>
+            <div className="space-y-1">
+              <div className="text-muted-foreground">
+                Interest earned so far
+              </div>
+              <div className="font-semibold">
+                {formatIsk(Number(jingleStatus.cumulativeInterestIsk))} /{" "}
+                {formatIsk(Number(jingleStatus.targetInterestIsk))}
+              </div>
+            </div>
+            <div className="space-y-1">
+              <div className="text-muted-foreground">Cycles completed</div>
+              <div className="font-semibold">
+                {jingleStatus.cyclesCompleted} / {jingleStatus.minCycles}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Summary Statistics */}
       <div className="grid gap-4 md:grid-cols-4">

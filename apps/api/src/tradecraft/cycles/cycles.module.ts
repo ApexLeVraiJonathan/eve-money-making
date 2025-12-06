@@ -16,6 +16,7 @@ import { PayoutService } from './services/payout.service';
 import { PaymentMatchingService } from './services/payment-matching.service';
 import { CapitalService } from './services/capital.service';
 import { ProfitService } from './services/profit.service';
+import { JingleYieldService } from './services/jingle-yield.service';
 
 // Controllers
 import { CyclesController } from './cycles.controller';
@@ -39,6 +40,7 @@ import { WalletModule } from '@api/tradecraft/wallet/wallet.module';
     SnapshotService,
     ParticipationService,
     PayoutService,
+    JingleYieldService,
     PaymentMatchingService,
     CapitalService,
     ProfitService,
@@ -52,6 +54,7 @@ import { WalletModule } from '@api/tradecraft/wallet/wallet.module';
     SnapshotService,
     ParticipationService,
     PayoutService,
+    JingleYieldService,
     PaymentMatchingService,
     CapitalService,
     ProfitService,

@@ -56,6 +56,8 @@ import {
   AddBulkRelistFeesRequest,
 } from './dto/add-bulk-fees.dto';
 import { UpdateBulkSellPricesRequest } from './dto/update-bulk-sell-prices.dto';
+import { CreateJingleYieldParticipationRequest } from './dto/create-jingle-yield-participation.dto';
+import { JingleYieldService } from './services/jingle-yield.service';
 
 @ApiTags('ledger')
 @Controller('ledger')
@@ -74,6 +76,7 @@ export class CyclesController {
     private readonly profitService: ProfitService,
     private readonly wallet: WalletService,
     private readonly allocation: AllocationService,
+    private readonly jingleYieldService: JingleYieldService,
   ) {}
 
   @Post('cycles')
@@ -276,6 +279,57 @@ export class CyclesController {
       userId,
       rollover: body.rollover,
     });
+  }
+
+  @Post('jingle-yield/participations')
+  @Roles('ADMIN')
+  @UseGuards(RolesGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Create a JingleYield participation for a user (admin only)',
+  })
+  async createJingleYieldParticipation(
+    @Body() body: CreateJingleYieldParticipationRequest,
+  ): Promise<unknown> {
+    return await this.participationService.createJingleYieldParticipation({
+      userId: body.userId,
+      cycleId: body.cycleId,
+      adminCharacterId: body.adminCharacterId,
+      characterName: body.characterName,
+      principalIsk: body.principalIsk,
+      minCycles: body.minCycles,
+    });
+  }
+
+  // ===== JingleYield admin & user views =====
+
+  @Get('jingle-yield/programs')
+  @Roles('ADMIN')
+  @UseGuards(RolesGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'List all JingleYield programs (admin only)' })
+  async listJingleYieldPrograms(): Promise<unknown> {
+    return await this.jingleYieldService.listPrograms();
+  }
+
+  @Get('jingle-yield/programs/:id')
+  @Roles('ADMIN')
+  @UseGuards(RolesGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get a single JingleYield program (admin only)' })
+  @ApiParam({ name: 'id', description: 'JingleYield program ID' })
+  async getJingleYieldProgram(@Param('id') id: string): Promise<unknown> {
+    return await this.jingleYieldService.getProgramById(id);
+  }
+
+  @Get('jingle-yield/me')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get my JingleYield status (if any)' })
+  async myJingleYieldStatus(
+    @CurrentUser() user: RequestUser | null,
+  ): Promise<unknown> {
+    if (!user?.userId) return null;
+    return await this.jingleYieldService.getMyStatus(user.userId);
   }
 
   @Get('cycles/:cycleId/participations')

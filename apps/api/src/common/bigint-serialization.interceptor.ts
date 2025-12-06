@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
-import { Decimal } from '@eve/prisma/runtime/library';
+import { Prisma } from '@eve/prisma';
 
 /**
  * Global interceptor to automatically serialize BigInt and Prisma Decimal types to strings
@@ -32,7 +32,7 @@ export class BigIntSerializationInterceptor implements NestInterceptor {
     }
 
     // Handle Prisma Decimal
-    if (data instanceof Decimal) {
+    if (data instanceof Prisma.Decimal) {
       return data.toString();
     }
 

@@ -5,7 +5,6 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
 
 /// Character platform role (authorization)
@@ -219,9 +218,11 @@ model User {
   /// Enabled application features for this user (e.g., CHARACTERS, TRADECRAFT)
   enabledFeatures    Json?         @map("enabled_features")
 
-  characters EveCharacter[] @relation("UserCharacters")
-  EveAccount EveAccount[]
-  SkillPlan  SkillPlan[]
+  characters          EveCharacter[]       @relation("UserCharacters")
+  EveAccount          EveAccount[]
+  SkillPlan           SkillPlan[]
+  /// JingleYield programs this user participates in
+  jingleYieldPrograms JingleYieldProgram[]
 
   discordAccounts          DiscordAccount[]
   notificationPreferences  NotificationPreference[]
@@ -253,6 +254,10 @@ model EveCharacter {
   CharacterBoosterPeriod   CharacterBoosterPeriod[]
   SkillPlanAssignment      SkillPlanAssignment[]
   SkillFarmCharacterConfig SkillFarmCharacterConfig[]
+  /// Cycle ledger entries where this character is the beneficiary (admin repayments, etc.)
+  beneficiaryLedgerEntries CycleLedgerEntry[]
+  /// JingleYield programs where this character is the admin funding character
+  adminJingleYieldPrograms JingleYieldProgram[]
 
   @@index([ownerHash])
   @@index([userId])
@@ -477,13 +482,17 @@ model Cycle {
   /// Optional: total starting capital at cycle start (injection + carryover cash/inventory)
   initialCapitalIsk   Decimal? @map("initial_capital_isk") @db.Decimal(28, 2)
 
-  ledgerEntries     CycleLedgerEntry[]
-  CycleCapitalCache CycleCapitalCache[]
-  participations    CycleParticipation[]
-  cycleLines        CycleLine[]
-  cycleFeeEvents    CycleFeeEvent[]
-  cycleSnapshots    CycleSnapshot[]
-  committedPackages CommittedPackage[]
+  ledgerEntries                CycleLedgerEntry[]
+  CycleCapitalCache            CycleCapitalCache[]
+  participations               CycleParticipation[]
+  cycleLines                   CycleLine[]
+  cycleFeeEvents               CycleFeeEvent[]
+  cycleSnapshots               CycleSnapshot[]
+  committedPackages            CommittedPackage[]
+  /// JingleYield programs that start in this cycle
+  startJingleYieldPrograms     JingleYieldProgram[] @relation("JingleYieldStartCycle")
+  /// JingleYield programs that complete in this cycle
+  completedJingleYieldPrograms JingleYieldProgram[] @relation("JingleYieldCompletedCycle")
 
   @@map("cycles")
 }
@@ -512,6 +521,16 @@ model CycleLedgerEntry {
   amount     Decimal  @map("amount_isk") @db.Decimal(28, 2)
   memo       String?  @map("memo")
 
+  /// Optional beneficiary type for payouts (user | admin)
+  beneficiaryType        String?       @map("beneficiary_type")
+  /// Optional EVE character receiving this payout (used for admin JingleYield repayments)
+  beneficiaryCharacterId Int?          @map("beneficiary_character_id")
+  beneficiaryCharacter   EveCharacter? @relation(fields: [beneficiaryCharacterId], references: [id], onDelete: SetNull)
+
+  /// Optional link to a JingleYield program when this entry represents an admin repayment
+  jingleYieldProgramId String?             @map("jingle_yield_program_id")
+  jingleYieldProgram   JingleYieldProgram? @relation(fields: [jingleYieldProgramId], references: [id], onDelete: SetNull)
+
   /// Link to user participation when this entry represents a deposit/refund/payout
   participationId String?             @map("participation_id")
   participation   CycleParticipation? @relation(fields: [participationId], references: [id], onDelete: SetNull)
@@ -522,6 +541,8 @@ model CycleLedgerEntry {
   @@index([cycleId])
   @@index([participationId])
   @@index([entryType])
+  @@index([beneficiaryCharacterId])
+  @@index([jingleYieldProgramId])
   @@map("cycle_ledger")
 }
 
@@ -599,10 +620,73 @@ model CycleParticipation {
 
   ledgerEntries CycleLedgerEntry[]
 
+  /// Optional link to an active JingleYield program this participation belongs to
+  jingleYieldProgramId String?             @map("jingle_yield_program_id")
+  jingleYieldProgram   JingleYieldProgram? @relation(fields: [jingleYieldProgramId], references: [id], onDelete: SetNull)
+
+  /// When set, this participation is the root for a specific JingleYield program
+  rootForJingleYieldProgram JingleYieldProgram? @relation("JingleYieldRootParticipation")
+
   @@unique([cycleId, userId], name: "cycle_user_unique")
   @@index([cycleId])
   @@index([rolloverFromParticipationId])
+  @@index([jingleYieldProgramId])
   @@map("cycle_participations")
+}
+
+/// JingleYield seeded-investment program per user
+model JingleYieldProgram {
+  id String @id @default(uuid()) @map("id")
+
+  /// User participating in this JingleYield program
+  userId String @map("user_id")
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Admin EVE character that funded the 2B principal
+  adminCharacterId Int          @map("admin_character_id")
+  adminCharacter   EveCharacter @relation(fields: [adminCharacterId], references: [id], onDelete: Restrict)
+
+  /// Root participation where the 2B principal was first committed
+  rootParticipationId String             @unique @map("root_participation_id")
+  rootParticipation   CycleParticipation @relation("JingleYieldRootParticipation", fields: [rootParticipationId], references: [id], onDelete: Restrict)
+
+  /// Program status: ACTIVE | COMPLETED_CONTINUING | COMPLETED_CLOSED_LOSS
+  status String @default("ACTIVE") @map("status")
+
+  /// Locked principal provided by admin (typically 2B)
+  lockedPrincipalIsk Decimal @map("locked_principal_isk") @db.Decimal(28, 2)
+
+  /// Cumulative interest earned while this JY program is active
+  cumulativeInterestIsk Decimal @default(0) @map("cumulative_interest_isk") @db.Decimal(28, 2)
+
+  /// Target interest threshold to auto-complete the program (default 2B)
+  targetInterestIsk Decimal @default(2000000000) @map("target_interest_isk") @db.Decimal(28, 2)
+
+  /// Cycle where the program started
+  startCycleId String @map("start_cycle_id")
+  startCycle   Cycle  @relation("JingleYieldStartCycle", fields: [startCycleId], references: [id], onDelete: Restrict)
+
+  /// Minimum number of cycles before capital can be repaid (default 12)
+  minCycles Int @default(12) @map("min_cycles")
+
+  /// Optional cycle when the program completed
+  completedCycleId String? @map("completed_cycle_id")
+  completedCycle   Cycle?  @relation("JingleYieldCompletedCycle", fields: [completedCycleId], references: [id], onDelete: SetNull)
+
+  /// Participations that belong to this JingleYield program (across cycles)
+  participations CycleParticipation[]
+
+  /// Ledger entries representing admin repayments for this program
+  ledgerEntries CycleLedgerEntry[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([userId])
+  @@index([adminCharacterId])
+  @@index([startCycleId])
+  @@index([completedCycleId])
+  @@map("jingle_yield_programs")
 }
 
 /// Temporary storage for OAuth state during character linking flow

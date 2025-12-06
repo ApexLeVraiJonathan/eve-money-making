@@ -176,6 +176,11 @@ export const APPS: AppConfig[] = [
         url: "/tradecraft/admin/participations",
         icon: Users,
       },
+      {
+        name: "JingleYield",
+        url: "/tradecraft/admin/jingle-yield",
+        icon: BadgeDollarSign,
+      },
       { name: "Triggers", url: "/tradecraft/admin/triggers", icon: Zap },
     ],
   },

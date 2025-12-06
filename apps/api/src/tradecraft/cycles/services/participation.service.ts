@@ -1,7 +1,8 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '@api/prisma/prisma.service';
 import { CharacterService } from '@api/characters/services/character.service';
 import { NotificationService } from '@api/notifications/notification.service';
+import { AppConfig } from '@api/common/config';
 import type { ParticipationStatus, Prisma } from '@eve/prisma';
 
 /**
@@ -183,11 +184,39 @@ export class ParticipationService {
       maxParticipation = 20_000_000_000; // 20B cap for rollover investors
     } else {
       maxParticipation = await this.determineMaxParticipation(input.userId);
+
+      // If the user has one or more ACTIVE JingleYield programs, their
+      // admin-funded principal counts toward the 10B principal cap. We
+      // therefore reduce the allowed user principal so that:
+      //   userPrincipal + SUM(jyPrincipal) <= 10B
+      if (input.userId) {
+        const activeJyPrograms = await this.prisma.jingleYieldProgram.findMany({
+          where: {
+            userId: input.userId,
+            status: 'ACTIVE',
+          },
+          select: {
+            lockedPrincipalIsk: true,
+          },
+        });
+
+        if (activeJyPrograms.length > 0) {
+          const totalJyPrincipal = activeJyPrograms.reduce(
+            (sum, p) => sum + Number(p.lockedPrincipalIsk),
+            0,
+          );
+          const remainingPrincipalCap = Math.max(
+            0,
+            10_000_000_000 - totalJyPrincipal,
+          );
+          maxParticipation = Math.min(maxParticipation, remainingPrincipalCap);
+        }
+      }
     }
 
     if (requestedAmount > maxParticipation) {
       const maxB = maxParticipation / 1_000_000_000;
-      throw new Error(
+      throw new BadRequestException(
         `Participation amount exceeds maximum allowed (${maxB}B ISK)`,
       );
     }
@@ -286,6 +315,123 @@ export class ParticipationService {
         memo: uniqueMemo,
         status: 'AWAITING_INVESTMENT',
       },
+    });
+  }
+
+  /**
+   * Admin-only: create a JingleYield participation and program for a user.
+   *
+   * This seeds a 2B ISK admin-funded principal in a PLANNED cycle and
+   * links it to a JingleYieldProgram so that subsequent rollovers can
+   * enforce the locked-capital rules.
+   */
+  async createJingleYieldParticipation(input: {
+    userId: string;
+    cycleId: string;
+    adminCharacterId: number;
+    characterName: string;
+    principalIsk?: string;
+    minCycles?: number;
+  }) {
+    const env = AppConfig.env();
+    this.logger.log(
+      `[createJingleYieldParticipation] userId=${input.userId}, cycleId=${input.cycleId}, adminCharacterId=${input.adminCharacterId}, env=${env}`,
+    );
+
+    const cycle = await this.prisma.cycle.findUnique({
+      where: { id: input.cycleId },
+    });
+    if (!cycle) {
+      throw new Error('Cycle not found');
+    }
+    if (cycle.status !== 'PLANNED') {
+      throw new Error(
+        'JingleYield participation can only be created in a PLANNED cycle',
+      );
+    }
+
+    // Enforce single active participation per user: they must fully cash out first.
+    const activeStatuses: ParticipationStatus[] = [
+      'AWAITING_INVESTMENT',
+      'AWAITING_VALIDATION',
+      'OPTED_IN',
+      'AWAITING_PAYOUT',
+    ];
+    const existingActive = await this.prisma.cycleParticipation.findFirst({
+      where: {
+        userId: input.userId,
+        status: { in: activeStatuses },
+      },
+    });
+    if (existingActive) {
+      this.logger.warn(
+        `[createJingleYieldParticipation] User ${input.userId} still has active participation ${existingActive.id}`,
+      );
+      throw new Error(
+        'User still has an active participation and must fully cash out before JingleYield can be created',
+      );
+    }
+
+    // Seeded principal (admin-funded) as Decimal string
+    const rawPrincipal =
+      input.principalIsk && input.principalIsk.trim().length > 0
+        ? input.principalIsk
+        : '2000000000.00';
+    const principalNum = Number(rawPrincipal);
+    if (!Number.isFinite(principalNum) || principalNum <= 0) {
+      throw new Error('Invalid JingleYield principal amount');
+    }
+    // Hard cap: admin principal must never exceed 10B
+    if (principalNum > 10_000_000_000) {
+      throw new Error(
+        'JingleYield principal exceeds maximum allowed (10B ISK)',
+      );
+    }
+    const principalIsk = principalNum.toFixed(2);
+
+    const minCycles =
+      input.minCycles && input.minCycles > 0 ? input.minCycles : 12;
+
+    return await this.prisma.$transaction(async (tx) => {
+      // Create root participation for the planned cycle
+      const participation = await tx.cycleParticipation.create({
+        data: {
+          cycleId: input.cycleId,
+          userId: input.userId,
+          characterName: input.characterName,
+          amountIsk: principalIsk,
+          memo: `JY-${cycle.id.substring(0, 8)}-${input.userId.substring(0, 8)}`,
+          status: 'AWAITING_INVESTMENT',
+        },
+      });
+
+      // Create JingleYield program linked to this participation and admin character
+      const program = await tx.jingleYieldProgram.create({
+        data: {
+          userId: input.userId,
+          adminCharacterId: input.adminCharacterId,
+          rootParticipationId: participation.id,
+          status: 'ACTIVE',
+          lockedPrincipalIsk: principalIsk,
+          cumulativeInterestIsk: '0.00',
+          targetInterestIsk: principalIsk,
+          startCycleId: input.cycleId,
+          minCycles,
+        },
+      });
+
+      // Back-link participation to the JY program
+      const updatedParticipation = await tx.cycleParticipation.update({
+        where: { id: participation.id },
+        data: {
+          jingleYieldProgramId: program.id,
+        },
+      });
+
+      return {
+        participation: updatedParticipation,
+        program,
+      };
     });
   }
 

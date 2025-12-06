@@ -1,26 +1,21 @@
 /**
- * Participation Rollover Test Suite
+ * JingleYield Test Suite
  *
- * Runs all rollover scenarios in order, building on shared state.
+ * Validates the JingleYield seeded 2B principal promotion end-to-end:
+ * - Admin can create a JingleYield participation for a real user
+ * - A 2B participation is created and linked to a JingleYieldProgram
+ * - JingleYield admin APIs expose correct summary information
  *
  * Usage:
- *   pnpm exec ts-node scripts/tests/participation-rollover/participation-rollover.suite.ts \
+ *   pnpm exec ts-node scripts/tests/jingle-yield/jingle-yield.suite.ts \
  *     --apiUrl http://localhost:3000 \
  *     --apiKey <your-dev-api-key> \
- *     --characterId <logistics-character-id> \
+ *     --characterId <admin-character-id> \
+ *     --testUserId <real-user-id> \
  *     [--interactive]
  *
- * Options:
- *   --apiUrl <url>           API endpoint (default: http://localhost:3000)
- *   --apiKey <key>           Dev API key for authentication
- *   --token <token>          Bearer token (alternative to API key)
- *   --characterId <id>       Logistics character ID for creating test data
- *   --interactive            Enable interactive pauses for UI verification
- *   --skip-cleanup           Skip initial cleanup (for debugging)
- *
- * Environment:
- *   This suite is designed for LOCAL/DEV environments only!
- *   It will DELETE ALL existing cycles and participations.
+ * WARNING: This suite deletes all cycles/participations and wallet data.
+ *          Never run against production.
  */
 
 import { PrismaClient } from '@eve/prisma';
@@ -30,15 +25,14 @@ import {
   SharedRolloverContext,
   createSharedContext,
   cleanAllTestData,
-} from './helpers/index';
+} from './helpers';
 
-import { scenario01FirstTimeInvestor } from './scenarios/01-first-time-investor-baseline.test';
-import { scenario02FullPayoutRollover } from './scenarios/02-full-payout-rollover-happy-path.test';
-import { scenario03InitialOnlyRollover } from './scenarios/03-initial-only-rollover-flow.test';
-import { scenario04CustomAmountRollover } from './scenarios/04-custom-amount-rollover-flow.test';
-import { scenario05ExcessPayoutAbove20B } from './scenarios/05-excess-payout-above-20b.test';
-import { scenario06OptOutPlanned } from './scenarios/06-opt-out-planned.test';
-import { scenario07NegativePathsGuardrails } from './scenarios/07-negative-paths-guardrails.test';
+import { scenario01JingleYieldBaseline } from './scenarios/01-jingle-yield-baseline.test';
+import { scenario02JingleYieldLockedPrincipalRollover } from './scenarios/02-jingle-yield-locked-principal-rollover.test';
+import { scenario03JingleYieldAdjustablePrincipalAndCycles } from './scenarios/03-jingle-yield-adjustable-principal-min-cycles.test';
+import { scenario04JingleYieldPrincipalCap } from './scenarios/04-jingle-yield-principal-cap.test';
+import { scenario05JingleYieldCompletionByMinCycles } from './scenarios/05-jingle-yield-completion-by-min-cycles.test';
+import { scenario06JingleYieldCompletionByInterestTarget } from './scenarios/06-jingle-yield-completion-by-interest-target.test';
 
 const dbUrl =
   process.env.DATABASE_URL ??
@@ -57,46 +51,40 @@ interface SuiteScenario {
 
 const scenarios: SuiteScenario[] = [
   {
-    name: 'First-Time Investor Baseline',
+    name: 'JingleYield Creation & Admin Wiring',
     emoji: '[1]',
-    fn: scenario01FirstTimeInvestor,
+    fn: scenario01JingleYieldBaseline,
   },
   {
-    name: 'Full Payout Rollover - Happy Path',
+    name: 'Locked Principal Cannot Be Withdrawn (Rollover)',
     emoji: '[2]',
-    fn: scenario02FullPayoutRollover,
+    fn: scenario02JingleYieldLockedPrincipalRollover,
   },
   {
-    name: 'Initial Only Rollover Flow',
+    name: 'Adjustable Principal & Min Cycles',
     emoji: '[3]',
-    fn: scenario03InitialOnlyRollover,
+    fn: scenario03JingleYieldAdjustablePrincipalAndCycles,
   },
   {
-    name: 'Custom Amount Rollover Flow',
+    name: '10B User Principal Cap with Active JY Program',
     emoji: '[4]',
-    fn: scenario04CustomAmountRollover,
+    fn: scenario04JingleYieldPrincipalCap,
   },
   {
-    name: 'Excess Payout Above 20B',
+    name: 'Completion by Min Cycles',
     emoji: '[5]',
-    fn: scenario05ExcessPayoutAbove20B,
+    fn: scenario05JingleYieldCompletionByMinCycles,
   },
   {
-    name: 'Opt-out of PLANNED Cycle',
+    name: 'Completion by Interest Target',
     emoji: '[6]',
-    fn: scenario06OptOutPlanned,
-  },
-  {
-    name: 'Negative Paths and Guardrails',
-    emoji: '[7]',
-    fn: scenario07NegativePathsGuardrails,
-    optional: true,
+    fn: scenario06JingleYieldCompletionByInterestTarget,
   },
 ];
 
 async function runSuite() {
   console.log('\n' + '='.repeat(64));
-  console.log('     PARTICIPATION ROLLOVER TEST SUITE');
+  console.log('           JINGLEYIELD TEST SUITE');
   console.log('='.repeat(64) + '\n');
 
   // Parse CLI arguments
@@ -112,43 +100,31 @@ async function runSuite() {
     apiKey: getArg('--apiKey'),
     characterId: parseInt(getArg('--characterId') || '0'),
     interactive: args.includes('--interactive'),
+    testUserId: getArg('--testUserId'),
   };
 
   const skipCleanup = args.includes('--skip-cleanup');
 
   // Validate configuration
-  if ((!config.token && !config.apiKey) || !config.characterId) {
+  if ((!config.token && !config.apiKey) || !config.characterId || !config.testUserId) {
     console.error('ERROR: Missing required arguments\n');
     console.log('Usage:');
     console.log(
-      '  pnpm exec ts-node scripts/tests/participation-rollover/participation-rollover.suite.ts \\',
+      '  pnpm exec ts-node scripts/tests/jingle-yield/jingle-yield.suite.ts \\',
     );
     console.log('    --apiUrl http://localhost:3000 \\');
     console.log('    --apiKey <your-dev-api-key> \\');
-    console.log('    --characterId <logistics-character-id> \\');
+    console.log('    --characterId <admin-character-id> \\');
+    console.log('    --testUserId <real-user-id> \\');
     console.log('    [--interactive]\n');
-    console.log('Options:');
-    console.log(
-      '  --apiUrl <url>           API endpoint (default: http://localhost:3000)',
-    );
-    console.log('  --apiKey <key>           Dev API key for authentication');
-    console.log(
-      '  --token <token>          Bearer token (alternative to API key)',
-    );
-    console.log('  --characterId <id>       Logistics character ID');
-    console.log(
-      '  --interactive            Enable interactive pauses for UI verification',
-    );
-    console.log(
-      '  --skip-cleanup           Skip initial cleanup (for debugging)\n',
-    );
     process.exit(1);
   }
 
   console.log('Configuration:');
   console.log('   API URL: ' + config.apiUrl);
   console.log('   Auth: ' + (config.apiKey ? 'API Key' : 'Bearer Token'));
-  console.log('   Character ID: ' + config.characterId);
+  console.log('   Admin Character ID: ' + config.characterId);
+  console.log('   Test User ID: ' + config.testUserId);
   console.log('   Interactive: ' + (config.interactive ? 'YES' : 'NO'));
   console.log('   Skip Cleanup: ' + (skipCleanup ? 'YES' : 'NO') + '\n');
 
@@ -176,20 +152,16 @@ async function runSuite() {
     await new Promise((resolve) => setTimeout(resolve, 3000));
   }
 
-  // Initialize shared context (user ID not needed - will be detected from UI opt-ins)
-  const ctx = createSharedContext('manual-ui-test-' + Date.now());
-
-  if (config.interactive) {
-    console.log('NOTE: Interactive mode enabled');
-    console.log('      You will be prompted to manually opt-in via the UI');
-    console.log(
-      '      The tests will verify the backend state after each action\n',
-    );
-  }
+  // Initialize shared context
+  const ctx: SharedRolloverContext = createSharedContext(
+    config.testUserId as string,
+  );
 
   // Clean test data
   if (!skipCleanup) {
     await cleanAllTestData();
+    // Also clear any existing JingleYield programs
+    await prisma.jingleYieldProgram.deleteMany({});
   } else {
     console.log('INFO: Skipping cleanup (--skip-cleanup flag set)\n');
   }
@@ -246,7 +218,7 @@ async function runSuite() {
     process.exit(1);
   } else if (passed === scenarios.length) {
     console.log(
-      'RESULT: All scenarios PASSED - Feature ready for deployment!\n',
+      'RESULT: All scenarios PASSED - JingleYield wiring looks good!\n',
     );
     process.exit(0);
   } else {
@@ -266,3 +238,5 @@ runSuite()
   .finally(() => {
     return prisma.$disconnect();
   });
+
+

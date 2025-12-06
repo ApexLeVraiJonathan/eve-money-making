@@ -44,6 +44,8 @@ export async function getParticipations(
   return await apiCall('GET', `/ledger/cycles/${cycleId}/participations`, null);
 }
 
+// JingleYield-specific helpers live under scripts/tests/jingle-yield/helpers
+
 /**
  * Opt out of a participation
  */

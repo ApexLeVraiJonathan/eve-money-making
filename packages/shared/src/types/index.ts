@@ -192,6 +192,50 @@ export interface CycleParticipation {
   updatedAt: string;
 }
 
+// JingleYield seeded-investment program summary for admin views
+export interface JingleYieldProgramSummary {
+  id: string;
+  userId: string;
+  adminCharacterId: number;
+  lockedPrincipalIsk: string;
+  cumulativeInterestIsk: string;
+  targetInterestIsk: string;
+  status: string;
+  minCycles: number;
+  cyclesCompleted: number;
+  startCycle: {
+    id: string;
+    name: string | null;
+    startedAt: string;
+  } | null;
+  completedCycle: {
+    id: string;
+    name: string | null;
+    closedAt: string | null;
+  } | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// Current user's JingleYield status
+export interface JingleYieldStatus {
+  id: string;
+  userId: string;
+  status: string;
+  lockedPrincipalIsk: string;
+  cumulativeInterestIsk: string;
+  targetInterestIsk: string;
+  minCycles: number;
+  cyclesCompleted: number;
+  startCycle: {
+    id: string;
+    name: string | null;
+    startedAt: string;
+  } | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 // ============================================================================
 // Market & Arbitrage
 // ============================================================================

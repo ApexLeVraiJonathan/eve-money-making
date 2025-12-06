@@ -98,14 +98,54 @@ export class WalletService {
 
   async importAllLinked(reqId?: string) {
     const chars = await this.characterService.getLogisticsCharacters();
-    for (const c of chars) {
-      try {
-        await this.importForCharacter(c.id, reqId);
-      } catch (e) {
-        this.logger.error(`Wallet import failed for ${c.id}: ${String(e)}`);
+
+    const tStart = Date.now();
+    this.logger.log(
+      `[Wallet] Starting importAllLinked for ${chars.length} logistics characters`,
+    );
+
+    // Import wallet data in parallel for all logistics characters.
+    // If you want to be more conservative with ESI later, you can reintroduce
+    // a concurrency cap here.
+    const concurrency = Math.max(1, chars.length);
+    const queue = [...chars];
+    let processed = 0;
+
+    const worker = async () => {
+      for (;;) {
+        const c = queue.shift();
+        if (!c) break;
+
+        const tCharStart = Date.now();
+        try {
+          await this.importForCharacter(c.id, reqId);
+          const tCharMs = Date.now() - tCharStart;
+          this.logger.log(
+            `[Wallet] Import completed for character ${c.id} in ${tCharMs}ms`,
+          );
+        } catch (e) {
+          const tCharMs = Date.now() - tCharStart;
+          this.logger.error(
+            `[Wallet] Import failed for character ${c.id} after ${tCharMs}ms: ${String(
+              e,
+            )}`,
+          );
+        } finally {
+          processed += 1;
+        }
       }
-    }
-    return { ok: true, count: chars.length };
+    };
+
+    await Promise.all(
+      Array.from({ length: concurrency }, () => worker()),
+    );
+
+    const tTotalMs = Date.now() - tStart;
+    this.logger.log(
+      `[Wallet] importAllLinked completed in ${tTotalMs}ms for ${chars.length} characters`,
+    );
+
+    return { ok: true, count: chars.length, durationMs: tTotalMs };
   }
 
   async listTransactions(

@@ -21,10 +21,8 @@
     "prisma:migrate:deploy": "prisma migrate deploy",
     "prisma:studio": "prisma studio"
   },
-  "dependencies": {
-    "@prisma/client": "^6.3.0"
-  },
   "devDependencies": {
-    "prisma": "^6.3.0"
+    "@prisma/client": "^7.1.0",
+    "prisma": "^7.1.0"
   }
 }

@@ -65,7 +65,13 @@ export async function scenario05ExcessPayoutAbove20B(
   );
 
   const { PrismaClient } = await import('@eve/prisma');
-  const prisma = new PrismaClient();
+  const { PrismaPg } = await import('@prisma/adapter-pg');
+  const dbUrl =
+    process.env.DATABASE_URL ??
+    'postgresql://postgres:postgres@localhost:5433/eve_money_dev?schema=public';
+  const prisma = new PrismaClient({
+    adapter: new PrismaPg({ connectionString: dbUrl }),
+  });
 
   // Get the Cycle 4 participation for the test user
   const cycle4Parts = await prisma.cycleParticipation.findMany({

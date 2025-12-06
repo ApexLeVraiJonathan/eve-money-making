@@ -5,8 +5,15 @@
  */
 
 import { PrismaClient } from '@eve/prisma';
+import { PrismaPg } from '@prisma/adapter-pg';
 
-const prisma = new PrismaClient();
+const dbUrl =
+  process.env.DATABASE_URL ??
+  'postgresql://postgres:postgres@localhost:5433/eve_money_dev?schema=public';
+
+const prisma = new PrismaClient({
+  adapter: new PrismaPg({ connectionString: dbUrl }),
+});
 
 export interface TestContext {
   characterId: number;
@@ -128,7 +135,10 @@ export async function createPayouts(
   apiCall: (method: string, path: string, body?: any) => Promise<any>,
   cycleId: string,
 ): Promise<any> {
-  return await apiCall('POST', `/ledger/cycles/${cycleId}/payouts`, {});
+  // Use the admin finalize endpoint, which computes payouts and persists them.
+  return await apiCall('POST', `/ledger/cycles/${cycleId}/payouts/finalize`, {
+    profitSharePct: 0.5,
+  });
 }
 
 /**
@@ -147,11 +157,12 @@ export async function cleanAllTestData(): Promise<void> {
   await prisma.cycleFeeEvent.deleteMany({});
   await prisma.cycleSnapshot.deleteMany({});
   await prisma.cycleLedgerEntry.deleteMany({});
+  // JingleYield programs reference cycle participations (root + links),
+  // so they must be deleted before cycleParticipation.
+  await prisma.jingleYieldProgram.deleteMany({});
   await prisma.cycleParticipation.deleteMany({});
   await prisma.cycleCapitalCache.deleteMany({});
   await prisma.cycle.deleteMany({});
-  await prisma.walletTransaction.deleteMany({});
-  await prisma.walletJournalEntry.deleteMany({});
 
   console.log('  ✓ All test data cleaned');
 }
