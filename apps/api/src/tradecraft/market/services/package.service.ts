@@ -157,7 +157,7 @@ export class PackageService {
     const hasSales = linkedCycleLines.some((link) => link.hasSales);
 
     // By default, allow marking failed while package is active.
-    let canMarkFailed = pkg.status === 'active';
+    const canMarkFailed = pkg.status === 'active';
     let validationMessage: string | null = null;
 
     if (!canMarkFailed) {

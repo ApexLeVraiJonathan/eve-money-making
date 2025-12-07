@@ -11,7 +11,6 @@ import {
   Pause,
   Trash2,
   Clock,
-  Calendar,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@eve/ui";
 import { Badge } from "@eve/ui";

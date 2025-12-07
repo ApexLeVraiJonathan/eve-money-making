@@ -13,5 +13,3 @@ export class IncreaseParticipationRequest {
   })
   deltaAmountIsk: string;
 }
-
-

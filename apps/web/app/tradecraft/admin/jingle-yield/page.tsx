@@ -234,7 +234,8 @@ export default function JingleYieldAdminPage() {
                 readOnly
               />
               <p className="text-xs text-muted-foreground">
-                Automatically set based on selected user's primary character.
+                Automatically set based on selected user&apos;s primary
+                character.
               </p>
             </div>
             <div className="space-y-2">

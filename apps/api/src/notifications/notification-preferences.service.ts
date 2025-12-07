@@ -50,7 +50,7 @@ export class NotificationPreferencesService {
             user_channel_type_unique: {
               userId,
               channel: p.channel as NotificationChannel,
-              notificationType: p.notificationType as NotificationType,
+              notificationType: p.notificationType,
             },
           },
           update: {
@@ -59,7 +59,7 @@ export class NotificationPreferencesService {
           create: {
             userId,
             channel: p.channel as NotificationChannel,
-            notificationType: p.notificationType as NotificationType,
+            notificationType: p.notificationType,
             enabled: p.enabled,
           },
         }),
@@ -73,7 +73,7 @@ export class NotificationPreferencesService {
   ): boolean {
     return (
       NOTIFICATION_CHANNELS.includes(channel as NotificationChannel) &&
-      NOTIFICATION_TYPES.includes(type as NotificationType)
+      NOTIFICATION_TYPES.includes(type)
     );
   }
 }

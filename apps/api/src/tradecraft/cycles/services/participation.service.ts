@@ -668,16 +668,15 @@ export class ParticipationService {
 
     // Compute how much was already deposited for this participation so that
     // top-ups only record the additional amount as a new deposit entry.
-    const existingDeposits =
-      await this.prisma.cycleLedgerEntry.aggregate({
-        where: {
-          participationId: updated.id,
-          entryType: 'deposit',
-        },
-        _sum: {
-          amount: true,
-        },
-      });
+    const existingDeposits = await this.prisma.cycleLedgerEntry.aggregate({
+      where: {
+        participationId: updated.id,
+        entryType: 'deposit',
+      },
+      _sum: {
+        amount: true,
+      },
+    });
 
     const alreadyPaid =
       existingDeposits._sum.amount != null

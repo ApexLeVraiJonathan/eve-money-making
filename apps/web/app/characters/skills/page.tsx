@@ -36,7 +36,6 @@ import type {
   CharacterAttributesResponse,
 } from "@eve/api-contracts";
 import { useMyCharacters } from "@/app/tradecraft/api/characters/users.hooks";
-import { useSkillCatalogSearch } from "./api";
 import { useSkillEncyclopedia } from "./browser/api";
 import {
   estimateTrainingTimeSeconds,
@@ -167,8 +166,7 @@ export default function SkillsPage() {
     useCharacterTrainingQueue(selectedId);
   const { data: skills, isLoading: skillsLoading } =
     useCharacterSkillsSnapshot(selectedId);
-  const { data: attrs, isLoading: attrsLoading } =
-    useCharacterAttributes(selectedId);
+  const { data: attrs } = useCharacterAttributes(selectedId);
 
   // Load skill encyclopedia for name resolution
   const { data: encyclopedia } = useSkillEncyclopedia();
@@ -382,7 +380,6 @@ export default function SkillsPage() {
                 onSkillClick={handleSkillClick}
                 attrs={attrs}
                 encyclopedia={encyclopedia}
-                skills={skills}
               />
             </div>
           </div>
@@ -409,7 +406,6 @@ function TrainingQueueCard({
   onSkillClick,
   attrs,
   encyclopedia,
-  skills,
 }: {
   loading: boolean;
   queue: CharacterTrainingQueueSummary | null | undefined;
@@ -417,7 +413,6 @@ function TrainingQueueCard({
   onSkillClick?: (skillId: number) => void;
   attrs?: CharacterAttributesResponse | null;
   encyclopedia?: SkillEncyclopediaResponse | null;
-  skills?: CharacterSkillsResponse | null;
 }) {
   // Calculate SP/hour for active skill
   const getSpPerHour = (skillId: number): number | null => {
@@ -464,7 +459,6 @@ function TrainingQueueCard({
   // reliable, so a time-based progress bar is a better UX signal.
   const getProgressPercentage = (
     entry: CharacterTrainingQueueSummary["activeEntry"] | null | undefined,
-    _currentSkills: CharacterSkillsResponse | null | undefined,
   ): number => {
     if (!entry) return 0;
 
@@ -561,7 +555,7 @@ function TrainingQueueCard({
   const totalTime = formatTotalTime(queue.totalRemainingSeconds);
   const endDate = getQueueEndDate(queue.totalRemainingSeconds);
   const spPerHour = active ? getSpPerHour(active.skillId) : null;
-  const progressPercentage = active ? getProgressPercentage(active, skills) : 0;
+  const progressPercentage = active ? getProgressPercentage(active) : 0;
   const remainingSP = active?.levelEnd
     ? getRemainingSP(active.skillId, active.levelEnd)
     : null;
@@ -671,7 +665,7 @@ function TrainingQueueCard({
           <div className="space-y-2">
             <div className="text-sm font-medium">Upcoming Skills</div>
             <div className="space-y-1">
-              {queue.entries.slice(0, 10).map((e, idx) => {
+              {queue.entries.slice(0, 10).map((e) => {
                 const isActive =
                   queue.activeEntry?.skillId === e.skillId &&
                   queue.activeEntry.queuePosition === e.queuePosition;
@@ -722,6 +716,7 @@ function TrainingQueueCard({
   );
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function AttributesCard({
   loading,
   attrs,
@@ -1028,6 +1023,7 @@ function SkillsListCard({
   };
 
   // Helper to get level badge variant
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const getLevelBadgeColor = (level: number): string => {
     if (level === 0) return "bg-muted/50 text-foreground/60";
     if (level <= 2)
