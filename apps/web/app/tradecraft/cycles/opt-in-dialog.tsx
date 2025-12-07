@@ -352,9 +352,13 @@ export default function OptInDialog(props: OptInDialogProps) {
                         <Checkbox
                           id="use-rollover"
                           checked={useRollover}
-                          onCheckedChange={(checked) =>
-                            setUseRollover(!!checked)
-                          }
+                          onCheckedChange={(checked) => {
+                            const enabled = !!checked;
+                            setUseRollover(enabled);
+                            if (enabled) {
+                              setRolloverType("INITIAL_ONLY");
+                            }
+                          }}
                         />
                         <Label
                           htmlFor="use-rollover"
