@@ -319,6 +319,145 @@ export class ParticipationService {
   }
 
   /**
+   * Increase principal for an existing participation while the cycle is PLANNED.
+   * Users can only increase (never decrease) their amount, and the final amount
+   * must still respect participation caps (10B/20B + JingleYield adjustments).
+   */
+  async increaseParticipation(input: {
+    participationId: string;
+    userId: string;
+    deltaAmountIsk: string;
+  }): Promise<{
+    participation: Prisma.CycleParticipationGetPayload<{
+      include: { cycle: true };
+    }>;
+    previousAmountIsk: string;
+    deltaAmountIsk: string;
+    newAmountIsk: string;
+  }> {
+    const participation = await this.prisma.cycleParticipation.findUnique({
+      where: { id: input.participationId },
+      include: { cycle: true },
+    });
+
+    if (!participation) {
+      throw new BadRequestException('Participation not found');
+    }
+
+    if (!participation.userId || participation.userId !== input.userId) {
+      throw new BadRequestException(
+        'You are not allowed to modify this participation',
+      );
+    }
+
+    if (!participation.cycle) {
+      throw new BadRequestException('Participation cycle not found');
+    }
+
+    if (participation.cycle.status !== 'PLANNED') {
+      throw new BadRequestException(
+        'Participation can only be increased while the cycle is PLANNED',
+      );
+    }
+
+    const delta = Number(input.deltaAmountIsk);
+    if (!Number.isFinite(delta) || delta <= 0) {
+      throw new BadRequestException(
+        'Increase amount must be a positive number',
+      );
+    }
+
+    const currentAmount = Number(participation.amountIsk);
+    const requestedTotal = currentAmount + delta;
+
+    // Enforce participation caps, reusing the same logic as createParticipation.
+    let maxParticipation: number;
+
+    if (participation.rolloverType) {
+      // Rollover participations always use the 20B cap.
+      maxParticipation = 20_000_000_000;
+    } else {
+      maxParticipation = await this.determineMaxParticipation(
+        participation.userId ?? undefined,
+      );
+
+      // Apply JingleYield principal cap adjustment:
+      // userPrincipal + SUM(active JY principal) <= 10B
+      if (participation.userId) {
+        const activeJyPrograms = await this.prisma.jingleYieldProgram.findMany({
+          where: {
+            userId: participation.userId,
+            status: 'ACTIVE',
+          },
+          select: {
+            lockedPrincipalIsk: true,
+          },
+        });
+
+        if (activeJyPrograms.length > 0) {
+          const totalJyPrincipal = activeJyPrograms.reduce(
+            (sum, p) => sum + Number(p.lockedPrincipalIsk),
+            0,
+          );
+          const remainingPrincipalCap = Math.max(
+            0,
+            10_000_000_000 - totalJyPrincipal,
+          );
+          maxParticipation = Math.min(maxParticipation, remainingPrincipalCap);
+        }
+      }
+    }
+
+    // For non-JY participations, we compare the full requested total against the cap.
+    // For JingleYield-linked participations, only the *user-funded* portion should
+    // count toward the 10B cap. The admin-funded locked principal remains fixed in
+    // the JY program and should not consume user principal headroom.
+    let effectiveRequestedForCap = requestedTotal;
+
+    if (participation.jingleYieldProgramId) {
+      const jyProgram = await this.prisma.jingleYieldProgram.findUnique({
+        where: { id: participation.jingleYieldProgramId },
+        select: {
+          lockedPrincipalIsk: true,
+        },
+      });
+
+      if (jyProgram) {
+        const lockedPrincipal = Number(jyProgram.lockedPrincipalIsk);
+        const currentUserPortion = Math.max(currentAmount - lockedPrincipal, 0);
+        const requestedUserPortion = currentUserPortion + delta;
+        effectiveRequestedForCap = requestedUserPortion;
+      }
+    }
+
+    if (effectiveRequestedForCap > maxParticipation) {
+      const maxB = maxParticipation / 1_000_000_000;
+      throw new BadRequestException(
+        `Participation amount exceeds maximum allowed (${maxB}B ISK)`,
+      );
+    }
+
+    const updated = await this.prisma.cycleParticipation.update({
+      where: { id: participation.id },
+      data: {
+        amountIsk: requestedTotal.toFixed(2),
+        status: 'AWAITING_INVESTMENT',
+        // Force a fresh validation for the new total; deposits already made
+        // remain tracked via cycle_ledger entries.
+        validatedAt: null,
+      },
+      include: { cycle: true },
+    });
+
+    return {
+      participation: updated,
+      previousAmountIsk: currentAmount.toFixed(2),
+      deltaAmountIsk: delta.toFixed(2),
+      newAmountIsk: requestedTotal.toFixed(2),
+    };
+  }
+
+  /**
    * Admin-only: create a JingleYield participation and program for a user.
    *
    * This seeds a 2B ISK admin-funded principal in a PLANNED cycle and
@@ -527,11 +666,43 @@ export class ParticipationService {
       },
     });
 
-    // Create deposit ledger entry
+    // Compute how much was already deposited for this participation so that
+    // top-ups only record the additional amount as a new deposit entry.
+    const existingDeposits =
+      await this.prisma.cycleLedgerEntry.aggregate({
+        where: {
+          participationId: updated.id,
+          entryType: 'deposit',
+        },
+        _sum: {
+          amount: true,
+        },
+      });
+
+    const alreadyPaid =
+      existingDeposits._sum.amount != null
+        ? Number(existingDeposits._sum.amount)
+        : 0;
+    const fullAmount = Number(updated.amountIsk);
+    const deltaAmount = fullAmount - alreadyPaid;
+
+    if (deltaAmount <= 0) {
+      this.logger.log(
+        `[adminValidatePayment] No additional deposit needed for participation ${updated.id.substring(
+          0,
+          8,
+        )} (alreadyPaid=${alreadyPaid.toFixed(
+          2,
+        )}, newAmount=${fullAmount.toFixed(2)})`,
+      );
+      return updated;
+    }
+
+    // Create deposit ledger entry only for the new delta amount.
     await appendEntryFn({
       cycleId: updated.cycleId,
       entryType: 'deposit',
-      amountIsk: String(updated.amountIsk),
+      amountIsk: deltaAmount.toFixed(2),
       memo: `Participation deposit ${updated.characterName}`,
       participationId: updated.id,
       planCommitId: null,

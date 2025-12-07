@@ -57,6 +57,7 @@ import {
 } from './dto/add-bulk-fees.dto';
 import { UpdateBulkSellPricesRequest } from './dto/update-bulk-sell-prices.dto';
 import { CreateJingleYieldParticipationRequest } from './dto/create-jingle-yield-participation.dto';
+import { IncreaseParticipationRequest } from './dto/increase-participation.dto';
 import { JingleYieldService } from './services/jingle-yield.service';
 
 @ApiTags('ledger')
@@ -278,6 +279,29 @@ export class CyclesController {
       amountIsk: body.amountIsk,
       userId,
       rollover: body.rollover,
+    });
+  }
+
+  @Post('participations/:id/increase')
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary:
+      'Increase principal for an existing participation in a planned cycle',
+  })
+  @ApiParam({ name: 'id', description: 'Participation ID' })
+  async increaseParticipation(
+    @Param('id') id: string,
+    @Body() body: IncreaseParticipationRequest,
+    @CurrentUser() user: RequestUser | null,
+  ): Promise<unknown> {
+    if (!user?.userId) {
+      throw new Error('User not authenticated');
+    }
+
+    return await this.participationService.increaseParticipation({
+      participationId: id,
+      userId: user.userId,
+      deltaAmountIsk: body.deltaAmountIsk,
     });
   }
 

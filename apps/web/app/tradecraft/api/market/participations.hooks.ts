@@ -267,3 +267,32 @@ export function useRefundParticipation() {
     },
   });
 }
+
+/**
+ * Increase principal for an existing participation (planned cycles only)
+ */
+export function useIncreaseParticipation() {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      participationId,
+      deltaAmountIsk,
+    }: {
+      participationId: string;
+      deltaAmountIsk: string;
+    }) =>
+      client.post<{
+        participation: CycleParticipation;
+        previousAmountIsk: string;
+        deltaAmountIsk: string;
+        newAmountIsk: string;
+      }>(`/ledger/participations/${participationId}/increase`, {
+        deltaAmountIsk,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: qk.participations._root });
+    },
+  });
+}

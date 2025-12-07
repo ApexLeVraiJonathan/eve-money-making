@@ -117,13 +117,13 @@ export class WalletService {
         if (!c) break;
 
         const tCharStart = Date.now();
-        try {
-          await this.importForCharacter(c.id, reqId);
+      try {
+        await this.importForCharacter(c.id, reqId);
           const tCharMs = Date.now() - tCharStart;
           this.logger.log(
             `[Wallet] Import completed for character ${c.id} in ${tCharMs}ms`,
           );
-        } catch (e) {
+      } catch (e) {
           const tCharMs = Date.now() - tCharStart;
           this.logger.error(
             `[Wallet] Import failed for character ${c.id} after ${tCharMs}ms: ${String(
@@ -132,7 +132,7 @@ export class WalletService {
           );
         } finally {
           processed += 1;
-        }
+    }
       }
     };
 

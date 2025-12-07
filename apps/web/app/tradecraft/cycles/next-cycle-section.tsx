@@ -4,6 +4,15 @@ import * as React from "react";
 import { Copy, Lock, X, LogIn } from "lucide-react";
 import { Badge } from "@eve/ui";
 import { Button } from "@eve/ui";
+import { Input } from "@eve/ui";
+import { Label } from "@eve/ui";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@eve/ui";
 import { toast } from "sonner";
 import OptInDialog from "./opt-in-dialog";
 import {
@@ -13,7 +22,13 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@eve/ui";
-import { useMyParticipation, useOptOutParticipation } from "../api";
+import {
+  useMaxParticipation,
+  useMyParticipation,
+  useOptOutParticipation,
+  useIncreaseParticipation,
+  useMyJingleYieldStatus,
+} from "../api";
 import { startUserLogin, useCurrentUser } from "../api/characters/users.hooks";
 
 type NextCycle = {
@@ -31,6 +46,31 @@ export default function NextCycleSection({ next }: { next: NextCycle | null }) {
     next?.id ?? "",
   );
   const optOutMutation = useOptOutParticipation();
+  const increaseMutation = useIncreaseParticipation();
+  const { data: maxParticipation } = useMaxParticipation();
+  const { data: myJingleYieldStatus } = useMyJingleYieldStatus();
+
+  const [increaseOpen, setIncreaseOpen] = React.useState(false);
+  const [deltaInput, setDeltaInput] = React.useState("");
+  const [deltaError, setDeltaError] = React.useState<string | null>(null);
+
+  // Format number with commas for display
+  const formatNumberWithCommas = (num: number): string => {
+    return num.toLocaleString("en-US");
+  };
+
+  // Parse formatted input back to number
+  const parseFormattedNumber = (str: string): number => {
+    const cleaned = str.replace(/[^\d]/g, "");
+    return cleaned ? parseInt(cleaned, 10) : 0;
+  };
+
+  // Handle delta input change with formatting
+  const handleDeltaChange = (value: string) => {
+    const numValue = parseFormattedNumber(value);
+    setDeltaInput(numValue > 0 ? formatNumberWithCommas(numValue) : "");
+    setDeltaError(null);
+  };
 
   const handleOptOut = async () => {
     if (!participation) return;
@@ -102,6 +142,72 @@ export default function NextCycleSection({ next }: { next: NextCycle | null }) {
     }
   };
 
+  const handleIncreaseSubmit = async () => {
+    if (!participation || !next) return;
+
+    const currentAmount = Number(participation.amountIsk);
+    const maxIsk = maxParticipation
+      ? Number(maxParticipation.maxAmountIsk)
+      : undefined;
+    const remainingCap =
+      maxIsk !== undefined ? Math.max(0, maxIsk - currentAmount) : undefined;
+
+    if (remainingCap !== undefined && remainingCap <= 0) {
+      const msg =
+        "You have already reached your maximum allowed participation for this cycle.";
+      setDeltaError(msg);
+      toast.error(msg);
+      return;
+    }
+
+    const cleaned = deltaInput.replace(/[,_\s]/g, "");
+    const delta = Number(cleaned);
+
+    if (!Number.isFinite(delta) || delta <= 0) {
+      setDeltaError("Please enter a valid positive amount in ISK.");
+      return;
+    }
+
+    const newTotal = currentAmount + delta;
+    if (maxIsk !== undefined && newTotal > maxIsk) {
+      const msg = `Increasing to ${formatIsk(
+        newTotal,
+      )} ISK would exceed your maximum allowed (${
+        maxParticipation!.maxAmountB
+      }B ISK).`;
+      setDeltaError(msg);
+      toast.error(msg);
+      return;
+    }
+
+    try {
+      const res = await increaseMutation.mutateAsync({
+        participationId: participation.id,
+        deltaAmountIsk: delta.toFixed(2),
+      });
+
+      const prev = Number(res.previousAmountIsk);
+      const added = Number(res.deltaAmountIsk);
+      const updated = Number(res.newAmountIsk);
+
+      toast.success(
+        `Participation increased from ${formatIsk(
+          prev,
+        )} to ${formatIsk(updated)}. Please send an additional ${formatIsk(
+          added,
+        )} ISK to complete your participation.`,
+      );
+
+      setIncreaseOpen(false);
+      // Simple approach: reload to reflect updated state
+      window.location.reload();
+    } catch (e) {
+      setDeltaError(
+        e instanceof Error ? e.message : "Failed to increase participation.",
+      );
+    }
+  };
+
   if (!next) {
     return (
       <Empty className="mt-3">
@@ -142,6 +248,17 @@ export default function NextCycleSection({ next }: { next: NextCycle | null }) {
         (() => {
           // Parse rollover type from memo (format: ROLLOVER-cycleId-participationId-TYPE)
           const isRollover = participation.memo.startsWith("ROLLOVER-");
+          const isJingleYieldRoot = participation.memo.startsWith("JY-");
+
+          // For JY root participations, compute how much of the amount is admin
+          // seeded vs user-funded extra, using the active JingleYield status.
+          const jyLockedPrincipal =
+            isJingleYieldRoot && myJingleYieldStatus
+              ? Number(myJingleYieldStatus.lockedPrincipalIsk)
+              : 0;
+          const jyUserExtra = isJingleYieldRoot
+            ? Math.max(Number(participation.amountIsk) - jyLockedPrincipal, 0)
+            : 0;
           const rolloverType = isRollover
             ? participation.memo.split("-")[3]
             : null;
@@ -208,7 +325,7 @@ export default function NextCycleSection({ next }: { next: NextCycle | null }) {
                       {new Date(participation.createdAt).toLocaleString()}
                     </div>
                     {participation.status === "AWAITING_INVESTMENT" &&
-                      (participation.memo.startsWith("ROLLOVER-") ? (
+                      (isRollover ? (
                         <div className="mt-2 rounded-md bg-green-500/10 p-3 text-green-900 dark:text-green-100">
                           <div className="font-medium mb-2 text-sm flex items-center gap-2">
                             <svg
@@ -230,6 +347,93 @@ export default function NextCycleSection({ next }: { next: NextCycle | null }) {
                             your payout when the current cycle closes. The admin
                             will handle everything for you.
                           </p>
+                        </div>
+                      ) : isJingleYieldRoot ? (
+                        <div className="mt-2 rounded-md bg-green-500/10 p-3 text-green-900 dark:text-green-100">
+                          <div className="font-medium mb-2 text-sm flex items-center gap-2">
+                            <svg
+                              xmlns="http://www.w3.org/2000/svg"
+                              viewBox="0 0 20 20"
+                              fill="currentColor"
+                              className="h-4 w-4"
+                            >
+                              <path
+                                fillRule="evenodd"
+                                d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z"
+                                clipRule="evenodd"
+                              />
+                            </svg>
+                            Admin-funded JingleYield principal
+                          </div>
+                          {jyUserExtra > 0 ? (
+                            <>
+                              <p className="text-xs">
+                                The initial JingleYield principal for this
+                                program is funded by the admin. You have added{" "}
+                                <span className="font-semibold">
+                                  {formatIsk(jyUserExtra)} ISK
+                                </span>{" "}
+                                on top of the seeded amount. Please send{" "}
+                                <span className="font-semibold">
+                                  {formatIsk(jyUserExtra)} ISK
+                                </span>{" "}
+                                with the memo below to complete your
+                                participation.
+                              </p>
+                              <div className="mt-3 space-y-2">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-sm">
+                                    To:{" "}
+                                    <strong className="font-mono">
+                                      LeVraiTrader
+                                    </strong>
+                                  </span>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-7 px-2 text-xs hover:bg-amber-500/20"
+                                    onClick={() =>
+                                      copyToClipboard(
+                                        "LeVraiTrader",
+                                        "Character name",
+                                      )
+                                    }
+                                  >
+                                    <Copy className="h-3.5 w-3.5" />
+                                  </Button>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-sm flex-shrink-0">
+                                    Memo:
+                                  </span>
+                                  <code className="rounded bg-background px-2 py-1 font-mono text-xs max-w-md truncate">
+                                    {participation.memo}
+                                  </code>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-7 px-2 text-xs hover:bg-amber-500/20 flex-shrink-0"
+                                    onClick={() =>
+                                      copyToClipboard(
+                                        participation.memo ?? "",
+                                        "Memo",
+                                      )
+                                    }
+                                  >
+                                    <Copy className="h-3.5 w-3.5" />
+                                  </Button>
+                                </div>
+                              </div>
+                            </>
+                          ) : (
+                            <p className="text-xs">
+                              The initial JingleYield principal for this program
+                              is funded by the admin. You do not need to send
+                              ISK for that seeded amount. If you choose to
+                              increase your participation later, only the extra
+                              ISK you add needs to be paid.
+                            </p>
+                          )}
                         </div>
                       ) : (
                         <div className="mt-2 rounded-md bg-amber-500/10 p-3 text-amber-900 dark:text-amber-100">
@@ -294,37 +498,148 @@ export default function NextCycleSection({ next }: { next: NextCycle | null }) {
                 </div>
               </div>
 
-              {/* Opt-out button */}
+              {/* Increase / Opt-out actions (PLANNED cycles only) */}
               {(participation.status === "AWAITING_INVESTMENT" ||
-                participation.status === "OPTED_IN") && (
-                <div className="mt-4 pt-4 border-t">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleOptOut}
-                    disabled={optOutMutation.isPending}
-                    className="gap-2 text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950"
-                  >
-                    {optOutMutation.isPending ? (
-                      <>
-                        <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                        Cancelling...
-                      </>
-                    ) : (
-                      <>
-                        <X className="h-4 w-4" />
-                        Cancel Participation
-                      </>
+                participation.status === "OPTED_IN") &&
+                next.status.toUpperCase() === "PLANNED" && (
+                  <div className="mt-4 pt-4 border-t flex flex-wrap items-center gap-3">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setDeltaInput("");
+                        setDeltaError(null);
+                        setIncreaseOpen(true);
+                      }}
+                      disabled={increaseMutation.isPending}
+                      className="gap-2"
+                    >
+                      <>Increase Participation</>
+                    </Button>
+                    {!isJingleYieldRoot && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleOptOut}
+                        disabled={optOutMutation.isPending}
+                        className="gap-2 text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950"
+                      >
+                        {optOutMutation.isPending ? (
+                          <>
+                            <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                            Cancelling...
+                          </>
+                        ) : (
+                          <>
+                            <X className="h-4 w-4" />
+                            Cancel Participation
+                          </>
+                        )}
+                      </Button>
                     )}
-                  </Button>
-                  {participation.status === "OPTED_IN" && (
-                    <p className="mt-2 text-xs text-muted-foreground">
-                      You will be marked for refund. An admin will process your
-                      refund in-game.
-                    </p>
-                  )}
-                </div>
-              )}
+                    {participation.status === "OPTED_IN" &&
+                      !isJingleYieldRoot && (
+                        <p className="mt-2 text-xs text-muted-foreground w-full">
+                          You will be marked for refund if you cancel. An admin
+                          will process your refund in-game.
+                        </p>
+                      )}
+
+                    {/* Increase Participation dialog */}
+                    <Dialog open={increaseOpen} onOpenChange={setIncreaseOpen}>
+                      <DialogContent>
+                        <DialogHeader>
+                          <DialogTitle>Increase Participation</DialogTitle>
+                          <DialogDescription>
+                            Adjust your participation amount for this planned
+                            cycle. You can only add more ISK, not reduce it.
+                          </DialogDescription>
+                        </DialogHeader>
+                        <div className="space-y-3 mt-2">
+                          <div className="text-sm">
+                            <div>
+                              <span className="text-muted-foreground">
+                                Current amount:
+                              </span>{" "}
+                              <span className="font-mono font-semibold">
+                                {formatIsk(participation.amountIsk)} ISK
+                              </span>
+                            </div>
+                            {maxParticipation && (
+                              <div className="mt-1">
+                                <span className="text-muted-foreground">
+                                  Maximum allowed:
+                                </span>{" "}
+                                <span className="font-mono font-semibold">
+                                  {maxParticipation.maxAmountB}B ISK
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="increase-delta">
+                              Additional amount (ISK)
+                            </Label>
+                            <Input
+                              id="increase-delta"
+                              type="text"
+                              placeholder="500,000,000"
+                              value={deltaInput}
+                              onChange={(e) =>
+                                handleDeltaChange(e.target.value)
+                              }
+                              className="font-mono"
+                            />
+                            {deltaInput && (
+                              <p className="text-xs text-muted-foreground">
+                                New total (approx):{" "}
+                                <span className="font-mono font-semibold">
+                                  {(() => {
+                                    const cleaned = deltaInput.replace(
+                                      /[,_\s]/g,
+                                      "",
+                                    );
+                                    const delta = Number(cleaned);
+                                    if (!Number.isFinite(delta) || delta <= 0) {
+                                      return "---";
+                                    }
+                                    return `${formatIsk(
+                                      Number(participation.amountIsk) + delta,
+                                    )} ISK`;
+                                  })()}
+                                </span>
+                              </p>
+                            )}
+                            {deltaError && (
+                              <p className="text-xs text-red-500">
+                                {deltaError}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                        <div className="mt-4 flex justify-end gap-2">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => setIncreaseOpen(false)}
+                          >
+                            Cancel
+                          </Button>
+                          <Button
+                            type="button"
+                            onClick={handleIncreaseSubmit}
+                            disabled={increaseMutation.isPending}
+                            className="gap-2"
+                          >
+                            {increaseMutation.isPending
+                              ? "Updating..."
+                              : "Confirm Increase"}
+                          </Button>
+                        </div>
+                      </DialogContent>
+                    </Dialog>
+                  </div>
+                )}
             </div>
           );
         })()

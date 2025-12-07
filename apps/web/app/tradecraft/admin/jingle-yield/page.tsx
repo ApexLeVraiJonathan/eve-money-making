@@ -14,6 +14,12 @@ import {
   CardContent,
   Badge,
   Button,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  Input,
 } from "@eve/ui";
 import { DollarSign, Loader2, Percent, Shield, Users } from "lucide-react";
 import { formatIsk } from "@/lib/utils";
@@ -22,6 +28,16 @@ import {
   useAllUsers,
   useAdminCharacters,
 } from "../../api/characters/admin.hooks";
+
+// Utility function to humanize status labels
+function humanizeStatus(status: string): string {
+  const statusMap: Record<string, string> = {
+    ACTIVE: "Active",
+    COMPLETED_CONTINUING: "Completed (Continuing)",
+    COMPLETED_CLOSED_LOSS: "Completed (Closed)",
+  };
+  return statusMap[status] || status;
+}
 
 export default function JingleYieldAdminPage() {
   const { data: programs = [], isLoading } = useJingleYieldPrograms();
@@ -40,6 +56,25 @@ export default function JingleYieldAdminPage() {
   const [jyMinCycles, setJyMinCycles] = useState<number | "">(12);
 
   const createJingleYield = useCreateJingleYieldParticipation();
+
+  // Form validation state
+  const isFormValid =
+    jyUserId &&
+    jyCycleId &&
+    jyCharacterName &&
+    jyAdminCharacterId !== "" &&
+    jyPrincipalIsk &&
+    jyMinCycles !== "";
+
+  const getMissingFieldsCount = () => {
+    let count = 0;
+    if (!jyUserId) count++;
+    if (!jyCycleId) count++;
+    if (jyAdminCharacterId === "") count++;
+    if (!jyPrincipalIsk) count++;
+    if (jyMinCycles === "") count++;
+    return count;
+  };
 
   const plannedCycles = useMemo(
     () => cycles.filter((c) => c.status === "PLANNED"),
@@ -98,7 +133,7 @@ export default function JingleYieldAdminPage() {
             JingleYield Programs
           </h1>
           <p className="text-sm text-muted-foreground">
-            Overview of seeded 2B principal programs and their progress.
+            Overview of seeded principal programs and their progress.
           </p>
         </div>
       </div>
@@ -116,126 +151,139 @@ export default function JingleYieldAdminPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-5">
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-muted-foreground">
-                User
+          <div className="grid gap-4 md:grid-cols-3">
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">
+                User <span className="text-destructive">*</span>
               </label>
-              <select
-                className="w-full border rounded px-2 py-1 text-sm bg-background"
-                value={jyUserId}
-                onChange={(e) => setJyUserId(e.target.value)}
-              >
-                <option value="">Select user…</option>
-                {users.map((u) => {
-                  const info = userLabelMap.get(u.id);
-                  return (
-                    <option key={u.id} value={u.id}>
-                      {info?.label ?? u.id.substring(0, 8)} (
-                      {u.id.substring(0, 8)})
-                    </option>
-                  );
-                })}
-              </select>
+              <Select value={jyUserId} onValueChange={setJyUserId}>
+                <SelectTrigger
+                  className={`w-full ${!jyUserId && "border-destructive/50"}`}
+                >
+                  <SelectValue placeholder="Select user…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {users.map((u) => {
+                    const info = userLabelMap.get(u.id);
+                    return (
+                      <SelectItem key={u.id} value={u.id}>
+                        {info?.label ?? u.id.substring(0, 8)} (
+                        {u.id.substring(0, 8)})
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
             </div>
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-muted-foreground">
-                Planned Cycle
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">
+                Planned Cycle <span className="text-destructive">*</span>
               </label>
-              <select
-                className="w-full border rounded px-2 py-1 text-sm bg-background"
-                value={jyCycleId}
-                onChange={(e) => setJyCycleId(e.target.value)}
-              >
-                <option value="">Select planned cycle…</option>
-                {plannedCycles.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name ?? c.id.substring(0, 8)}
-                  </option>
-                ))}
-              </select>
+              <Select value={jyCycleId} onValueChange={setJyCycleId}>
+                <SelectTrigger
+                  className={`w-full ${!jyCycleId && "border-destructive/50"}`}
+                >
+                  <SelectValue placeholder="Select planned cycle…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {plannedCycles.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.name ?? c.id.substring(0, 8)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-muted-foreground">
-                Admin Character
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">
+                Admin Character <span className="text-destructive">*</span>
               </label>
-              <select
-                className="w-full border rounded px-2 py-1 text-sm bg-background"
-                value={jyAdminCharacterId}
-                onChange={(e) =>
-                  setJyAdminCharacterId(
-                    e.target.value ? Number(e.target.value) : "",
-                  )
+              <Select
+                value={
+                  jyAdminCharacterId === "" ? "" : String(jyAdminCharacterId)
+                }
+                onValueChange={(val) =>
+                  setJyAdminCharacterId(val ? Number(val) : "")
                 }
               >
-                <option value="">Select admin character…</option>
-                {adminCharacters.map((c) => (
-                  <option key={c.characterId} value={c.characterId}>
-                    {c.characterName} ({c.characterId})
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger
+                  className={`w-full ${jyAdminCharacterId === "" && "border-destructive/50"}`}
+                >
+                  <SelectValue placeholder="Select admin character…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {adminCharacters.map((c) => (
+                    <SelectItem
+                      key={c.characterId}
+                      value={String(c.characterId)}
+                    >
+                      {c.characterName} ({c.characterId})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-muted-foreground">
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">
                 Display Character Name
               </label>
-              <input
-                className="w-full border rounded px-2 py-1 text-sm bg-background"
-                placeholder="Investor character"
+              <Input
+                className="bg-muted/50 cursor-not-allowed"
+                placeholder="Auto-populated from selected user"
                 value={jyCharacterName}
                 readOnly
               />
+              <p className="text-xs text-muted-foreground">
+                Automatically set based on selected user's primary character.
+              </p>
             </div>
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-muted-foreground">
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">
                 Seeded Principal (ISK)
               </label>
-              <input
-                className="w-full border rounded px-2 py-1 text-sm bg-background"
+              <Input
                 type="number"
                 min={1}
                 step={1_000_000}
                 value={jyPrincipalIsk}
                 onChange={(e) => setJyPrincipalIsk(e.target.value)}
+                className="[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
               />
-              <p className="text-[10px] text-muted-foreground">
+              <p className="text-xs text-muted-foreground">
                 Counts toward the 10B principal cap (user principal + JY
                 principal ≤ 10B).
               </p>
             </div>
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-muted-foreground">
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">
                 Min Cycles Before Repay
               </label>
-              <input
-                className="w-full border rounded px-2 py-1 text-sm bg-background"
+              <Input
                 type="number"
                 min={1}
                 value={jyMinCycles}
                 onChange={(e) =>
                   setJyMinCycles(e.target.value ? Number(e.target.value) : "")
                 }
+                className="[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
               />
-              <p className="text-[10px] text-muted-foreground">
+              <p className="text-xs text-muted-foreground">
                 Locked principal can only be repaid after at least this many
                 cycles or once accrued interest reaches the principal.
               </p>
             </div>
           </div>
-          <div className="flex justify-end">
+          <div className="flex items-center justify-between gap-4">
+            {!isFormValid && (
+              <p className="text-sm text-muted-foreground">
+                {getMissingFieldsCount()} required{" "}
+                {getMissingFieldsCount() === 1 ? "field" : "fields"} remaining
+              </p>
+            )}
             <Button
               size="sm"
-              className="gap-2"
-              disabled={
-                !jyUserId ||
-                !jyCycleId ||
-                !jyCharacterName ||
-                jyAdminCharacterId === "" ||
-                !jyPrincipalIsk ||
-                jyMinCycles === "" ||
-                createJingleYield.isPending
-              }
+              className="gap-2 ml-auto"
+              disabled={!isFormValid || createJingleYield.isPending}
               onClick={async () => {
                 try {
                   await createJingleYield.mutateAsync({
@@ -350,30 +398,44 @@ export default function JingleYieldAdminPage() {
               interest, and completion state.
             </CardDescription>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-muted-foreground">Status:</span>
-            <select
-              className="border rounded px-2 py-1 text-xs bg-background"
+          <div className="flex items-center gap-2 rounded-md bg-muted/50 px-3 py-2">
+            <span className="text-sm font-medium text-foreground">Filter:</span>
+            <Select
               value={statusFilter}
-              onChange={(e) =>
-                setStatusFilter(e.target.value as string | "all")
-              }
+              onValueChange={(val) => setStatusFilter(val as string | "all")}
             >
-              <option value="all">All</option>
-              <option value="ACTIVE">Active</option>
-              <option value="COMPLETED_CONTINUING">
-                Completed - Continuing
-              </option>
-              <option value="COMPLETED_CLOSED_LOSS">
-                Completed - Closed (Loss)
-              </option>
-            </select>
+              <SelectTrigger className="w-[200px] h-8 bg-background">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Programs</SelectItem>
+                <SelectItem value="ACTIVE">Active</SelectItem>
+                <SelectItem value="COMPLETED_CONTINUING">
+                  Completed (Continuing)
+                </SelectItem>
+                <SelectItem value="COMPLETED_CLOSED_LOSS">
+                  Completed (Closed)
+                </SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </CardHeader>
         <CardContent>
           {filtered.length === 0 ? (
-            <div className="rounded-lg border p-8 text-center text-sm text-muted-foreground">
-              No JingleYield programs found.
+            <div className="rounded-lg border border-dashed p-12 text-center">
+              <div className="mx-auto flex max-w-[420px] flex-col items-center justify-center text-center">
+                <div className="flex h-20 w-20 items-center justify-center rounded-full bg-muted">
+                  <Users className="h-10 w-10 text-muted-foreground" />
+                </div>
+                <h3 className="mt-4 text-lg font-semibold">
+                  No programs found
+                </h3>
+                <p className="mb-4 mt-2 text-sm text-muted-foreground">
+                  {statusFilter === "all"
+                    ? "No JingleYield programs have been created yet."
+                    : `No programs match the "${humanizeStatus(statusFilter)}" filter. Try selecting a different status.`}
+                </p>
+              </div>
             </div>
           ) : (
             <div className="rounded-lg border overflow-x-auto">
@@ -382,12 +444,22 @@ export default function JingleYieldAdminPage() {
                   <tr>
                     <th className="text-left p-3 font-medium">User</th>
                     <th className="text-left p-3 font-medium">Status</th>
-                    <th className="text-right p-3 font-medium">Locked</th>
+                    <th className="text-right p-3 font-medium hidden md:table-cell">
+                      Locked
+                    </th>
                     <th className="text-right p-3 font-medium">Interest</th>
-                    <th className="text-right p-3 font-medium">Progress</th>
-                    <th className="text-left p-3 font-medium">Cycles</th>
-                    <th className="text-left p-3 font-medium">Start Cycle</th>
-                    <th className="text-left p-3 font-medium">Completed</th>
+                    <th className="text-right p-3 font-medium hidden sm:table-cell">
+                      Progress
+                    </th>
+                    <th className="text-left p-3 font-medium hidden lg:table-cell">
+                      Cycles
+                    </th>
+                    <th className="text-left p-3 font-medium hidden xl:table-cell">
+                      Start Cycle
+                    </th>
+                    <th className="text-left p-3 font-medium hidden lg:table-cell">
+                      Completed
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
@@ -421,22 +493,22 @@ export default function JingleYieldAdminPage() {
                                   : "bg-red-500/10 text-red-600"
                             }
                           >
-                            {p.status}
+                            {humanizeStatus(p.status)}
                           </Badge>
                         </td>
-                        <td className="p-3 text-right font-mono text-xs">
+                        <td className="p-3 text-right font-mono text-xs hidden md:table-cell">
                           {formatIsk(parseFloat(p.lockedPrincipalIsk))}
                         </td>
                         <td className="p-3 text-right font-mono text-xs">
                           {formatIsk(interest)}
                         </td>
-                        <td className="p-3 text-right text-xs">
+                        <td className="p-3 text-right text-xs hidden sm:table-cell">
                           {pct.toFixed(1)}%
                         </td>
-                        <td className="p-3 text-xs text-muted-foreground">
+                        <td className="p-3 text-xs text-muted-foreground hidden lg:table-cell">
                           {p.cyclesCompleted} / {p.minCycles}
                         </td>
-                        <td className="p-3 text-xs text-muted-foreground">
+                        <td className="p-3 text-xs text-muted-foreground hidden xl:table-cell">
                           {p.startCycle
                             ? `${
                                 p.startCycle.name ??
@@ -444,7 +516,7 @@ export default function JingleYieldAdminPage() {
                               }`
                             : "—"}
                         </td>
-                        <td className="p-3 text-xs text-muted-foreground">
+                        <td className="p-3 text-xs text-muted-foreground hidden lg:table-cell">
                           {p.completedCycle
                             ? p.completedCycle.closedAt
                               ? new Date(
