@@ -382,10 +382,11 @@ importers:
         version: 5.9.3
 
   packages/prisma:
-    devDependencies:
+    dependencies:
       '@prisma/client':
         specifier: ^7.1.0
         version: 7.1.0(prisma@7.1.0(@types/react@19.1.16)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(typescript@5.9.3))(typescript@5.9.3)
+    devDependencies:
       prisma:
         specifier: ^7.1.0
         version: 7.1.0(@types/react@19.1.16)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(typescript@5.9.3)
