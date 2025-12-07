@@ -22,7 +22,8 @@
     "prisma:studio": "prisma studio"
   },
   "dependencies": {
-    "@prisma/client": "^7.1.0"
+    "@prisma/client": "^7.1.0",
+    "@prisma/client-runtime-utils": "^7.1.0"
   },
   "devDependencies": {
     "prisma": "^7.1.0"
