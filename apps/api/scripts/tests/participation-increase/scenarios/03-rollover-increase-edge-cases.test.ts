@@ -9,8 +9,9 @@
  *      any excess is paid out, not rolled.
  *
  * Notes:
- * - This scenario runs purely against the backend logic using Prisma and the
- *   real PayoutService.processRollovers, without requiring UI interaction.
+ * - This scenario is a **pure numerical model** of the rollover caps. It does
+ *   not call the real API or database; the end-to-end behavior is covered by
+ *   the dedicated participation-rollover test suite.
  */
 
 import {
@@ -29,7 +30,7 @@ export async function scenario03RolloverIncreaseEdgeCases(
 ): Promise<void> {
   printScenarioHeader('🔁', 'SCENARIO 03: Rollover Increase Edge Cases');
 
-  // This scenario exercises the rollover cap rules at the level of the
+  // This scenario exercises the rollover cap rules at the level of a
   // numerical model to ensure our understanding is consistent:
   //
   // 1) User principal must never exceed 10B.
@@ -107,5 +108,3 @@ export async function scenario03RolloverIncreaseEdgeCases(
 
   printScenarioComplete();
 }
-
-

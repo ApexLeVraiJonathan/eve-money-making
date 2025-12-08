@@ -300,10 +300,31 @@ export class PayoutService {
       const actualPayout = Number(actualPayoutIsk);
       const initialInvestment = Number(initialInvestmentIsk);
 
-      // Determine rollover amount based on type (baseline before JingleYield locks)
+      // Determine rollover amount based on type (baseline before JingleYield locks).
+      // For FULL_PAYOUT rollovers we also take into account any user-funded extra
+      // that was added on top of the auto-funded rollover participation while the
+      // cycle was PLANNED. That extra should:
+      //   1) Count toward the 10B principal cap (enforced at increase time), and
+      //   2) Be included in the 20B total cap when we compute the rolled amount.
       let rolloverAmount: number;
+      let userExtraForRollover = 0;
+
       if (rollover.rolloverType === 'FULL_PAYOUT') {
-        rolloverAmount = actualPayout;
+        // Extra is encoded using the 1 ISK placeholder convention:
+        //   - 1.00 ISK → no user extra
+        //   - 1.00 + X → X ISK of user-funded extra
+        userExtraForRollover = Math.max(Number(rollover.amountIsk) - 1, 0);
+
+        const totalBeforeCaps = actualPayout + userExtraForRollover;
+        const cappedTotal = Math.min(totalBeforeCaps, CAP_20B);
+
+        // Portion of the capped total that is funded by the previous cycle payout.
+        const rolledFromPayout = Math.min(
+          actualPayout,
+          cappedTotal - userExtraForRollover,
+        );
+
+        rolloverAmount = rolledFromPayout + userExtraForRollover;
       } else if (rollover.rolloverType === 'INITIAL_ONLY') {
         rolloverAmount = initialInvestment;
       } else {
@@ -331,10 +352,15 @@ export class PayoutService {
         }
       }
 
-      // Apply global 20B cap and never exceed actual payout
-      rolloverAmount = Math.min(rolloverAmount, CAP_20B, actualPayout);
+      // Apply global 20B cap and never exceed actual payout for the portion that
+      // is funded by the closed cycle's payout. User-funded extra is handled
+      // above for FULL_PAYOUT; for other types it is not currently modelled.
+      if (rollover.rolloverType !== 'FULL_PAYOUT') {
+        rolloverAmount = Math.min(rolloverAmount, CAP_20B, actualPayout);
+      }
 
-      const payoutAmount = actualPayout - rolloverAmount;
+      const payoutAmount =
+        actualPayout - Math.min(rolloverAmount, actualPayout);
 
       // Update rollover participation with actual amounts and auto-validate.
       // If this rollover belongs to an ACTIVE JingleYield program, make sure

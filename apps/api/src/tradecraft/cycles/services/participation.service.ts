@@ -272,8 +272,11 @@ export class ParticipationService {
       let displayAmount: number; // Amount to show in the participation record
 
       if (input.rollover.type === 'FULL_PAYOUT') {
-        // Will be calculated on cycle close, store as 0 for now
-        rolloverRequestedAmount = '0.00';
+        const initialAmount = Number(activeParticipation.amountIsk);
+        // Store the previous-cycle principal in rolloverRequestedAmountIsk so
+        // the frontend can display a meaningful current amount, while keeping
+        // amountIsk as a small placeholder that will be replaced on rollover.
+        rolloverRequestedAmount = initialAmount.toFixed(2);
         displayAmount = 1; // Placeholder that frontend will recognize
       } else if (input.rollover.type === 'INITIAL_ONLY') {
         const initialAmount = Number(activeParticipation.amountIsk);
@@ -337,7 +340,10 @@ export class ParticipationService {
   }> {
     const participation = await this.prisma.cycleParticipation.findUnique({
       where: { id: input.participationId },
-      include: { cycle: true },
+      include: {
+        cycle: true,
+        rolloverFromParticipation: true,
+      },
     });
 
     if (!participation) {
@@ -367,14 +373,45 @@ export class ParticipationService {
       );
     }
 
-    const currentAmount = Number(participation.amountIsk);
-    const requestedTotal = currentAmount + delta;
+    const currentAmountRaw = Number(participation.amountIsk);
+
+    // For non-rollover participations, "current amount" is simply the stored amount.
+    // For FULL_PAYOUT rollovers, we treat amountIsk as:
+    //   - 1.00 ISK baseline placeholder (no user extra yet)
+    //   - 1.00 + extra ISK after one or more increases
+    // and use the *previous cycle principal* from rolloverFromParticipation as the
+    // base principal for cap checks. This lets us enforce the 10B principal cap
+    // while still keeping the existing placeholder semantics.
+    let requestedTotal = currentAmountRaw + delta;
+    let basePrincipalForRollover = 0;
+    let existingUserExtraForRollover = 0;
+
+    if (participation.rolloverType === 'FULL_PAYOUT') {
+      basePrincipalForRollover = participation.rolloverFromParticipation
+        ? Number(participation.rolloverFromParticipation.amountIsk)
+        : 0;
+
+      // Existing extra is encoded as (amountIsk - 1) on the rollover participation.
+      existingUserExtraForRollover = Math.max(currentAmountRaw - 1, 0);
+
+      const newPrincipal =
+        basePrincipalForRollover + existingUserExtraForRollover + delta;
+
+      if (newPrincipal > 10_000_000_000) {
+        throw new BadRequestException(
+          'Participation principal exceeds maximum allowed (10B ISK) for rollover investor',
+        );
+      }
+    }
 
     // Enforce participation caps, reusing the same logic as createParticipation.
     let maxParticipation: number;
 
     if (participation.rolloverType) {
-      // Rollover participations always use the 20B cap.
+      // Rollover participations always use the 20B *total* cap at the
+      // participation level. For FULL_PAYOUT, we additionally enforce a
+      // 10B cap on the user principal above (base principal from the
+      // previous cycle + any user-funded extra).
       maxParticipation = 20_000_000_000;
     } else {
       maxParticipation = await this.determineMaxParticipation(
@@ -424,7 +461,14 @@ export class ParticipationService {
 
       if (jyProgram) {
         const lockedPrincipal = Number(jyProgram.lockedPrincipalIsk);
-        const currentUserPortion = Math.max(currentAmount - lockedPrincipal, 0);
+        // For JingleYield-linked participations, the current user-funded
+        // portion is the participation amount minus the locked admin
+        // principal. JY roots never use the 1 ISK placeholder, so we can
+        // safely use currentAmountRaw here.
+        const currentUserPortion = Math.max(
+          currentAmountRaw - lockedPrincipal,
+          0,
+        );
         const requestedUserPortion = currentUserPortion + delta;
         effectiveRequestedForCap = requestedUserPortion;
       }
@@ -451,9 +495,23 @@ export class ParticipationService {
 
     return {
       participation: updated,
-      previousAmountIsk: currentAmount.toFixed(2),
+      previousAmountIsk: (() => {
+        if (participation.rolloverType === 'FULL_PAYOUT') {
+          const effectiveCurrentPrincipal =
+            basePrincipalForRollover + existingUserExtraForRollover;
+          return effectiveCurrentPrincipal.toFixed(2);
+        }
+        return currentAmountRaw.toFixed(2);
+      })(),
       deltaAmountIsk: delta.toFixed(2),
-      newAmountIsk: requestedTotal.toFixed(2),
+      newAmountIsk: (() => {
+        if (participation.rolloverType === 'FULL_PAYOUT') {
+          const newPrincipal =
+            basePrincipalForRollover + existingUserExtraForRollover + delta;
+          return newPrincipal.toFixed(2);
+        }
+        return requestedTotal.toFixed(2);
+      })(),
     };
   }
 

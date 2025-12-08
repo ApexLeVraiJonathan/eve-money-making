@@ -28,6 +28,7 @@ import {
 import { scenario01NormalParticipationIncrease } from './scenarios/01-normal-participation-increase.test';
 import { scenario02JingleYieldParticipationIncrease } from './scenarios/02-jy-participation-increase.test';
 import { scenario03RolloverIncreaseEdgeCases } from './scenarios/03-rollover-increase-edge-cases.test';
+import { scenario04FullRolloverExtraModel } from './scenarios/04-full-rollover-extra-model.test';
 
 interface SuiteScenario {
   name: string;
@@ -51,6 +52,11 @@ const scenarios: SuiteScenario[] = [
     name: 'Rollover Increase Edge Cases (Backend)',
     emoji: '[3]',
     fn: scenario03RolloverIncreaseEdgeCases,
+  },
+  {
+    name: 'FULL_PAYOUT Rollover + Extra (Numerical Model)',
+    emoji: '[4]',
+    fn: scenario04FullRolloverExtraModel,
   },
 ];
 
@@ -150,7 +156,9 @@ async function runSuite() {
     const scenarioNum = String(i + 1).padStart(2, '0');
 
     console.log('\n' + '='.repeat(64));
-    console.log(scenario.emoji + '  SCENARIO ' + scenarioNum + ': ' + scenario.name);
+    console.log(
+      scenario.emoji + '  SCENARIO ' + scenarioNum + ': ' + scenario.name,
+    );
     console.log('='.repeat(64) + '\n');
 
     try {
@@ -210,5 +218,3 @@ runSuite()
   .finally(() => {
     return process.exit(0);
   });
-
-
