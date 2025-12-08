@@ -75,10 +75,17 @@ export class PaymentMatchingService {
       date: Date;
     }>;
   }> {
-    // Get all AWAITING_INVESTMENT participations
+    // Get all AWAITING_INVESTMENT participations that should be auto-matched.
+    // IMPORTANT: We deliberately skip JingleYield *root* participations here,
+    // because their principal is admin-funded and user-funded extra can arrive
+    // separately. Mixing those flows in the generic matcher risks overwriting
+    // the intended participation amount and character name when the admin
+    // seed payment is detected after a user increase. Root JY participations
+    // should be validated via the dedicated JY/admin flows instead.
     const participations = await this.prisma.cycleParticipation.findMany({
       where: {
         status: 'AWAITING_INVESTMENT',
+        rootForJingleYieldProgram: null,
         ...(cycleId ? { cycleId } : {}),
       },
       include: {
