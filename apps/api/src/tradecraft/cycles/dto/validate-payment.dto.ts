@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsInt, ValidateNested } from 'class-validator';
+import { IsOptional, IsInt, ValidateNested, IsDefined } from 'class-validator';
 import { Type } from 'class-transformer';
 
 class WalletJournalValidation {
@@ -17,6 +17,7 @@ class WalletJournalValidation {
     example: '12345678901234567890',
   })
   @Type(() => BigInt)
+  @IsDefined()
   journalId!: bigint;
 }
 
