@@ -187,14 +187,14 @@ export function useValidateParticipationPayment() {
   return useMutation({
     mutationFn: ({
       participationId,
-      walletJournalId,
+      walletJournal,
     }: {
       participationId: string;
-      walletJournalId?: string;
+      walletJournal?: { characterId: number; journalId: string };
     }) =>
       client.post<CycleParticipation>(
         `/ledger/participations/${participationId}/validate`,
-        { walletJournalId },
+        { walletJournal },
       ),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: qk.participations._root });

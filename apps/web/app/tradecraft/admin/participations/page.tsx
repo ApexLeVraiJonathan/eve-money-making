@@ -42,9 +42,10 @@ export default function ParticipationsPage() {
   const [selectedParticipation, setSelectedParticipation] = React.useState<
     string | null
   >(null);
-  const [selectedDonation, setSelectedDonation] = React.useState<string | null>(
-    null,
-  );
+  const [selectedDonation, setSelectedDonation] = React.useState<{
+    characterId: number;
+    journalId: string;
+  } | null>(null);
   const [copiedText, setCopiedText] = React.useState<string | null>(null);
 
   const handleCopy = async (text: string, label: string) => {
@@ -67,7 +68,10 @@ export default function ParticipationsPage() {
     try {
       await validatePayment.mutateAsync({
         participationId: selectedParticipation,
-        walletJournalId: selectedDonation,
+        walletJournal: {
+          characterId: selectedDonation.characterId,
+          journalId: selectedDonation.journalId,
+        },
       });
       toast.success("Payment matched successfully!");
       setSelectedParticipation(null);
@@ -404,9 +408,14 @@ export default function ParticipationsPage() {
                     {unmatchedDonations.map((d, idx) => (
                       <div
                         key={`${d.characterId}-${d.journalId}-${idx}`}
-                        onClick={() => setSelectedDonation(d.journalId)}
+                        onClick={() =>
+                          setSelectedDonation({
+                            characterId: d.characterId,
+                            journalId: d.journalId,
+                          })
+                        }
                         className={`p-3 cursor-pointer transition-all ${
-                          selectedDonation === d.journalId
+                          selectedDonation?.journalId === d.journalId
                             ? "bg-primary/10 border-l-4 border-l-primary"
                             : "hover:bg-muted/50"
                         }`}
