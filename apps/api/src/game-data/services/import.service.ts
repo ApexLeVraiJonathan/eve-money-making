@@ -72,18 +72,29 @@ export class ImportService {
       }>({
         size: batchSize,
         flush: async (items) => {
+          // Upsert the batch inside an interactive transaction so we can
+          // extend the timeout beyond Prisma's 5s default. This endpoint
+          // is admin-only, so a longer timeout is acceptable.
           await this.prisma.$transaction(
-            items.map((item) =>
-              this.prisma.typeId.upsert({
-                where: { id: item.id },
-                create: {
-                  id: item.id,
-                  published: item.published,
-                  name: item.name,
-                },
-                update: { name: item.name, published: item.published },
-              }),
-            ),
+            async (tx) => {
+              for (const item of items) {
+                await tx.typeId.upsert({
+                  where: { id: item.id },
+                  create: {
+                    id: item.id,
+                    published: item.published,
+                    name: item.name,
+                  },
+                  update: { name: item.name, published: item.published },
+                });
+              }
+            },
+            {
+              // Allow up to 20s for a batch to complete and 5s to wait
+              // for a connection in the pool.
+              timeout: 20_000,
+              maxWait: 5_000,
+            },
           );
           upserted += items.length;
           this.logger.log(`Upserted ${items.length} type_ids`, context);
