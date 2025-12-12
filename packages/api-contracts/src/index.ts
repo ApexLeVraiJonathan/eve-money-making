@@ -577,3 +577,37 @@ export interface SkillFarmProfitEstimateResponse {
   netProfitIsk: number;
   profitPerDayIsk: number;
 }
+
+// Tradecraft - Market trades imports
+
+export interface ImportMarketTradesDaySuccess {
+  ok: true;
+  inserted: number;
+  skipped: number;
+  totalRows: number;
+  batchSize: number;
+}
+
+export type ImportMarketTradesErrorStage = "initial" | "retryAfterTypeIds";
+
+export interface ImportMarketTradesDayError {
+  ok: false;
+  error: string;
+  stage: ImportMarketTradesErrorStage;
+}
+
+export type ImportMarketTradesDayResult =
+  | ImportMarketTradesDaySuccess
+  | ImportMarketTradesDayError;
+
+export interface ImportMissingMarketTradesResponse {
+  /**
+   * Dates (YYYY-MM-DD) that were considered missing when the job started.
+   */
+  missing: string[];
+  /**
+   * Per-day results keyed by date. Some dates may fail while others
+   * succeed; the job should continue processing remaining dates.
+   */
+  results: Record<string, ImportMarketTradesDayResult>;
+}

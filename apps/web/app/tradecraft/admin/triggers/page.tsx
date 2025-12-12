@@ -6,6 +6,10 @@ import { toast } from "sonner";
 import { Database, PlayCircle, DollarSign, Wrench } from "lucide-react";
 import { useApiClient } from "@/app/api-hooks/useApiClient";
 import type {
+  ImportMissingMarketTradesResponse,
+  ImportMarketTradesDayResult,
+} from "@eve/api-contracts";
+import type {
   TriggerState,
   TrackedStation,
   ImportSummary,
@@ -37,6 +41,9 @@ export default function TriggersPage() {
   );
   const [snapshots, setSnapshots] = React.useState<CycleSnapshot[]>([]);
   const [currentCycleId, setCurrentCycleId] = React.useState<string>("");
+  const [missingTradesNote, setMissingTradesNote] = React.useState<
+    string | null
+  >(null);
 
   const triggerImport = async (
     endpoint: string,
@@ -47,13 +54,55 @@ export default function TriggersPage() {
     setLoading((prev) => ({ ...prev, [loadingKey]: true }));
 
     try {
-      const data = await client.post<{ message?: string }>(
-        `/import/${endpoint}`,
-        body,
-      );
-      toast.success(
-        `Import triggered successfully: ${data.message || "Completed"}`,
-      );
+      if (endpoint === "market-trades/missing") {
+        const data = await client.post<ImportMissingMarketTradesResponse>(
+          `/import/${endpoint}`,
+          body,
+        );
+
+        const entries = Object.entries(data.results ?? {}) as Array<
+          [string, ImportMarketTradesDayResult]
+        >;
+        const total = entries.length;
+        const successes = entries.filter(([, value]) => value.ok).length;
+        const failures = total - successes;
+
+        if (total > 0) {
+          const failedDates = entries
+            .filter(([, value]) => !value.ok)
+            .map(([date]) => date)
+            .slice(0, 3);
+
+          const summary =
+            failures === 0
+              ? `Processed ${successes} missing day(s) successfully.`
+              : `Processed ${total} missing day(s): ${successes} succeeded, ${failures} failed${
+                  failedDates.length
+                    ? ` (e.g., ${failedDates.join(", ")}${
+                        failures > failedDates.length ? ", ..." : ""
+                      })`
+                    : ""
+                }.`;
+
+          setMissingTradesNote(summary);
+        } else {
+          setMissingTradesNote(
+            "No missing days were found for the selected range.",
+          );
+        }
+
+        toast.success(
+          "Missing day imports completed. See note below for details.",
+        );
+      } else {
+        const data = await client.post<{ message?: string }>(
+          `/import/${endpoint}`,
+          body,
+        );
+        toast.success(
+          `Import triggered successfully: ${data.message || "Completed"}`,
+        );
+      }
       await loadImportSummary();
       await loadMarketStaleness();
     } catch (error) {
@@ -273,6 +322,7 @@ export default function TriggersPage() {
           trackedStations={trackedStations}
           importSummary={importSummary}
           marketStaleness={marketStaleness}
+          missingTradesNote={missingTradesNote}
           triggerImport={triggerImport}
           addTrackedStation={addTrackedStation}
           removeTrackedStation={removeTrackedStation}

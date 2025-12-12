@@ -42,6 +42,7 @@ type ImportsTabProps = {
   trackedStations: TrackedStation[];
   importSummary: ImportSummary | null;
   marketStaleness: MarketStaleness | null;
+  missingTradesNote: string | null;
   triggerImport: (
     endpoint: string,
     body?: Record<string, unknown>,
@@ -64,6 +65,7 @@ export function ImportsTab({
   trackedStations,
   importSummary,
   marketStaleness,
+  missingTradesNote,
   triggerImport,
   addTrackedStation,
   removeTrackedStation,
@@ -341,6 +343,13 @@ export function ImportsTab({
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          {/* Last Run Summary */}
+          {missingTradesNote && (
+            <div className="rounded-lg border bg-muted/50 p-3 text-sm">
+              {missingTradesNote}
+            </div>
+          )}
+
           {/* Staleness Status */}
           {marketStaleness && marketStaleness.missing.length > 0 && (
             <div className="rounded-lg border border-amber-500/50 bg-amber-500/10 p-3">

@@ -9,6 +9,10 @@ import * as unzipper from 'unzipper';
 import { PrismaService } from '../../prisma/prisma.service';
 import { DataImportService } from '@shared/data-import';
 import { EsiService } from '../../esi/esi.service';
+import type {
+  ImportMissingMarketTradesResponse,
+  ImportMarketTradesDayResult,
+} from '@eve/api-contracts';
 
 @Injectable()
 export class ImportService {
@@ -1143,12 +1147,86 @@ export class ImportService {
     return missing;
   }
 
-  async importMissingMarketOrderTrades(daysBack = 15, batchSize = 5000) {
+  async importMissingMarketOrderTrades(
+    daysBack = 15,
+    batchSize = 5000,
+  ): Promise<ImportMissingMarketTradesResponse> {
+    const context = ImportService.name;
     const missing = await this.getMissingMarketOrderTradeDates(daysBack);
-    const results: Record<string, unknown> = {};
+    const results: ImportMissingMarketTradesResponse['results'] = {};
+
+    // Avoid running the (potentially heavy) type ID import more than once per
+    // "missing days" run. If multiple days hit the missing-type-ids error we
+    // import once, then retry each affected day.
+    let typeIdsImported = false;
+
     for (const date of missing) {
-      results[date] = await this.importMarketOrderTradesByDate(date, batchSize);
+      try {
+        results[date] = {
+          ok: true,
+          ...(await this.importMarketOrderTradesByDate(date, batchSize)),
+        };
+      } catch (error) {
+        const msg =
+          error instanceof Error
+            ? error.message
+            : String(error ?? 'Unknown error');
+        const isMissingTypeIds = msg.includes('missing type_ids');
+
+        if (isMissingTypeIds) {
+          this.logger.warn(
+            `Detected missing type_ids while importing market trades for ${date}. ` +
+              'Running type ID import and retrying this date.',
+            context,
+          );
+
+          try {
+            if (!typeIdsImported) {
+              await this.importTypeIds();
+              typeIdsImported = true;
+            }
+
+            const retryResult = await this.importMarketOrderTradesByDate(
+              date,
+              batchSize,
+            );
+            results[date] = { ok: true, ...retryResult };
+            continue;
+          } catch (retryError) {
+            const retryMsg =
+              retryError instanceof Error
+                ? retryError.message
+                : String(retryError ?? 'Unknown retry error');
+            this.logger.error(
+              `Retry after type ID import still failed for ${date}: ${retryMsg}`,
+              undefined,
+              context,
+            );
+            results[date] = {
+              ok: false,
+              error: retryMsg,
+              stage: 'retryAfterTypeIds',
+            };
+            continue;
+          }
+        }
+
+        // For all other errors (e.g., missing external CSV for one day),
+        // record the failure but continue with remaining dates instead of
+        // aborting the whole operation.
+        this.logger.warn(
+          `Import of market trades for ${date} failed; skipping and continuing. Error: ${msg}`,
+          context,
+        );
+        const errorResult: ImportMarketTradesDayResult = {
+          ok: false,
+          error: msg,
+          stage: 'initial',
+        };
+        results[date] = errorResult;
+      }
     }
+
     return { missing, results };
   }
 
