@@ -1,5 +1,5 @@
 import { NestFactory } from '@nestjs/core';
-import { Logger, ValidationPipe } from '@nestjs/common';
+import { Logger, ValidationPipe, type LogLevel } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
@@ -18,9 +18,16 @@ dotenvConfig();
 async function bootstrap() {
   // Validate environment variables before starting the application
   validateEnvironment();
-  const app = await NestFactory.create(AppModule, { bufferLogs: true });
-  const logger = app.get(Logger);
-  app.useLogger(logger);
+  const env = AppConfig.env();
+  const logLevels: LogLevel[] =
+    env === 'prod' ? ['log', 'warn', 'error'] : ['log', 'warn', 'error', 'debug', 'verbose'];
+
+  const app = await NestFactory.create(AppModule, {
+    bufferLogs: true,
+    logger: logLevels,
+  });
+  app.useLogger(logLevels);
+  const logger = new Logger('Bootstrap');
 
   // Security: helmet for security headers
   app.use(
@@ -90,10 +97,9 @@ async function bootstrap() {
 
   const port = AppConfig.port();
   await app.listen(port);
-  logger.log(`API listening on port ${port}`, 'Bootstrap');
+  logger.log(`API listening on port ${port}`);
   logger.log(
     `Swagger documentation available at http://localhost:${port}/docs`,
-    'Bootstrap',
   );
 }
 void bootstrap();
