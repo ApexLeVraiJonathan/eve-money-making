@@ -10,7 +10,7 @@
     "./money": "./src/money.ts"
   },
   "scripts": {
-    "build": "tsc --noEmit",
+    "build": "tsc -p tsconfig.json --noEmit",
     "lint": "echo \"lint (eve-core)\""
   },
   "devDependencies": {

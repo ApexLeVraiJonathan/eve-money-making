@@ -5,6 +5,7 @@ import { useApiClient } from "@/app/api-hooks/useApiClient";
 import { useAuthenticatedQuery } from "@/app/api-hooks/useAuthenticatedQuery";
 import { qk } from "@eve/api-client/queryKeys";
 import type { CycleParticipation } from "@eve/shared";
+import { ApiError } from "@eve/api-client";
 
 /**
  * API hooks for cycle participations (investor investments)
@@ -12,6 +13,11 @@ import type { CycleParticipation } from "@eve/shared";
  * These hooks are related to the cycles domain but live in the API structure
  * Backend: apps/api/src/cycles/cycles.controller.ts (participations endpoints)
  */
+
+export type AutoRolloverSettings = {
+  enabled: boolean;
+  defaultRolloverType: "FULL_PAYOUT" | "INITIAL_ONLY";
+};
 
 // ============================================================================
 // Queries
@@ -118,6 +124,32 @@ export function useUnmatchedDonations() {
           date: string;
         }>
       >("/ledger/participations/unmatched-donations"),
+  });
+}
+
+/**
+ * Get my automatic rollover settings (tradecraft cycles).
+ *
+ * If the user is logged out, the backend returns defaults (enabled=false).
+ */
+export function useAutoRolloverSettings(enabled = true) {
+  const client = useApiClient();
+  return useAuthenticatedQuery({
+    queryKey: qk.participations.autoRolloverSettings(),
+    queryFn: async () => {
+      try {
+        return await client.get<AutoRolloverSettings>(
+          "/ledger/participations/auto-rollover-settings",
+        );
+      } catch (e) {
+        // If the backend is protected in some environments, degrade gracefully.
+        if (e instanceof ApiError && (e.status === 401 || e.status === 403)) {
+          return { enabled: false, defaultRolloverType: "INITIAL_ONLY" };
+        }
+        throw e;
+      }
+    },
+    enabled,
   });
 }
 
@@ -293,6 +325,27 @@ export function useIncreaseParticipation() {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: qk.participations._root });
+    },
+  });
+}
+
+/**
+ * Update my automatic rollover settings.
+ */
+export function useUpdateAutoRolloverSettings() {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (data: AutoRolloverSettings) =>
+      client.patch<AutoRolloverSettings>(
+        "/ledger/participations/auto-rollover-settings",
+        data,
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: qk.participations.autoRolloverSettings(),
+      });
     },
   });
 }

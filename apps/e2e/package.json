@@ -1,0 +1,25 @@
+{
+  "name": "@eve-money-making/e2e",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "test": "playwright test",
+    "test:setup": "playwright test --config playwright.setup.config.ts --project ui-setup --headed",
+    "test:ui": "playwright test --ui",
+    "test:headed": "playwright test --headed",
+    "seed:tradecraft": "tsx scripts/tradecraft-scenarios.ts",
+    "seed:tradecraft:list": "tsx scripts/tradecraft-scenarios.ts --list"
+  },
+  "dependencies": {
+    "@eve/prisma": "workspace:*",
+    "@prisma/adapter-pg": "^7.1.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.56.0",
+    "@types/node": "^22.10.7",
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.3"
+  }
+}
+
+

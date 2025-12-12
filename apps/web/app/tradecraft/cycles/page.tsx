@@ -19,13 +19,18 @@ import {
 } from "@eve/ui";
 import { formatIsk } from "@/lib/utils";
 import NextCycleSection from "./next-cycle-section";
-import { useCycleOverview } from "../api";
+import { useCycleOverview, useAutoRolloverSettings } from "../api";
+import { AutoRolloverDialog } from "./auto-rollover-dialog";
+import { useCurrentUser } from "../api/characters/users.hooks";
 
 export default function CyclesOverviewPage() {
   const router = useRouter();
 
   // Use new API hook instead of manual fetch
   const { data, isLoading } = useCycleOverview();
+  const { data: me } = useCurrentUser();
+  const settingsQueryEnabled = Boolean(me?.userId);
+  const { data: autoSettings } = useAutoRolloverSettings(settingsQueryEnabled);
 
   const formatTimeLeft = (end: string | number | Date) => {
     const endMs = new Date(end).getTime();
@@ -221,10 +226,33 @@ export default function CyclesOverviewPage() {
       {/* Next Cycle Section */}
       <Card>
         <CardHeader>
-          <CardTitle>Next Cycle</CardTitle>
-          <CardDescription>
-            Opt-in to participate in upcoming trading opportunities
-          </CardDescription>
+          <div className="flex items-start justify-between gap-3">
+            <div className="space-y-1">
+              <CardTitle>Next Cycle</CardTitle>
+              <CardDescription>
+                Opt-in to participate in upcoming trading opportunities
+              </CardDescription>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Badge variant="outline" className="text-xs">
+                Auto rollover:{" "}
+                {autoSettings?.enabled
+                  ? autoSettings.defaultRolloverType === "FULL_PAYOUT"
+                    ? "Full payout"
+                    : "Initial only"
+                  : "Off"}
+              </Badge>
+              <AutoRolloverDialog
+                queryEnabled={settingsQueryEnabled}
+                trigger={
+                  <Button variant="outline" size="sm">
+                    Automatic rollover
+                  </Button>
+                }
+              />
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           {isLoading ? (

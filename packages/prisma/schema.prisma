@@ -60,6 +60,23 @@ enum RolloverType {
   CUSTOM_AMOUNT // Roll over user-specified amount (≤ initial)
 }
 
+/// Per-user automatic rollover preference for newly planned cycles.
+/// Note: while `RolloverType` includes CUSTOM_AMOUNT, auto-rollover settings
+/// intentionally only allow FULL_PAYOUT or INITIAL_ONLY (enforced in API).
+model AutoRolloverSettings {
+  /// 1:1 with User (we use userId as the primary key)
+  userId String @id @map("user_id")
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  enabled            Boolean      @default(false) @map("enabled")
+  defaultRolloverType RolloverType @default(INITIAL_ONLY) @map("default_rollover_type")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("auto_rollover_settings")
+}
+
 /// Cycle lifecycle status
 enum CycleStatus {
   PLANNED
@@ -228,6 +245,8 @@ model User {
   notificationPreferences  NotificationPreference[]
   SkillFarmSettings        SkillFarmSettings[]
   SkillFarmCharacterConfig SkillFarmCharacterConfig[]
+
+  autoRolloverSettings AutoRolloverSettings?
 
   @@map("app_users")
 }

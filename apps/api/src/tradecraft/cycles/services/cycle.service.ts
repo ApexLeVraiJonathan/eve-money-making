@@ -9,6 +9,7 @@ import { EsiService } from '@api/esi/esi.service';
 import { GameDataService } from '@api/game-data/services/game-data.service';
 import { CharacterService } from '@api/characters/services/character.service';
 import { NotificationService } from '@api/notifications/notification.service';
+import { ParticipationService } from './participation.service';
 import {
   CAPITAL_CONSTANTS,
   computeCostBasisPositions,
@@ -50,6 +51,7 @@ export class CycleService {
     private readonly gameData: GameDataService,
     private readonly characterService: CharacterService,
     private readonly notifications: NotificationService,
+    private readonly participationService: ParticipationService,
   ) {}
 
   /**
@@ -89,6 +91,87 @@ export class CycleService {
           : null,
       },
     });
+
+    // Automatic rollover: if a user has enabled auto-rollover, create a rollover
+    // participation in this newly planned cycle immediately.
+    //
+    // Notes:
+    // - This is best-effort; failures (e.g., user has no eligible open-cycle
+    //   participation) should not block cycle planning.
+    // - Auto-rollover only supports FULL_PAYOUT and INITIAL_ONLY.
+    try {
+      const openCycle = await this.prisma.cycle.findFirst({
+        where: { status: 'OPEN' },
+        select: { id: true },
+      });
+
+      if (openCycle) {
+        const enabled = await this.prisma.autoRolloverSettings.findMany({
+          where: { enabled: true },
+          select: { userId: true, defaultRolloverType: true },
+        });
+
+        if (enabled.length > 0) {
+          this.logger.log(
+            `[AutoRollover] Planning cycle ${cycle.id.substring(0, 8)}: evaluating ${enabled.length} user settings`,
+          );
+        }
+
+        for (const s of enabled) {
+          const type = s.defaultRolloverType;
+          if (type !== 'FULL_PAYOUT' && type !== 'INITIAL_ONLY') {
+            this.logger.warn(
+              `[AutoRollover] Skipping user ${s.userId.substring(0, 8)}: unsupported type=${String(
+                type,
+              )}`,
+            );
+            continue;
+          }
+
+          // Skip if the user already has a participation in this planned cycle
+          const existing = await this.prisma.cycleParticipation.findFirst({
+            where: {
+              cycleId: cycle.id,
+              userId: s.userId,
+            },
+            select: { id: true },
+          });
+          if (existing) continue;
+
+          try {
+            await this.participationService.createParticipation({
+              cycleId: cycle.id,
+              userId: s.userId,
+              amountIsk: '1.00',
+              rollover: { type },
+            });
+          } catch (err: unknown) {
+            // Most common: user isn't eligible (no active participation in OPEN cycle).
+            this.logger.debug(
+              `[AutoRollover] Could not create rollover participation for user ${s.userId.substring(
+                0,
+                8,
+              )}: ${String(err)}`,
+            );
+          }
+        }
+      } else {
+        this.logger.log(
+          `[AutoRollover] No OPEN cycle found; skipping auto-rollover creation for planned cycle ${cycle.id.substring(
+            0,
+            8,
+          )}`,
+        );
+      }
+    } catch (err: unknown) {
+      this.logger.warn(
+        `[AutoRollover] Failed to process auto-rollover participations for planned cycle ${cycle.id.substring(
+          0,
+          8,
+        )}: ${String(err)}`,
+      );
+    }
+
     // Fire user notifications (best-effort, non-blocking)
     void this.notifications
       .notifyCyclePlanned(cycle.id)

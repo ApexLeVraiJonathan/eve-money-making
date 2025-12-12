@@ -59,6 +59,11 @@ import { UpdateBulkSellPricesRequest } from './dto/update-bulk-sell-prices.dto';
 import { CreateJingleYieldParticipationRequest } from './dto/create-jingle-yield-participation.dto';
 import { IncreaseParticipationRequest } from './dto/increase-participation.dto';
 import { JingleYieldService } from './services/jingle-yield.service';
+import { AutoRolloverSettingsService } from './services/auto-rollover-settings.service';
+import {
+  AutoRolloverSettingsResponseDto,
+  UpdateAutoRolloverSettingsRequestDto,
+} from './dto/auto-rollover-settings.dto';
 
 @ApiTags('ledger')
 @Controller('ledger')
@@ -78,6 +83,7 @@ export class CyclesController {
     private readonly wallet: WalletService,
     private readonly allocation: AllocationService,
     private readonly jingleYieldService: JingleYieldService,
+    private readonly autoRolloverSettings: AutoRolloverSettingsService,
   ) {}
 
   @Post('cycles')
@@ -243,6 +249,42 @@ export class CyclesController {
       maxAmountIsk: maxAmount.toFixed(2),
       maxAmountB: maxAmount / 1_000_000_000,
     };
+  }
+
+  // ===== Automatic rollover settings (per-user) =====
+
+  @Get('participations/auto-rollover-settings')
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Get my automatic rollover settings (tradecraft)',
+  })
+  async getMyAutoRolloverSettings(
+    @CurrentUser() user: RequestUser | null,
+  ): Promise<AutoRolloverSettingsResponseDto> {
+    // Keep the endpoint resilient for logged-out users (same pattern as /me),
+    // but default to disabled.
+    if (!user?.userId) {
+      return { enabled: false, defaultRolloverType: 'INITIAL_ONLY' };
+    }
+    return await this.autoRolloverSettings.getForUser(user.userId);
+  }
+
+  @Patch('participations/auto-rollover-settings')
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Update my automatic rollover settings (tradecraft)',
+  })
+  async updateMyAutoRolloverSettings(
+    @CurrentUser() user: RequestUser | null,
+    @Body() body: UpdateAutoRolloverSettingsRequestDto,
+  ): Promise<AutoRolloverSettingsResponseDto> {
+    if (!user?.userId) {
+      throw new Error('User not authenticated');
+    }
+    return await this.autoRolloverSettings.upsertForUser(user.userId, {
+      enabled: body.enabled,
+      defaultRolloverType: body.defaultRolloverType,
+    });
   }
 
   @Post('cycles/:cycleId/participations')

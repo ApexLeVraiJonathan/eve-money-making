@@ -1,0 +1,114 @@
+---
+description: E2E testing rules (Playwright) for this repo
+globs:
+  - "apps/e2e/**/*"
+---
+
+# Goal
+
+- Prefer **E2E tests** for feature work (backend behavior + critical UI flows).
+- Keep tests **deterministic**, **reset state**, and **assert outcomes** (DB + API + UI).
+- Avoid adding/maintaining parallel test stacks (no Jest e2e for these flows).
+
+# Where tests live
+
+- `apps/e2e/tests/api/*.spec.ts`: API-level E2E tests (fast, stable, high signal).
+- `apps/e2e/tests/ui/*.spec.ts`: UI E2E tests (slower; only for critical user flows).
+- `apps/e2e/testkit/*`: shared helpers (env, DB reset, API caller, session/auth).
+
+# How to run
+
+## Default run (no manual setup)
+
+```bash
+pnpm -C apps/e2e test
+```
+
+- Uses `apps/e2e/playwright.config.ts`
+- Projects: `api`, `ui`
+
+## Manual UI auth capture (headed, “once per cookie refresh”)
+
+```bash
+pnpm -C apps/e2e test:setup
+```
+
+- Uses `apps/e2e/playwright.setup.config.ts`
+- Runs `ui-setup` to write `.playwright/storageState.json`
+- After setup, run `pnpm -C apps/e2e test` again.
+
+## Run a subset
+
+```bash
+pnpm -C apps/e2e test -- --project api
+pnpm -C apps/e2e test -- --project ui
+pnpm -C apps/e2e test -- tests/api/<file>.spec.ts
+pnpm -C apps/e2e test -- tests/ui/<file>.spec.ts
+```
+
+# Environment & auth
+
+- Store test env in `apps/e2e/.env` (loaded by Playwright config via `dotenv/config`).
+- **API tests** authenticate via `E2E_API_KEY` (sent as `x-api-key` in `testkit/api.ts`).
+- **UI tests** authenticate via `.playwright/storageState.json` created by `pnpm -C apps/e2e test:setup`.
+  - Do NOT try to auto-login through the EVE SSO flow in headless mode.
+  - UI tests should **skip with a clear message** if storageState is missing/invalid.
+
+# Database setup & determinism
+
+- Every test that depends on Tradecraft data MUST start with:
+  - `ensureE2eAdmin(prisma)` (ensures a known test user exists)
+  - `resetTradecraftData(prisma)` (clears Tradecraft tables + auto rollover settings)
+- Prefer **minimal DB fixtures**:
+  - Create only the cycle/participation records needed for the scenario.
+  - Use `select` in Prisma reads; avoid giant entity snapshots.
+
+# Writing API E2E tests (preferred)
+
+- Use Playwright `request` fixture + `createApiCall(request)` from `apps/e2e/testkit/api.ts`.
+- Assert BOTH:
+  - **HTTP response behavior** (status, body)
+  - **DB state** (records created/updated as expected)
+
+## API test structure (pattern)
+
+- Arrange: reset DB + create required records
+- Act: call API endpoint(s)
+- Assert: verify DB state + any key response fields
+
+# Writing UI E2E tests (only critical flows)
+
+- UI tests should be **few** and **high-value**:
+  - dialog opens
+  - save succeeds
+  - critical state visible and persists after reload
+- Prefer resilient selectors:
+  - `getByRole`, `getByLabel`, `getByText` (avoid brittle CSS selectors)
+- Avoid sleeps:
+  - use `waitUntil: "networkidle"` for navigation
+  - use `expect(locator).toBeVisible()` / `toHaveText()` etc.
+- UI tests are configured **serially** (workers=1) to avoid DB reset collisions.
+
+# Seeding UI states (for UX review)
+
+- Use the scenario seeder to quickly create realistic UI states without manual clicking:
+
+```bash
+pnpm -C apps/e2e seed:tradecraft:list
+pnpm -C apps/e2e seed:tradecraft cycles:open+planned
+```
+
+# Playwright configs (important)
+
+- `apps/e2e/playwright.config.ts`: normal runs (api + ui only)
+- `apps/e2e/playwright.setup.config.ts`: setup runs (includes `ui-setup`)
+- `ui-setup` should NOT run in normal `pnpm -C apps/e2e test` runs.
+
+# Anti-patterns (avoid)
+
+- Writing new e2e tests under `apps/api/test` (Jest e2e) for these features.
+- UI tests that depend on previous UI tests or shared state (always reset).
+- Running `ui-setup` as part of default `test` runs (can wipe cookies / cause flakes).
+- `waitForTimeout(...)` without a strong justification.
+- Hard-coding ports/URLs in tests when env vars exist (`WEB_URL`, `API_URL`).
+

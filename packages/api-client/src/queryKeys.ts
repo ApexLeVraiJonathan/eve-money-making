@@ -122,6 +122,8 @@ export const qk = {
     byId: (id: string) => ["participations", "byId", id] as const,
     me: (cycleId: string) => ["participations", "me", cycleId] as const,
     unmatchedDonations: () => ["participations", "unmatchedDonations"] as const,
+    autoRolloverSettings: () =>
+      ["participations", "autoRolloverSettings"] as const,
   },
 
   /** Payouts */
