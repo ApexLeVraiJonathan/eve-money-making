@@ -21,6 +21,114 @@ export class PayoutService {
   ) {}
 
   /**
+   * Ensure that ACTIVE JingleYield users always have a rollover participation
+   * created in the next cycle, even if they did not manually opt into rollover.
+   *
+   * Without this, JingleYield's admin-funded locked principal can "fall out" of
+   * the next cycle because `processRollovers()` only processes rollover
+   * participations that already exist in the target cycle.
+   */
+  private async ensureJingleYieldDefaultRollovers(input: {
+    closedCycleId: string;
+    targetCycleId: string;
+  }): Promise<{ created: number; skippedExisting: number }> {
+    const { closedCycleId, targetCycleId } = input;
+
+    // Find JY-linked participations from the cycle being closed, limited to
+    // ACTIVE programs (locked principal still enforced).
+    const jyFromParticipations =
+      await this.prisma.cycleParticipation.findMany({
+        where: {
+          cycleId: closedCycleId,
+          userId: { not: null },
+          jingleYieldProgramId: { not: null },
+          jingleYieldProgram: {
+            status: 'ACTIVE',
+          },
+        },
+        select: {
+          id: true,
+          userId: true,
+          characterName: true,
+          amountIsk: true,
+        },
+      });
+
+    if (jyFromParticipations.length === 0) {
+      return { created: 0, skippedExisting: 0 };
+    }
+
+    let created = 0;
+    let skippedExisting = 0;
+
+    for (const fromP of jyFromParticipations) {
+      const userId = fromP.userId;
+      if (!userId) continue;
+
+      // Respect the per-cycle unique constraint. If the user already has *any*
+      // participation in the next cycle (manual opt-in, rollover, etc.), do not
+      // create another one.
+      const existing = await this.prisma.cycleParticipation.findFirst({
+        where: {
+          cycleId: targetCycleId,
+          userId,
+        },
+        select: { id: true, memo: true, rolloverType: true },
+      });
+
+      if (existing) {
+        skippedExisting++;
+        this.logger.debug(
+          `[JY AutoRollover] Skipping user ${userId.substring(
+            0,
+            8,
+          )} for cycle ${targetCycleId.substring(0, 8)}: already has participation ${existing.id.substring(
+            0,
+            8,
+          )} (memo=${existing.memo}, rolloverType=${String(
+            existing.rolloverType,
+          )})`,
+        );
+        continue;
+      }
+
+      const memo = `ROLLOVER-${targetCycleId.substring(0, 8)}-${fromP.id.substring(
+        0,
+        8,
+      )}-INITIAL`;
+
+      await this.prisma.cycleParticipation.create({
+        data: {
+          cycleId: targetCycleId,
+          userId,
+          characterName: fromP.characterName,
+          // Default behavior: roll principal forward, pay out profits.
+          // (This will be finalized/auto-validated by processRollovers below.)
+          amountIsk: fromP.amountIsk,
+          memo,
+          status: 'AWAITING_INVESTMENT',
+          rolloverType: 'INITIAL_ONLY',
+          rolloverRequestedAmountIsk: fromP.amountIsk,
+          rolloverFromParticipationId: fromP.id,
+        },
+      });
+
+      created++;
+    }
+
+    if (created > 0 || skippedExisting > 0) {
+      this.logger.log(
+        `[JY AutoRollover] Prepared default rollovers for cycle ${targetCycleId.substring(
+          0,
+          8,
+        )}: created=${created}, skippedExisting=${skippedExisting}`,
+      );
+    }
+
+    return { created, skippedExisting };
+  }
+
+  /**
    * Compute payouts for validated participations
    */
   async computePayouts(cycleId: string, profitSharePct = 0.5) {
@@ -206,6 +314,23 @@ export class PayoutService {
       `[DEBUG] Found next cycle: ${nextCycle.id.substring(0, 8)}, status: ${nextCycle.status}`,
     );
 
+    // Ensure ACTIVE JingleYield programs always carry their principal forward by
+    // creating a default rollover participation when the user did not explicitly
+    // opt into rollover for the next cycle.
+    try {
+      await this.ensureJingleYieldDefaultRollovers({
+        closedCycleId,
+        targetCycleId: nextCycle.id,
+      });
+    } catch (err: unknown) {
+      this.logger.warn(
+        `[JY AutoRollover] Failed to ensure default rollovers for closedCycleId=${closedCycleId.substring(
+          0,
+          8,
+        )} → targetCycleId=${nextCycle.id.substring(0, 8)}: ${String(err)}`,
+      );
+    }
+
     // Find all participations in the next cycle that have rollover configured
     const rolloverParticipations =
       await this.prisma.cycleParticipation.findMany({
@@ -236,9 +361,17 @@ export class PayoutService {
       }
     }
 
-    // Filter to only process rollovers from the closed cycle
+    // Filter to only process rollovers from the closed cycle.
+    //
+    // IMPORTANT: Only process unvalidated rollovers to make this operation
+    // idempotent/safe to re-run for admin backfills. Once a rollover has been
+    // processed, we set `validatedAt` and `status=OPTED_IN`; reprocessing would
+    // incorrectly treat the already-adjusted payout as the "actual payout".
     const relevantRollovers = rolloverParticipations.filter(
-      (rp) => rp.rolloverFromParticipation?.cycleId === closedCycleId,
+      (rp) =>
+        rp.rolloverFromParticipation?.cycleId === closedCycleId &&
+        rp.validatedAt == null &&
+        rp.status === 'AWAITING_INVESTMENT',
     );
 
     this.logger.log(
@@ -266,7 +399,12 @@ export class PayoutService {
       const participationWithPayout =
         await this.prisma.cycleParticipation.findUnique({
           where: { id: fromParticipation.id },
-          select: { payoutAmountIsk: true, amountIsk: true },
+          select: {
+            payoutAmountIsk: true,
+            amountIsk: true,
+            status: true,
+            payoutPaidAt: true,
+          },
         });
 
       let actualPayoutIsk: string;
@@ -381,13 +519,28 @@ export class PayoutService {
       });
 
       // Update original participation payout to reflect rollover deduction
+      const alreadyPaid =
+        participationWithPayout?.payoutPaidAt != null ||
+        participationWithPayout?.status === 'COMPLETED';
+
       await this.prisma.cycleParticipation.update({
         where: { id: fromParticipation.id },
         data: {
           payoutAmountIsk: payoutAmount.toFixed(2),
           rolloverDeductedIsk: rolloverAmount.toFixed(2), // Track how much was rolled over
-          status: payoutAmount > 0 ? 'AWAITING_PAYOUT' : 'COMPLETED',
-          payoutPaidAt: payoutAmount === 0 ? new Date() : null, // Auto-mark as paid if nothing to pay
+          // IMPORTANT: Preserve paid-out status for admin backfills. If an admin
+          // has already marked this participation as paid, we should not revert
+          // it back to AWAITING_PAYOUT or wipe payoutPaidAt.
+          status: alreadyPaid
+            ? 'COMPLETED'
+            : payoutAmount > 0
+              ? 'AWAITING_PAYOUT'
+              : 'COMPLETED',
+          payoutPaidAt: alreadyPaid
+            ? participationWithPayout?.payoutPaidAt ?? null
+            : payoutAmount === 0
+              ? new Date()
+              : null, // Auto-mark as paid if nothing to pay
         },
       });
 
@@ -403,6 +556,87 @@ export class PayoutService {
       processed: rolloverParticipations.length,
       rolledOver: totalRolledOver.toFixed(2),
       paidOut: totalPaidOut.toFixed(2),
+    };
+  }
+
+  /**
+   * Admin helper: backfill missing default JingleYield rollover participations
+   * into a specific target cycle and then process rollovers for the inferred
+   * source (closed) cycle.
+   */
+  async backfillJingleYieldRolloversForTargetCycle(input: {
+    targetCycleId: string;
+    sourceClosedCycleId?: string;
+    profitSharePct?: number;
+  }): Promise<{
+    targetCycleId: string;
+    sourceClosedCycleId: string;
+    ensured: { created: number; skippedExisting: number };
+    rollovers: {
+      processed: number;
+      rolledOver: string;
+      paidOut: string;
+    };
+  }> {
+    const targetCycle = await this.prisma.cycle.findUnique({
+      where: { id: input.targetCycleId },
+      select: { id: true, status: true, startedAt: true },
+    });
+    if (!targetCycle) throw new Error('Target cycle not found');
+    if (targetCycle.status !== 'OPEN' && targetCycle.status !== 'PLANNED') {
+      throw new Error(
+        'Backfill only supported for target cycles in OPEN or PLANNED status',
+      );
+    }
+
+    let sourceClosedCycleId = input.sourceClosedCycleId;
+
+    if (!sourceClosedCycleId) {
+      // Prefer the most recent completed cycle that closed before this target started.
+      const inferred = await this.prisma.cycle.findFirst({
+        where: {
+          status: 'COMPLETED',
+          closedAt: { not: null, lte: targetCycle.startedAt },
+          id: { not: targetCycle.id },
+        },
+        orderBy: { closedAt: 'desc' },
+        select: { id: true },
+      });
+
+      // Fallback: the most recent completed cycle overall.
+      const fallback = inferred
+        ? null
+        : await this.prisma.cycle.findFirst({
+            where: { status: 'COMPLETED', id: { not: targetCycle.id } },
+            orderBy: { closedAt: 'desc' },
+            select: { id: true },
+          });
+
+      sourceClosedCycleId = inferred?.id ?? fallback?.id;
+    }
+
+    if (!sourceClosedCycleId) {
+      throw new Error(
+        'Could not infer a source completed cycle; please provide sourceClosedCycleId',
+      );
+    }
+
+    const ensured = await this.ensureJingleYieldDefaultRollovers({
+      closedCycleId: sourceClosedCycleId,
+      targetCycleId: targetCycle.id,
+    });
+
+    const rollovers = await this.processRollovers(
+      sourceClosedCycleId,
+      targetCycle.id,
+      input.profitSharePct ?? 0.5,
+    );
+
+    return {
+      targetCycleId: targetCycle.id,
+      sourceClosedCycleId,
+      ensured,
+      rollovers,
     };
   }
 }

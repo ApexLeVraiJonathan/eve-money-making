@@ -64,6 +64,7 @@ import {
   AutoRolloverSettingsResponseDto,
   UpdateAutoRolloverSettingsRequestDto,
 } from './dto/auto-rollover-settings.dto';
+import { BackfillJingleYieldRolloversRequestDto } from './dto/backfill-jingle-yield-rollovers.dto';
 
 @ApiTags('ledger')
 @Controller('ledger')
@@ -174,6 +175,25 @@ export class CyclesController {
       },
       this.allocation, // Pass allocation service for automatic cycle closure
     );
+  }
+
+  @Post('cycles/:cycleId/rollovers/backfill-jingle-yield')
+  @Roles('ADMIN')
+  @UseGuards(RolesGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary:
+      'Admin: backfill missing JingleYield rollover participations into a target cycle and process them safely',
+  })
+  @ApiParam({ name: 'cycleId', description: 'Target cycle ID (OPEN or PLANNED)' })
+  async backfillJingleYieldRollovers(
+    @Param('cycleId') cycleId: string,
+    @Body() body: BackfillJingleYieldRolloversRequestDto,
+  ): Promise<unknown> {
+    return await this.payoutService.backfillJingleYieldRolloversForTargetCycle({
+      targetCycleId: cycleId,
+      sourceClosedCycleId: body?.sourceClosedCycleId,
+    });
   }
 
   @Post('entries')

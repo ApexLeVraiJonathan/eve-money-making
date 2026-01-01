@@ -172,6 +172,86 @@ export class CycleService {
       );
     }
 
+    // JingleYield default rollover:
+    // If a user is in an ACTIVE JingleYield program, their admin-funded locked
+    // principal should keep rolling forward each cycle even if the user doesn't
+    // take action. To support that (and to let the user optionally "increase"
+    // principal during the PLANNED window), we create an INITIAL_ONLY rollover
+    // participation in the newly planned cycle whenever they have a JY-linked
+    // participation in the current OPEN cycle.
+    try {
+      const openCycle = await this.prisma.cycle.findFirst({
+        where: { status: 'OPEN' },
+        select: { id: true },
+      });
+
+      if (openCycle) {
+        const jyFromParticipations =
+          await this.prisma.cycleParticipation.findMany({
+            where: {
+              cycleId: openCycle.id,
+              userId: { not: null },
+              jingleYieldProgramId: { not: null },
+              jingleYieldProgram: { status: 'ACTIVE' },
+              status: { in: ['OPTED_IN', 'AWAITING_PAYOUT'] },
+            },
+            select: {
+              id: true,
+              userId: true,
+              characterName: true,
+              amountIsk: true,
+            },
+          });
+
+        let createdJyRollovers = 0;
+        for (const fromP of jyFromParticipations) {
+          if (!fromP.userId) continue;
+
+          const existing = await this.prisma.cycleParticipation.findFirst({
+            where: { cycleId: cycle.id, userId: fromP.userId },
+            select: { id: true },
+          });
+          if (existing) continue;
+
+          const memo = `ROLLOVER-${cycle.id.substring(0, 8)}-${fromP.id.substring(
+            0,
+            8,
+          )}-INITIAL`;
+
+          await this.prisma.cycleParticipation.create({
+            data: {
+              cycleId: cycle.id,
+              userId: fromP.userId,
+              characterName: fromP.characterName,
+              amountIsk: fromP.amountIsk,
+              memo,
+              status: 'AWAITING_INVESTMENT',
+              rolloverType: 'INITIAL_ONLY',
+              rolloverRequestedAmountIsk: fromP.amountIsk,
+              rolloverFromParticipationId: fromP.id,
+            },
+          });
+          createdJyRollovers++;
+        }
+
+        if (createdJyRollovers > 0) {
+          this.logger.log(
+            `[JY AutoRollover] Planned cycle ${cycle.id.substring(
+              0,
+              8,
+            )}: created ${createdJyRollovers} default INITIAL_ONLY rollover participations`,
+          );
+        }
+      }
+    } catch (err: unknown) {
+      this.logger.warn(
+        `[JY AutoRollover] Failed to create default JY rollovers for planned cycle ${cycle.id.substring(
+          0,
+          8,
+        )}: ${String(err)}`,
+      );
+    }
+
     // Fire user notifications (best-effort, non-blocking)
     void this.notifications
       .notifyCyclePlanned(cycle.id)
