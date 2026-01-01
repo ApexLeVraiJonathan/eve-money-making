@@ -27,6 +27,7 @@ src/
 ### Key Services (Cycles Domain)
 
 The cycles domain contains 9 focused services (all <300 lines):
+
 - **CycleService** - Lifecycle management
 - **CapitalService** - Capital & NAV computation
 - **ProfitService** - Profit calculations
@@ -38,6 +39,7 @@ The cycles domain contains 9 focused services (all <300 lines):
 - **SnapshotService** - Cycle snapshots
 
 **Principles:**
+
 - Single responsibility per service
 - No cross-domain Prisma queries
 - Domain services for cross-domain access
@@ -48,6 +50,7 @@ The cycles domain contains 9 focused services (all <300 lines):
 ## Getting Started
 
 ### Prerequisites
+
 - Node.js 20+
 - PostgreSQL database
 - EVE Online Developer Application
@@ -100,6 +103,7 @@ API will be available at `http://localhost:3000`
 ### Swagger Documentation
 
 Interactive API documentation available at:
+
 ```
 http://localhost:3000/docs
 ```
@@ -163,24 +167,28 @@ apps/api/
 ## Key Features
 
 ### API Documentation
+
 - **Swagger/OpenAPI** at `/docs`
 - All endpoints documented with `@ApiOperation`
 - Request/response schemas with `@ApiProperty`
 - Bearer auth support
 
 ### Validation
+
 - **class-validator** for DTO validation
 - Automatic type transformation
 - Whitelist unknown properties
 - Detailed error messages
 
 ### Security
+
 - **JWT authentication** with EVE SSO
 - **Role-based access** control (USER, ADMIN, LOGISTICS)
 - **CORS** protection
 - **Rate limiting** on ESI calls
 
 ### Caching
+
 - **ESI response caching** (ETag/Expires headers)
 - **Capital snapshot caching** (1-hour TTL)
 - **Concurrent request limiting**
@@ -205,16 +213,19 @@ const esiCredentials = AppConfig.esi();
 ## Development Guidelines
 
 ### Service Naming
+
 - Queries: `find*()`, `get*()`, `list*()`
 - Mutations: `create()`, `update()`, `delete()`
 - Business logic: `compute*()`, `validate*()`, `match*()`
 
 ### Constants
+
 - Use `UPPER_SNAKE_CASE` for true constants
 - Extract magic numbers to named constants
 - Document purpose inline
 
 ### Documentation
+
 - Service-level JSDoc explaining responsibilities
 - Method-level JSDoc for complex operations
 - Inline comments for algorithms
@@ -230,3 +241,7 @@ See [DEPLOYMENT.md](./DEPLOYMENT.md) for production deployment guide.
 ## License
 
 MIT
+
+---
+
+Trigger changes
