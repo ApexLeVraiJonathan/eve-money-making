@@ -21,6 +21,110 @@ export class PayoutService {
   ) {}
 
   /**
+   * Ensure that users with AutoRolloverSettings enabled have a rollover
+   * participation created in the target cycle, even if the cycle was planned
+   * before they enabled auto-rollover.
+   *
+   * Without this, auto-rollover only works when the setting existed at the time
+   * `planCycle()` ran (because that is where we currently pre-create rollovers).
+   */
+  private async ensureAutoRolloverParticipations(input: {
+    closedCycleId: string;
+    targetCycleId: string;
+  }): Promise<{ created: number; skippedExisting: number; skippedNoSource: number }> {
+    const { closedCycleId, targetCycleId } = input;
+
+    const settings = await this.prisma.autoRolloverSettings.findMany({
+      where: { enabled: true },
+      select: { userId: true, defaultRolloverType: true },
+    });
+
+    if (settings.length === 0) {
+      return { created: 0, skippedExisting: 0, skippedNoSource: 0 };
+    }
+
+    let created = 0;
+    let skippedExisting = 0;
+    let skippedNoSource = 0;
+
+    for (const s of settings) {
+      const type = s.defaultRolloverType;
+      if (type !== 'FULL_PAYOUT' && type !== 'INITIAL_ONLY') continue;
+
+      // Respect the per-cycle unique constraint: if user already has any
+      // participation in the target cycle, do not create another.
+      const existing = await this.prisma.cycleParticipation.findFirst({
+        where: { cycleId: targetCycleId, userId: s.userId },
+        select: { id: true },
+      });
+      if (existing) {
+        skippedExisting++;
+        continue;
+      }
+
+      // Find the user's participation in the closed cycle (source of funds).
+      const fromP = await this.prisma.cycleParticipation.findFirst({
+        where: {
+          cycleId: closedCycleId,
+          userId: s.userId,
+          status: { in: ['OPTED_IN', 'AWAITING_PAYOUT', 'COMPLETED'] },
+        },
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          userId: true,
+          characterName: true,
+          amountIsk: true,
+          jingleYieldProgramId: true,
+        },
+      });
+
+      if (!fromP) {
+        skippedNoSource++;
+        continue;
+      }
+
+      const rolloverTypeShort = type === 'FULL_PAYOUT' ? 'FULL' : 'INITIAL';
+      const memo = `ROLLOVER-${targetCycleId.substring(0, 8)}-${fromP.id.substring(
+        0,
+        8,
+      )}-${rolloverTypeShort}`;
+
+      const amountIsk = type === 'FULL_PAYOUT' ? '1.00' : String(fromP.amountIsk);
+
+      await this.prisma.cycleParticipation.create({
+        data: {
+          cycleId: targetCycleId,
+          userId: fromP.userId,
+          characterName: fromP.characterName,
+          amountIsk,
+          memo,
+          status: 'AWAITING_INVESTMENT',
+          rolloverType: type,
+          rolloverRequestedAmountIsk: fromP.amountIsk,
+          rolloverFromParticipationId: fromP.id,
+          ...(fromP.jingleYieldProgramId
+            ? { jingleYieldProgramId: fromP.jingleYieldProgramId }
+            : {}),
+        },
+      });
+
+      created++;
+    }
+
+    if (created > 0) {
+      this.logger.log(
+        `[AutoRollover] Ensured rollover participations for cycle ${targetCycleId.substring(
+          0,
+          8,
+        )}: created=${created}, skippedExisting=${skippedExisting}, skippedNoSource=${skippedNoSource}`,
+      );
+    }
+
+    return { created, skippedExisting, skippedNoSource };
+  }
+
+  /**
    * Ensure that ACTIVE JingleYield users always have a rollover participation
    * created in the next cycle, even if they did not manually opt into rollover.
    *
@@ -314,6 +418,22 @@ export class PayoutService {
       `[DEBUG] Found next cycle: ${nextCycle.id.substring(0, 8)}, status: ${nextCycle.status}`,
     );
 
+    // Ensure auto-rollover participations exist even if the user enabled the
+    // setting after the target cycle was already planned.
+    try {
+      await this.ensureAutoRolloverParticipations({
+        closedCycleId,
+        targetCycleId: nextCycle.id,
+      });
+    } catch (err: unknown) {
+      this.logger.warn(
+        `[AutoRollover] Failed to ensure rollover participations for closedCycleId=${closedCycleId.substring(
+          0,
+          8,
+        )} → targetCycleId=${nextCycle.id.substring(0, 8)}: ${String(err)}`,
+      );
+    }
+
     // Ensure ACTIVE JingleYield programs always carry their principal forward by
     // creating a default rollover participation when the user did not explicitly
     // opt into rollover for the next cycle.
@@ -363,15 +483,16 @@ export class PayoutService {
 
     // Filter to only process rollovers from the closed cycle.
     //
-    // IMPORTANT: Only process unvalidated rollovers to make this operation
-    // idempotent/safe to re-run for admin backfills. Once a rollover has been
-    // processed, we set `validatedAt` and `status=OPTED_IN`; reprocessing would
-    // incorrectly treat the already-adjusted payout as the "actual payout".
+    // IMPORTANT: Treat rollover processing as idempotent by keying off the
+    // *source* participation's `rolloverDeductedIsk`. If it is set, we consider
+    // the rollover already processed and should not run again.
+    //
+    // This also ensures we still process rollovers even if an admin (or some
+    // other flow) validated the rollover participation early.
     const relevantRollovers = rolloverParticipations.filter(
       (rp) =>
         rp.rolloverFromParticipation?.cycleId === closedCycleId &&
-        rp.validatedAt == null &&
-        rp.status === 'AWAITING_INVESTMENT',
+        rp.rolloverFromParticipation?.rolloverDeductedIsk == null,
     );
 
     this.logger.log(
@@ -553,7 +674,7 @@ export class PayoutService {
     }
 
     return {
-      processed: rolloverParticipations.length,
+      processed: relevantRollovers.length,
       rolledOver: totalRolledOver.toFixed(2),
       paidOut: totalPaidOut.toFixed(2),
     };
