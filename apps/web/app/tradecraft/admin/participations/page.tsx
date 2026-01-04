@@ -9,7 +9,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@eve/ui";
-import { Badge } from "@eve/ui";
+import { Badge, Checkbox, Label, Separator } from "@eve/ui";
 import { toast } from "sonner";
 import {
   Users,
@@ -28,12 +28,25 @@ import {
   useRefundParticipation,
   useMarkPayoutSent,
 } from "../../api";
+import type { CycleParticipation } from "@eve/shared";
+
+type ParticipationWithCycle = CycleParticipation & {
+  cycle?: {
+    id: string;
+    name: string | null;
+    startedAt: string;
+    closedAt: string | null;
+    status: string;
+  } | null;
+  jingleYieldProgramId?: string | null;
+};
 
 export default function ParticipationsPage() {
   // Use new API hooks
-  const { data: participations = [], isLoading: loading } =
+  const { data: participationsRaw = [], isLoading: loading } =
     useAllParticipations();
   const { data: unmatchedDonations = [] } = useUnmatchedDonations();
+  const participations = participationsRaw as ParticipationWithCycle[];
 
   const validatePayment = useValidateParticipationPayment();
   const refundParticipation = useRefundParticipation();
@@ -47,6 +60,7 @@ export default function ParticipationsPage() {
     journalId: string;
   } | null>(null);
   const [copiedText, setCopiedText] = React.useState<string | null>(null);
+  const [showPastCycles, setShowPastCycles] = React.useState(false);
 
   const handleCopy = async (text: string, label: string) => {
     try {
@@ -88,6 +102,47 @@ export default function ParticipationsPage() {
       maximumFractionDigits: 2,
       minimumFractionDigits: 2,
     }).format(parseFloat(value));
+  };
+
+  const formatIskFromNumber = (value: number) => {
+    return new Intl.NumberFormat("en-US", {
+      maximumFractionDigits: 2,
+      minimumFractionDigits: 2,
+    }).format(value);
+  };
+
+  const getParticipationType = (p: ParticipationWithCycle) => {
+    if (p.jingleYieldProgramId) return "JingleYield";
+    if (p.rolloverType) return `Rollover (${p.rolloverType})`;
+    return "Standard";
+  };
+
+  const getParticipationTypeBadge = (p: ParticipationWithCycle) => {
+    if (p.jingleYieldProgramId) {
+      return (
+        <Badge variant="outline" className="bg-purple-500/10 text-purple-600">
+          JingleYield
+        </Badge>
+      );
+    }
+    if (p.rolloverType) {
+      const label =
+        p.rolloverType === "FULL_PAYOUT"
+          ? "Rollover (FULL)"
+          : p.rolloverType === "INITIAL_ONLY"
+            ? "Rollover (INITIAL)"
+            : "Rollover (CUSTOM)";
+      return (
+        <Badge variant="outline" className="bg-blue-500/10 text-blue-600">
+          {label}
+        </Badge>
+      );
+    }
+    return (
+      <Badge variant="outline" className="bg-slate-500/10 text-slate-600">
+        Standard
+      </Badge>
+    );
   };
 
   const getStatusBadge = (status: string) => {
@@ -143,6 +198,60 @@ export default function ParticipationsPage() {
     (p) =>
       p.status === "AWAITING_PAYOUT" && !p.payoutPaidAt && p.payoutAmountIsk,
   );
+
+  // Group participations by cycle with sensible default visibility (OPEN + PLANNED).
+  const cycles = React.useMemo(() => {
+    const map = new Map<
+      string,
+      {
+        cycleId: string;
+        cycleName: string | null;
+        cycleStatus: string;
+        startedAt: string | null;
+        closedAt: string | null;
+        participations: ParticipationWithCycle[];
+      }
+    >();
+
+    for (const p of participations) {
+      const c = p.cycle;
+      const cycleId = c?.id ?? p.cycleId;
+      if (!map.has(cycleId)) {
+        map.set(cycleId, {
+          cycleId,
+          cycleName: c?.name ?? null,
+          cycleStatus: c?.status ?? "UNKNOWN",
+          startedAt: c?.startedAt ?? null,
+          closedAt: c?.closedAt ?? null,
+          participations: [],
+        });
+      }
+      map.get(cycleId)!.participations.push(p);
+    }
+
+    const statusRank = (s: string) =>
+      s === "OPEN" ? 0 : s === "PLANNED" ? 1 : s === "COMPLETED" ? 2 : 3;
+
+    return [...map.values()].sort((a, b) => {
+      const r = statusRank(a.cycleStatus) - statusRank(b.cycleStatus);
+      if (r !== 0) return r;
+      // Newest first within same status
+      const aDate = new Date(a.closedAt ?? a.startedAt ?? 0).getTime();
+      const bDate = new Date(b.closedAt ?? b.startedAt ?? 0).getTime();
+      return bDate - aDate;
+    });
+  }, [participations]);
+
+  const visibleCycleIds = React.useMemo(() => {
+    const preferred = new Set(
+      cycles
+        .filter((c) => c.cycleStatus === "OPEN" || c.cycleStatus === "PLANNED")
+        .map((c) => c.cycleId),
+    );
+    if (preferred.size > 0) return preferred;
+    // Fallback: show at least one cycle so admins aren't staring at an empty state.
+    return new Set(cycles.length > 0 ? [cycles[0].cycleId] : []);
+  }, [cycles]);
 
   if (loading) {
     return (
@@ -243,14 +352,42 @@ export default function ParticipationsPage() {
       {/* All Participants Overview */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Users className="h-5 w-5" />
-            All Participants
-          </CardTitle>
-          <CardDescription>
-            Current participation status for all cycles ({participations.length}{" "}
-            total)
-          </CardDescription>
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <Users className="h-5 w-5" />
+                All Participants
+              </CardTitle>
+              <CardDescription>
+                Current participation status grouped by cycle ({participations.length}{" "}
+                total)
+              </CardDescription>
+            </div>
+            <div className="flex flex-col items-end gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  (window.location.href = "/tradecraft/admin/users")
+                }
+              >
+                Manage user caps
+              </Button>
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="showPastCycles"
+                  checked={showPastCycles}
+                  onCheckedChange={(v) => setShowPastCycles(Boolean(v))}
+                />
+                <Label
+                  htmlFor="showPastCycles"
+                  className="text-xs text-muted-foreground"
+                >
+                  Show past cycles
+                </Label>
+              </div>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           {participations.length === 0 ? (
@@ -264,67 +401,151 @@ export default function ParticipationsPage() {
               </p>
             </div>
           ) : (
-            <div className="rounded-lg border">
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b bg-muted/50">
-                      <th className="text-left p-3 font-medium">Character</th>
-                      <th className="text-left p-3 font-medium">Cycle</th>
-                      <th className="text-right p-3 font-medium">Amount</th>
-                      <th className="text-left p-3 font-medium">Status</th>
-                      <th className="text-left p-3 font-medium">Payment</th>
-                      <th className="text-left p-3 font-medium">Created</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y">
-                    {participations.map((p) => (
-                      <tr
-                        key={p.id}
-                        className="hover:bg-muted/50 transition-colors"
-                      >
-                        <td className="p-3 font-medium">{p.characterName}</td>
-                        <td className="p-3">
-                          <div className="text-xs text-muted-foreground">
-                            {p.cycleId.substring(0, 8)}
+            <div className="space-y-6">
+              {cycles
+                .filter((c) => showPastCycles || visibleCycleIds.has(c.cycleId))
+                .map((c, idx) => {
+                  const totalIsk = c.participations.reduce(
+                    (sum, p) => sum + Number(p.amountIsk),
+                    0,
+                  );
+
+                  const statusBadge =
+                    c.cycleStatus === "OPEN" ? (
+                      <Badge className="bg-emerald-500/10 text-emerald-600">
+                        Open
+                      </Badge>
+                    ) : c.cycleStatus === "PLANNED" ? (
+                      <Badge className="bg-amber-500/10 text-amber-600">
+                        Planned
+                      </Badge>
+                    ) : c.cycleStatus === "COMPLETED" ? (
+                      <Badge className="bg-slate-500/10 text-slate-600">
+                        Completed
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline">{c.cycleStatus}</Badge>
+                    );
+
+                  return (
+                    <div key={c.cycleId} className="rounded-lg border">
+                      <div className="flex flex-col gap-2 p-4">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div className="space-y-0.5">
+                            <div className="flex items-center gap-2">
+                              <div className="font-medium">
+                                {c.cycleName ?? `Cycle ${c.cycleId.substring(0, 8)}`}
+                              </div>
+                              {statusBadge}
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              {c.startedAt
+                                ? `Starts: ${new Date(c.startedAt).toLocaleString()}`
+                                : `ID: ${c.cycleId}`}
+                              {c.closedAt
+                                ? ` • Closed: ${new Date(c.closedAt).toLocaleString()}`
+                                : null}
+                            </div>
                           </div>
-                        </td>
-                        <td className="p-3 text-right font-mono text-xs">
-                          {formatIsk(p.amountIsk)} ISK
-                        </td>
-                        <td className="p-3">{getStatusBadge(p.status)}</td>
-                        <td className="p-3">
-                          {p.walletJournalId ? (
-                            <Badge
-                              variant="outline"
-                              className="bg-green-500/10 text-green-600 text-xs"
-                            >
-                              Linked
-                            </Badge>
-                          ) : p.status === "AWAITING_INVESTMENT" ? (
-                            <Badge
-                              variant="outline"
-                              className="bg-amber-500/10 text-amber-600 text-xs"
-                            >
-                              Pending
-                            </Badge>
-                          ) : p.status === "OPTED_OUT" && !p.refundedAt ? (
-                            <Badge
-                              variant="outline"
-                              className="bg-red-500/10 text-red-600 text-xs"
-                            >
-                              Needs Refund
-                            </Badge>
-                          ) : null}
-                        </td>
-                        <td className="p-3 text-xs text-muted-foreground">
-                          {new Date(p.createdAt).toLocaleDateString()}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                          <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                            <div className="tabular-nums">
+                              <span className="font-medium text-foreground">
+                                {c.participations.length}
+                              </span>{" "}
+                              participants
+                            </div>
+                            <div className="tabular-nums">
+                              <span className="font-medium text-foreground">
+                                {formatIskFromNumber(totalIsk)}
+                              </span>{" "}
+                              ISK
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      <Separator />
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="border-b bg-muted/50">
+                              <th className="text-left p-3 font-medium">
+                                Character
+                              </th>
+                              <th className="text-left p-3 font-medium">Type</th>
+                              <th className="text-right p-3 font-medium">
+                                Amount
+                              </th>
+                              <th className="text-left p-3 font-medium">
+                                Status
+                              </th>
+                              <th className="text-left p-3 font-medium">
+                                Payment
+                              </th>
+                              <th className="text-left p-3 font-medium">
+                                Created
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y">
+                            {c.participations.map((p) => (
+                              <tr
+                                key={p.id}
+                                className="hover:bg-muted/50 transition-colors"
+                                title={getParticipationType(p)}
+                              >
+                                <td className="p-3 font-medium">
+                                  {p.characterName}
+                                </td>
+                                <td className="p-3">
+                                  {getParticipationTypeBadge(p)}
+                                </td>
+                                <td className="p-3 text-right font-mono text-xs">
+                                  {formatIsk(p.amountIsk)} ISK
+                                </td>
+                                <td className="p-3">{getStatusBadge(p.status)}</td>
+                                <td className="p-3">
+                                  {p.walletJournalId ? (
+                                    <Badge
+                                      variant="outline"
+                                      className="bg-green-500/10 text-green-600 text-xs"
+                                    >
+                                      Linked
+                                    </Badge>
+                                  ) : p.status === "AWAITING_INVESTMENT" ? (
+                                    <Badge
+                                      variant="outline"
+                                      className="bg-amber-500/10 text-amber-600 text-xs"
+                                    >
+                                      Pending
+                                    </Badge>
+                                  ) : p.status === "OPTED_OUT" && !p.refundedAt ? (
+                                    <Badge
+                                      variant="outline"
+                                      className="bg-red-500/10 text-red-600 text-xs"
+                                    >
+                                      Needs Refund
+                                    </Badge>
+                                  ) : null}
+                                </td>
+                                <td className="p-3 text-xs text-muted-foreground">
+                                  {new Date(p.createdAt).toLocaleDateString()}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      {idx < cycles.length - 1 ? null : null}
+                    </div>
+                  );
+                })}
+
+              {!showPastCycles && cycles.length > visibleCycleIds.size ? (
+                <div className="text-xs text-muted-foreground">
+                  Showing current/planned cycles. Enable “Show past cycles” to
+                  browse older participations.
+                </div>
+              ) : null}
             </div>
           )}
         </CardContent>
@@ -589,8 +810,11 @@ export default function ParticipationsPage() {
                     <tr>
                       <th className="text-left p-3 font-medium">Character</th>
                       <th className="text-right p-3 font-medium">Investment</th>
-                      <th className="text-right p-3 font-medium">Payout</th>
                       <th className="text-right p-3 font-medium">Return</th>
+                      <th className="text-right p-3 font-medium">
+                        Total Result
+                      </th>
+                      <th className="text-right p-3 font-medium">Payout</th>
                       <th className="text-left p-3 font-medium">Cycle</th>
                       <th className="text-right p-3 font-medium">Actions</th>
                     </tr>
@@ -598,9 +822,17 @@ export default function ParticipationsPage() {
                   <tbody className="divide-y">
                     {needsPayout.map((p) => {
                       const investment = parseFloat(p.amountIsk);
-                      const totalPayout = parseFloat(p.payoutAmountIsk ?? "0");
-                      const profitShare = totalPayout - investment;
-                      const returnPct = (profitShare / investment) * 100;
+                      const paidOutNow = parseFloat(p.payoutAmountIsk ?? "0");
+                      const rolledOver = parseFloat(p.rolloverDeductedIsk ?? "0");
+                      const totalResult = paidOutNow + rolledOver;
+                      const profitShare = totalResult - investment;
+                      const returnPct =
+                        investment > 0 ? (profitShare / investment) * 100 : 0;
+                      const returnAmountStr = profitShare.toFixed(2);
+                      const payoutAmountStr = paidOutNow.toFixed(2);
+                      const returnLabel =
+                        `${profitShare >= 0 ? "+" : ""}${formatIsk(returnAmountStr)} ISK` +
+                        ` (${profitShare >= 0 ? "+" : ""}${returnPct.toFixed(1)}%)`;
 
                       return (
                         <tr
@@ -631,16 +863,27 @@ export default function ParticipationsPage() {
                             {formatIsk(p.amountIsk)} ISK
                           </td>
                           <td className="p-3 text-right">
+                            <div
+                              className={`font-mono text-xs font-semibold ${
+                                profitShare >= 0
+                                  ? "text-emerald-600"
+                                  : "text-red-600"
+                              }`}
+                            >
+                              {returnLabel}
+                            </div>
+                          </td>
+                          <td className="p-3 text-right font-mono text-xs">
+                            {formatIsk(totalResult.toString())} ISK
+                          </td>
+                          <td className="p-3 text-right">
                             <div className="flex items-center justify-end gap-2">
-                              <div className="font-mono font-semibold text-emerald-600">
-                                {formatIsk(totalPayout.toString())} ISK
+                              <div className="font-mono text-xs font-semibold text-emerald-600">
+                                {formatIsk(payoutAmountStr)} ISK
                               </div>
                               <button
                                 onClick={() =>
-                                  handleCopy(
-                                    totalPayout.toFixed(2),
-                                    "payout amount",
-                                  )
+                                  handleCopy(payoutAmountStr, "payout amount")
                                 }
                                 className="text-emerald-600 hover:text-emerald-700 transition-colors"
                                 title="Copy payout amount"
@@ -653,14 +896,6 @@ export default function ParticipationsPage() {
                               </button>
                             </div>
                           </td>
-                          <td className="p-3 text-right">
-                            <div className="text-emerald-600 font-semibold text-xs">
-                              +{returnPct.toFixed(1)}%
-                            </div>
-                            <div className="text-xs text-muted-foreground font-mono">
-                              +{formatIsk(profitShare.toString())}
-                            </div>
-                          </td>
                           <td className="p-3 text-xs text-muted-foreground">
                             {p.cycleId.substring(0, 8)}
                           </td>
@@ -671,7 +906,7 @@ export default function ParticipationsPage() {
                               className="gap-2"
                               onClick={async () => {
                                 const confirmed = window.confirm(
-                                  `Mark ${formatIsk(totalPayout.toString())} ISK payout as sent to ${p.characterName}?\n\nThis includes:\n- Investment: ${formatIsk(investment.toString())} ISK\n- Profit: ${formatIsk(profitShare.toString())} ISK`,
+                                  `Mark ${formatIsk(paidOutNow.toString())} ISK payout as sent to ${p.characterName}?\n\nCycle result:\n- Investment: ${formatIsk(investment.toString())} ISK\n- Rolled over: ${formatIsk(rolledOver.toString())} ISK\n- Payout now: ${formatIsk(paidOutNow.toString())} ISK\n- Return: ${formatIsk(profitShare.toString())} ISK`,
                                 );
                                 if (!confirmed) return;
 

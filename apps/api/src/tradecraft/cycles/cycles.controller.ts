@@ -251,7 +251,14 @@ export class CyclesController {
   async getMaxParticipation(
     @CurrentUser() user: RequestUser | null,
     @Query('testUserId') testUserId?: string,
-  ): Promise<{ maxAmountIsk: string; maxAmountB: number }> {
+  ): Promise<{
+    principalCapIsk: string;
+    principalCapB: number;
+    effectivePrincipalCapIsk: string;
+    effectivePrincipalCapB: number;
+    maximumCapIsk: string;
+    maximumCapB: number;
+  }> {
     // In dev/test mode, allow checking max amount for a specific testUserId
     let userIdToCheck: string | undefined;
     if (testUserId && process.env.NODE_ENV !== 'production') {
@@ -263,11 +270,15 @@ export class CyclesController {
       userIdToCheck = user?.userId ?? undefined;
     }
 
-    const maxAmount =
-      await this.participationService.determineMaxParticipation(userIdToCheck);
+    const caps =
+      await this.participationService.getTradecraftCapsForUser(userIdToCheck);
     return {
-      maxAmountIsk: maxAmount.toFixed(2),
-      maxAmountB: maxAmount / 1_000_000_000,
+      principalCapIsk: caps.principalCapIsk.toFixed(2),
+      principalCapB: caps.principalCapIsk / 1_000_000_000,
+      effectivePrincipalCapIsk: caps.effectivePrincipalCapIsk.toFixed(2),
+      effectivePrincipalCapB: caps.effectivePrincipalCapIsk / 1_000_000_000,
+      maximumCapIsk: caps.maximumCapIsk.toFixed(2),
+      maximumCapB: caps.maximumCapIsk / 1_000_000_000,
     };
   }
 

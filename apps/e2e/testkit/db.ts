@@ -16,6 +16,9 @@ export function createPrisma() {
 
 export async function resetTradecraftData(prisma: PrismaClient) {
   // Keep users/characters/etc. intact; this is meant to clear tradecraft state.
+  // Clear wallet imports too so allocation/close-cycle flows are deterministic in E2E.
+  await prisma.walletTransaction.deleteMany({});
+  await prisma.walletJournalEntry.deleteMany({});
   await prisma.autoRolloverSettings.deleteMany({});
   await prisma.sellAllocation.deleteMany({});
   await prisma.buyAllocation.deleteMany({});

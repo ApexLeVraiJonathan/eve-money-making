@@ -28,10 +28,76 @@ export function useAllUsers() {
         Array<{
           id: string;
           role: "USER" | "ADMIN";
+          email: string | null;
           primaryCharacterId: number | null;
           characters: Array<{ id: number; name: string }>;
         }>
       >("/admin/users"),
+  });
+}
+
+export type TradecraftUserAdminRow = {
+  id: string;
+  email: string | null;
+  role: string;
+  primaryCharacter: { id: number; name: string } | null;
+  participationCount: number;
+  lastParticipationAt: string | null;
+  tradecraftPrincipalCapIsk: string | null;
+  tradecraftMaximumCapIsk: string | null;
+  createdAt: string;
+};
+
+/**
+ * List users that have used Tradecraft (admin only).
+ */
+export function useTradecraftUsers(pagination?: { limit?: number; offset?: number }) {
+  const client = useApiClient();
+  return useAuthenticatedQuery({
+    queryKey: qk.users.tradecraft(pagination),
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (pagination?.limit != null) params.set("limit", String(pagination.limit));
+      if (pagination?.offset != null) params.set("offset", String(pagination.offset));
+      const q = params.toString() ? `?${params.toString()}` : "";
+      return client.get<TradecraftUserAdminRow[]>(`/admin/users/tradecraft${q}`);
+    },
+  });
+}
+
+/**
+ * Update a user's Tradecraft caps (admin only).
+ * - principalCapIsk: user-funded principal limit
+ * - maximumCapIsk: total invested limit (principal + reinvested interest)
+ * Pass null to clear and use defaults.
+ */
+export function useUpdateTradecraftUserMaxParticipation() {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      userId,
+      principalCapIsk,
+      maximumCapIsk,
+    }: {
+      userId: string;
+      principalCapIsk: string | null;
+      maximumCapIsk: string | null;
+    }) =>
+      client.patch<{
+        id: string;
+        tradecraftPrincipalCapIsk: string | null;
+        tradecraftMaximumCapIsk: string | null;
+      }>(`/admin/users/${userId}/tradecraft-caps`, {
+        principalCapIsk,
+        maximumCapIsk,
+      }),
+    onSuccess: (_data, vars) => {
+      queryClient.invalidateQueries({ queryKey: qk.users.tradecraft() });
+      queryClient.invalidateQueries({ queryKey: qk.users.byId(vars.userId) });
+      queryClient.invalidateQueries({ queryKey: qk.users.list() });
+    },
   });
 }
 

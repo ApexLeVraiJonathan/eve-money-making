@@ -75,6 +75,7 @@ export class PayoutService {
           userId: true,
           characterName: true,
           amountIsk: true,
+          userPrincipalIsk: true,
           jingleYieldProgramId: true,
         },
       });
@@ -98,6 +99,10 @@ export class PayoutService {
           userId: fromP.userId,
           characterName: fromP.characterName,
           amountIsk,
+          userPrincipalIsk: (() => {
+            const p = Number(fromP.userPrincipalIsk ?? fromP.amountIsk);
+            return Number.isFinite(p) ? p.toFixed(2) : '0.00';
+          })(),
           memo,
           status: 'AWAITING_INVESTMENT',
           rolloverType: type,
@@ -155,6 +160,7 @@ export class PayoutService {
           userId: true,
           characterName: true,
           amountIsk: true,
+          userPrincipalIsk: true,
         },
       });
 
@@ -209,6 +215,10 @@ export class PayoutService {
           // Default behavior: roll principal forward, pay out profits.
           // (This will be finalized/auto-validated by processRollovers below.)
           amountIsk: fromP.amountIsk,
+          userPrincipalIsk: (() => {
+            const p = Number(fromP.userPrincipalIsk ?? 0);
+            return Number.isFinite(p) ? p.toFixed(2) : '0.00';
+          })(),
           memo,
           status: 'AWAITING_INVESTMENT',
           rolloverType: 'INITIAL_ONLY',
@@ -510,7 +520,7 @@ export class PayoutService {
 
     let totalRolledOver = 0;
     let totalPaidOut = 0;
-    const CAP_20B = 20_000_000_000;
+    const DEFAULT_MAXIMUM_CAP_ISK = 20_000_000_000;
 
     for (const rollover of relevantRollovers) {
       const fromParticipation = rollover.rolloverFromParticipation!;
@@ -559,6 +569,21 @@ export class PayoutService {
       const actualPayout = Number(actualPayoutIsk);
       const initialInvestment = Number(initialInvestmentIsk);
 
+      // Per-user maximum cap (total invested). Defaults to 20B if not configured.
+      let maximumCapIsk = DEFAULT_MAXIMUM_CAP_ISK;
+      if (rollover.userId) {
+        const user = await this.prisma.user.findUnique({
+          where: { id: rollover.userId },
+          select: { tradecraftMaximumCapIsk: true },
+        });
+        // IMPORTANT: `Number(null) === 0`, so treat null/undefined as "not set".
+        const raw =
+          user?.tradecraftMaximumCapIsk == null
+            ? NaN
+            : Number(user.tradecraftMaximumCapIsk);
+        maximumCapIsk = Number.isFinite(raw) ? raw : DEFAULT_MAXIMUM_CAP_ISK;
+      }
+
       // Determine rollover amount based on type (baseline before JingleYield locks).
       // For FULL_PAYOUT rollovers we also take into account any user-funded extra
       // that was added on top of the auto-funded rollover participation while the
@@ -569,13 +594,18 @@ export class PayoutService {
       let userExtraForRollover = 0;
 
       if (rollover.rolloverType === 'FULL_PAYOUT') {
-        // Extra is encoded using the 1 ISK placeholder convention:
-        //   - 1.00 ISK → no user extra
-        //   - 1.00 + X → X ISK of user-funded extra
-        userExtraForRollover = Math.max(Number(rollover.amountIsk) - 1, 0);
+        const fromUserPrincipal = Number(
+          rollover.rolloverFromParticipation?.userPrincipalIsk ??
+            rollover.rolloverFromParticipation?.amountIsk ??
+            0,
+        );
+        const currentUserPrincipal = Number(
+          rollover.userPrincipalIsk ?? fromUserPrincipal,
+        );
+        userExtraForRollover = Math.max(currentUserPrincipal - fromUserPrincipal, 0);
 
         const totalBeforeCaps = actualPayout + userExtraForRollover;
-        const cappedTotal = Math.min(totalBeforeCaps, CAP_20B);
+        const cappedTotal = Math.min(totalBeforeCaps, maximumCapIsk);
 
         // Portion of the capped total that is funded by the previous cycle payout.
         const rolledFromPayout = Math.min(
@@ -615,7 +645,7 @@ export class PayoutService {
       // is funded by the closed cycle's payout. User-funded extra is handled
       // above for FULL_PAYOUT; for other types it is not currently modelled.
       if (rollover.rolloverType !== 'FULL_PAYOUT') {
-        rolloverAmount = Math.min(rolloverAmount, CAP_20B, actualPayout);
+        rolloverAmount = Math.min(rolloverAmount, maximumCapIsk, actualPayout);
       }
 
       const payoutAmount =
@@ -629,6 +659,7 @@ export class PayoutService {
         where: { id: rollover.id },
         data: {
           amountIsk: rolloverAmount.toFixed(2),
+          userPrincipalIsk: rollover.userPrincipalIsk ?? null,
           status: 'OPTED_IN', // Auto-validate rollover participations
           validatedAt: new Date(),
           ...(jyProgram

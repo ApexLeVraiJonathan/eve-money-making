@@ -1,10 +1,10 @@
 import { test, expect } from "@playwright/test";
-import { createApiCall } from "../../testkit/api";
+import { createApiCall } from "../../../testkit/api";
 import {
   createPrisma,
   ensureE2eAdmin,
   resetTradecraftData,
-} from "../../testkit/db";
+} from "../../../testkit/db";
 
 test.describe("Auto rollover (API)", () => {
   test("settings + planCycle auto-creates rollover participation", async ({
@@ -32,10 +32,7 @@ test.describe("Auto rollover (API)", () => {
           userId: adminUserId,
           characterName: "E2E Admin",
           amountIsk: "1000000000.00",
-          memo: `ARB-${openCycle.id.substring(0, 8)}-${adminUserId.substring(
-            0,
-            8
-          )}`,
+          memo: `ARB-${openCycle.id.substring(0, 8)}-${adminUserId.substring(0, 8)}`,
           status: "OPTED_IN",
           validatedAt: new Date(),
         },
@@ -107,10 +104,7 @@ test.describe("Auto rollover (API)", () => {
           userId: adminUserId,
           characterName: "E2E Admin",
           amountIsk: "1000000000.00",
-          memo: `ARB-${openCycle.id.substring(0, 8)}-${adminUserId.substring(
-            0,
-            8
-          )}`,
+          memo: `ARB-${openCycle.id.substring(0, 8)}-${adminUserId.substring(0, 8)}`,
           status: "OPTED_IN",
           validatedAt: new Date(),
         },
@@ -212,7 +206,11 @@ test.describe("Auto rollover (API)", () => {
       });
 
       const rollover = await prisma.cycleParticipation.findFirst({
-        where: { cycleId: planned.id, userId: adminUserId, rolloverType: { not: null } },
+        where: {
+          cycleId: planned.id,
+          userId: adminUserId,
+          rolloverType: { not: null },
+        },
         select: { id: true },
       });
 
@@ -292,3 +290,5 @@ test.describe("Auto rollover (API)", () => {
     }
   });
 });
+
+

@@ -84,9 +84,14 @@ export function useMaxParticipation() {
   return useAuthenticatedQuery({
     queryKey: ["maxParticipation"],
     queryFn: () =>
-      client.get<{ maxAmountIsk: string; maxAmountB: number }>(
-        "/ledger/participations/max-amount",
-      ),
+      client.get<{
+        principalCapIsk: string;
+        principalCapB: number;
+        effectivePrincipalCapIsk: string;
+        effectivePrincipalCapB: number;
+        maximumCapIsk: string;
+        maximumCapB: number;
+      }>("/ledger/participations/max-amount"),
   });
 }
 

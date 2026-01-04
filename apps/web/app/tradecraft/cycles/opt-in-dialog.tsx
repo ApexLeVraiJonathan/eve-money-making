@@ -133,11 +133,18 @@ export default function OptInDialog(props: OptInDialogProps) {
 
       if (!next) throw new Error("No planned cycle available");
 
-      // Validate amount against max participation cap
-      if (maxParticipation && amt > Number(maxParticipation.maxAmountIsk)) {
-        throw new Error(
-          `Participation amount exceeds maximum allowed (${maxParticipation.maxAmountB}B ISK)`,
-        );
+      // Validate amount against principal + maximum caps (amount is user principal for non-rollover opt-ins)
+      if (!useRollover && maxParticipation) {
+        if (amt > Number(maxParticipation.effectivePrincipalCapIsk)) {
+          throw new Error(
+            `Participation principal exceeds maximum allowed (${maxParticipation.effectivePrincipalCapB}B ISK)`,
+          );
+        }
+        if (amt > Number(maxParticipation.maximumCapIsk)) {
+          throw new Error(
+            `Participation exceeds maximum allowed (${maxParticipation.maximumCapB}B ISK)`,
+          );
+        }
       }
 
       // Build rollover payload if applicable
@@ -248,8 +255,9 @@ export default function OptInDialog(props: OptInDialogProps) {
                           ? "bg-muted cursor-not-allowed opacity-75"
                           : ""
                       } ${
+                        !useRollover &&
                         maxParticipation &&
-                        amount > Number(maxParticipation.maxAmountIsk)
+                        amount > Number(maxParticipation.effectivePrincipalCapIsk)
                           ? "border-red-500 focus-visible:ring-red-500"
                           : ""
                       }`}
@@ -266,8 +274,9 @@ export default function OptInDialog(props: OptInDialogProps) {
                       {formatIsk(amount)}
                     </div>
                   )}
-                  {maxParticipation &&
-                    amount > Number(maxParticipation.maxAmountIsk) && (
+                  {!useRollover &&
+                    maxParticipation &&
+                    amount > Number(maxParticipation.effectivePrincipalCapIsk) && (
                       <div className="flex items-start gap-2 rounded-md bg-red-50 dark:bg-red-950/20 p-3 text-sm text-red-600 dark:text-red-400">
                         <svg
                           xmlns="http://www.w3.org/2000/svg"
@@ -284,8 +293,11 @@ export default function OptInDialog(props: OptInDialogProps) {
                         <div>
                           <strong>Amount exceeds maximum allowed</strong>
                           <br />
-                          Maximum participation for your account is{" "}
-                          <strong>{maxParticipation.maxAmountB}B ISK</strong>.
+                          Principal cap for your account is{" "}
+                          <strong>
+                            {maxParticipation.effectivePrincipalCapB}B ISK
+                          </strong>
+                          .
                           Please reduce the amount.
                         </div>
                       </div>
@@ -315,16 +327,21 @@ export default function OptInDialog(props: OptInDialogProps) {
                 <div className="rounded-lg border border-blue-500/20 bg-blue-500/5 p-3">
                   <div className="text-sm">
                     <span className="text-muted-foreground">
-                      Maximum allowed:{" "}
+                      Principal cap:{" "}
                     </span>
                     <span className="font-semibold text-blue-600 dark:text-blue-400">
-                      {maxParticipation.maxAmountB}B ISK
+                      {maxParticipation.effectivePrincipalCapB}B ISK
                     </span>
-                    {maxParticipation.maxAmountB === 20 && (
-                      <span className="text-xs text-muted-foreground ml-2">
-                        (Rollover investor)
-                      </span>
-                    )}
+                  </div>
+                  <div className="text-sm mt-1">
+                    <span className="text-muted-foreground">Maximum cap: </span>
+                    <span className="font-semibold text-blue-600 dark:text-blue-400">
+                      {maxParticipation.maximumCapB}B ISK
+                    </span>
+                  </div>
+                  <div className="text-xs text-muted-foreground mt-2">
+                    Principal cap limits how much of <span className="text-foreground">your own money</span>{" "}
+                    you can add over time. Maximum cap limits how much can stay invested; excess interest is paid out.
                   </div>
                 </div>
               )}
@@ -533,8 +550,9 @@ export default function OptInDialog(props: OptInDialogProps) {
                   disabled={
                     submitting ||
                     amount <= 0 ||
-                    (maxParticipation &&
-                      amount > Number(maxParticipation.maxAmountIsk)) ||
+                    (!useRollover &&
+                      maxParticipation &&
+                      amount > Number(maxParticipation.effectivePrincipalCapIsk)) ||
                     (useRollover &&
                       rolloverType === "CUSTOM_AMOUNT" &&
                       customRolloverAmount >

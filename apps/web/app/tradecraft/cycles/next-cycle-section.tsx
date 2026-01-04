@@ -166,8 +166,10 @@ export default function NextCycleSection({ next }: { next: NextCycle | null }) {
       isRollover && rolloverType === "FULL"
         ? basePrincipalForRollover + rolloverUserExtra
         : Number(participation.amountIsk);
+    // Increasing a participation adds user-funded principal, so the relevant limit
+    // is the effective principal cap (may be reduced by JingleYield).
     const maxIsk = maxParticipation
-      ? Number(maxParticipation.maxAmountIsk)
+      ? Number(maxParticipation.effectivePrincipalCapIsk)
       : undefined;
     const remainingCap =
       maxIsk !== undefined ? Math.max(0, maxIsk - currentAmount) : undefined;
@@ -193,7 +195,7 @@ export default function NextCycleSection({ next }: { next: NextCycle | null }) {
       const msg = `Increasing to ${formatIsk(
         newTotal,
       )} ISK would exceed your maximum allowed (${
-        maxParticipation!.maxAmountB
+        maxParticipation!.effectivePrincipalCapB
       }B ISK).`;
       setDeltaError(msg);
       toast.error(msg);
@@ -303,6 +305,24 @@ export default function NextCycleSection({ next }: { next: NextCycle | null }) {
               ? basePrincipalForRollover + rolloverUserExtra
               : Number(participation.amountIsk);
 
+          // Principal vs total: prefer explicit userPrincipalIsk when present.
+          const principalIsk = (() => {
+            const explicit = Number(participation.userPrincipalIsk);
+            if (Number.isFinite(explicit)) return explicit;
+
+            // Back-compat fallbacks
+            if (isJingleYieldRoot) return jyUserExtra;
+            if (isRollover && rolloverType === "FULL") return effectiveCurrentPrincipal;
+            return Number(participation.amountIsk);
+          })();
+
+          const totalInvestedIsk = (() => {
+            // For FULL rollovers, total is determined at cycle close. Show principal as the current baseline.
+            if (isRollover && rolloverType === "FULL") return null;
+            const n = Number(participation.amountIsk);
+            return Number.isFinite(n) ? n : null;
+          })();
+
           return (
             <div className="mt-3 rounded-lg border border-primary/20 bg-primary/5 p-4">
               <div className="flex items-start justify-between gap-3">
@@ -358,6 +378,48 @@ export default function NextCycleSection({ next }: { next: NextCycle | null }) {
                         <>{formatIsk(participation.amountIsk)} ISK</>
                       )}
                     </div>
+
+                    {/* Cap breakdown */}
+                    {maxParticipation ? (
+                      <div className="mt-2 rounded-md bg-muted/30 p-3">
+                        <div className="text-xs text-muted-foreground">
+                          Principal (your money)
+                        </div>
+                        <div className="text-sm font-mono">
+                          <span className="font-semibold text-foreground">
+                            {formatIsk(principalIsk)} ISK
+                          </span>{" "}
+                          <span className="text-muted-foreground">/</span>{" "}
+                          <span className="font-semibold">
+                            {maxParticipation.effectivePrincipalCapB}B ISK
+                          </span>
+                        </div>
+                        <div className="mt-2 text-xs text-muted-foreground">
+                          Total invested (principal + reinvested interest)
+                        </div>
+                        <div className="text-sm font-mono">
+                          {totalInvestedIsk == null ? (
+                            <span className="text-amber-600">
+                              Calculated at cycle close (FULL rollover)
+                            </span>
+                          ) : (
+                            <>
+                              <span className="font-semibold text-foreground">
+                                {formatIsk(totalInvestedIsk)} ISK
+                              </span>{" "}
+                              <span className="text-muted-foreground">/</span>{" "}
+                            </>
+                          )}
+                          <span className="font-semibold">
+                            {maxParticipation.maximumCapB}B ISK
+                          </span>
+                        </div>
+                        <div className="mt-2 text-xs text-muted-foreground">
+                          If your cycle result exceeds the maximum cap, excess
+                          interest is paid out.
+                        </div>
+                      </div>
+                    ) : null}
                     <div>
                       <span className="font-medium text-foreground">
                         Submitted:
@@ -683,10 +745,17 @@ export default function NextCycleSection({ next }: { next: NextCycle | null }) {
                             {maxParticipation && (
                               <div className="mt-1">
                                 <span className="text-muted-foreground">
-                                  Maximum allowed:
+                                  Principal cap:
                                 </span>{" "}
                                 <span className="font-mono font-semibold">
-                                  {maxParticipation.maxAmountB}B ISK
+                                  {maxParticipation.effectivePrincipalCapB}B ISK
+                                </span>
+                                <span className="text-muted-foreground">
+                                  {" "}
+                                  • max cap{" "}
+                                </span>
+                                <span className="font-mono font-semibold">
+                                  {maxParticipation.maximumCapB}B ISK
                                 </span>
                               </div>
                             )}

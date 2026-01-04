@@ -360,6 +360,9 @@ export default function MyInvestmentsPage() {
                 <TableRow>
                   <TableHead className="text-foreground">Cycle</TableHead>
                   <TableHead className="text-right text-foreground">
+                    Principal
+                  </TableHead>
+                  <TableHead className="text-right text-foreground">
                     Investment
                   </TableHead>
                   <TableHead className="text-right text-foreground">
@@ -378,6 +381,13 @@ export default function MyInvestmentsPage() {
               <TableBody>
                 {participations.map((p) => {
                   const invested = Number(p.amountIsk);
+                  const principal = (() => {
+                    const raw = Number(p.userPrincipalIsk);
+                    if (Number.isFinite(raw)) return raw;
+                    // Older participations may not have userPrincipalIsk populated.
+                    // In that case, treat the full investment amount as principal for display.
+                    return invested;
+                  })();
                   // Calculate actual profit including any amount rolled over
                   const payoutReceived = Number(p.payoutAmountIsk || 0);
                   const rolloverDeducted = Number(p.rolloverDeductedIsk || 0);
@@ -392,6 +402,9 @@ export default function MyInvestmentsPage() {
                     <TableRow key={p.id}>
                       <TableCell className="font-medium">
                         {p.cycle?.name || p.cycleId.slice(0, 8)}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {formatIsk(principal)}
                       </TableCell>
                       <TableCell className="text-right tabular-nums">
                         {formatIsk(invested)}

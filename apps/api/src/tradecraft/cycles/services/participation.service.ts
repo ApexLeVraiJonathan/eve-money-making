@@ -19,12 +19,93 @@ export class ParticipationService {
     private readonly notifications: NotificationService,
   ) {}
 
+  private static readonly DEFAULT_PRINCIPAL_CAP_ISK = 10_000_000_000;
+  private static readonly DEFAULT_MAXIMUM_CAP_ISK = 20_000_000_000;
+
+  private async getUserTradecraftCaps(userId: string): Promise<{
+    principalCapIsk: number;
+    maximumCapIsk: number;
+  }> {
+    const rec = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        tradecraftPrincipalCapIsk: true,
+        tradecraftMaximumCapIsk: true,
+      },
+    });
+
+    // IMPORTANT: `Number(null) === 0`, so we must treat null/undefined explicitly
+    // as "not set" and fall back to defaults.
+    const principalCapIsk =
+      rec?.tradecraftPrincipalCapIsk == null
+        ? NaN
+        : Number(rec.tradecraftPrincipalCapIsk);
+    const maximumCapIsk =
+      rec?.tradecraftMaximumCapIsk == null
+        ? NaN
+        : Number(rec.tradecraftMaximumCapIsk);
+
+    return {
+      principalCapIsk: Number.isFinite(principalCapIsk)
+        ? principalCapIsk
+        : ParticipationService.DEFAULT_PRINCIPAL_CAP_ISK,
+      maximumCapIsk: Number.isFinite(maximumCapIsk)
+        ? maximumCapIsk
+        : ParticipationService.DEFAULT_MAXIMUM_CAP_ISK,
+    };
+  }
+
+  private async getEffectivePrincipalCapForUser(
+    userId: string,
+    principalCapIsk: number,
+  ): Promise<number> {
+    // Existing behavior: active admin-funded JingleYield principal consumes headroom.
+    const activeJyPrograms = await this.prisma.jingleYieldProgram.findMany({
+      where: {
+        userId,
+        status: 'ACTIVE',
+      },
+      select: {
+        lockedPrincipalIsk: true,
+      },
+    });
+
+    if (activeJyPrograms.length === 0) return principalCapIsk;
+
+    const totalJyPrincipal = activeJyPrograms.reduce(
+      (sum, p) => sum + Number(p.lockedPrincipalIsk),
+      0,
+    );
+    return Math.max(0, principalCapIsk - totalJyPrincipal);
+  }
+
+  async getTradecraftCapsForUser(userId?: string): Promise<{
+    principalCapIsk: number;
+    maximumCapIsk: number;
+    effectivePrincipalCapIsk: number;
+  }> {
+    if (!userId) {
+      return {
+        principalCapIsk: ParticipationService.DEFAULT_PRINCIPAL_CAP_ISK,
+        maximumCapIsk: ParticipationService.DEFAULT_MAXIMUM_CAP_ISK,
+        effectivePrincipalCapIsk: ParticipationService.DEFAULT_PRINCIPAL_CAP_ISK,
+      };
+    }
+
+    const caps = await this.getUserTradecraftCaps(userId);
+    const effectivePrincipalCapIsk = await this.getEffectivePrincipalCapForUser(
+      userId,
+      caps.principalCapIsk,
+    );
+    return { ...caps, effectivePrincipalCapIsk };
+  }
+
   /**
-   * Determine maximum allowed participation for a user
+   * Determine maximum allowed participation for a user (history-based, ignores admin overrides).
    * Returns 10B for first-time or users who fully cashed out
    * Returns 20B for users with active rollover history
    */
-  async determineMaxParticipation(userId?: string): Promise<number> {
+  async determineMaxParticipationFromHistory(userId?: string): Promise<number> {
     if (!userId) return 10_000_000_000; // 10B for non-authenticated users
 
     const ACTIVE_ROLLOVER_STATUSES: ParticipationStatus[] = [
@@ -139,6 +220,18 @@ export class ParticipationService {
   }
 
   /**
+   * Determine maximum allowed participation for a user, including optional admin override.
+   *
+   * Legacy: this function now returns the user's **maximum cap** (total invested),
+   * not the principal cap. Callers should migrate to using the explicit caps.
+   */
+  async determineMaxParticipation(userId?: string): Promise<number> {
+    if (!userId) return ParticipationService.DEFAULT_MAXIMUM_CAP_ISK;
+    const { maximumCapIsk } = await this.getUserTradecraftCaps(userId);
+    return maximumCapIsk;
+  }
+
+  /**
    * Create a participation (opt-in to a future cycle)
    */
   async createParticipation(input: {
@@ -177,49 +270,51 @@ export class ParticipationService {
     // Validate participation cap
     const requestedAmount = Number(input.amountIsk);
 
-    // For rollover participations, cap is always 20B
-    // For regular participations, use determineMaxParticipation (10B or 20B based on history)
-    let maxParticipation: number;
-    if (input.rollover) {
-      maxParticipation = 20_000_000_000; // 20B cap for rollover investors
-    } else {
-      maxParticipation = await this.determineMaxParticipation(input.userId);
+    // New model:
+    // - principal cap: max user-funded principal
+    // - maximum cap: max total invested (principal + reinvested interest)
+    const userId = input.userId ?? undefined;
+    const caps = userId
+      ? await this.getUserTradecraftCaps(userId)
+      : {
+          principalCapIsk: ParticipationService.DEFAULT_PRINCIPAL_CAP_ISK,
+          maximumCapIsk: ParticipationService.DEFAULT_MAXIMUM_CAP_ISK,
+        };
 
-      // If the user has one or more ACTIVE JingleYield programs, their
-      // admin-funded principal counts toward the 10B principal cap. We
-      // therefore reduce the allowed user principal so that:
-      //   userPrincipal + SUM(jyPrincipal) <= 10B
-      if (input.userId) {
-        const activeJyPrograms = await this.prisma.jingleYieldProgram.findMany({
-          where: {
-            userId: input.userId,
-            status: 'ACTIVE',
-          },
-          select: {
-            lockedPrincipalIsk: true,
-          },
-        });
+    let principalCapIsk = caps.principalCapIsk;
+    const maximumCapIsk = caps.maximumCapIsk;
 
-        if (activeJyPrograms.length > 0) {
-          const totalJyPrincipal = activeJyPrograms.reduce(
-            (sum, p) => sum + Number(p.lockedPrincipalIsk),
-            0,
-          );
-          const remainingPrincipalCap = Math.max(
-            0,
-            10_000_000_000 - totalJyPrincipal,
-          );
-          maxParticipation = Math.min(maxParticipation, remainingPrincipalCap);
-        }
+    if (userId) {
+      principalCapIsk = await this.getEffectivePrincipalCapForUser(
+        userId,
+        principalCapIsk,
+      );
+    }
+
+    // For rollover participations, requestedAmount is typically a placeholder or
+    // a reinvestment amount. We still enforce the maximum cap to keep pooled
+    // capital manageable, but we do not treat rollovers as new user principal.
+    if (requestedAmount > maximumCapIsk) {
+      throw new BadRequestException(
+        `Participation amount exceeds maximum allowed (${(
+          maximumCapIsk / 1_000_000_000
+        ).toFixed(0)}B ISK)`,
+      );
+    }
+
+    if (!input.rollover) {
+      // Non-rollover: requested amount is user-funded principal.
+      if (requestedAmount > principalCapIsk) {
+        throw new BadRequestException(
+          `Participation principal exceeds maximum allowed (${(
+            principalCapIsk / 1_000_000_000
+          ).toFixed(0)}B ISK)`,
+        );
       }
     }
 
-    if (requestedAmount > maxParticipation) {
-      const maxB = maxParticipation / 1_000_000_000;
-      throw new BadRequestException(
-        `Participation amount exceeds maximum allowed (${maxB}B ISK)`,
-      );
-    }
+    // For rollover participations, cap logic is enforced during rollover processing
+    // (max cap), and principal additions are enforced by increaseParticipation.
 
     // Handle rollover opt-in
     if (input.rollover) {
@@ -295,6 +390,11 @@ export class ParticipationService {
           userId: input.userId, // Already set to testUserId in controller if provided
           characterName,
           amountIsk: displayAmount.toFixed(2),
+          userPrincipalIsk: (() => {
+            const basePrincipal = Number(activeParticipation.userPrincipalIsk ?? activeParticipation.amountIsk);
+            // For full payout / initial only rollovers, principal carries forward unchanged.
+            return Number.isFinite(basePrincipal) ? basePrincipal.toFixed(2) : '0.00';
+          })(),
           memo: rolloverMemo,
           status: 'AWAITING_INVESTMENT', // Will be auto-validated on cycle close
           rolloverType: input.rollover.type,
@@ -315,6 +415,7 @@ export class ParticipationService {
         userId: input.userId,
         characterName,
         amountIsk: input.amountIsk,
+        userPrincipalIsk: Number(input.amountIsk).toFixed(2),
         memo: uniqueMemo,
         status: 'AWAITING_INVESTMENT',
       },
@@ -374,6 +475,10 @@ export class ParticipationService {
     }
 
     const currentAmountRaw = Number(participation.amountIsk);
+    const currentUserPrincipalRaw = Number(
+      participation.userPrincipalIsk ??
+        (participation.jingleYieldProgramId ? 0 : participation.amountIsk),
+    );
 
     // For non-rollover participations, "current amount" is simply the stored amount.
     // For FULL_PAYOUT rollovers, we treat amountIsk as:
@@ -383,101 +488,45 @@ export class ParticipationService {
     // base principal for cap checks. This lets us enforce the 10B principal cap
     // while still keeping the existing placeholder semantics.
     let requestedTotal = currentAmountRaw + delta;
-    let basePrincipalForRollover = 0;
-    let existingUserExtraForRollover = 0;
+    const requestedUserPrincipal = currentUserPrincipalRaw + delta;
+    const userId = participation.userId ?? undefined;
+    const caps = userId
+      ? await this.getUserTradecraftCaps(userId)
+      : {
+          principalCapIsk: ParticipationService.DEFAULT_PRINCIPAL_CAP_ISK,
+          maximumCapIsk: ParticipationService.DEFAULT_MAXIMUM_CAP_ISK,
+        };
 
-    if (participation.rolloverType === 'FULL_PAYOUT') {
-      basePrincipalForRollover = participation.rolloverFromParticipation
-        ? Number(participation.rolloverFromParticipation.amountIsk)
-        : 0;
+    let principalCapIsk = caps.principalCapIsk;
+    const maximumCapIsk = caps.maximumCapIsk;
 
-      // Existing extra is encoded as (amountIsk - 1) on the rollover participation.
-      existingUserExtraForRollover = Math.max(currentAmountRaw - 1, 0);
-
-      const newPrincipal =
-        basePrincipalForRollover + existingUserExtraForRollover + delta;
-
-      if (newPrincipal > 10_000_000_000) {
-        throw new BadRequestException(
-          'Participation principal exceeds maximum allowed (10B ISK) for rollover investor',
-        );
-      }
-    }
-
-    // Enforce participation caps, reusing the same logic as createParticipation.
-    let maxParticipation: number;
-
-    if (participation.rolloverType) {
-      // Rollover participations always use the 20B *total* cap at the
-      // participation level. For FULL_PAYOUT, we additionally enforce a
-      // 10B cap on the user principal above (base principal from the
-      // previous cycle + any user-funded extra).
-      maxParticipation = 20_000_000_000;
-    } else {
-      maxParticipation = await this.determineMaxParticipation(
-        participation.userId ?? undefined,
+    if (userId) {
+      principalCapIsk = await this.getEffectivePrincipalCapForUser(
+        userId,
+        principalCapIsk,
       );
-
-      // Apply JingleYield principal cap adjustment:
-      // userPrincipal + SUM(active JY principal) <= 10B
-      if (participation.userId) {
-        const activeJyPrograms = await this.prisma.jingleYieldProgram.findMany({
-          where: {
-            userId: participation.userId,
-            status: 'ACTIVE',
-          },
-          select: {
-            lockedPrincipalIsk: true,
-          },
-        });
-
-        if (activeJyPrograms.length > 0) {
-          const totalJyPrincipal = activeJyPrograms.reduce(
-            (sum, p) => sum + Number(p.lockedPrincipalIsk),
-            0,
-          );
-          const remainingPrincipalCap = Math.max(
-            0,
-            10_000_000_000 - totalJyPrincipal,
-          );
-          maxParticipation = Math.min(maxParticipation, remainingPrincipalCap);
-        }
-      }
     }
 
-    // For non-JY participations, we compare the full requested total against the cap.
-    // For JingleYield-linked participations, only the *user-funded* portion should
-    // count toward the 10B cap. The admin-funded locked principal remains fixed in
-    // the JY program and should not consume user principal headroom.
-    let effectiveRequestedForCap = requestedTotal;
-
-    if (participation.jingleYieldProgramId) {
-      const jyProgram = await this.prisma.jingleYieldProgram.findUnique({
-        where: { id: participation.jingleYieldProgramId },
-        select: {
-          lockedPrincipalIsk: true,
-        },
-      });
-
-      if (jyProgram) {
-        const lockedPrincipal = Number(jyProgram.lockedPrincipalIsk);
-        // For JingleYield-linked participations, the current user-funded
-        // portion is the participation amount minus the locked admin
-        // principal. JY roots never use the 1 ISK placeholder, so we can
-        // safely use currentAmountRaw here.
-        const currentUserPortion = Math.max(
-          currentAmountRaw - lockedPrincipal,
-          0,
-        );
-        const requestedUserPortion = currentUserPortion + delta;
-        effectiveRequestedForCap = requestedUserPortion;
-      }
-    }
-
-    if (effectiveRequestedForCap > maxParticipation) {
-      const maxB = maxParticipation / 1_000_000_000;
+    // Block principal additions once user is at/above maximum cap.
+    if (currentAmountRaw >= maximumCapIsk) {
       throw new BadRequestException(
-        `Participation amount exceeds maximum allowed (${maxB}B ISK)`,
+        `Participation is already at the maximum cap (${(
+          maximumCapIsk / 1_000_000_000
+        ).toFixed(0)}B ISK)`,
+      );
+    }
+    if (requestedTotal > maximumCapIsk) {
+      throw new BadRequestException(
+        `Participation amount exceeds maximum allowed (${(
+          maximumCapIsk / 1_000_000_000
+        ).toFixed(0)}B ISK)`,
+      );
+    }
+    if (requestedUserPrincipal > principalCapIsk) {
+      throw new BadRequestException(
+        `Participation principal exceeds maximum allowed (${(
+          principalCapIsk / 1_000_000_000
+        ).toFixed(0)}B ISK)`,
       );
     }
 
@@ -485,6 +534,7 @@ export class ParticipationService {
       where: { id: participation.id },
       data: {
         amountIsk: requestedTotal.toFixed(2),
+        userPrincipalIsk: requestedUserPrincipal.toFixed(2),
         status: 'AWAITING_INVESTMENT',
         // Force a fresh validation for the new total; deposits already made
         // remain tracked via cycle_ledger entries.
@@ -496,22 +546,10 @@ export class ParticipationService {
     return {
       participation: updated,
       previousAmountIsk: (() => {
-        if (participation.rolloverType === 'FULL_PAYOUT') {
-          const effectiveCurrentPrincipal =
-            basePrincipalForRollover + existingUserExtraForRollover;
-          return effectiveCurrentPrincipal.toFixed(2);
-        }
         return currentAmountRaw.toFixed(2);
       })(),
       deltaAmountIsk: delta.toFixed(2),
-      newAmountIsk: (() => {
-        if (participation.rolloverType === 'FULL_PAYOUT') {
-          const newPrincipal =
-            basePrincipalForRollover + existingUserExtraForRollover + delta;
-          return newPrincipal.toFixed(2);
-        }
-        return requestedTotal.toFixed(2);
-      })(),
+      newAmountIsk: requestedTotal.toFixed(2),
     };
   }
 
@@ -597,6 +635,7 @@ export class ParticipationService {
           userId: input.userId,
           characterName: input.characterName,
           amountIsk: principalIsk,
+          userPrincipalIsk: '0.00',
           memo: `JY-${cycle.id.substring(0, 8)}-${input.userId.substring(0, 8)}`,
           status: 'AWAITING_INVESTMENT',
         },

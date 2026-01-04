@@ -174,6 +174,7 @@ export interface CycleParticipation {
   userId: string | null;
   characterName: string;
   amountIsk: string;
+  userPrincipalIsk: string | null;
   status: ParticipationStatus;
   memo: string;
   validatedAt: string | null;

@@ -25,6 +25,7 @@ import { Roles } from './decorators/roles.decorator';
 import { RolesGuard } from './guards/roles.guard';
 import { SetRoleRequest } from './dto/set-role.dto';
 import { LinkCharacterRequest } from './dto/link-character.dto';
+import { UpdateTradecraftCapsRequestDto } from './dto/update-tradecraft-max-participation.dto';
 
 @ApiTags('admin', 'users')
 @Controller()
@@ -46,6 +47,62 @@ export class UsersController {
     const take = Math.min(Math.max(Number(limit ?? '50'), 1), 200);
     const skip = Math.max(Number(offset ?? '0'), 0);
     return await this.users.listUsers(take, skip);
+  }
+
+  // Admin: list users that have used Tradecraft (participations / auto-rollover / JingleYield)
+  @Get('admin/users/tradecraft')
+  @Roles('ADMIN')
+  @UseGuards(RolesGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'List Tradecraft users (admin only)' })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  @ApiQuery({ name: 'offset', required: false, type: Number })
+  async listTradecraftUsers(
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+  ) {
+    const take = Math.min(Math.max(Number(limit ?? '100'), 1), 500);
+    const skip = Math.max(Number(offset ?? '0'), 0);
+    return await this.users.listTradecraftUsers(take, skip);
+  }
+
+  // Admin: update per-user Tradecraft caps (principal cap + maximum cap)
+  @Patch('admin/users/:id/tradecraft-caps')
+  @Roles('ADMIN')
+  @UseGuards(RolesGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Set Tradecraft caps (principal + maximum) for a user (admin only)',
+  })
+  @ApiParam({ name: 'id', description: 'User ID' })
+  async updateTradecraftCaps(
+    @Param('id') id: string,
+    @Body() body: UpdateTradecraftCapsRequestDto,
+  ) {
+    return await this.users.updateTradecraftCaps(id, {
+      principalCapIsk: body.principalCapIsk ?? null,
+      maximumCapIsk: body.maximumCapIsk ?? body.maxParticipationIsk ?? null,
+    });
+  }
+
+  // Back-compat: old endpoint name -> treated as maximum cap.
+  @Patch('admin/users/:id/tradecraft-max-participation')
+  @Roles('ADMIN')
+  @UseGuards(RolesGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary:
+      '(Deprecated) Set Tradecraft maximum cap override for a user (admin only)',
+  })
+  @ApiParam({ name: 'id', description: 'User ID' })
+  async updateTradecraftMaxParticipationDeprecated(
+    @Param('id') id: string,
+    @Body() body: UpdateTradecraftCapsRequestDto,
+  ) {
+    return await this.users.updateTradecraftCaps(id, {
+      principalCapIsk: null,
+      maximumCapIsk: body.maximumCapIsk ?? body.maxParticipationIsk ?? null,
+    });
   }
 
   // Admin: change user role

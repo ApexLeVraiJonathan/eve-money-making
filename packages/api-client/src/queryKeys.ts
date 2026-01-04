@@ -32,6 +32,8 @@ export const qk = {
     features: () => ["users", "features"] as const,
     byId: (id: string) => ["users", "byId", id] as const,
     list: () => ["users", "list"] as const,
+    tradecraft: (pagination?: { limit?: number; offset?: number }) =>
+      ["users", "tradecraft", pagination] as const,
   },
 
   /** EVE characters & linking */

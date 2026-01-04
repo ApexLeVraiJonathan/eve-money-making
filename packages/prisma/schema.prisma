@@ -248,6 +248,14 @@ model User {
 
   autoRolloverSettings AutoRolloverSettings?
 
+  /// Optional admin override for max allowed participation (0..20B ISK)
+  tradecraftMaxParticipationIsk Decimal? @map("tradecraft_max_participation_isk") @db.Decimal(28, 2)
+
+  /// Tradecraft: max user-funded principal that can be invested (defaults to 10B if null)
+  tradecraftPrincipalCapIsk Decimal? @map("tradecraft_principal_cap_isk") @db.Decimal(28, 2)
+  /// Tradecraft: max total invested (principal + reinvested interest) (defaults to 20B if null)
+  tradecraftMaximumCapIsk   Decimal? @map("tradecraft_maximum_cap_isk") @db.Decimal(28, 2)
+
   @@map("app_users")
 }
 
@@ -617,6 +625,8 @@ model CycleParticipation {
   userId              String?             @map("user_id")
   characterName       String              @map("character_name")
   amountIsk           Decimal             @map("amount_isk") @db.Decimal(28, 2)
+  /// User-funded principal portion of this participation (does not include reinvested interest)
+  userPrincipalIsk    Decimal?            @map("user_principal_isk") @db.Decimal(28, 2)
   memo                String              @map("memo") // Removed @unique - same memo for all users in a cycle
   status              ParticipationStatus @map("status")
   walletJournalId     BigInt?             @map("wallet_journal_id")

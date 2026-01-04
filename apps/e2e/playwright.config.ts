@@ -35,6 +35,9 @@ export default defineConfig({
     {
       name: "api",
       testMatch: /.*tests\/api\/.*\.spec\.ts/,
+      // API tests in this repo reset shared DB state. Run serially to avoid
+      // cross-test interference when multiple workers would race resets.
+      workers: 1,
     },
     {
       name: "ui",
