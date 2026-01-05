@@ -312,7 +312,8 @@ export default function NextCycleSection({ next }: { next: NextCycle | null }) {
 
             // Back-compat fallbacks
             if (isJingleYieldRoot) return jyUserExtra;
-            if (isRollover && rolloverType === "FULL") return effectiveCurrentPrincipal;
+            if (isRollover && rolloverType === "FULL")
+              return effectiveCurrentPrincipal;
             return Number(participation.amountIsk);
           })();
 
@@ -407,7 +408,9 @@ export default function NextCycleSection({ next }: { next: NextCycle | null }) {
                               <span className="font-semibold text-foreground">
                                 {formatIsk(totalInvestedIsk)} ISK
                               </span>{" "}
-                              <span className="text-muted-foreground">/</span>{" "}
+                              <span className="text-muted-foreground">
+                                /
+                              </span>{" "}
                             </>
                           )}
                           <span className="font-semibold">

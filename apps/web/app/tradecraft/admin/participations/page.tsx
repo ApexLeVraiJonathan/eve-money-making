@@ -359,8 +359,8 @@ export default function ParticipationsPage() {
                 All Participants
               </CardTitle>
               <CardDescription>
-                Current participation status grouped by cycle ({participations.length}{" "}
-                total)
+                Current participation status grouped by cycle (
+                {participations.length} total)
               </CardDescription>
             </div>
             <div className="flex flex-col items-end gap-2">
@@ -434,7 +434,8 @@ export default function ParticipationsPage() {
                           <div className="space-y-0.5">
                             <div className="flex items-center gap-2">
                               <div className="font-medium">
-                                {c.cycleName ?? `Cycle ${c.cycleId.substring(0, 8)}`}
+                                {c.cycleName ??
+                                  `Cycle ${c.cycleId.substring(0, 8)}`}
                               </div>
                               {statusBadge}
                             </div>
@@ -471,7 +472,9 @@ export default function ParticipationsPage() {
                               <th className="text-left p-3 font-medium">
                                 Character
                               </th>
-                              <th className="text-left p-3 font-medium">Type</th>
+                              <th className="text-left p-3 font-medium">
+                                Type
+                              </th>
                               <th className="text-right p-3 font-medium">
                                 Amount
                               </th>
@@ -502,7 +505,9 @@ export default function ParticipationsPage() {
                                 <td className="p-3 text-right font-mono text-xs">
                                   {formatIsk(p.amountIsk)} ISK
                                 </td>
-                                <td className="p-3">{getStatusBadge(p.status)}</td>
+                                <td className="p-3">
+                                  {getStatusBadge(p.status)}
+                                </td>
                                 <td className="p-3">
                                   {p.walletJournalId ? (
                                     <Badge
@@ -518,7 +523,8 @@ export default function ParticipationsPage() {
                                     >
                                       Pending
                                     </Badge>
-                                  ) : p.status === "OPTED_OUT" && !p.refundedAt ? (
+                                  ) : p.status === "OPTED_OUT" &&
+                                    !p.refundedAt ? (
                                     <Badge
                                       variant="outline"
                                       className="bg-red-500/10 text-red-600 text-xs"
@@ -823,7 +829,9 @@ export default function ParticipationsPage() {
                     {needsPayout.map((p) => {
                       const investment = parseFloat(p.amountIsk);
                       const paidOutNow = parseFloat(p.payoutAmountIsk ?? "0");
-                      const rolledOver = parseFloat(p.rolloverDeductedIsk ?? "0");
+                      const rolledOver = parseFloat(
+                        p.rolloverDeductedIsk ?? "0",
+                      );
                       const totalResult = paidOutNow + rolledOver;
                       const profitShare = totalResult - investment;
                       const returnPct =

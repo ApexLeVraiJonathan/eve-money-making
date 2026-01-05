@@ -257,7 +257,8 @@ export default function OptInDialog(props: OptInDialogProps) {
                       } ${
                         !useRollover &&
                         maxParticipation &&
-                        amount > Number(maxParticipation.effectivePrincipalCapIsk)
+                        amount >
+                          Number(maxParticipation.effectivePrincipalCapIsk)
                           ? "border-red-500 focus-visible:ring-red-500"
                           : ""
                       }`}
@@ -276,7 +277,8 @@ export default function OptInDialog(props: OptInDialogProps) {
                   )}
                   {!useRollover &&
                     maxParticipation &&
-                    amount > Number(maxParticipation.effectivePrincipalCapIsk) && (
+                    amount >
+                      Number(maxParticipation.effectivePrincipalCapIsk) && (
                       <div className="flex items-start gap-2 rounded-md bg-red-50 dark:bg-red-950/20 p-3 text-sm text-red-600 dark:text-red-400">
                         <svg
                           xmlns="http://www.w3.org/2000/svg"
@@ -297,8 +299,7 @@ export default function OptInDialog(props: OptInDialogProps) {
                           <strong>
                             {maxParticipation.effectivePrincipalCapB}B ISK
                           </strong>
-                          .
-                          Please reduce the amount.
+                          . Please reduce the amount.
                         </div>
                       </div>
                     )}
@@ -340,8 +341,10 @@ export default function OptInDialog(props: OptInDialogProps) {
                     </span>
                   </div>
                   <div className="text-xs text-muted-foreground mt-2">
-                    Principal cap limits how much of <span className="text-foreground">your own money</span>{" "}
-                    you can add over time. Maximum cap limits how much can stay invested; excess interest is paid out.
+                    Principal cap limits how much of{" "}
+                    <span className="text-foreground">your own money</span> you
+                    can add over time. Maximum cap limits how much can stay
+                    invested; excess interest is paid out.
                   </div>
                 </div>
               )}
@@ -552,7 +555,8 @@ export default function OptInDialog(props: OptInDialogProps) {
                     amount <= 0 ||
                     (!useRollover &&
                       maxParticipation &&
-                      amount > Number(maxParticipation.effectivePrincipalCapIsk)) ||
+                      amount >
+                        Number(maxParticipation.effectivePrincipalCapIsk)) ||
                     (useRollover &&
                       rolloverType === "CUSTOM_AMOUNT" &&
                       customRolloverAmount >

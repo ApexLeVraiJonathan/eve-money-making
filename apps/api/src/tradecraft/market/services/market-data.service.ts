@@ -173,4 +173,70 @@ export class MarketDataService {
       stationName: t.station.name,
     }));
   }
+
+  /**
+   * Bulk fetch latest market trade data for many (typeId, locationId) pairs.
+   *
+   * This is used by pricing/undercut tooling to avoid N queries when
+   * determining the "daily units sold" heuristic.
+   */
+  async getLatestMarketTradesForPairs(
+    pairs: Array<{ typeId: number; locationId: number }>,
+  ): Promise<
+    Map<
+      string,
+      {
+        scanDate: Date;
+        high: number;
+        low: number;
+        avg: number;
+        amount: number;
+      }
+    >
+  > {
+    const out = new Map<
+      string,
+      { scanDate: Date; high: number; low: number; avg: number; amount: number }
+    >();
+    if (!pairs.length) return out;
+
+    const typeIds = Array.from(new Set(pairs.map((p) => p.typeId)));
+    const locationIds = Array.from(new Set(pairs.map((p) => p.locationId)));
+    const wanted = new Set(pairs.map((p) => `${p.locationId}:${p.typeId}`));
+
+    // Fetch recent rows for the cartesian filter, then keep only the latest per pair.
+    const rows = await this.prisma.marketOrderTradeDaily.findMany({
+      where: {
+        isBuyOrder: false,
+        typeId: { in: typeIds },
+        locationId: { in: locationIds },
+      },
+      orderBy: [{ scanDate: 'desc' }],
+      select: {
+        typeId: true,
+        locationId: true,
+        scanDate: true,
+        high: true,
+        low: true,
+        avg: true,
+        amount: true,
+      },
+    });
+
+    for (const r of rows) {
+      const key = `${r.locationId}:${r.typeId}`;
+      if (!wanted.has(key)) continue;
+      if (out.has(key)) continue; // rows are scanDate desc; first hit is latest
+      out.set(key, {
+        scanDate: r.scanDate,
+        high: Number(r.high),
+        low: Number(r.low),
+        avg: Number(r.avg),
+        amount: r.amount,
+      });
+      if (out.size >= wanted.size) break;
+    }
+
+    return out;
+  }
 }

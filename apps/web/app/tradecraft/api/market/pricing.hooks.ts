@@ -58,6 +58,7 @@ export function useUndercutCheck() {
       groupingMode?: "perOrder" | "perCharacter" | "global";
       minUndercutVolumeRatio?: number;
       minUndercutUnits?: number;
+      expiryRefreshDays?: number;
     }) =>
       client.post<UndercutCheckResponse>("/pricing/undercut-check", data ?? {}),
   });

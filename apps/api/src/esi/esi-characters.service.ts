@@ -71,6 +71,7 @@ export class EsiCharactersService {
       order_id: number;
       type_id: number;
       is_buy_order: boolean;
+      duration?: number;
       price: number;
       volume_remain: number;
       volume_total: number;
@@ -85,6 +86,7 @@ export class EsiCharactersService {
         order_id: number;
         type_id: number;
         is_buy_order: boolean;
+        duration?: number;
         price: number;
         volume_remain: number;
         volume_total: number;
@@ -108,6 +110,7 @@ export class EsiCharactersService {
       order_id: number;
       type_id: number;
       is_buy_order: boolean;
+      duration?: number;
       price: number;
       volume_remain: number;
       volume_total: number;
@@ -121,6 +124,7 @@ export class EsiCharactersService {
       order_id: number;
       type_id: number;
       is_buy_order: boolean;
+      duration?: number;
       price: number;
       volume_remain: number;
       volume_total: number;
@@ -135,6 +139,7 @@ export class EsiCharactersService {
         order_id: number;
         type_id: number;
         is_buy_order: boolean;
+        duration?: number;
         price: number;
         volume_remain: number;
         volume_total: number;
@@ -161,6 +166,7 @@ export class EsiCharactersService {
           order_id: number;
           type_id: number;
           is_buy_order: boolean;
+          duration?: number;
           price: number;
           volume_remain: number;
           volume_total: number;

@@ -77,4 +77,15 @@ export class UndercutCheckRequest {
   @IsInt()
   @Min(0)
   minUndercutUnits?: number;
+
+  @ApiPropertyOptional({
+    description:
+      'If > 0, orders whose expiry is within this many days will be included for a low-impact "refresh" reprice even if not currently undercut. Default: 2',
+    example: 2,
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  expiryRefreshDays?: number;
 }

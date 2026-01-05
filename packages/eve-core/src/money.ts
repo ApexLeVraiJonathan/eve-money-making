@@ -56,3 +56,19 @@ export function nextCheaperTick(price: number): number {
   // If already exactly on tick, step one tick down; else snapping down already made it strictly cheaper
   return snapped === price ? Math.max(0, snapped - tick) : snapped;
 }
+
+/**
+ * Return the smallest valid market price tick strictly greater than `price`.
+ *
+ * Useful for building "laddered" sell orders (one tick apart) without
+ * accidentally producing an invalid tick around magnitude boundaries.
+ */
+export function nextHigherTick(price: number): number {
+  if (!Number.isFinite(price) || price <= 0) return 0;
+  const snapped = snapDownToTick(price);
+  const tick = tickSizeFor(price);
+  const candidate = snapped < price ? snapped + tick : price + tick;
+  // Ensure we return a valid tick for the candidate's magnitude.
+  const candidateTick = tickSizeFor(candidate);
+  return Math.round(candidate / candidateTick) * candidateTick;
+}

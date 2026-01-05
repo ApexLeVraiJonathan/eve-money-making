@@ -140,6 +140,7 @@ export class PricingService {
     groupingMode?: 'perOrder' | 'perCharacter' | 'global';
     minUndercutVolumeRatio?: number;
     minUndercutUnits?: number;
+    expiryRefreshDays?: number;
   }): Promise<
     Array<{
       characterId: number;
@@ -154,6 +155,10 @@ export class PricingService {
         currentPrice: number;
         competitorLowest: number;
         suggestedNewPriceTicked: number;
+        expiresAt?: string;
+        expiresInHours?: number;
+        isExpiringSoon?: boolean;
+        reasons?: Array<'undercut' | 'expiry' | 'ladder'>;
         estimatedMarginPercentAfter?: number;
         estimatedProfitIskAfter?: number;
         wouldBeLossAfter?: boolean;
@@ -166,6 +171,7 @@ export class PricingService {
     const groupingMode = params.groupingMode ?? 'perOrder';
     const minUndercutVolumeRatio = params.minUndercutVolumeRatio ?? 0.15; // 15% default
     const minUndercutUnits = params.minUndercutUnits ?? 1;
+    const expiryRefreshDays = params.expiryRefreshDays ?? 2;
 
     // Determine characters to check - default to logistics sellers
     const characters = params.characterIds?.length
@@ -218,6 +224,7 @@ export class PricingService {
       volume_total: number;
       location_id: number;
       issued?: string;
+      duration?: number;
     }> = [];
 
     ordersResults.forEach((result, idx) => {
@@ -235,6 +242,7 @@ export class PricingService {
             volume_total: o.volume_total,
             location_id: o.location_id,
             issued: o.issued,
+            duration: o.duration,
           });
         }
       } else {
@@ -310,7 +318,7 @@ export class PricingService {
       byStationType.set(key, list);
     }
 
-    // Get lowest competitor sells per station/type via regional feed filtered to station
+    // Output containers
     const results: Array<{
       characterId: number;
       characterName: string;
@@ -324,6 +332,13 @@ export class PricingService {
         currentPrice: number;
         competitorLowest: number;
         suggestedNewPriceTicked: number;
+        expiresAt?: string;
+        expiresInHours?: number;
+        isExpiringSoon?: boolean;
+        reasons?: Array<'undercut' | 'expiry' | 'ladder'>;
+        estimatedMarginPercentAfter?: number;
+        estimatedProfitIskAfter?: number;
+        wouldBeLossAfter?: boolean;
       }>;
     }> = [];
 
@@ -333,7 +348,6 @@ export class PricingService {
       ? await this.gameData.getTypeNames(typeIds)
       : new Map<number, string>();
 
-    // For each station/type, check if any of our orders is not the lowest
     const updatesByCharStation = new Map<
       string,
       Array<{
@@ -344,80 +358,96 @@ export class PricingService {
         currentPrice: number;
         competitorLowest: number;
         suggestedNewPriceTicked: number;
+        expiresAt?: string;
+        expiresInHours?: number;
+        isExpiringSoon?: boolean;
+        reasons?: Array<'undercut' | 'expiry' | 'ladder'>;
+        estimatedMarginPercentAfter?: number;
+        estimatedProfitIskAfter?: number;
+        wouldBeLossAfter?: boolean;
       }>
     >();
 
-    // Apply grouping mode: select primary orders per group
-    const ordersToProcess = new Map<
+    const nowMs = Date.now();
+    const MS_PER_HOUR = 60 * 60 * 1000;
+    const MS_PER_DAY = 24 * MS_PER_HOUR;
+
+    const computeExpiryMeta = (o: (typeof ourOrders)[number]) => {
+      if (!o.issued || !o.duration || o.duration <= 0) return null;
+      const issuedMs = Date.parse(o.issued);
+      if (!Number.isFinite(issuedMs)) return null;
+      const expiresAtMs = issuedMs + o.duration * MS_PER_DAY;
+      const expiresInMs = expiresAtMs - nowMs;
+      const expiresInHours = expiresInMs / MS_PER_HOUR;
+      const isExpiringSoon =
+        expiryRefreshDays > 0 && expiresInMs <= expiryRefreshDays * MS_PER_DAY;
+      return {
+        expiresAt: new Date(expiresAtMs).toISOString(),
+        expiresInHours,
+        isExpiringSoon,
+      };
+    };
+
+    const findTargetCompetitorPrice = (params2: {
+      stationSells: Array<{ price: number; volume: number }>;
+      ourPrices: Set<number>;
+      ourPrice: number;
+      volumeTotal: number;
+    }): number | null => {
+      const volumeThreshold = Math.max(
+        minUndercutVolumeRatio * params2.volumeTotal,
+        minUndercutUnits,
+      );
+
+      let cumulativeCompetitorVolume = 0;
+      for (const s of params2.stationSells) {
+        if (s.price >= params2.ourPrice) break;
+        if (params2.ourPrices.has(s.price)) continue;
+        cumulativeCompetitorVolume += s.volume;
+        if (cumulativeCompetitorVolume >= volumeThreshold) return s.price;
+      }
+      return null;
+    };
+
+    const computeProfitability = (params2: {
+      stationId: number;
+      typeId: number;
+      remaining: number;
+      suggestedPrice: number;
+    }): {
+      estimatedMarginPercentAfter?: number;
+      estimatedProfitIskAfter?: number;
+      wouldBeLossAfter?: boolean;
+    } => {
+      const lineKey = `${params2.stationId}:${params2.typeId}`;
+      const lineData = cycleLineMap.get(lineKey);
+      if (!lineData || lineData.unitCost <= 0) return {};
+      const feeDefaults = AppConfig.arbitrage().fees;
+      const effectiveSellPrice = getEffectiveSell(
+        params2.suggestedPrice,
+        feeDefaults,
+      );
+      const profitPerUnit = effectiveSellPrice - lineData.unitCost;
+      return {
+        estimatedMarginPercentAfter: (profitPerUnit / lineData.unitCost) * 100,
+        estimatedProfitIskAfter: profitPerUnit * params2.remaining,
+        wouldBeLossAfter: profitPerUnit < 0,
+      };
+    };
+
+    // Fetch competitor orders in parallel using worker pool and cache by station/type
+    const stationTypeEntries = Array.from(byStationType.entries());
+    const stationSellsByKey = new Map<
       string,
-      Array<(typeof ourOrders)[number]>
+      Array<{ price: number; volume: number }>
     >();
-
-    if (groupingMode === 'perOrder') {
-      // Keep all orders as-is
-      ordersToProcess.set('all', ourOrders);
-    } else if (groupingMode === 'perCharacter') {
-      // Group by (characterId, stationId, typeId) and pick primary order per group
-      const grouped = new Map<string, Array<(typeof ourOrders)[number]>>();
-      for (const o of ourOrders) {
-        const key = `${o.characterId}:${o.location_id}:${o.type_id}`;
-        const list = grouped.get(key) ?? [];
-        list.push(o);
-        grouped.set(key, list);
-      }
-      const primaryOrders: Array<(typeof ourOrders)[number]> = [];
-      for (const orders of grouped.values()) {
-        // Pick order with highest volume_remain (or highest value)
-        const primary = orders.reduce((best, curr) =>
-          curr.volume_remain > best.volume_remain ? curr : best,
-        );
-        primaryOrders.push(primary);
-      }
-      ordersToProcess.set('all', primaryOrders);
-    } else if (groupingMode === 'global') {
-      // Group by (stationId, typeId) and pick primary order globally
-      const grouped = new Map<string, Array<(typeof ourOrders)[number]>>();
-      for (const o of ourOrders) {
-        const key = `${o.location_id}:${o.type_id}`;
-        const list = grouped.get(key) ?? [];
-        list.push(o);
-        grouped.set(key, list);
-      }
-      const primaryOrders: Array<(typeof ourOrders)[number]> = [];
-      for (const orders of grouped.values()) {
-        // Pick order with highest volume_remain
-        const primary = orders.reduce((best, curr) =>
-          curr.volume_remain > best.volume_remain ? curr : best,
-        );
-        primaryOrders.push(primary);
-      }
-      ordersToProcess.set('all', primaryOrders);
-    }
-
-    const processedOrders = ordersToProcess.get('all') ?? [];
-
-    // Re-build byStationType from processed orders
-    const processedByStationType = new Map<
-      string,
-      Array<(typeof ourOrders)[number]>
-    >();
-    for (const o of processedOrders) {
-      const key = `${o.location_id}:${o.type_id}`;
-      const list = processedByStationType.get(key) ?? [];
-      list.push(o);
-      processedByStationType.set(key, list);
-    }
-
-    // Fetch competitor orders in parallel using worker pool
-    const entries = Array.from(processedByStationType.entries());
-    let idx = 0;
+    let fetchIdx = 0;
 
     const worker = async () => {
       for (;;) {
-        const current = idx++;
-        if (current >= entries.length) break;
-
-        const [key, orders] = entries[current];
+        const current = fetchIdx++;
+        if (current >= stationTypeEntries.length) break;
+        const [key] = stationTypeEntries[current];
         const [stationIdStr, typeIdStr] = key.split(':');
         const stationId = Number(stationIdStr);
         const typeId = Number(typeIdStr);
@@ -431,86 +461,11 @@ export class PricingService {
           side: 'sell',
         });
         stationSells.sort((a, b) => a.price - b.price);
-        if (!stationSells.length) continue;
-
-        // Compute lowest price that is not one of our orders, respecting volume thresholds
-        const ourPrices = new Set(orders.map((o) => o.price));
-
-        for (const o of orders) {
-          // Threshold for this order based on original volume
-          const volumeThreshold = Math.max(
-            minUndercutVolumeRatio * o.volume_total,
-            minUndercutUnits,
-          );
-
-          // Calculate competitor volume below our price
-          let cumulativeCompetitorVolume = 0;
-          let targetCompetitorPrice: number | null = null;
-
-          for (const s of stationSells) {
-            if (s.price >= o.price) break; // Only consider cheaper orders
-            if (!ourPrices.has(s.price)) {
-              cumulativeCompetitorVolume += s.volume;
-
-              if (cumulativeCompetitorVolume >= volumeThreshold) {
-                targetCompetitorPrice = s.price;
-                break;
-              }
-            }
-          }
-
-          // If no price meets threshold, skip this order
-          if (targetCompetitorPrice === null) {
-            // No competitor price level reached the threshold.
-            continue;
-          }
-
-          // Already cheapest at the target competitor price
-          if (o.price <= targetCompetitorPrice) {
-            continue;
-          }
-
-          const suggested = nextCheaperTick(targetCompetitorPrice);
-          const itemName = typeNameById.get(o.type_id) ?? String(o.type_id);
-
-          // Compute profitability if cycle line data is available
-          let estimatedMarginPercentAfter: number | undefined;
-          let estimatedProfitIskAfter: number | undefined;
-          let wouldBeLossAfter: boolean | undefined;
-
-          const lineKey = `${stationId}:${o.type_id}`;
-          const lineData = cycleLineMap.get(lineKey);
-          if (lineData && lineData.unitCost > 0) {
-            const feeDefaults = AppConfig.arbitrage().fees;
-            const effectiveSellPrice = getEffectiveSell(suggested, feeDefaults);
-            const profitPerUnit = effectiveSellPrice - lineData.unitCost;
-            estimatedMarginPercentAfter =
-              (profitPerUnit / lineData.unitCost) * 100;
-            estimatedProfitIskAfter = profitPerUnit * o.volume_remain;
-            wouldBeLossAfter = profitPerUnit < 0;
-          }
-
-          const entry = {
-            orderId: o.order_id,
-            typeId: o.type_id,
-            itemName,
-            remaining: o.volume_remain,
-            currentPrice: o.price,
-            competitorLowest: targetCompetitorPrice,
-            suggestedNewPriceTicked: suggested,
-            estimatedMarginPercentAfter,
-            estimatedProfitIskAfter,
-            wouldBeLossAfter,
-          };
-          const groupKey = `${o.characterId}:${stationId}`;
-          const list = updatesByCharStation.get(groupKey) ?? [];
-          list.push(entry);
-          updatesByCharStation.set(groupKey, list);
-        }
+        stationSellsByKey.set(key, stationSells);
       }
     };
 
-    const workerCount = Math.min(8, entries.length);
+    const workerCount = Math.min(8, stationTypeEntries.length);
     const fetchCompetitorsStart = Date.now();
 
     await this.esi.withMaxConcurrency(workerCount * 2, async () => {
@@ -518,6 +473,219 @@ export class PricingService {
     });
 
     const fetchCompetitorsTime = Date.now();
+
+    // Bulk daily volume lookup (latest scanned day)
+    const pairs = Array.from(byStationType.keys()).map((k) => {
+      const [stationIdStr, typeIdStr] = k.split(':');
+      return { locationId: Number(stationIdStr), typeId: Number(typeIdStr) };
+    });
+    const latestTradeByKey = await this.marketData.getLatestMarketTradesForPairs(
+      pairs,
+    );
+
+    const pushUpdate = (params2: {
+      order: (typeof ourOrders)[number];
+      stationId: number;
+      typeId: number;
+      itemName: string;
+      competitorLowest: number;
+      suggestedNewPriceTicked: number;
+      reasons: Array<'undercut' | 'expiry' | 'ladder'>;
+      expiryMeta: ReturnType<typeof computeExpiryMeta> | null;
+    }) => {
+      const profit = computeProfitability({
+        stationId: params2.stationId,
+        typeId: params2.typeId,
+        remaining: params2.order.volume_remain,
+        suggestedPrice: params2.suggestedNewPriceTicked,
+      });
+
+      const entry = {
+        orderId: params2.order.order_id,
+        typeId: params2.typeId,
+        itemName: params2.itemName,
+        remaining: params2.order.volume_remain,
+        currentPrice: params2.order.price,
+        competitorLowest: params2.competitorLowest,
+        suggestedNewPriceTicked: params2.suggestedNewPriceTicked,
+        expiresAt: params2.expiryMeta?.expiresAt,
+        expiresInHours: params2.expiryMeta?.expiresInHours,
+        isExpiringSoon: params2.expiryMeta?.isExpiringSoon,
+        reasons: params2.reasons,
+        ...profit,
+      };
+
+      const groupKey = `${params2.order.characterId}:${params2.stationId}`;
+      const list = updatesByCharStation.get(groupKey) ?? [];
+      list.push(entry);
+      updatesByCharStation.set(groupKey, list);
+    };
+
+    const evaluateOrderForUpdate = (params2: {
+      order: (typeof ourOrders)[number];
+      stationId: number;
+      typeId: number;
+      stationSells: Array<{ price: number; volume: number }> | undefined;
+      ourPrices: Set<number>;
+    }): {
+      targetCompetitorPrice: number | null;
+      suggestedPrice: number | null;
+      reasons: Array<'undercut' | 'expiry'>;
+      expiryMeta: ReturnType<typeof computeExpiryMeta> | null;
+    } => {
+      const expiryMeta = computeExpiryMeta(params2.order);
+      const reasons: Array<'undercut' | 'expiry'> = [];
+
+      let targetCompetitorPrice: number | null = null;
+      let suggestedPrice: number | null = null;
+
+      if (params2.stationSells?.length) {
+        targetCompetitorPrice = findTargetCompetitorPrice({
+          stationSells: params2.stationSells,
+          ourPrices: params2.ourPrices,
+          ourPrice: params2.order.price,
+          volumeTotal: params2.order.volume_total,
+        });
+        if (targetCompetitorPrice !== null && params2.order.price > targetCompetitorPrice) {
+          const suggested = nextCheaperTick(targetCompetitorPrice);
+          if (suggested > 0) {
+            suggestedPrice = suggested;
+            reasons.push('undercut');
+          }
+        }
+      }
+
+      // Expiry refresh trigger (low-impact: 1 tick cheaper than our current)
+      if (
+        expiryMeta?.isExpiringSoon &&
+        (suggestedPrice === null || suggestedPrice <= 0)
+      ) {
+        const refresh = nextCheaperTick(params2.order.price);
+        if (refresh > 0 && refresh !== params2.order.price) {
+          suggestedPrice = refresh;
+          reasons.push('expiry');
+          targetCompetitorPrice ??= params2.order.price;
+        }
+      }
+
+      return { targetCompetitorPrice, suggestedPrice, reasons, expiryMeta };
+    };
+
+    if (groupingMode === 'perOrder') {
+      for (const o of ourOrders) {
+        const stationId = o.location_id;
+        const typeId = o.type_id;
+        const stationTypeKey = `${stationId}:${typeId}`;
+        const stationSells = stationSellsByKey.get(stationTypeKey);
+        const ourPrices = new Set(
+          (byStationType.get(stationTypeKey) ?? []).map((x) => x.price),
+        );
+        const itemName = typeNameById.get(typeId) ?? String(typeId);
+
+        const evalRes = evaluateOrderForUpdate({
+          order: o,
+          stationId,
+          typeId,
+          stationSells,
+          ourPrices,
+        });
+        if (!evalRes.suggestedPrice) continue;
+        pushUpdate({
+          order: o,
+          stationId,
+          typeId,
+          itemName,
+          competitorLowest: evalRes.targetCompetitorPrice ?? o.price,
+          suggestedNewPriceTicked: evalRes.suggestedPrice,
+          reasons: evalRes.reasons,
+          expiryMeta: evalRes.expiryMeta,
+        });
+      }
+    } else {
+      // perCharacter / global: encourage consolidation by focusing on lowest-remaining orders
+      const groupMap = new Map<string, Array<(typeof ourOrders)[number]>>();
+      for (const o of ourOrders) {
+        const groupKey =
+          groupingMode === 'perCharacter'
+            ? `${o.characterId}:${o.location_id}:${o.type_id}`
+            : `${o.location_id}:${o.type_id}`;
+        const list = groupMap.get(groupKey) ?? [];
+        list.push(o);
+        groupMap.set(groupKey, list);
+      }
+
+      for (const orders of groupMap.values()) {
+        orders.sort((a, b) => a.volume_remain - b.volume_remain);
+        const first = orders[0];
+        const second = orders[1];
+        const stationId = first.location_id;
+        const typeId = first.type_id;
+        const stationTypeKey = `${stationId}:${typeId}`;
+        const stationSells = stationSellsByKey.get(stationTypeKey);
+        const ourPrices = new Set(
+          (byStationType.get(stationTypeKey) ?? []).map((x) => x.price),
+        );
+        const itemName = typeNameById.get(typeId) ?? String(typeId);
+
+        const firstEval = evaluateOrderForUpdate({
+          order: first,
+          stationId,
+          typeId,
+          stationSells,
+          ourPrices,
+        });
+        if (!firstEval.suggestedPrice) continue;
+
+        const dailyKey = `${stationId}:${typeId}`;
+        const dailyUnitsSold = latestTradeByKey.get(dailyKey)?.amount ?? 0;
+        const shouldLadderSecond =
+          !!second && dailyUnitsSold > first.volume_remain;
+
+        if (shouldLadderSecond) {
+          const baseHigh =
+            firstEval.targetCompetitorPrice !== null &&
+            firstEval.reasons.includes('undercut')
+              ? nextCheaperTick(firstEval.targetCompetitorPrice)
+              : nextCheaperTick(first.price);
+          const baseLow = nextCheaperTick(baseHigh);
+
+          pushUpdate({
+            order: first,
+            stationId,
+            typeId,
+            itemName,
+            competitorLowest: firstEval.targetCompetitorPrice ?? first.price,
+            suggestedNewPriceTicked:
+              baseLow > 0 ? baseLow : firstEval.suggestedPrice,
+            reasons: Array.from(new Set([...firstEval.reasons, 'ladder'])),
+            expiryMeta: firstEval.expiryMeta,
+          });
+
+          pushUpdate({
+            order: second!,
+            stationId,
+            typeId,
+            itemName,
+            competitorLowest: firstEval.targetCompetitorPrice ?? second!.price,
+            suggestedNewPriceTicked:
+              baseHigh > 0 ? baseHigh : nextCheaperTick(second!.price),
+            reasons: ['ladder'],
+            expiryMeta: computeExpiryMeta(second!),
+          });
+        } else {
+          pushUpdate({
+            order: first,
+            stationId,
+            typeId,
+            itemName,
+            competitorLowest: firstEval.targetCompetitorPrice ?? first.price,
+            suggestedNewPriceTicked: firstEval.suggestedPrice,
+            reasons: firstEval.reasons,
+            expiryMeta: firstEval.expiryMeta,
+          });
+        }
+      }
+    }
 
     // Build grouped, sorted output
     for (const [key, updates] of updatesByCharStation) {
@@ -537,7 +705,6 @@ export class PricingService {
       });
     }
 
-    // Stable order by character then station
     results.sort((a, b) =>
       a.characterId !== b.characterId
         ? a.characterId - b.characterId
@@ -546,10 +713,10 @@ export class PricingService {
 
     const totalTime = Date.now();
     console.log(
-      `UndercutCheck completed (mode=${groupingMode}): ${results.length} updates across ${processedByStationType.size} station/type combos | ` +
+      `UndercutCheck completed (mode=${groupingMode}): ${results.length} groups | ` +
         `Times: setup=${setupTime - startTime}ms, fetchOrders=${fetchOrdersTime - setupTime}ms, ` +
         `filter=${filterTime - fetchOrdersTime}ms, fetchCompetitors=${fetchCompetitorsTime - fetchCompetitorsStart}ms, ` +
-        `total=${totalTime - startTime}ms | Processed ${processedOrders.length} orders (from ${ourOrders.length} total)`,
+        `total=${totalTime - startTime}ms | station/type=${byStationType.size}, orders=${ourOrders.length}`,
     );
 
     return results;

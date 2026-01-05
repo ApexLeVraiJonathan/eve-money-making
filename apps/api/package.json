@@ -99,7 +99,12 @@
     "rootDir": ".",
     "testRegex": ".*\\.spec\\.ts$",
     "transform": {
-      "^.+\\.(t|j)s$": "ts-jest"
+      "^.+\\.(t|j)s$": [
+        "ts-jest",
+        {
+          "tsconfig": "<rootDir>/tsconfig.jest.json"
+        }
+      ]
     },
     "collectCoverageFrom": [
       "**/*.(t|j)s"
@@ -118,13 +123,18 @@
       "^@app/arbitrage-packager(|/.*)$": "<rootDir>/libs/arbitrage-packager/src/$1",
       "^@app/lib(|/.*)$": "<rootDir>/libs/lib/src/$1",
       "^@shared/data-import(|/.*)$": "<rootDir>/libs/data-import/src/$1",
+      "^@eve/eve-core$": "<rootDir>/../../packages/eve-core/src/index.ts",
+      "^@eve/eve-core/(.*)$": "<rootDir>/../../packages/eve-core/src/$1.ts",
       "^@api/common/(.*)$": "<rootDir>/src/common/$1",
       "^@api/characters/(.*)$": "<rootDir>/src/characters/$1",
+      "^@api/notifications/(.*)$": "<rootDir>/src/notifications/$1",
       "^@api/esi/(.*)$": "<rootDir>/src/esi/$1",
       "^@api/game-data/(.*)$": "<rootDir>/src/game-data/$1",
       "^@api/prisma/(.*)$": "<rootDir>/src/prisma/$1",
       "^@api/support/(.*)$": "<rootDir>/src/support/$1",
-      "^@api/tradecraft/(.*)$": "<rootDir>/src/tradecraft/$1"
+      "^@api/tradecraft/(.*)$": "<rootDir>/src/tradecraft/$1",
+      "^@api/skill-plans/(.*)$": "<rootDir>/src/skill-plans/$1",
+      "^@api/skill-farm/(.*)$": "<rootDir>/src/skill-farm/$1"
     }
   }
 }

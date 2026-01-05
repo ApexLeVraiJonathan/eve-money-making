@@ -51,16 +51,23 @@ export type TradecraftUserAdminRow = {
 /**
  * List users that have used Tradecraft (admin only).
  */
-export function useTradecraftUsers(pagination?: { limit?: number; offset?: number }) {
+export function useTradecraftUsers(pagination?: {
+  limit?: number;
+  offset?: number;
+}) {
   const client = useApiClient();
   return useAuthenticatedQuery({
     queryKey: qk.users.tradecraft(pagination),
     queryFn: () => {
       const params = new URLSearchParams();
-      if (pagination?.limit != null) params.set("limit", String(pagination.limit));
-      if (pagination?.offset != null) params.set("offset", String(pagination.offset));
+      if (pagination?.limit != null)
+        params.set("limit", String(pagination.limit));
+      if (pagination?.offset != null)
+        params.set("offset", String(pagination.offset));
       const q = params.toString() ? `?${params.toString()}` : "";
-      return client.get<TradecraftUserAdminRow[]>(`/admin/users/tradecraft${q}`);
+      return client.get<TradecraftUserAdminRow[]>(
+        `/admin/users/tradecraft${q}`,
+      );
     },
   });
 }

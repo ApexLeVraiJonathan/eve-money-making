@@ -729,6 +729,20 @@ export interface UndercutUpdate {
   currentPrice: number;
   competitorLowest: number;
   suggestedNewPriceTicked: number;
+  /**
+   * When present, indicates the order is near expiry and this update may be
+   * a "refresh" even if not currently undercut.
+   */
+  expiresAt?: string;
+  expiresInHours?: number;
+  isExpiringSoon?: boolean;
+  /**
+   * High-level reasons why this order is included.
+   * - undercut: competitor volume below our price triggered a reprice
+   * - expiry: order is close to expiry and we want to refresh it
+   * - ladder: second order included to keep enough volume near top-of-book
+   */
+  reasons?: Array<'undercut' | 'expiry' | 'ladder'>;
   estimatedMarginPercentAfter?: number;
   estimatedProfitIskAfter?: number;
   wouldBeLossAfter?: boolean;
