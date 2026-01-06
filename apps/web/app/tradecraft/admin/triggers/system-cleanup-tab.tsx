@@ -10,7 +10,7 @@ import {
   CardTitle,
 } from "@eve/ui";
 import { TabsContent } from "@eve/ui";
-import { toast } from "sonner";
+import { toast } from "@eve/ui";
 import { Loader2, Trash2, Shield } from "lucide-react";
 import { useCleanupEsiCache, useCleanupOAuthState } from "../../api";
 

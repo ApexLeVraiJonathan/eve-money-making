@@ -10,11 +10,13 @@ import {
   CardTitle,
   Button,
   Badge,
+  cn,
   Separator,
   Skeleton,
   Checkbox,
+  Switch,
+  toast,
 } from "@eve/ui";
-import { toast } from "sonner";
 import {
   Bell,
   BellOff,
@@ -29,10 +31,6 @@ import {
   useUpdateNotificationPreferences,
   useDisconnectDiscord,
   useSendTestNotification,
-  useSendTradecraftCyclePlannedPreview,
-  useSendTradecraftCycleStartedPreview,
-  useSendTradecraftCycleResultsPreview,
-  useSendTradecraftPayoutSentPreview,
   startDiscordConnect,
   type NotificationPreferenceDto,
 } from "@/app/tradecraft/api/notifications.hooks";
@@ -154,15 +152,18 @@ export default function NotificationSettingsPage() {
   const updatePrefs = useUpdateNotificationPreferences();
   const disconnectDiscord = useDisconnectDiscord();
   const sendTest = useSendTestNotification();
-  const sendTradecraftPlanned = useSendTradecraftCyclePlannedPreview();
-  const sendTradecraftStarted = useSendTradecraftCycleStartedPreview();
-  const sendTradecraftResults = useSendTradecraftCycleResultsPreview();
-  const sendTradecraftPayout = useSendTradecraftPayoutSentPreview();
 
   const [localPrefs, setLocalPrefs] = React.useState<
     NotificationPreferenceDto[]
   >([]);
   const [autoEnableDone, setAutoEnableDone] = React.useState(false);
+  const [lastSavedAt, setLastSavedAt] = React.useState<number | null>(null);
+  const [testState, setTestState] = React.useState<
+    | { kind: "idle" }
+    | { kind: "sending" }
+    | { kind: "success"; at: number }
+    | { kind: "error"; message: string }
+  >({ kind: "idle" });
 
   React.useEffect(() => {
     setLocalPrefs(preferences);
@@ -266,6 +267,23 @@ export default function NotificationSettingsPage() {
     return "indeterminate" as const;
   };
 
+  const groupStatus = React.useCallback(
+    (state: boolean | "indeterminate") => {
+      if (state === true)
+        return {
+          label: "All on",
+          className: "text-green-600 dark:text-green-400",
+        } as const;
+      if (state === "indeterminate")
+        return {
+          label: "Some",
+          className: "text-amber-600 dark:text-amber-400",
+        } as const;
+      return { label: "All off", className: "text-muted-foreground" } as const;
+    },
+    [],
+  );
+
   const toggleGroup = (
     types: readonly NotificationTypeKey[],
     value: boolean | "indeterminate",
@@ -295,6 +313,7 @@ export default function NotificationSettingsPage() {
 
       await updatePrefs.mutateAsync(localPrefs);
       await Promise.all([refetchPrefs(), refetchDiscord()]);
+      setLastSavedAt(Date.now());
 
       const enabledCount = changedPrefs.filter((p) => p.enabled).length;
       const disabledCount = changedPrefs.filter((p) => !p.enabled).length;
@@ -335,12 +354,6 @@ export default function NotificationSettingsPage() {
   const isSaving =
     updatePrefs.isPending || disconnectDiscord.isPending || sendTest.isPending;
 
-  const isSendingTradecraftPreview =
-    sendTradecraftPlanned.isPending ||
-    sendTradecraftStarted.isPending ||
-    sendTradecraftResults.isPending ||
-    sendTradecraftPayout.isPending;
-
   const hasAnyEnabled =
     localPrefs?.some((p) => p.channel === "DISCORD_DM" && p.enabled) ?? false;
 
@@ -349,7 +362,7 @@ export default function NotificationSettingsPage() {
   }, [localPrefs, preferences]);
 
   return (
-    <div className="container mx-auto max-w-4xl space-y-6 p-6 md:p-8">
+    <div className="container mx-auto max-w-5xl space-y-6 p-6 md:p-8">
       <div className="space-y-2">
         <h1 className="text-3xl font-bold tracking-tight">
           Notification Settings
@@ -484,27 +497,67 @@ export default function NotificationSettingsPage() {
                 Connect Discord above to configure notification preferences
               </div>
             ) : (
-              <div className="space-y-2">
+              <div className="grid gap-3 lg:grid-cols-2">
                 {/* Tradecraft */}
-                <div className="rounded-lg border bg-muted/10 p-2">
-                  <div className="flex items-start justify-between gap-4 px-2 py-1.5">
+                <div className="rounded-lg border border-border/70 bg-muted/10 p-2 shadow-sm">
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    aria-label="Toggle all Tradecraft notifications"
+                    onClick={() =>
+                      toggleGroup(
+                        TRADECRAFT_TYPES,
+                        getGroupState(TRADECRAFT_TYPES) === true ? false : true,
+                      )
+                    }
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        toggleGroup(
+                          TRADECRAFT_TYPES,
+                          getGroupState(TRADECRAFT_TYPES) === true
+                            ? false
+                            : true,
+                        );
+                      }
+                    }}
+                    className="flex w-full cursor-pointer items-start justify-between gap-4 rounded-md bg-muted/25 px-2 py-2 text-left transition-colors hover:bg-muted/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                  >
                     <div className="space-y-0.5">
-                      <div className="text-sm font-semibold">Tradecraft</div>
+                      <div className="flex items-center gap-2">
+                        <div className="text-sm font-semibold">Tradecraft</div>
+                        {(() => {
+                          const s = groupStatus(getGroupState(TRADECRAFT_TYPES));
+                          return (
+                            <span
+                              className={cn(
+                                "rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium",
+                                s.className,
+                              )}
+                            >
+                              {s.label}
+                            </span>
+                          );
+                        })()}
+                      </div>
                       <div className="text-xs text-muted-foreground">
                         Cycle events and payouts
                       </div>
                     </div>
-                    <Checkbox
-                      checked={getGroupState(TRADECRAFT_TYPES)}
-                      onCheckedChange={(v) =>
-                        toggleGroup(TRADECRAFT_TYPES, v as any)
+                    <Switch
+                      checked={getGroupState(TRADECRAFT_TYPES) === true}
+                      onCheckedChange={(checked) =>
+                        toggleGroup(TRADECRAFT_TYPES, checked)
                       }
-                      className="mt-0.5 h-5 w-5"
+                      onClick={(e) => e.stopPropagation()}
+                      onPointerDown={(e) => e.stopPropagation()}
+                      className="mt-0.5"
                       aria-label="Toggle all Tradecraft notifications"
                     />
                   </div>
                   <Separator className="my-2 opacity-50" />
-                  <div className="space-y-2">
+                  <div className="relative space-y-2">
+                    <div className="pointer-events-none absolute bottom-2 left-4 top-2 w-px bg-border/70" />
                     {TRADECRAFT_ITEMS.map((item, idx) => (
                       <React.Fragment key={item.type}>
                         <PreferenceRow
@@ -520,87 +573,70 @@ export default function NotificationSettingsPage() {
                     ))}
                   </div>
                   <Separator className="my-2 opacity-50" />
-                  <div className="flex flex-wrap items-center justify-between gap-2 px-2 py-1">
-                    <div className="text-xs text-muted-foreground">
-                      Send previews (to verify formatting)
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        disabled={!discord || isSendingTradecraftPreview}
-                        onClick={async () => {
-                          const res = await sendTradecraftPlanned.mutateAsync();
-                          if (res.ok) toast.success("Preview sent: Cycle planned");
-                          else toast.error(res.error ?? "Failed to send preview");
-                        }}
-                      >
-                        Planned
-                      </Button>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        disabled={!discord || isSendingTradecraftPreview}
-                        onClick={async () => {
-                          const res = await sendTradecraftStarted.mutateAsync();
-                          if (res.ok) toast.success("Preview sent: Cycle started");
-                          else toast.error(res.error ?? "Failed to send preview");
-                        }}
-                      >
-                        Started
-                      </Button>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        disabled={!discord || isSendingTradecraftPreview}
-                        onClick={async () => {
-                          const res = await sendTradecraftResults.mutateAsync();
-                          if (res.ok) toast.success("Preview sent: Cycle results");
-                          else toast.error(res.error ?? "Failed to send preview");
-                        }}
-                      >
-                        Results
-                      </Button>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        disabled={!discord || isSendingTradecraftPreview}
-                        onClick={async () => {
-                          const res = await sendTradecraftPayout.mutateAsync();
-                          if (res.ok) toast.success("Preview sent: Payout sent");
-                          else toast.error(res.error ?? "Failed to send preview");
-                        }}
-                      >
-                        Payout
-                      </Button>
-                    </div>
-                  </div>
                 </div>
 
                 {/* Characters */}
-                <div className="rounded-lg border bg-muted/10 p-2">
-                  <div className="flex items-start justify-between gap-4 px-2 py-1.5">
+                <div className="rounded-lg border border-border/70 bg-muted/10 p-2 shadow-sm">
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    aria-label="Toggle all Characters notifications"
+                    onClick={() =>
+                      toggleGroup(
+                        CHARACTERS_TYPES,
+                        getGroupState(CHARACTERS_TYPES) === true ? false : true,
+                      )
+                    }
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        toggleGroup(
+                          CHARACTERS_TYPES,
+                          getGroupState(CHARACTERS_TYPES) === true
+                            ? false
+                            : true,
+                        );
+                      }
+                    }}
+                    className="flex w-full cursor-pointer items-start justify-between gap-4 rounded-md bg-muted/25 px-2 py-2 text-left transition-colors hover:bg-muted/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                  >
                     <div className="space-y-0.5">
-                      <div className="text-sm font-semibold">Characters</div>
+                      <div className="flex items-center gap-2">
+                        <div className="text-sm font-semibold">Characters</div>
+                        {(() => {
+                          const s = groupStatus(
+                            getGroupState(CHARACTERS_TYPES),
+                          );
+                          return (
+                            <span
+                              className={cn(
+                                "rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium",
+                                s.className,
+                              )}
+                            >
+                              {s.label}
+                            </span>
+                          );
+                        })()}
+                      </div>
                       <div className="text-xs text-muted-foreground">
                         Skill plans and account reminders
                       </div>
                     </div>
-                    <Checkbox
-                      checked={getGroupState(CHARACTERS_TYPES)}
-                      onCheckedChange={(v) =>
-                        toggleGroup(CHARACTERS_TYPES, v as any)
+                    <Switch
+                      checked={getGroupState(CHARACTERS_TYPES) === true}
+                      onCheckedChange={(checked) =>
+                        toggleGroup(CHARACTERS_TYPES, checked)
                       }
-                      className="mt-0.5 h-5 w-5"
+                      onClick={(e) => e.stopPropagation()}
+                      onPointerDown={(e) => e.stopPropagation()}
+                      className="mt-0.5"
                       aria-label="Toggle all Characters notifications"
                     />
                   </div>
                   <Separator className="my-2 opacity-50" />
-                  <div className="space-y-2">
+                  <div className="relative space-y-2">
+                    <div className="pointer-events-none absolute bottom-2 left-4 top-2 w-px bg-border/70" />
                     {CHARACTERS_ITEMS.map((item, idx) => (
                       <React.Fragment key={item.type}>
                         <PreferenceRow
@@ -627,7 +663,20 @@ export default function NotificationSettingsPage() {
               <div className="flex items-center justify-between gap-3 rounded-lg bg-muted/30 p-3">
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
                   <Shield className="h-3.5 w-3.5" />
-                  <span>Test your notification setup</span>
+                  <span className="flex items-center gap-2">
+                    <span>Test your notification setup</span>
+                    {testState.kind === "sending" ? (
+                      <span className="text-muted-foreground">Sending…</span>
+                    ) : testState.kind === "success" ? (
+                      <span className="text-green-600 dark:text-green-400">
+                        Test sent {new Date(testState.at).toLocaleTimeString()}
+                      </span>
+                    ) : testState.kind === "error" ? (
+                      <span className="text-destructive">
+                        {testState.message}
+                      </span>
+                    ) : null}
+                  </span>
                 </div>
                 <Button
                   type="button"
@@ -636,16 +685,27 @@ export default function NotificationSettingsPage() {
                   disabled={sendTest.isPending || !discord}
                   onClick={async () => {
                     try {
+                      setTestState({ kind: "sending" });
                       const res = await sendTest.mutateAsync();
                       if (res.ok) {
                         toast.success("Test DM sent successfully!");
+                        setTestState({ kind: "success", at: Date.now() });
                       } else {
                         toast.error(
                           res.error ?? "Failed to send test notification",
                         );
+                        setTestState({
+                          kind: "error",
+                          message:
+                            res.error ?? "Failed to send test notification",
+                        });
                       }
                     } catch (e) {
                       toast.error(e instanceof Error ? e.message : String(e));
+                      setTestState({
+                        kind: "error",
+                        message: e instanceof Error ? e.message : String(e),
+                      });
                     }
                   }}
                   className="h-8 shrink-0"
@@ -674,6 +734,12 @@ export default function NotificationSettingsPage() {
                 ) : (
                   <div className="text-xs text-muted-foreground">
                     All changes saved
+                    {lastSavedAt ? (
+                      <span className="ml-2">
+                        (last saved{" "}
+                        {new Date(lastSavedAt).toLocaleTimeString()})
+                      </span>
+                    ) : null}
                   </div>
                 )}
                 <Button
@@ -741,7 +807,7 @@ function PreferenceRow({
   if (!pref) return null;
 
   return (
-    <label className="flex w-full cursor-pointer items-start justify-between gap-4 rounded-lg p-2 text-left transition-colors hover:bg-muted/40">
+    <label className="flex w-full cursor-pointer items-start justify-between gap-4 rounded-lg p-2 pl-7 text-left transition-colors hover:bg-muted/40">
       <div className="space-y-0.5">
         <div className="text-sm font-semibold leading-tight">{title}</div>
         <p className="text-xs leading-snug text-foreground/80">{description}</p>

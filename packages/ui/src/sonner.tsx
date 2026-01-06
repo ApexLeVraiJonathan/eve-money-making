@@ -3,6 +3,10 @@
 import { useTheme } from "next-themes";
 import { Toaster as Sonner, ToasterProps } from "sonner";
 
+// Re-export `toast` so app code can import from `@eve/ui` and guarantee it uses
+// the same Sonner instance as our `Toaster` (avoids duplicate `sonner` versions).
+export { toast } from "sonner";
+
 const Toaster = ({ ...props }: ToasterProps) => {
   const { theme = "system" } = useTheme();
 

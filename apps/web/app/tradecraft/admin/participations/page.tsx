@@ -10,7 +10,7 @@ import {
   CardTitle,
 } from "@eve/ui";
 import { Badge, Checkbox, Label, Separator } from "@eve/ui";
-import { toast } from "sonner";
+import { toast } from "@eve/ui";
 import {
   Users,
   Link as LinkIcon,

@@ -15,7 +15,7 @@ import {
   DialogTitle,
 } from "@eve/ui";
 import { ClipboardCopy } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@eve/ui";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { consignmentsQueryKey, createConsignment } from "../../_mock/store";
 import {

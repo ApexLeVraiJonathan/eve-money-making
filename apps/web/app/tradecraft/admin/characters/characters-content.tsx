@@ -30,7 +30,7 @@ import { Input } from "@eve/ui";
 import { Label } from "@eve/ui";
 import { Badge } from "@eve/ui";
 import { Avatar, AvatarImage, AvatarFallback } from "@eve/ui";
-import { toast } from "sonner";
+import { toast } from "@eve/ui";
 import {
   Users,
   Link as LinkIcon,

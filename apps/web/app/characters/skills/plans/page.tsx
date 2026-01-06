@@ -21,7 +21,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@eve/ui";
-import { toast } from "sonner";
+import { toast } from "@eve/ui";
 import {
   BookOpen,
   Plus,

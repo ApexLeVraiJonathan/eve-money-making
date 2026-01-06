@@ -13,7 +13,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@eve/ui";
-import { toast } from "sonner";
+import { toast } from "@eve/ui";
 import OptInDialog from "./opt-in-dialog";
 import {
   Empty,

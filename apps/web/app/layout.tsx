@@ -67,7 +67,7 @@ export default function RootLayout({
               </SessionRefreshBoundary>
             </AuthLoadingBoundary>
           </SessionProvider>
-          <Toaster />
+          <Toaster position="top-right" />
         </ThemeProvider>
       </body>
     </html>

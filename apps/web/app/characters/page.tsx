@@ -79,7 +79,7 @@ import type {
   CharacterBooster,
 } from "./api";
 import type { CharacterTrainingQueueSummary } from "@eve/api-contracts";
-import { toast } from "sonner";
+import { toast } from "@eve/ui";
 import { cn } from "@/lib/utils";
 
 export default function CharactersHome() {

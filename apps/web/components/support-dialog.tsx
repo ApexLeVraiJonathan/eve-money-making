@@ -4,7 +4,7 @@ import * as React from "react";
 import { useState } from "react";
 import { LifeBuoy } from "lucide-react";
 import { useApiClient } from "@/app/api-hooks/useApiClient";
-import { toast } from "sonner";
+import { toast } from "@eve/ui";
 import {
   Dialog,
   DialogContent,

@@ -10,7 +10,7 @@ import {
 } from "@eve/ui";
 import { Button } from "@eve/ui";
 import { Badge } from "@eve/ui";
-import { toast } from "sonner";
+import { toast } from "@eve/ui";
 import { User, Shield, LogOut, AlertCircle } from "lucide-react";
 import {
   useCurrentUser,

@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { Tabs, TabsList, TabsTrigger } from "@eve/ui";
-import { toast } from "sonner";
+import { toast } from "@eve/ui";
 import { Database, PlayCircle, DollarSign, Wrench } from "lucide-react";
 import { useApiClient } from "@/app/api-hooks/useApiClient";
 import type {

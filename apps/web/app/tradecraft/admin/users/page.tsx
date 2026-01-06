@@ -12,7 +12,7 @@ import {
   Input,
   Label,
 } from "@eve/ui";
-import { toast } from "sonner";
+import { toast } from "@eve/ui";
 import { Users } from "lucide-react";
 import {
   useTradecraftUsers,

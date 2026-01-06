@@ -10,7 +10,7 @@ import {
   CardTitle,
 } from "@eve/ui";
 import { TabsContent } from "@eve/ui";
-import { toast } from "sonner";
+import { toast } from "@eve/ui";
 import { Loader2, Download, PlayCircle } from "lucide-react";
 import type { TriggerState, MatchResult } from "./types";
 import { useImportWallet } from "../../api";

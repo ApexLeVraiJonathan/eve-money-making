@@ -20,7 +20,7 @@ import {
   Check,
   RefreshCw,
 } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@eve/ui";
 import { Badge } from "@eve/ui";
 import { RadioGroup, RadioGroupItem } from "@eve/ui";
 import { Checkbox } from "@eve/ui";

@@ -23,7 +23,7 @@ import {
 } from "@eve/ui";
 import { DollarSign, Loader2, Percent, Shield, Users } from "lucide-react";
 import { formatIsk } from "@/lib/utils";
-import { toast } from "sonner";
+import { toast } from "@eve/ui";
 import {
   useAllUsers,
   useAdminCharacters,

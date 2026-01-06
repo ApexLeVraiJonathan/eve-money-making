@@ -58,7 +58,7 @@ import {
   useAddBrokerFee,
   useAddRelistFee,
 } from "../../api";
-import { toast } from "sonner";
+import { toast } from "@eve/ui";
 import type { CycleLine } from "@eve/shared";
 
 export default function CycleLinesPage() {
