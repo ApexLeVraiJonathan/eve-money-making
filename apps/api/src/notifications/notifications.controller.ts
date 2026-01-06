@@ -101,6 +101,9 @@ export class NotificationsController {
       return { ok: false as const };
     }
     await this.discordOauth.disconnectForUser(user.userId);
+    // Ensure we also disable notification preferences. Otherwise the UI can
+    // appear "configured" even though Discord is no longer connected.
+    await this.preferences.disableAllForUser(user.userId);
     return { ok: true as const };
   }
 
@@ -160,6 +163,102 @@ export class NotificationsController {
             ? error.message
             : 'Failed to send test notification',
       };
+    }
+  }
+
+  @Post('debug/tradecraft/cycle-planned')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'DEBUG: Send Tradecraft cycle planned DM preview' })
+  async debugTradecraftCyclePlanned(
+    @CurrentUser() user: RequestUser | null,
+    @Body()
+    body: {
+      cycleId?: string;
+      userId?: string;
+    },
+  ) {
+    if (!user?.userId) return { ok: false as const, error: 'Not authenticated' };
+    const targetUserId =
+      body?.userId && user.role === 'ADMIN' ? body.userId : user.userId;
+    try {
+      return await this.notifications.debugSendTradecraftCyclePlannedToUser({
+        userId: targetUserId,
+        cycleId: body?.cycleId,
+      });
+    } catch (e) {
+      return { ok: false as const, error: e instanceof Error ? e.message : String(e) };
+    }
+  }
+
+  @Post('debug/tradecraft/cycle-started')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'DEBUG: Send Tradecraft cycle started DM preview' })
+  async debugTradecraftCycleStarted(
+    @CurrentUser() user: RequestUser | null,
+    @Body()
+    body: {
+      cycleId?: string;
+      userId?: string;
+    },
+  ) {
+    if (!user?.userId) return { ok: false as const, error: 'Not authenticated' };
+    const targetUserId =
+      body?.userId && user.role === 'ADMIN' ? body.userId : user.userId;
+    try {
+      return await this.notifications.debugSendTradecraftCycleStartedToUser({
+        userId: targetUserId,
+        cycleId: body?.cycleId,
+      });
+    } catch (e) {
+      return { ok: false as const, error: e instanceof Error ? e.message : String(e) };
+    }
+  }
+
+  @Post('debug/tradecraft/cycle-results')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'DEBUG: Send Tradecraft cycle results DM preview' })
+  async debugTradecraftCycleResults(
+    @CurrentUser() user: RequestUser | null,
+    @Body()
+    body: {
+      cycleId?: string;
+      userId?: string;
+    },
+  ) {
+    if (!user?.userId) return { ok: false as const, error: 'Not authenticated' };
+    const targetUserId =
+      body?.userId && user.role === 'ADMIN' ? body.userId : user.userId;
+    try {
+      return await this.notifications.debugSendTradecraftCycleResultsToUser({
+        userId: targetUserId,
+        cycleId: body?.cycleId,
+      });
+    } catch (e) {
+      return { ok: false as const, error: e instanceof Error ? e.message : String(e) };
+    }
+  }
+
+  @Post('debug/tradecraft/payout-sent')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'DEBUG: Send Tradecraft payout sent DM preview' })
+  async debugTradecraftPayoutSent(
+    @CurrentUser() user: RequestUser | null,
+    @Body()
+    body: {
+      participationId?: string;
+      userId?: string;
+    },
+  ) {
+    if (!user?.userId) return { ok: false as const, error: 'Not authenticated' };
+    const targetUserId =
+      body?.userId && user.role === 'ADMIN' ? body.userId : user.userId;
+    try {
+      return await this.notifications.debugSendTradecraftPayoutSentToUser({
+        userId: targetUserId,
+        participationId: body?.participationId,
+      });
+    } catch (e) {
+      return { ok: false as const, error: e instanceof Error ? e.message : String(e) };
     }
   }
 

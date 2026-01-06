@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   Card,
   CardContent,
@@ -28,10 +29,101 @@ import {
   useUpdateNotificationPreferences,
   useDisconnectDiscord,
   useSendTestNotification,
+  useSendTradecraftCyclePlannedPreview,
+  useSendTradecraftCycleStartedPreview,
+  useSendTradecraftCycleResultsPreview,
+  useSendTradecraftPayoutSentPreview,
   startDiscordConnect,
   type NotificationPreferenceDto,
 } from "@/app/tradecraft/api/notifications.hooks";
 import { useCurrentUser } from "@/app/tradecraft/api/characters/users.hooks";
+
+const TRADECRAFT_TYPES = [
+  "CYCLE_PLANNED",
+  "CYCLE_STARTED",
+  "CYCLE_RESULTS",
+  "CYCLE_PAYOUT_SENT",
+] as const;
+
+const CHARACTERS_TYPES = [
+  "SKILL_PLAN_REMAP_REMINDER",
+  "SKILL_PLAN_COMPLETION",
+  "PLEX_ENDING",
+  "MCT_ENDING",
+  "BOOSTER_ENDING",
+  "TRAINING_QUEUE_IDLE",
+] as const;
+
+type NotificationTypeKey =
+  | (typeof TRADECRAFT_TYPES)[number]
+  | (typeof CHARACTERS_TYPES)[number];
+
+type PrefItem = {
+  type: NotificationTypeKey;
+  title: string;
+  description: string;
+};
+
+const TRADECRAFT_ITEMS: PrefItem[] = [
+  {
+    type: "CYCLE_PLANNED",
+    title: "Cycle planned",
+    description: "New investment cycle opens for opt-in",
+  },
+  {
+    type: "CYCLE_STARTED",
+    title: "Cycle started",
+    description: "Trading begins on your opted-in cycle",
+  },
+  {
+    type: "CYCLE_RESULTS",
+    title: "Cycle results ready",
+    description: "Performance summary is finalized",
+  },
+  {
+    type: "CYCLE_PAYOUT_SENT",
+    title: "Payout sent",
+    description: "Your cycle payout has been processed",
+  },
+];
+
+const CHARACTERS_ITEMS: PrefItem[] = [
+  {
+    type: "SKILL_PLAN_REMAP_REMINDER",
+    title: "Skill plan remap reminders",
+    description:
+      "Discord DMs before planned attribute remaps for assigned skill plans",
+  },
+  {
+    type: "SKILL_PLAN_COMPLETION",
+    title: "Skill plan completion",
+    description: "Discord DMs shortly before assigned skill plans complete",
+  },
+  {
+    type: "PLEX_ENDING",
+    title: "PLEX ending",
+    description:
+      "Reminders when tracked PLEX or account subscription time is close to expiring",
+  },
+  {
+    type: "MCT_ENDING",
+    title: "MCT ending",
+    description:
+      "Reminders when tracked MCT training slots are close to expiring",
+  },
+  {
+    type: "BOOSTER_ENDING",
+    title: "Booster ending",
+    description:
+      "Reminders when an active character booster is close to expiring",
+  },
+  {
+    type: "TRAINING_QUEUE_IDLE",
+    title: "Training queue idle",
+    description:
+      "Alerts when a character has available training time but no skills queued",
+  },
+];
 
 function useReturnUrl() {
   const [url, setUrl] = React.useState<string | undefined>(undefined);
@@ -44,6 +136,8 @@ function useReturnUrl() {
 }
 
 export default function NotificationSettingsPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const returnUrl = useReturnUrl();
   const { data: me } = useCurrentUser();
   const {
@@ -60,20 +154,127 @@ export default function NotificationSettingsPage() {
   const updatePrefs = useUpdateNotificationPreferences();
   const disconnectDiscord = useDisconnectDiscord();
   const sendTest = useSendTestNotification();
+  const sendTradecraftPlanned = useSendTradecraftCyclePlannedPreview();
+  const sendTradecraftStarted = useSendTradecraftCycleStartedPreview();
+  const sendTradecraftResults = useSendTradecraftCycleResultsPreview();
+  const sendTradecraftPayout = useSendTradecraftPayoutSentPreview();
 
   const [localPrefs, setLocalPrefs] = React.useState<
     NotificationPreferenceDto[]
   >([]);
+  const [autoEnableDone, setAutoEnableDone] = React.useState(false);
 
   React.useEffect(() => {
     setLocalPrefs(preferences);
   }, [preferences]);
+
+  // If the user arrived here from a Tradecraft flow, auto-enable a single
+  // high-signal notification to improve adoption (Cycle planned).
+  React.useEffect(() => {
+    const from = searchParams?.get("from");
+    const autoEnable = searchParams?.get("autoEnable");
+    const shouldAutoEnable =
+      from === "tradecraft" && autoEnable === "cycle_planned";
+
+    if (!shouldAutoEnable) return;
+    if (autoEnableDone) return;
+    if (!discord) return; // wait until connected
+    if (loadingPrefs) return;
+    if (updatePrefs.isPending) return;
+
+    const hasCyclePlannedEnabled = preferences.some(
+      (p) =>
+        p.channel === "DISCORD_DM" &&
+        p.notificationType === "CYCLE_PLANNED" &&
+        p.enabled,
+    );
+    if (hasCyclePlannedEnabled) {
+      setAutoEnableDone(true);
+      router.replace("/settings/notifications");
+      return;
+    }
+
+    setAutoEnableDone(true);
+
+    const next = (() => {
+      const exists = preferences.some(
+        (p) =>
+          p.channel === "DISCORD_DM" && p.notificationType === "CYCLE_PLANNED",
+      );
+      if (!exists) {
+        return [
+          ...preferences,
+          {
+            channel: "DISCORD_DM",
+            notificationType: "CYCLE_PLANNED",
+            enabled: true,
+          } satisfies NotificationPreferenceDto,
+        ];
+      }
+      return preferences.map((p) =>
+        p.channel === "DISCORD_DM" && p.notificationType === "CYCLE_PLANNED"
+          ? { ...p, enabled: true }
+          : p,
+      );
+    })();
+
+    void (async () => {
+      try {
+        await updatePrefs.mutateAsync(next);
+        await refetchPrefs();
+        toast.success("Enabled Discord DM: Cycle planned");
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : String(e));
+      } finally {
+        router.replace("/settings/notifications");
+      }
+    })();
+  }, [
+    autoEnableDone,
+    discord,
+    loadingPrefs,
+    preferences,
+    refetchPrefs,
+    router,
+    searchParams,
+    updatePrefs,
+  ]);
 
   const handleToggle = (pref: NotificationPreferenceDto, enabled: boolean) => {
     setLocalPrefs((prev) =>
       prev.map((p) =>
         p.channel === pref.channel &&
         p.notificationType === pref.notificationType
+          ? { ...p, enabled }
+          : p,
+      ),
+    );
+  };
+
+  const getPref = (type: NotificationTypeKey) =>
+    localPrefs.find(
+      (p) => p.channel === "DISCORD_DM" && p.notificationType === type,
+    );
+
+  const getGroupState = (types: readonly NotificationTypeKey[]) => {
+    const enabledCount = types.reduce(
+      (acc, t) => acc + (getPref(t)?.enabled ? 1 : 0),
+      0,
+    );
+    if (enabledCount === 0) return false as const;
+    if (enabledCount === types.length) return true as const;
+    return "indeterminate" as const;
+  };
+
+  const toggleGroup = (
+    types: readonly NotificationTypeKey[],
+    value: boolean | "indeterminate",
+  ) => {
+    const enabled = value === true;
+    setLocalPrefs((prev) =>
+      prev.map((p) =>
+        p.channel === "DISCORD_DM" &&
+        (types as readonly string[]).includes(p.notificationType)
           ? { ...p, enabled }
           : p,
       ),
@@ -133,6 +334,12 @@ export default function NotificationSettingsPage() {
 
   const isSaving =
     updatePrefs.isPending || disconnectDiscord.isPending || sendTest.isPending;
+
+  const isSendingTradecraftPreview =
+    sendTradecraftPlanned.isPending ||
+    sendTradecraftStarted.isPending ||
+    sendTradecraftResults.isPending ||
+    sendTradecraftPayout.isPending;
 
   const hasAnyEnabled =
     localPrefs?.some((p) => p.channel === "DISCORD_DM" && p.enabled) ?? false;
@@ -278,115 +485,137 @@ export default function NotificationSettingsPage() {
               </div>
             ) : (
               <div className="space-y-2">
-                <PreferenceRow
-                  title="Cycle planned"
-                  description="New investment cycle opens for opt-in"
-                  pref={localPrefs.find(
-                    (p) =>
-                      p.channel === "DISCORD_DM" &&
-                      p.notificationType === "CYCLE_PLANNED",
-                  )}
-                  onChange={handleToggle}
-                />
-                <Separator className="my-2 opacity-50" />
-                <PreferenceRow
-                  title="Cycle started"
-                  description="Trading begins on your opted-in cycle"
-                  pref={localPrefs.find(
-                    (p) =>
-                      p.channel === "DISCORD_DM" &&
-                      p.notificationType === "CYCLE_STARTED",
-                  )}
-                  onChange={handleToggle}
-                />
-                <Separator className="my-2 opacity-50" />
-                <PreferenceRow
-                  title="Cycle results ready"
-                  description="Performance summary is finalized"
-                  pref={localPrefs.find(
-                    (p) =>
-                      p.channel === "DISCORD_DM" &&
-                      p.notificationType === "CYCLE_RESULTS",
-                  )}
-                  onChange={handleToggle}
-                />
-                <Separator className="my-2 opacity-50" />
-                <PreferenceRow
-                  title="Payout sent"
-                  description="Your cycle payout has been processed"
-                  pref={localPrefs.find(
-                    (p) =>
-                      p.channel === "DISCORD_DM" &&
-                      p.notificationType === "CYCLE_PAYOUT_SENT",
-                  )}
-                  onChange={handleToggle}
-                />
-                <Separator className="my-2 opacity-50" />
-                <PreferenceRow
-                  title="Skill plan remap reminders"
-                  description="Discord DMs before planned attribute remaps for assigned skill plans"
-                  pref={localPrefs.find(
-                    (p) =>
-                      p.channel === "DISCORD_DM" &&
-                      p.notificationType === "SKILL_PLAN_REMAP_REMINDER",
-                  )}
-                  onChange={handleToggle}
-                />
-                <Separator className="my-2 opacity-50" />
-                <PreferenceRow
-                  title="Skill plan completion"
-                  description="Discord DMs shortly before assigned skill plans complete"
-                  pref={localPrefs.find(
-                    (p) =>
-                      p.channel === "DISCORD_DM" &&
-                      p.notificationType === "SKILL_PLAN_COMPLETION",
-                  )}
-                  onChange={handleToggle}
-                />
-                <Separator className="my-2 opacity-50" />
-                <PreferenceRow
-                  title="PLEX ending"
-                  description="Reminders when tracked PLEX or account subscription time is close to expiring"
-                  pref={localPrefs.find(
-                    (p) =>
-                      p.channel === "DISCORD_DM" &&
-                      p.notificationType === "PLEX_ENDING",
-                  )}
-                  onChange={handleToggle}
-                />
-                <Separator className="my-2 opacity-50" />
-                <PreferenceRow
-                  title="MCT ending"
-                  description="Reminders when tracked MCT training slots are close to expiring"
-                  pref={localPrefs.find(
-                    (p) =>
-                      p.channel === "DISCORD_DM" &&
-                      p.notificationType === "MCT_ENDING",
-                  )}
-                  onChange={handleToggle}
-                />
-                <Separator className="my-2 opacity-50" />
-                <PreferenceRow
-                  title="Booster ending"
-                  description="Reminders when an active character booster is close to expiring"
-                  pref={localPrefs.find(
-                    (p) =>
-                      p.channel === "DISCORD_DM" &&
-                      p.notificationType === "BOOSTER_ENDING",
-                  )}
-                  onChange={handleToggle}
-                />
-                <Separator className="my-2 opacity-50" />
-                <PreferenceRow
-                  title="Training queue idle"
-                  description="Alerts when a character has available training time but no skills queued"
-                  pref={localPrefs.find(
-                    (p) =>
-                      p.channel === "DISCORD_DM" &&
-                      p.notificationType === "TRAINING_QUEUE_IDLE",
-                  )}
-                  onChange={handleToggle}
-                />
+                {/* Tradecraft */}
+                <div className="rounded-lg border bg-muted/10 p-2">
+                  <div className="flex items-start justify-between gap-4 px-2 py-1.5">
+                    <div className="space-y-0.5">
+                      <div className="text-sm font-semibold">Tradecraft</div>
+                      <div className="text-xs text-muted-foreground">
+                        Cycle events and payouts
+                      </div>
+                    </div>
+                    <Checkbox
+                      checked={getGroupState(TRADECRAFT_TYPES)}
+                      onCheckedChange={(v) =>
+                        toggleGroup(TRADECRAFT_TYPES, v as any)
+                      }
+                      className="mt-0.5 h-5 w-5"
+                      aria-label="Toggle all Tradecraft notifications"
+                    />
+                  </div>
+                  <Separator className="my-2 opacity-50" />
+                  <div className="space-y-2">
+                    {TRADECRAFT_ITEMS.map((item, idx) => (
+                      <React.Fragment key={item.type}>
+                        <PreferenceRow
+                          title={item.title}
+                          description={item.description}
+                          pref={getPref(item.type)}
+                          onChange={handleToggle}
+                        />
+                        {idx < TRADECRAFT_ITEMS.length - 1 ? (
+                          <Separator className="my-2 opacity-50" />
+                        ) : null}
+                      </React.Fragment>
+                    ))}
+                  </div>
+                  <Separator className="my-2 opacity-50" />
+                  <div className="flex flex-wrap items-center justify-between gap-2 px-2 py-1">
+                    <div className="text-xs text-muted-foreground">
+                      Send previews (to verify formatting)
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        disabled={!discord || isSendingTradecraftPreview}
+                        onClick={async () => {
+                          const res = await sendTradecraftPlanned.mutateAsync();
+                          if (res.ok) toast.success("Preview sent: Cycle planned");
+                          else toast.error(res.error ?? "Failed to send preview");
+                        }}
+                      >
+                        Planned
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        disabled={!discord || isSendingTradecraftPreview}
+                        onClick={async () => {
+                          const res = await sendTradecraftStarted.mutateAsync();
+                          if (res.ok) toast.success("Preview sent: Cycle started");
+                          else toast.error(res.error ?? "Failed to send preview");
+                        }}
+                      >
+                        Started
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        disabled={!discord || isSendingTradecraftPreview}
+                        onClick={async () => {
+                          const res = await sendTradecraftResults.mutateAsync();
+                          if (res.ok) toast.success("Preview sent: Cycle results");
+                          else toast.error(res.error ?? "Failed to send preview");
+                        }}
+                      >
+                        Results
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        disabled={!discord || isSendingTradecraftPreview}
+                        onClick={async () => {
+                          const res = await sendTradecraftPayout.mutateAsync();
+                          if (res.ok) toast.success("Preview sent: Payout sent");
+                          else toast.error(res.error ?? "Failed to send preview");
+                        }}
+                      >
+                        Payout
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Characters */}
+                <div className="rounded-lg border bg-muted/10 p-2">
+                  <div className="flex items-start justify-between gap-4 px-2 py-1.5">
+                    <div className="space-y-0.5">
+                      <div className="text-sm font-semibold">Characters</div>
+                      <div className="text-xs text-muted-foreground">
+                        Skill plans and account reminders
+                      </div>
+                    </div>
+                    <Checkbox
+                      checked={getGroupState(CHARACTERS_TYPES)}
+                      onCheckedChange={(v) =>
+                        toggleGroup(CHARACTERS_TYPES, v as any)
+                      }
+                      className="mt-0.5 h-5 w-5"
+                      aria-label="Toggle all Characters notifications"
+                    />
+                  </div>
+                  <Separator className="my-2 opacity-50" />
+                  <div className="space-y-2">
+                    {CHARACTERS_ITEMS.map((item, idx) => (
+                      <React.Fragment key={item.type}>
+                        <PreferenceRow
+                          title={item.title}
+                          description={item.description}
+                          pref={getPref(item.type)}
+                          onChange={handleToggle}
+                        />
+                        {idx < CHARACTERS_ITEMS.length - 1 ? (
+                          <Separator className="my-2 opacity-50" />
+                        ) : null}
+                      </React.Fragment>
+                    ))}
+                  </div>
+                </div>
               </div>
             )}
           </div>

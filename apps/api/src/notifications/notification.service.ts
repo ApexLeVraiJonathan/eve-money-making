@@ -85,6 +85,19 @@ export class NotificationService {
     return new URL('/characters/skills', AppConfig.webBaseUrl()).toString();
   }
 
+  private async getDiscordUserIdForUser(userId: string): Promise<string> {
+    const account = await this.prisma.discordAccount.findFirst({
+      where: { userId },
+      select: { discordUserId: true },
+    });
+    if (!account?.discordUserId) {
+      throw new Error(
+        'No Discord account linked to this user. Please connect Discord first.',
+      );
+    }
+    return account.discordUserId;
+  }
+
   /**
    * Send a simple test DM to verify Discord linking for a specific user.
    */
@@ -265,6 +278,156 @@ export class NotificationService {
       `Manage or turn off notifications: ${manageUrl}`;
 
     await this.discordDm.sendDirectMessage(target.discordUserId, content);
+  }
+
+  /**
+   * DEBUG: Send Tradecraft notification previews to a specific user (no preference gating).
+   * Useful for manually validating the DM formatting in Discord.
+   */
+  async debugSendTradecraftCyclePlannedToUser(params: {
+    userId: string;
+    cycleId?: string;
+  }): Promise<{ ok: true; cycleId: string; content: string }> {
+    const cycle =
+      params.cycleId != null
+        ? await this.prisma.cycle.findUnique({
+            where: { id: params.cycleId },
+            select: { id: true, name: true, startedAt: true },
+          })
+        : await this.prisma.cycle.findFirst({
+            where: { status: 'PLANNED' },
+            orderBy: { startedAt: 'asc' },
+            select: { id: true, name: true, startedAt: true },
+          });
+    if (!cycle) throw new Error('No PLANNED cycle found (provide cycleId).');
+
+    const when = cycle.startedAt.toISOString();
+    const title = cycle.name ?? cycle.id;
+    const optInUrl = this.cycleOptInUrl();
+    const manageUrl = this.manageUrl();
+    const content =
+      `A new investment cycle has been planned: **${title}**.\n` +
+      `Planned start: ${when}.\n\n` +
+      `You can review and opt in on the website: ${optInUrl}\n` +
+      `Manage or turn off notifications: ${manageUrl}`;
+
+    const discordUserId = await this.getDiscordUserIdForUser(params.userId);
+    await this.discordDm.sendDirectMessage(discordUserId, content);
+    return { ok: true, cycleId: cycle.id, content };
+  }
+
+  async debugSendTradecraftCycleStartedToUser(params: {
+    userId: string;
+    cycleId?: string;
+  }): Promise<{ ok: true; cycleId: string; content: string }> {
+    const cycle =
+      params.cycleId != null
+        ? await this.prisma.cycle.findUnique({
+            where: { id: params.cycleId },
+            select: { id: true, name: true },
+          })
+        : await this.prisma.cycle.findFirst({
+            where: { status: 'OPEN' },
+            orderBy: { startedAt: 'desc' },
+            select: { id: true, name: true },
+          });
+    if (!cycle) throw new Error('No OPEN cycle found (provide cycleId).');
+
+    const title = cycle.name ?? cycle.id;
+    const detailsUrl = this.cycleDetailsUrl();
+    const manageUrl = this.manageUrl();
+    const content =
+      `Cycle **${title}** has started.\n\n` +
+      `You can view current cycle details here: ${detailsUrl}\n` +
+      `Manage or turn off notifications: ${manageUrl}`;
+
+    const discordUserId = await this.getDiscordUserIdForUser(params.userId);
+    await this.discordDm.sendDirectMessage(discordUserId, content);
+    return { ok: true, cycleId: cycle.id, content };
+  }
+
+  async debugSendTradecraftCycleResultsToUser(params: {
+    userId: string;
+    cycleId?: string;
+  }): Promise<{ ok: true; cycleId: string; content: string }> {
+    const cycle =
+      params.cycleId != null
+        ? await this.prisma.cycle.findUnique({
+            where: { id: params.cycleId },
+            select: { id: true, name: true },
+          })
+        : await this.prisma.cycle.findFirst({
+            where: { status: 'COMPLETED' },
+            orderBy: { closedAt: 'desc' },
+            select: { id: true, name: true },
+          });
+    if (!cycle)
+      throw new Error('No COMPLETED cycle found for preview (provide cycleId).');
+
+    const title = cycle.name ?? cycle.id;
+    const detailsUrl = this.cycleDetailsUrl();
+    const manageUrl = this.manageUrl();
+    const content =
+      `Results are now available for cycle **${title}**.\n\n` +
+      `You can review performance and your participation here: ${detailsUrl}\n` +
+      `Manage or turn off notifications: ${manageUrl}`;
+
+    const discordUserId = await this.getDiscordUserIdForUser(params.userId);
+    await this.discordDm.sendDirectMessage(discordUserId, content);
+    return { ok: true, cycleId: cycle.id, content };
+  }
+
+  async debugSendTradecraftPayoutSentToUser(params: {
+    userId: string;
+    participationId?: string;
+  }): Promise<{ ok: true; participationId: string; content: string }> {
+    const participation =
+      params.participationId != null
+        ? await this.prisma.cycleParticipation.findUnique({
+            where: { id: params.participationId },
+            select: {
+              id: true,
+              userId: true,
+              characterName: true,
+              amountIsk: true,
+              payoutAmountIsk: true,
+              cycle: { select: { id: true, name: true } },
+            },
+          })
+        : await this.prisma.cycleParticipation.findFirst({
+            where: { userId: params.userId, payoutAmountIsk: { not: null } },
+            orderBy: { updatedAt: 'desc' },
+            select: {
+              id: true,
+              userId: true,
+              characterName: true,
+              amountIsk: true,
+              payoutAmountIsk: true,
+              cycle: { select: { id: true, name: true } },
+            },
+          });
+    if (!participation) {
+      throw new Error(
+        'No participation with a payout found for preview (provide participationId).',
+      );
+    }
+
+    const title = participation.cycle.name ?? participation.cycle.id;
+    const manageUrl = this.manageUrl();
+    const invested = Number(participation.amountIsk).toFixed(2);
+    const payout = participation.payoutAmountIsk
+      ? Number(participation.payoutAmountIsk).toFixed(2)
+      : '0.00';
+    const content =
+      `Your payout for cycle **${title}** has been marked as sent.\n` +
+      `Character: ${participation.characterName}\n` +
+      `Investment: ${invested} ISK\n` +
+      `Payout: ${payout} ISK\n\n` +
+      `Manage or turn off notifications: ${manageUrl}`;
+
+    const discordUserId = await this.getDiscordUserIdForUser(params.userId);
+    await this.discordDm.sendDirectMessage(discordUserId, content);
+    return { ok: true, participationId: participation.id, content };
   }
 
   async notifySkillPlanCompletion(params: {

@@ -116,13 +116,11 @@ export const APPS: AppConfig[] = [
       },
     ],
     admin: [
-      { name: "Overview", url: "/tradecraft/admin", icon: Home },
       {
         name: "Cycles",
-        url: "/tradecraft/admin/cycles",
+        url: "/tradecraft/admin/profit",
         icon: Recycle,
         items: [
-          { name: "Planner", url: "/tradecraft/admin/planner", icon: Recycle },
           {
             name: "Manage Lines",
             url: "/tradecraft/admin/lines",
@@ -134,6 +132,29 @@ export const APPS: AppConfig[] = [
             icon: Recycle,
           },
           {
+            name: "Packages",
+            url: "/tradecraft/admin/packages",
+            icon: Package,
+          },
+          {
+            name: "Participations",
+            url: "/tradecraft/admin/participations",
+            icon: Users,
+          },
+          {
+            name: "JingleYield",
+            url: "/tradecraft/admin/jingle-yield",
+            icon: BadgeDollarSign,
+          },
+        ],
+      },
+      {
+        name: "Market Tools",
+        url: "/tradecraft/admin/undercut-checker",
+        icon: TrendingUp,
+        items: [
+          { name: "Planner", url: "/tradecraft/admin/planner", icon: Recycle },
+          {
             name: "Undercut Checker",
             url: "/tradecraft/admin/undercut-checker",
             icon: Recycle,
@@ -143,45 +164,47 @@ export const APPS: AppConfig[] = [
             url: "/tradecraft/admin/sell-appraiser",
             icon: Recycle,
           },
+          {
+            name: "Arbitrage",
+            url: "/tradecraft/admin/arbitrage",
+            icon: ArrowLeftRight,
+          },
+          {
+            name: "Liquidity",
+            url: "/tradecraft/admin/liquidity",
+            icon: TrendingUp,
+          },
         ],
       },
       {
-        name: "Packages",
-        url: "/tradecraft/admin/packages",
+        name: "Operations",
+        url: "/tradecraft/admin/users",
         icon: Package,
+        items: [
+          {
+            name: "Characters",
+            url: "/tradecraft/admin/characters",
+            icon: UserCheck,
+          },
+          {
+            name: "Caps",
+            url: "/tradecraft/admin/users",
+            icon: Users,
+          },
+        ],
       },
       {
-        name: "Liquidity",
-        url: "/tradecraft/admin/liquidity",
-        icon: TrendingUp,
+        name: "Automation",
+        url: "/tradecraft/admin/triggers",
+        icon: Zap,
+        items: [
+          {
+            name: "Triggers",
+            url: "/tradecraft/admin/triggers",
+            icon: Zap,
+          },
+        ],
       },
-      {
-        name: "Arbitrage",
-        url: "/tradecraft/admin/arbitrage",
-        icon: ArrowLeftRight,
-      },
-      {
-        name: "Characters",
-        url: "/tradecraft/admin/characters",
-        icon: UserCheck,
-      },
-      {
-        name: "Transactions",
-        url: "/tradecraft/admin/transactions",
-        icon: BadgeDollarSign,
-      },
-      { name: "Ledger", url: "/tradecraft/admin/ledger", icon: NotebookPen },
-      {
-        name: "Participations",
-        url: "/tradecraft/admin/participations",
-        icon: Users,
-      },
-      {
-        name: "JingleYield",
-        url: "/tradecraft/admin/jingle-yield",
-        icon: BadgeDollarSign,
-      },
-      { name: "Triggers", url: "/tradecraft/admin/triggers", icon: Zap },
     ],
   },
   {

@@ -505,10 +505,12 @@ export class AuthService {
       scopes,
     } = input;
 
-    // Encrypt refresh token if provided
-    const refreshTokenEnc = refreshToken
+    // Encrypt refresh token if provided. IMPORTANT: NextAuth can omit refresh_token
+    // on subsequent logins, so we must avoid overwriting an existing refresh token
+    // in the database with an empty string.
+    const incomingRefreshTokenEnc = refreshToken
       ? await CryptoUtil.encrypt(refreshToken)
-      : '';
+      : null;
 
     // Parse expiresIn safely with fallback (EVE tokens typically last 20 minutes for auth-only)
     const expiresInSeconds = Number(expiresIn) || 1200; // 20 minutes default
@@ -541,7 +543,7 @@ export class AuthService {
       // with a narrower "login-only" token from NextAuth.
       const existingToken = await tx.characterToken.findUnique({
         where: { characterId },
-        select: { scopes: true },
+        select: { scopes: true, refreshTokenEnc: true },
       });
 
       const existingScopes = normalizeScopes(existingToken?.scopes);
@@ -567,13 +569,20 @@ export class AuthService {
           new Set<string>([...existingScopes, ...incomingScopes]),
         ).join(' ');
 
+        // Preserve existing refresh token unless a new one is provided.
+        const refreshTokenEncToStore =
+          incomingRefreshTokenEnc ??
+          (existingToken?.refreshTokenEnc
+            ? String(existingToken.refreshTokenEnc)
+            : '');
+
         await tx.characterToken.upsert({
           where: { characterId },
           update: {
             tokenType: 'Bearer',
             accessToken,
             accessTokenExpiresAt: expiresAt,
-            refreshTokenEnc,
+            refreshTokenEnc: refreshTokenEncToStore,
             scopes: mergedScopes,
             lastRefreshAt: new Date(),
           },
@@ -582,7 +591,7 @@ export class AuthService {
             tokenType: 'Bearer',
             accessToken,
             accessTokenExpiresAt: expiresAt,
-            refreshTokenEnc,
+            refreshTokenEnc: refreshTokenEncToStore,
             scopes: mergedScopes,
           },
         });

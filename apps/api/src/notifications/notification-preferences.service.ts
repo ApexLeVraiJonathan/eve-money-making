@@ -35,6 +35,17 @@ export class NotificationPreferencesService {
     return result;
   }
 
+  /**
+   * Disable all stored preferences for a user (used when disconnecting Discord).
+   * We keep rows for history, but turn everything off.
+   */
+  async disableAllForUser(userId: string): Promise<void> {
+    await this.prisma.notificationPreference.updateMany({
+      where: { userId },
+      data: { enabled: false },
+    });
+  }
+
   async updateForUser(
     userId: string,
     preferences: NotificationPreferenceItemDto[],

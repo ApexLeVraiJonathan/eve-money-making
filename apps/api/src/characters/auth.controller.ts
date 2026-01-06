@@ -1004,9 +1004,11 @@ export class AuthController {
         return;
       }
 
-      const refreshTokenEnc = refreshToken
+      // Encrypt refresh token if provided. IMPORTANT: callers may omit refreshToken
+      // on subsequent logins; never overwrite an existing refresh token with ''.
+      const incomingRefreshTokenEnc = refreshToken
         ? await CryptoUtil.encrypt(refreshToken)
-        : '';
+        : null;
 
       const expiresInSeconds = Number(expiresIn) || 1200;
       const expiresAt = new Date(Date.now() + expiresInSeconds * 1000);
@@ -1036,7 +1038,7 @@ export class AuthController {
 
         const existingToken = await tx.characterToken.findUnique({
           where: { characterId },
-          select: { scopes: true },
+          select: { scopes: true, refreshTokenEnc: true },
         });
 
         const existingScopes = normalizeScopes(existingToken?.scopes);
@@ -1060,13 +1062,19 @@ export class AuthController {
           new Set<string>([...existingScopes, ...incomingScopes]),
         ).join(' ');
 
+        const refreshTokenEncToStore =
+          incomingRefreshTokenEnc ??
+          (existingToken?.refreshTokenEnc
+            ? String(existingToken.refreshTokenEnc)
+            : '');
+
         await tx.characterToken.upsert({
           where: { characterId },
           update: {
             tokenType: 'Bearer',
             accessToken,
             accessTokenExpiresAt: expiresAt,
-            refreshTokenEnc,
+            refreshTokenEnc: refreshTokenEncToStore,
             scopes: mergedScopes,
             lastRefreshAt: new Date(),
           },
@@ -1075,7 +1083,7 @@ export class AuthController {
             tokenType: 'Bearer',
             accessToken,
             accessTokenExpiresAt: expiresAt,
-            refreshTokenEnc,
+            refreshTokenEnc: refreshTokenEncToStore,
             scopes: mergedScopes,
           },
         });

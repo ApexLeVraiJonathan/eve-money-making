@@ -53,7 +53,7 @@ export default function UndercutCheckerPage() {
     "perOrder" | "perCharacter" | "global"
   >("perCharacter");
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
-  const [showNegativeProfit, setShowNegativeProfit] = useState<boolean>(true);
+  const [showNegativeProfit, setShowNegativeProfit] = useState<boolean>(false);
   const RELIST_PCT = Number(process.env.NEXT_PUBLIC_BROKER_RELIST_PCT ?? 0.3);
 
   // React Query hooks

@@ -11,6 +11,7 @@ import { AppSidebar } from "@/components/sidebar/app-sidebar";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@eve/ui";
 import { ActiveAppName } from "@/components/active-app-name";
 import { DynamicBreadcrumbs } from "@/components/dynamic-breadcrumbs";
+import { NotificationsNudgeModal } from "@/components/notifications/notifications-nudge-modal";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -58,6 +59,7 @@ export default function RootLayout({
                           <DynamicBreadcrumbs />
                         </div>
                       </header>
+                      <NotificationsNudgeModal />
                       {children}
                     </SidebarInset>
                   </SidebarProvider>

@@ -126,3 +126,47 @@ export function useSendTestNotification() {
       ),
   });
 }
+
+export function useSendTradecraftCyclePlannedPreview() {
+  const client = useApiClient();
+  return useMutation({
+    mutationFn: (cycleId?: string) =>
+      client.post<{ ok: boolean; error?: string }>(
+        "/notifications/debug/tradecraft/cycle-planned",
+        cycleId ? { cycleId } : {},
+      ),
+  });
+}
+
+export function useSendTradecraftCycleStartedPreview() {
+  const client = useApiClient();
+  return useMutation({
+    mutationFn: (cycleId?: string) =>
+      client.post<{ ok: boolean; error?: string }>(
+        "/notifications/debug/tradecraft/cycle-started",
+        cycleId ? { cycleId } : {},
+      ),
+  });
+}
+
+export function useSendTradecraftCycleResultsPreview() {
+  const client = useApiClient();
+  return useMutation({
+    mutationFn: (cycleId?: string) =>
+      client.post<{ ok: boolean; error?: string }>(
+        "/notifications/debug/tradecraft/cycle-results",
+        cycleId ? { cycleId } : {},
+      ),
+  });
+}
+
+export function useSendTradecraftPayoutSentPreview() {
+  const client = useApiClient();
+  return useMutation({
+    mutationFn: (participationId?: string) =>
+      client.post<{ ok: boolean; error?: string }>(
+        "/notifications/debug/tradecraft/payout-sent",
+        participationId ? { participationId } : {},
+      ),
+  });
+}
