@@ -85,8 +85,7 @@ export function NotificationsNudgeModal() {
     isTradecraft && !isTradecraftAdmin && !isNotificationsSettings;
 
   const now = Date.now();
-  const isSnoozed =
-    typeof snoozeUntilMs === "number" && snoozeUntilMs > now;
+  const isSnoozed = typeof snoozeUntilMs === "number" && snoozeUntilMs > now;
 
   const shouldOpen =
     isEligibleRoute &&
@@ -203,5 +202,3 @@ export function NotificationsNudgeModal() {
     </Dialog>
   );
 }
-
-

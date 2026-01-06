@@ -133,7 +133,7 @@ function useReturnUrl() {
   return url;
 }
 
-export default function NotificationSettingsPage() {
+function NotificationSettingsInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const returnUrl = useReturnUrl();
@@ -267,22 +267,19 @@ export default function NotificationSettingsPage() {
     return "indeterminate" as const;
   };
 
-  const groupStatus = React.useCallback(
-    (state: boolean | "indeterminate") => {
-      if (state === true)
-        return {
-          label: "All on",
-          className: "text-green-600 dark:text-green-400",
-        } as const;
-      if (state === "indeterminate")
-        return {
-          label: "Some",
-          className: "text-amber-600 dark:text-amber-400",
-        } as const;
-      return { label: "All off", className: "text-muted-foreground" } as const;
-    },
-    [],
-  );
+  const groupStatus = React.useCallback((state: boolean | "indeterminate") => {
+    if (state === true)
+      return {
+        label: "All on",
+        className: "text-green-600 dark:text-green-400",
+      } as const;
+    if (state === "indeterminate")
+      return {
+        label: "Some",
+        className: "text-amber-600 dark:text-amber-400",
+      } as const;
+    return { label: "All off", className: "text-muted-foreground" } as const;
+  }, []);
 
   const toggleGroup = (
     types: readonly NotificationTypeKey[],
@@ -527,7 +524,9 @@ export default function NotificationSettingsPage() {
                       <div className="flex items-center gap-2">
                         <div className="text-sm font-semibold">Tradecraft</div>
                         {(() => {
-                          const s = groupStatus(getGroupState(TRADECRAFT_TYPES));
+                          const s = groupStatus(
+                            getGroupState(TRADECRAFT_TYPES),
+                          );
                           return (
                             <span
                               className={cn(
@@ -736,8 +735,8 @@ export default function NotificationSettingsPage() {
                     All changes saved
                     {lastSavedAt ? (
                       <span className="ml-2">
-                        (last saved{" "}
-                        {new Date(lastSavedAt).toLocaleTimeString()})
+                        (last saved {new Date(lastSavedAt).toLocaleTimeString()}
+                        )
                       </span>
                     ) : null}
                   </div>
@@ -788,6 +787,40 @@ export default function NotificationSettingsPage() {
         </div>
       </details>
     </div>
+  );
+}
+
+export default function NotificationSettingsPage() {
+  // Next.js requires `useSearchParams()` usage to be wrapped in a Suspense boundary
+  // to avoid CSR bailout issues during production builds.
+  return (
+    <React.Suspense
+      fallback={
+        <div className="container mx-auto max-w-5xl space-y-6 p-6 md:p-8">
+          <div className="space-y-2">
+            <h1 className="text-3xl font-bold tracking-tight">
+              Notification Settings
+            </h1>
+            <p className="text-muted-foreground">
+              Control how you receive updates about arbitrage cycles and
+              payouts.
+            </p>
+          </div>
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Loading…</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <Skeleton className="h-14 w-full" />
+              <Skeleton className="h-14 w-full" />
+              <Skeleton className="h-14 w-full" />
+            </CardContent>
+          </Card>
+        </div>
+      }
+    >
+      <NotificationSettingsInner />
+    </React.Suspense>
   );
 }
 
