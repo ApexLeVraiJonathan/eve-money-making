@@ -20,8 +20,12 @@ async function seedTradecraftNotificationFixtures(
   const u2 = uuid('11111111-1111-1111-1111-111111111111');
 
   // Clean any previous runs for the same IDs (idempotent).
-  await prisma.notificationPreference.deleteMany({ where: { userId: { in: [u1, u2] } } });
-  await prisma.discordAccount.deleteMany({ where: { userId: { in: [u1, u2] } } });
+  await prisma.notificationPreference.deleteMany({
+    where: { userId: { in: [u1, u2] } },
+  });
+  await prisma.discordAccount.deleteMany({
+    where: { userId: { in: [u1, u2] } },
+  });
   await prisma.user.deleteMany({ where: { id: { in: [u1, u2] } } });
 
   await prisma.user.createMany({
@@ -104,12 +108,42 @@ async function seedTradecraftNotificationFixtures(
   // - Results/Payout only for u1 (participant)
   await prisma.notificationPreference.createMany({
     data: [
-      { userId: u1, channel: 'DISCORD_DM', notificationType: 'CYCLE_PLANNED', enabled: true },
-      { userId: u2, channel: 'DISCORD_DM', notificationType: 'CYCLE_PLANNED', enabled: true },
-      { userId: u1, channel: 'DISCORD_DM', notificationType: 'CYCLE_STARTED', enabled: true },
-      { userId: u2, channel: 'DISCORD_DM', notificationType: 'CYCLE_STARTED', enabled: true },
-      { userId: u1, channel: 'DISCORD_DM', notificationType: 'CYCLE_RESULTS', enabled: true },
-      { userId: u1, channel: 'DISCORD_DM', notificationType: 'CYCLE_PAYOUT_SENT', enabled: true },
+      {
+        userId: u1,
+        channel: 'DISCORD_DM',
+        notificationType: 'CYCLE_PLANNED',
+        enabled: true,
+      },
+      {
+        userId: u2,
+        channel: 'DISCORD_DM',
+        notificationType: 'CYCLE_PLANNED',
+        enabled: true,
+      },
+      {
+        userId: u1,
+        channel: 'DISCORD_DM',
+        notificationType: 'CYCLE_STARTED',
+        enabled: true,
+      },
+      {
+        userId: u2,
+        channel: 'DISCORD_DM',
+        notificationType: 'CYCLE_STARTED',
+        enabled: true,
+      },
+      {
+        userId: u1,
+        channel: 'DISCORD_DM',
+        notificationType: 'CYCLE_RESULTS',
+        enabled: true,
+      },
+      {
+        userId: u1,
+        channel: 'DISCORD_DM',
+        notificationType: 'CYCLE_PAYOUT_SENT',
+        enabled: true,
+      },
     ],
   });
 
@@ -122,10 +156,26 @@ async function seedTradecraftNotificationFixtures(
 
 async function cleanup(prisma: PrismaClient, seeded: SeedOut) {
   const { u1, u2 } = seeded.users;
-  await prisma.notificationPreference.deleteMany({ where: { userId: { in: [u1, u2] } } });
-  await prisma.discordAccount.deleteMany({ where: { userId: { in: [u1, u2] } } });
-  await prisma.cycleParticipation.deleteMany({ where: { userId: { in: [u1, u2] } } });
-  await prisma.cycle.deleteMany({ where: { id: { in: [seeded.cycles.planned, seeded.cycles.open, seeded.cycles.completed] } } });
+  await prisma.notificationPreference.deleteMany({
+    where: { userId: { in: [u1, u2] } },
+  });
+  await prisma.discordAccount.deleteMany({
+    where: { userId: { in: [u1, u2] } },
+  });
+  await prisma.cycleParticipation.deleteMany({
+    where: { userId: { in: [u1, u2] } },
+  });
+  await prisma.cycle.deleteMany({
+    where: {
+      id: {
+        in: [
+          seeded.cycles.planned,
+          seeded.cycles.open,
+          seeded.cycles.completed,
+        ],
+      },
+    },
+  });
   await prisma.user.deleteMany({ where: { id: { in: [u1, u2] } } });
 }
 
@@ -148,7 +198,9 @@ describe('Tradecraft notifications (seeded DB)', () => {
     });
 
     it('notifyCyclePlanned sends to all opted-in users', async () => {
-      const discordDm = { sendDirectMessage: jest.fn(async () => undefined) } as any;
+      const discordDm = {
+        sendDirectMessage: jest.fn(async () => undefined),
+      } as any;
       const svc = new NotificationService(prisma as any, discordDm, {} as any);
       await svc.notifyCyclePlanned(seeded.cycles.planned);
 
@@ -159,7 +211,9 @@ describe('Tradecraft notifications (seeded DB)', () => {
     });
 
     it('notifyCycleStarted sends to all opted-in users', async () => {
-      const discordDm = { sendDirectMessage: jest.fn(async () => undefined) } as any;
+      const discordDm = {
+        sendDirectMessage: jest.fn(async () => undefined),
+      } as any;
       const svc = new NotificationService(prisma as any, discordDm, {} as any);
       await svc.notifyCycleStarted(seeded.cycles.open);
 
@@ -170,23 +224,29 @@ describe('Tradecraft notifications (seeded DB)', () => {
     });
 
     it('notifyCycleResults sends only to opted-in participants', async () => {
-      const discordDm = { sendDirectMessage: jest.fn(async () => undefined) } as any;
+      const discordDm = {
+        sendDirectMessage: jest.fn(async () => undefined),
+      } as any;
       const svc = new NotificationService(prisma as any, discordDm, {} as any);
       await svc.notifyCycleResults(seeded.cycles.completed);
 
-      const recipients = (discordDm.sendDirectMessage as jest.Mock).mock.calls.map((c) => c[0]);
+      const recipients = (
+        discordDm.sendDirectMessage as jest.Mock
+      ).mock.calls.map((c) => c[0]);
       expect(recipients).toEqual(['discord_u1']);
     });
 
     it('notifyPayoutSent sends only to the participant when enabled', async () => {
-      const discordDm = { sendDirectMessage: jest.fn(async () => undefined) } as any;
+      const discordDm = {
+        sendDirectMessage: jest.fn(async () => undefined),
+      } as any;
       const svc = new NotificationService(prisma as any, discordDm, {} as any);
       await svc.notifyPayoutSent(seeded.participations.payout);
 
-      const recipients = (discordDm.sendDirectMessage as jest.Mock).mock.calls.map((c) => c[0]);
+      const recipients = (
+        discordDm.sendDirectMessage as jest.Mock
+      ).mock.calls.map((c) => c[0]);
       expect(recipients).toEqual(['discord_u1']);
     });
   });
 });
-
-

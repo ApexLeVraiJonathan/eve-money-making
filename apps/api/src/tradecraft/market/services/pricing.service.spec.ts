@@ -77,7 +77,9 @@ describe('PricingService.undercutCheck', () => {
     const feeService = {};
 
     // Mock competitor sells
-    fetchStationOrdersMock.mockImplementation(async () => opts?.stationSells ?? []);
+    fetchStationOrdersMock.mockImplementation(
+      async () => opts?.stationSells ?? [],
+    );
 
     return new PricingService(
       prisma as any,
@@ -123,7 +125,7 @@ describe('PricingService.undercutCheck', () => {
 
     expect(res).toHaveLength(1);
     expect(res[0]?.updates).toHaveLength(1);
-    const u = res[0]!.updates[0]!;
+    const u = res[0].updates[0];
 
     expect(u.orderId).toBe(1);
     expect(u.reasons).toEqual(['expiry']);
@@ -174,16 +176,16 @@ describe('PricingService.undercutCheck', () => {
     });
 
     expect(res).toHaveLength(1);
-    expect(res[0]!.updates).toHaveLength(2);
+    expect(res[0].updates).toHaveLength(2);
 
-    const [u1, u2] = res[0]!.updates;
-    expect(u1!.orderId).toBe(10); // lowest remaining first
-    expect(u1!.suggestedNewPriceTicked).toBe(98); // 2 ticks undercut
-    expect(u1!.reasons).toEqual(expect.arrayContaining(['undercut', 'ladder']));
+    const [u1, u2] = res[0].updates;
+    expect(u1.orderId).toBe(10); // lowest remaining first
+    expect(u1.suggestedNewPriceTicked).toBe(98); // 2 ticks undercut
+    expect(u1.reasons).toEqual(expect.arrayContaining(['undercut', 'ladder']));
 
-    expect(u2!.orderId).toBe(11);
-    expect(u2!.suggestedNewPriceTicked).toBe(99); // 1 tick undercut
-    expect(u2!.reasons).toEqual(['ladder']);
+    expect(u2.orderId).toBe(11);
+    expect(u2.suggestedNewPriceTicked).toBe(99); // 1 tick undercut
+    expect(u2.reasons).toEqual(['ladder']);
   });
 
   it('for global mode, does not ladder a second order when daily volume does not exceed lowest-remaining order', async () => {
@@ -226,12 +228,10 @@ describe('PricingService.undercutCheck', () => {
     });
 
     expect(res).toHaveLength(1);
-    expect(res[0]!.updates).toHaveLength(1);
-    const u = res[0]!.updates[0]!;
+    expect(res[0].updates).toHaveLength(1);
+    const u = res[0].updates[0];
     expect(u.orderId).toBe(20);
     expect(u.suggestedNewPriceTicked).toBe(99); // 1 tick undercut (no ladder)
     expect(u.reasons).toEqual(['undercut']);
   });
 });
-
-

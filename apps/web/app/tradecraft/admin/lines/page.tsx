@@ -4,8 +4,23 @@
 export const dynamic = "force-dynamic";
 
 import * as React from "react";
-import { useRouter, useSearchParams } from "next/navigation";
-import { Button } from "@eve/ui";
+import { useSearchParams } from "next/navigation";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@eve/ui";
+import { Skeleton } from "@eve/ui";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@eve/ui";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@eve/ui";
 import {
   Table,
   TableBody,
@@ -14,52 +29,11 @@ import {
   TableHeader,
   TableRow,
 } from "@eve/ui";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@eve/ui";
-import { Input } from "@eve/ui";
-import { Label } from "@eve/ui";
-import {
-  Plus,
-  ArrowLeft,
-  DollarSign,
-  MoreHorizontal,
-  Trash2,
-} from "lucide-react";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@eve/ui";
 import { formatIsk } from "@/lib/utils";
-import { Skeleton } from "@eve/ui";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@eve/ui";
-import {
-  useCycles,
-  useCycleLines,
-  useCreateCycleLine,
-  useDeleteCycleLine,
-  useAddBrokerFee,
-  useAddRelistFee,
-} from "../../api";
-import { toast } from "@eve/ui";
-import type { CycleLine } from "@eve/shared";
+import { useCycles, useCycleLinesIntel } from "../../api";
+import type { CycleLinesIntelRow, CycleLinesIntelTotals } from "@eve/shared";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@eve/ui";
+import { ChevronDown } from "lucide-react";
 
 export default function CycleLinesPage() {
   return (
@@ -70,20 +44,14 @@ export default function CycleLinesPage() {
 }
 
 function CycleLinesContent() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const queryParamCycleId = searchParams.get("cycleId");
 
   const [cycleId, setCycleId] = React.useState<string>("");
+  const [tab, setTab] = React.useState<"global" | "destination">("global");
 
-  // Use new API hooks
   const { data: cycles = [] } = useCycles();
-  const { data: lines = [], isLoading } = useCycleLines(cycleId);
-
-  const createLineMutation = useCreateCycleLine();
-  const deleteLineMutation = useDeleteCycleLine();
-  const addBrokerFeeMutation = useAddBrokerFee();
-  const addRelistFeeMutation = useAddRelistFee();
+  const { data: intel, isLoading, error } = useCycleLinesIntel(cycleId);
 
   // Auto-select latest cycle
   React.useEffect(() => {
@@ -95,352 +63,526 @@ function CycleLinesContent() {
     }
   }, [queryParamCycleId, cycles, cycleId]);
 
-  const [showCreateDialog, setShowCreateDialog] = React.useState(false);
-  const [showFeeDialog, setShowFeeDialog] = React.useState(false);
-  const [selectedLine, setSelectedLine] = React.useState<CycleLine | null>(
-    null,
-  );
-  const [feeType, setFeeType] = React.useState<"broker" | "relist">("broker");
-  const [deleteLineId, setDeleteLineId] = React.useState<string | null>(null);
-
-  // Form state for creating lines
-  const [typeId, setTypeId] = React.useState("");
-  const [destinationStationId, setDestinationStationId] = React.useState("");
-  const [plannedUnits, setPlannedUnits] = React.useState("");
-
-  // Fee form state
-  const [feeAmount, setFeeAmount] = React.useState("");
-
-  const handleCreateLine = async () => {
-    if (!cycleId) return;
-    try {
-      await createLineMutation.mutateAsync({
-        cycleId,
-        data: {
-          typeId: Number(typeId),
-          destinationStationId: Number(destinationStationId),
-          plannedUnits: Number(plannedUnits),
-        },
-      });
-      setShowCreateDialog(false);
-      setTypeId("");
-      setDestinationStationId("");
-      setPlannedUnits("");
-      toast.success("Line created");
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to create line");
-    }
-  };
-
-  const handleDeleteLine = async () => {
-    if (!deleteLineId) return;
-    try {
-      await deleteLineMutation.mutateAsync(deleteLineId);
-      setDeleteLineId(null);
-      toast.success("Line deleted");
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to delete line");
-    }
-  };
-
-  const handleAddFee = async () => {
-    if (!selectedLine) return;
-    try {
-      const mutation =
-        feeType === "broker" ? addBrokerFeeMutation : addRelistFeeMutation;
-      await mutation.mutateAsync({
-        lineId: selectedLine.id,
-        amountIsk: feeAmount,
-      });
-      setShowFeeDialog(false);
-      setSelectedLine(null);
-      setFeeAmount("");
-      toast.success("Fee added");
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to add fee");
-    }
-  };
-
-  const openBrokerDialog = (line: CycleLine) => {
-    setSelectedLine(line);
-    setFeeType("broker");
-    setShowFeeDialog(true);
-  };
-
-  const openRelistDialog = (line: CycleLine) => {
-    setSelectedLine(line);
-    setFeeType("relist");
-    setShowFeeDialog(true);
-  };
-
   return (
     <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => router.push("/tradecraft/cycles")}
-          >
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-          <div>
-            <h1 className="text-2xl font-semibold tracking-tight">
-              Cycle Lines
-            </h1>
-            {cycleId ? (
-              <p className="text-sm text-muted-foreground">
-                Using cycle {cycleId.slice(0, 8)}...
-              </p>
-            ) : (
-              <p className="text-sm text-muted-foreground">
-                Loading latest open cycle...
-              </p>
-            )}
+      {/* Header */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Cycle Intel</h1>
+          <p className="text-sm text-muted-foreground">
+            Global and destination-level profitability for a cycle.
+          </p>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <div className="min-w-[260px]">
+            <Select value={cycleId} onValueChange={setCycleId}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select cycle" />
+              </SelectTrigger>
+              <SelectContent>
+                {cycles.map((c) => (
+                  <SelectItem key={c.id} value={c.id}>
+                    {c.name ?? c.id.slice(0, 8)}{" "}
+                    {c.status === "OPEN" ? "• OPEN" : ""}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         </div>
-        <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
-          <DialogTrigger asChild>
-            <Button>
-              <Plus className="h-4 w-4 mr-2" />
-              Add Line
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Create Cycle Line</DialogTitle>
-              <DialogDescription>
-                Add a buy commitment line for a specific item and destination.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4 py-4">
-              <div className="space-y-2">
-                <Label htmlFor="typeId">Type ID</Label>
-                <Input
-                  id="typeId"
-                  type="number"
-                  placeholder="e.g. 34"
-                  value={typeId}
-                  onChange={(e) => setTypeId(e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="destinationStationId">
-                  Destination Station ID
-                </Label>
-                <Input
-                  id="destinationStationId"
-                  type="number"
-                  placeholder="e.g. 60011866"
-                  value={destinationStationId}
-                  onChange={(e) => setDestinationStationId(e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="plannedUnits">Planned Units</Label>
-                <Input
-                  id="plannedUnits"
-                  type="number"
-                  placeholder="e.g. 100"
-                  value={plannedUnits}
-                  onChange={(e) => setPlannedUnits(e.target.value)}
-                />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button
-                variant="outline"
-                onClick={() => setShowCreateDialog(false)}
-              >
-                Cancel
-              </Button>
-              <Button onClick={handleCreateLine}>Create</Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
       </div>
 
       {isLoading ? (
-        <div className="rounded-lg border p-4 surface-1">
-          <Skeleton className="h-8 w-full mb-2" />
-          <Skeleton className="h-8 w-full mb-2" />
-          <Skeleton className="h-8 w-full" />
+        <div className="space-y-4">
+          <Skeleton className="h-10 w-72" />
+          <Skeleton className="h-80 w-full" />
         </div>
-      ) : lines.length === 0 ? (
-        <div className="rounded-lg border p-8 text-center surface-1">
-          <p className="text-muted-foreground">
-            No cycle lines yet. Create one to get started.
+      ) : error ? (
+        <div className="rounded-lg border border-red-500/50 bg-red-500/10 p-4">
+          <p className="text-sm text-red-600 dark:text-red-400">
+            {error instanceof Error ? error.message : String(error)}
           </p>
         </div>
+      ) : !intel ? (
+        <div className="rounded-lg border p-8 text-center">
+          <p className="text-muted-foreground">Select a cycle to continue.</p>
+        </div>
       ) : (
-        <div className="rounded-lg border surface-1 overflow-hidden">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Item</TableHead>
-                <TableHead>Destination</TableHead>
-                <TableHead className="text-right">Planned</TableHead>
-                <TableHead className="text-right">Bought</TableHead>
-                <TableHead className="text-right">Sold</TableHead>
-                <TableHead className="text-right">Remaining</TableHead>
-                <TableHead className="text-right">Buy Cost</TableHead>
-                <TableHead className="text-right">Sales Net</TableHead>
-                <TableHead className="text-right">Broker Fees</TableHead>
-                <TableHead className="text-right">Relist Fees</TableHead>
-                <TableHead className="text-right">Line Profit</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {lines.map((line) => {
-                const profit = Number(line.lineProfitExclTransport ?? 0);
-                const isNegative = profit < 0;
+        <Tabs value={tab} onValueChange={(v) => setTab(v as typeof tab)}>
+          <TabsList>
+            <TabsTrigger value="global">Global View</TabsTrigger>
+            <TabsTrigger value="destination">Destination View</TabsTrigger>
+          </TabsList>
 
-                return (
-                  <TableRow key={line.id}>
-                    <TableCell className="font-medium">
-                      <div>
-                        <div className="text-sm">{line.typeName}</div>
-                        <div className="text-xs text-muted-foreground">
-                          ID: {line.typeId}
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="text-sm">
-                        {line.destinationStationName?.split(" ")[0] ??
-                          `Station ${line.destinationStationId}`}
-                      </div>
+          <TabsContent value="global" className="mt-4 space-y-4">
+            <IntelBlock
+              title="Global View"
+              description="Aggregated across all destinations (grouped by item)."
+              profitableLabel="Completed profitable items (sold out)"
+              potentialLabel="Potential profit (listed above break-even)"
+              redLabel="Red items (negative margin at market)"
+              block={intel.global}
+              showDestination={false}
+              variant="global"
+            />
+          </TabsContent>
+
+          <TabsContent value="destination" className="mt-4 space-y-4">
+            <DestinationAccordion destinations={intel.destinations} />
+          </TabsContent>
+        </Tabs>
+      )}
+    </div>
+  );
+}
+
+function TotalsRow({
+  label,
+  value,
+  className,
+  colSpan,
+}: {
+  label: string;
+  value: number;
+  className: string;
+  colSpan: number;
+}) {
+  return (
+    <TableRow className="bg-muted/30">
+      <TableCell colSpan={colSpan} className="text-right font-medium">
+        {label}
+      </TableCell>
+      <TableCell
+        className={`text-right tabular-nums font-semibold ${className}`}
+      >
+        {formatIsk(value)}
+      </TableCell>
+    </TableRow>
+  );
+}
+
+function ProfitTable({
+  rows,
+  totals,
+}: {
+  rows: CycleLinesIntelRow[];
+  totals: CycleLinesIntelTotals;
+}) {
+  const totalProfit = Number(totals.profitIsk);
+  return (
+    <div className="rounded-lg border overflow-hidden">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Item</TableHead>
+            <TableHead className="text-right">Bought</TableHead>
+            <TableHead className="text-right">Sold</TableHead>
+            <TableHead className="text-right">COGS</TableHead>
+            <TableHead className="text-right">Sales Net</TableHead>
+            <TableHead className="text-right">Fees</TableHead>
+            <TableHead className="text-right">Profit</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {rows.length === 0 ? (
+            <TableRow>
+              <TableCell
+                colSpan={7}
+                className="py-6 text-center text-muted-foreground"
+              >
+                No items.
+              </TableCell>
+            </TableRow>
+          ) : (
+            rows.map((r) => {
+              const profit = Number(r.profitIsk);
+              return (
+                <TableRow key={`${r.destinationStationId ?? "g"}:${r.typeId}`}>
+                  <TableCell className="font-medium">
+                    <div className="text-sm">{r.typeName}</div>
+                    <div className="text-xs text-muted-foreground">
+                      ({r.typeId})
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {r.unitsBought.toLocaleString()}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {r.unitsSold.toLocaleString()}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {formatIsk(Number(r.cogsSoldIsk))}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {formatIsk(Number(r.salesNetIsk))}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {formatIsk(Number(r.feesIsk))}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    <span
+                      className={
+                        profit >= 0 ? "text-emerald-500" : "text-red-400"
+                      }
+                    >
+                      {formatIsk(profit)}
+                    </span>
+                  </TableCell>
+                </TableRow>
+              );
+            })
+          )}
+          <TotalsRow
+            label="Total Profit"
+            value={totalProfit}
+            className={totalProfit >= 0 ? "text-emerald-500" : "text-red-400"}
+            colSpan={6}
+          />
+        </TableBody>
+      </Table>
+    </div>
+  );
+}
+
+function PotentialTable({
+  rows,
+  totals,
+  variant,
+}: {
+  rows: CycleLinesIntelRow[];
+  totals: CycleLinesIntelTotals;
+  variant: "global" | "destination";
+}) {
+  const totalExpected = Number(totals.expectedProfitIsk ?? 0);
+  const showListed = variant === "destination";
+  return (
+    <div className="rounded-lg border overflow-hidden">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Item</TableHead>
+            <TableHead className="text-right">Remaining</TableHead>
+            <TableHead className="text-right">WAC</TableHead>
+            <TableHead className="text-right">Inv. Cost</TableHead>
+            <TableHead className="text-right">Expected</TableHead>
+            {showListed && (
+              <TableHead className="text-right">Listed @</TableHead>
+            )}
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {rows.length === 0 ? (
+            <TableRow>
+              <TableCell
+                colSpan={showListed ? 6 : 5}
+                className="py-6 text-center text-muted-foreground"
+              >
+                No items.
+              </TableCell>
+            </TableRow>
+          ) : (
+            rows.map((r) => (
+              <TableRow key={`${r.destinationStationId ?? "g"}:${r.typeId}`}>
+                <TableCell className="font-medium">
+                  <div className="text-sm">{r.typeName}</div>
+                  <div className="text-xs text-muted-foreground">
+                    ({r.typeId})
+                  </div>
+                </TableCell>
+                <TableCell className="text-right tabular-nums">
+                  {r.unitsRemaining.toLocaleString()}
+                </TableCell>
+                <TableCell className="text-right tabular-nums">
+                  {formatIsk(Number(r.wacUnitCostIsk))}
+                </TableCell>
+                <TableCell className="text-right tabular-nums">
+                  {formatIsk(Number(r.inventoryCostRemainingIsk))}
+                </TableCell>
+                <TableCell className="text-right tabular-nums">
+                  <span className="text-emerald-500">
+                    {formatIsk(Number(r.expectedProfitIsk ?? 0))}
+                  </span>
+                </TableCell>
+                {showListed && (
+                  <TableCell className="text-right tabular-nums">
+                    {r.currentSellPriceIsk
+                      ? formatIsk(Number(r.currentSellPriceIsk))
+                      : "—"}
+                  </TableCell>
+                )}
+              </TableRow>
+            ))
+          )}
+          <TotalsRow
+            label="Total Expected Profit"
+            value={totalExpected}
+            className={totalExpected >= 0 ? "text-emerald-500" : "text-red-400"}
+            colSpan={showListed ? 5 : 4}
+          />
+        </TableBody>
+      </Table>
+    </div>
+  );
+}
+
+function RedTable({
+  rows,
+  totals,
+  variant,
+}: {
+  rows: CycleLinesIntelRow[];
+  totals: CycleLinesIntelTotals;
+  variant: "global" | "destination";
+}) {
+  const totalLoss = Number(totals.lossIsk ?? 0);
+  const showMarketCols = variant === "destination";
+  return (
+    <div className="rounded-lg border overflow-hidden">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Item</TableHead>
+            <TableHead className="text-right">Rollover</TableHead>
+            <TableHead className="text-right">Remaining</TableHead>
+            <TableHead className="text-right">WAC</TableHead>
+            <TableHead className="text-right">Loss @ market</TableHead>
+            {showMarketCols && (
+              <>
+                <TableHead className="text-right">Market low</TableHead>
+                <TableHead className="text-right">Margin %</TableHead>
+              </>
+            )}
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {rows.length === 0 ? (
+            <TableRow>
+              <TableCell
+                colSpan={showMarketCols ? 7 : 5}
+                className="py-6 text-center text-muted-foreground"
+              >
+                No items.
+              </TableCell>
+            </TableRow>
+          ) : (
+            rows.map((r) => (
+              <TableRow key={`${r.destinationStationId ?? "g"}:${r.typeId}`}>
+                <TableCell className="font-medium">
+                  <div className="text-sm">{r.typeName}</div>
+                  <div className="text-xs text-muted-foreground">
+                    ({r.typeId})
+                  </div>
+                </TableCell>
+                <TableCell className="text-right text-xs">
+                  {r.isRollover === undefined ? (
+                    <span className="rounded border px-2 py-0.5">Mixed</span>
+                  ) : r.isRollover ? (
+                    <span className="rounded border px-2 py-0.5">Yes</span>
+                  ) : (
+                    <span className="rounded border px-2 py-0.5">No</span>
+                  )}
+                </TableCell>
+                <TableCell className="text-right tabular-nums">
+                  {r.unitsRemaining.toLocaleString()}
+                </TableCell>
+                <TableCell className="text-right tabular-nums">
+                  {formatIsk(Number(r.wacUnitCostIsk))}
+                </TableCell>
+                <TableCell className="text-right tabular-nums">
+                  <span className="text-red-400">
+                    {formatIsk(Number(r.estimatedProfitAtMarketIsk ?? 0))}
+                  </span>
+                </TableCell>
+                {showMarketCols && (
+                  <>
+                    <TableCell className="text-right tabular-nums">
+                      {r.marketLowSellIsk
+                        ? formatIsk(Number(r.marketLowSellIsk))
+                        : "—"}
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
-                      {line.plannedUnits.toLocaleString()}
+                      {r.estimatedMarginPercentAtMarket ?? "—"}%
                     </TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {line.unitsBought.toLocaleString()}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {line.unitsSold.toLocaleString()}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {(line.unitsRemaining ?? 0).toLocaleString()}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {formatIsk(Number(line.buyCostIsk))}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {formatIsk(Number(line.salesNetIsk))}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {formatIsk(Number(line.brokerFeesIsk))}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {formatIsk(Number(line.relistFeesIsk))}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">
+                  </>
+                )}
+              </TableRow>
+            ))
+          )}
+          <TotalsRow
+            label="Total Loss"
+            value={totalLoss}
+            className="text-red-400"
+            colSpan={showMarketCols ? 6 : 4}
+          />
+        </TableBody>
+      </Table>
+    </div>
+  );
+}
+
+function IntelBlock({
+  title,
+  description,
+  profitableLabel,
+  potentialLabel,
+  redLabel,
+  block,
+  variant = "destination",
+}: {
+  title: string;
+  description: string;
+  profitableLabel: string;
+  potentialLabel: string;
+  redLabel: string;
+  showDestination: boolean;
+  block: {
+    profitable: { rows: CycleLinesIntelRow[]; totals: CycleLinesIntelTotals };
+    potential: { rows: CycleLinesIntelRow[]; totals: CycleLinesIntelTotals };
+    red: { rows: CycleLinesIntelRow[]; totals: CycleLinesIntelTotals };
+  };
+  variant?: "global" | "destination";
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{title}</CardTitle>
+        <CardDescription>{description}</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        <div className="space-y-2">
+          <div className="text-sm font-semibold">{profitableLabel}</div>
+          <ProfitTable
+            rows={block.profitable.rows}
+            totals={block.profitable.totals}
+          />
+        </div>
+
+        <div className="space-y-2">
+          <div className="text-sm font-semibold">{potentialLabel}</div>
+          <PotentialTable
+            rows={block.potential.rows}
+            totals={block.potential.totals}
+            variant={variant}
+          />
+        </div>
+
+        <div className="space-y-2">
+          <div className="text-sm font-semibold">{redLabel}</div>
+          <RedTable
+            rows={block.red.rows}
+            totals={block.red.totals}
+            variant={variant}
+          />
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function DestinationAccordion({
+  destinations,
+}: {
+  destinations: Array<{
+    destinationStationId: number;
+    destinationStationName: string;
+    profitable: { rows: CycleLinesIntelRow[]; totals: CycleLinesIntelTotals };
+    potential: { rows: CycleLinesIntelRow[]; totals: CycleLinesIntelTotals };
+    red: { rows: CycleLinesIntelRow[]; totals: CycleLinesIntelTotals };
+  }>;
+}) {
+  const ordered = React.useMemo(() => {
+    const order = ["Dodixie", "Hek", "Rens", "Amarr"];
+    const idxFor = (name: string) => {
+      const i = order.findIndex((x) => name.includes(x));
+      return i === -1 ? 999 : i;
+    };
+    return [...destinations].sort((a, b) => {
+      const ai = idxFor(a.destinationStationName);
+      const bi = idxFor(b.destinationStationName);
+      if (ai !== bi) return ai - bi;
+      return a.destinationStationName.localeCompare(b.destinationStationName);
+    });
+  }, [destinations]);
+
+  if (ordered.length === 0) {
+    return (
+      <div className="rounded-lg border p-8 text-center">
+        <p className="text-muted-foreground">No destinations yet.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {ordered.map((d) => {
+        const profit = Number(d.profitable.totals.profitIsk);
+        const expected = Number(d.potential.totals.expectedProfitIsk ?? 0);
+        const loss = Number(d.red.totals.lossIsk ?? 0);
+        return (
+          <Collapsible key={d.destinationStationId} defaultOpen={false}>
+            <div className="rounded-lg border overflow-hidden">
+              <CollapsibleTrigger asChild>
+                <button
+                  type="button"
+                  className="w-full flex items-center justify-between gap-4 px-4 py-3 bg-muted/20 hover:bg-muted/30 transition-colors"
+                >
+                  <div className="text-left">
+                    <div className="font-medium">
+                      {d.destinationStationName}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      Station #{d.destinationStationId}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-4 text-sm tabular-nums">
+                    <div>
+                      <span className="text-muted-foreground">Profit </span>
                       <span
                         className={
-                          isNegative ? "text-red-400" : "text-emerald-500"
+                          profit >= 0 ? "text-emerald-500" : "text-red-400"
                         }
                       >
                         {formatIsk(profit)}
                       </span>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="sm">
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem
-                            onClick={() => openBrokerDialog(line)}
-                          >
-                            <DollarSign className="h-4 w-4 mr-2" />
-                            Add Broker Fee
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={() => openRelistDialog(line)}
-                          >
-                            <DollarSign className="h-4 w-4 mr-2" />
-                            Add Relist Fee
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={() => setDeleteLineId(line.id)}
-                            className="text-destructive focus:text-destructive"
-                          >
-                            <Trash2 className="h-4 w-4 mr-2" />
-                            Delete Line
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        </div>
-      )}
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Expected </span>
+                      <span
+                        className={
+                          expected >= 0 ? "text-emerald-500" : "text-red-400"
+                        }
+                      >
+                        {formatIsk(expected)}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Loss </span>
+                      <span className="text-red-400">{formatIsk(loss)}</span>
+                    </div>
+                    <ChevronDown className="h-4 w-4 opacity-70" />
+                  </div>
+                </button>
+              </CollapsibleTrigger>
 
-      {/* Fee Dialog */}
-      <Dialog open={showFeeDialog} onOpenChange={setShowFeeDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>
-              Add {feeType === "broker" ? "Broker" : "Relist"} Fee
-            </DialogTitle>
-            <DialogDescription>
-              {selectedLine && (
-                <>
-                  Adding {feeType} fee for {selectedLine.typeName} at{" "}
-                  {selectedLine.destinationStationName}
-                </>
-              )}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="feeAmount">Amount (ISK)</Label>
-              <Input
-                id="feeAmount"
-                type="text"
-                placeholder="e.g. 1234567.89"
-                value={feeAmount}
-                onChange={(e) => setFeeAmount(e.target.value)}
-              />
+              <CollapsibleContent>
+                <div className="p-4">
+                  <IntelBlock
+                    title={d.destinationStationName}
+                    description={`Station #${d.destinationStationId}`}
+                    profitableLabel="Completed profitable items (sold out)"
+                    potentialLabel="Potential profit (remaining listed above break-even)"
+                    redLabel="Red items (negative margin at market)"
+                    block={d}
+                    showDestination={false}
+                    variant="destination"
+                  />
+                </div>
+              </CollapsibleContent>
             </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowFeeDialog(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleAddFee}>Add Fee</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Delete Confirmation Dialog */}
-      <AlertDialog
-        open={deleteLineId !== null}
-        onOpenChange={(open) => !open && setDeleteLineId(null)}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will permanently delete this cycle line and all associated
-              allocations. This action cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDeleteLine}>
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+          </Collapsible>
+        );
+      })}
     </div>
   );
 }

@@ -113,6 +113,7 @@ export const qk = {
     list: (cycleId: string) => ["cycleLines", "list", cycleId] as const,
     byId: (lineId: string) => ["cycleLines", "byId", lineId] as const,
     unlisted: () => ["cycleLines", "unlisted"] as const,
+    intel: (cycleId: string) => ["cycleLines", "intel", cycleId] as const,
   },
 
   /** Participation (investor investments) */

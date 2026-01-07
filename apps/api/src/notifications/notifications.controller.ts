@@ -177,7 +177,8 @@ export class NotificationsController {
       userId?: string;
     },
   ) {
-    if (!user?.userId) return { ok: false as const, error: 'Not authenticated' };
+    if (!user?.userId)
+      return { ok: false as const, error: 'Not authenticated' };
     const targetUserId =
       body?.userId && user.role === 'ADMIN' ? body.userId : user.userId;
     try {
@@ -186,7 +187,10 @@ export class NotificationsController {
         cycleId: body?.cycleId,
       });
     } catch (e) {
-      return { ok: false as const, error: e instanceof Error ? e.message : String(e) };
+      return {
+        ok: false as const,
+        error: e instanceof Error ? e.message : String(e),
+      };
     }
   }
 
@@ -201,7 +205,8 @@ export class NotificationsController {
       userId?: string;
     },
   ) {
-    if (!user?.userId) return { ok: false as const, error: 'Not authenticated' };
+    if (!user?.userId)
+      return { ok: false as const, error: 'Not authenticated' };
     const targetUserId =
       body?.userId && user.role === 'ADMIN' ? body.userId : user.userId;
     try {
@@ -210,7 +215,10 @@ export class NotificationsController {
         cycleId: body?.cycleId,
       });
     } catch (e) {
-      return { ok: false as const, error: e instanceof Error ? e.message : String(e) };
+      return {
+        ok: false as const,
+        error: e instanceof Error ? e.message : String(e),
+      };
     }
   }
 
@@ -225,7 +233,8 @@ export class NotificationsController {
       userId?: string;
     },
   ) {
-    if (!user?.userId) return { ok: false as const, error: 'Not authenticated' };
+    if (!user?.userId)
+      return { ok: false as const, error: 'Not authenticated' };
     const targetUserId =
       body?.userId && user.role === 'ADMIN' ? body.userId : user.userId;
     try {
@@ -234,7 +243,10 @@ export class NotificationsController {
         cycleId: body?.cycleId,
       });
     } catch (e) {
-      return { ok: false as const, error: e instanceof Error ? e.message : String(e) };
+      return {
+        ok: false as const,
+        error: e instanceof Error ? e.message : String(e),
+      };
     }
   }
 
@@ -249,7 +261,8 @@ export class NotificationsController {
       userId?: string;
     },
   ) {
-    if (!user?.userId) return { ok: false as const, error: 'Not authenticated' };
+    if (!user?.userId)
+      return { ok: false as const, error: 'Not authenticated' };
     const targetUserId =
       body?.userId && user.role === 'ADMIN' ? body.userId : user.userId;
     try {
@@ -258,7 +271,10 @@ export class NotificationsController {
         participationId: body?.participationId,
       });
     } catch (e) {
-      return { ok: false as const, error: e instanceof Error ? e.message : String(e) };
+      return {
+        ok: false as const,
+        error: e instanceof Error ? e.message : String(e),
+      };
     }
   }
 

@@ -10,5 +10,3 @@ export class BackfillJingleYieldRolloversRequestDto {
   @IsString()
   sourceClosedCycleId?: string;
 }
-
-

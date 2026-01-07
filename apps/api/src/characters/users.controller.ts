@@ -72,7 +72,8 @@ export class UsersController {
   @UseGuards(RolesGuard)
   @ApiBearerAuth()
   @ApiOperation({
-    summary: 'Set Tradecraft caps (principal + maximum) for a user (admin only)',
+    summary:
+      'Set Tradecraft caps (principal + maximum) for a user (admin only)',
   })
   @ApiParam({ name: 'id', description: 'User ID' })
   async updateTradecraftCaps(

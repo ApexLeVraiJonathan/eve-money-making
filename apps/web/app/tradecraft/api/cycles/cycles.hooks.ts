@@ -14,6 +14,7 @@ import type {
   CycleLedgerEntry,
   PayoutSuggestion,
   CycleFeeEvent,
+  CycleLinesIntelResponse,
 } from "@eve/shared";
 
 /**
@@ -249,6 +250,21 @@ export function useCycleLines(cycleId: string) {
   return useAuthenticatedQuery({
     queryKey: qk.cycleLines.list(cycleId),
     queryFn: () => client.get<CycleLine[]>(`/ledger/cycles/${cycleId}/lines`),
+    enabled: !!cycleId,
+  });
+}
+
+/**
+ * Cycle lines intelligence (admin): aggregated global + destination views with 3 lists.
+ */
+export function useCycleLinesIntel(cycleId: string) {
+  const client = useApiClient();
+  return useAuthenticatedQuery({
+    queryKey: qk.cycleLines.intel(cycleId),
+    queryFn: () =>
+      client.get<CycleLinesIntelResponse>(
+        `/ledger/cycles/${cycleId}/lines/intel`,
+      ),
     enabled: !!cycleId,
   });
 }

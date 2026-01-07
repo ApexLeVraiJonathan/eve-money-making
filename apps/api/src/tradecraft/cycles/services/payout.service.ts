@@ -31,7 +31,11 @@ export class PayoutService {
   private async ensureAutoRolloverParticipations(input: {
     closedCycleId: string;
     targetCycleId: string;
-  }): Promise<{ created: number; skippedExisting: number; skippedNoSource: number }> {
+  }): Promise<{
+    created: number;
+    skippedExisting: number;
+    skippedNoSource: number;
+  }> {
     const { closedCycleId, targetCycleId } = input;
 
     const settings = await this.prisma.autoRolloverSettings.findMany({
@@ -91,7 +95,8 @@ export class PayoutService {
         8,
       )}-${rolloverTypeShort}`;
 
-      const amountIsk = type === 'FULL_PAYOUT' ? '1.00' : String(fromP.amountIsk);
+      const amountIsk =
+        type === 'FULL_PAYOUT' ? '1.00' : String(fromP.amountIsk);
 
       await this.prisma.cycleParticipation.create({
         data: {
@@ -145,24 +150,23 @@ export class PayoutService {
 
     // Find JY-linked participations from the cycle being closed, limited to
     // ACTIVE programs (locked principal still enforced).
-    const jyFromParticipations =
-      await this.prisma.cycleParticipation.findMany({
-        where: {
-          cycleId: closedCycleId,
-          userId: { not: null },
-          jingleYieldProgramId: { not: null },
-          jingleYieldProgram: {
-            status: 'ACTIVE',
-          },
+    const jyFromParticipations = await this.prisma.cycleParticipation.findMany({
+      where: {
+        cycleId: closedCycleId,
+        userId: { not: null },
+        jingleYieldProgramId: { not: null },
+        jingleYieldProgram: {
+          status: 'ACTIVE',
         },
-        select: {
-          id: true,
-          userId: true,
-          characterName: true,
-          amountIsk: true,
-          userPrincipalIsk: true,
-        },
-      });
+      },
+      select: {
+        id: true,
+        userId: true,
+        characterName: true,
+        amountIsk: true,
+        userPrincipalIsk: true,
+      },
+    });
 
     if (jyFromParticipations.length === 0) {
       return { created: 0, skippedExisting: 0 };
@@ -602,7 +606,10 @@ export class PayoutService {
         const currentUserPrincipal = Number(
           rollover.userPrincipalIsk ?? fromUserPrincipal,
         );
-        userExtraForRollover = Math.max(currentUserPrincipal - fromUserPrincipal, 0);
+        userExtraForRollover = Math.max(
+          currentUserPrincipal - fromUserPrincipal,
+          0,
+        );
 
         const totalBeforeCaps = actualPayout + userExtraForRollover;
         const cappedTotal = Math.min(totalBeforeCaps, maximumCapIsk);
@@ -689,7 +696,7 @@ export class PayoutService {
               ? 'AWAITING_PAYOUT'
               : 'COMPLETED',
           payoutPaidAt: alreadyPaid
-            ? participationWithPayout?.payoutPaidAt ?? null
+            ? (participationWithPayout?.payoutPaidAt ?? null)
             : payoutAmount === 0
               ? new Date()
               : null, // Auto-mark as paid if nothing to pay

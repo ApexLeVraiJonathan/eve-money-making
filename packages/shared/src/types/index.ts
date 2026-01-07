@@ -134,6 +134,60 @@ export interface CycleLine {
   updatedAt: string;
 }
 
+export interface CycleLinesIntelRow {
+  typeId: number;
+  typeName: string;
+  destinationStationId?: number;
+  destinationStationName?: string;
+  isRollover?: boolean;
+  unitsBought: number;
+  unitsSold: number;
+  unitsRemaining: number;
+  buyCostIsk: string;
+  cogsSoldIsk: string;
+  wacUnitCostIsk: string;
+  salesNetIsk: string;
+  feesIsk: string;
+  profitIsk: string;
+  inventoryCostRemainingIsk: string;
+  expectedProfitIsk?: string;
+  currentSellPriceIsk?: string | null;
+  marketLowSellIsk?: string | null;
+  estimatedMarginPercentAtMarket?: string | null;
+  estimatedProfitAtMarketIsk?: string | null;
+}
+
+export interface CycleLinesIntelTotals {
+  unitsBought: number;
+  unitsSold: number;
+  unitsRemaining: number;
+  buyCostIsk: string;
+  cogsSoldIsk: string;
+  inventoryCostRemainingIsk: string;
+  salesNetIsk: string;
+  feesIsk: string;
+  profitIsk: string;
+  expectedProfitIsk?: string;
+  lossIsk?: string;
+}
+
+export interface CycleLinesIntelBlock {
+  profitable: { rows: CycleLinesIntelRow[]; totals: CycleLinesIntelTotals };
+  potential: { rows: CycleLinesIntelRow[]; totals: CycleLinesIntelTotals };
+  red: { rows: CycleLinesIntelRow[]; totals: CycleLinesIntelTotals };
+}
+
+export interface CycleLinesIntelResponse {
+  cycleId: string;
+  global: CycleLinesIntelBlock;
+  destinations: Array<
+    {
+      destinationStationId: number;
+      destinationStationName: string;
+    } & CycleLinesIntelBlock
+  >;
+}
+
 export interface CycleLedgerEntry {
   id: string;
   cycleId: string;

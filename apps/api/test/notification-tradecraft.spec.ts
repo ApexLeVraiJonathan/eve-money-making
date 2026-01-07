@@ -2,13 +2,43 @@ import { NotificationService } from '../src/notifications/notification.service';
 
 describe('Tradecraft notifications', () => {
   const prefs = [
-    { userId: 'u1', channel: 'DISCORD_DM', notificationType: 'CYCLE_PLANNED', enabled: true },
-    { userId: 'u2', channel: 'DISCORD_DM', notificationType: 'CYCLE_PLANNED', enabled: true },
-    { userId: 'u1', channel: 'DISCORD_DM', notificationType: 'CYCLE_STARTED', enabled: true },
-    { userId: 'u2', channel: 'DISCORD_DM', notificationType: 'CYCLE_STARTED', enabled: true },
+    {
+      userId: 'u1',
+      channel: 'DISCORD_DM',
+      notificationType: 'CYCLE_PLANNED',
+      enabled: true,
+    },
+    {
+      userId: 'u2',
+      channel: 'DISCORD_DM',
+      notificationType: 'CYCLE_PLANNED',
+      enabled: true,
+    },
+    {
+      userId: 'u1',
+      channel: 'DISCORD_DM',
+      notificationType: 'CYCLE_STARTED',
+      enabled: true,
+    },
+    {
+      userId: 'u2',
+      channel: 'DISCORD_DM',
+      notificationType: 'CYCLE_STARTED',
+      enabled: true,
+    },
     // Results and payout are typically participant-only; keep one user enabled
-    { userId: 'u1', channel: 'DISCORD_DM', notificationType: 'CYCLE_RESULTS', enabled: true },
-    { userId: 'u1', channel: 'DISCORD_DM', notificationType: 'CYCLE_PAYOUT_SENT', enabled: true },
+    {
+      userId: 'u1',
+      channel: 'DISCORD_DM',
+      notificationType: 'CYCLE_RESULTS',
+      enabled: true,
+    },
+    {
+      userId: 'u1',
+      channel: 'DISCORD_DM',
+      notificationType: 'CYCLE_PAYOUT_SENT',
+      enabled: true,
+    },
   ];
 
   const accounts = [
@@ -53,9 +83,14 @@ describe('Tradecraft notifications', () => {
       discordAccount: {
         findMany: jest.fn(async (args: any) => {
           const allowedUsers: string[] | undefined = args?.where?.userId?.in;
-          return accounts.filter((a) => !allowedUsers || allowedUsers.includes(a.userId));
+          return accounts.filter(
+            (a) => !allowedUsers || allowedUsers.includes(a.userId),
+          );
         }),
-        findFirst: jest.fn(async () => ({ discordUserId: 'd1', username: 'test' })),
+        findFirst: jest.fn(async () => ({
+          discordUserId: 'd1',
+          username: 'test',
+        })),
       },
       ...(overrides ?? {}),
     } as any;
@@ -90,7 +125,9 @@ describe('Tradecraft notifications', () => {
     const calls = (discordDm.sendDirectMessage as jest.Mock).mock.calls;
     const message = String(calls[0][1]);
 
-    expect(message).toContain('A new investment cycle has been planned: **Cycle One**');
+    expect(message).toContain(
+      'A new investment cycle has been planned: **Cycle One**',
+    );
     expect(message).toContain(`Planned start: ${startedAt.toISOString()}.`);
     expect(message).toContain('/tradecraft/cycles/opt-in');
     expect(message).toContain('/settings/notifications');
@@ -127,7 +164,9 @@ describe('Tradecraft notifications', () => {
     const calls = (discordDm.sendDirectMessage as jest.Mock).mock.calls;
     expect(calls[0][0]).toBe('d1');
     const message = String(calls[0][1]);
-    expect(message).toContain('Results are now available for cycle **Cycle One**.');
+    expect(message).toContain(
+      'Results are now available for cycle **Cycle One**.',
+    );
     expect(message).toContain('/tradecraft/cycle-details');
     expect(message).toContain('/settings/notifications');
   });
@@ -142,12 +181,12 @@ describe('Tradecraft notifications', () => {
     const calls = (discordDm.sendDirectMessage as jest.Mock).mock.calls;
     expect(calls[0][0]).toBe('d1');
     const message = String(calls[0][1]);
-    expect(message).toContain('Your payout for cycle **Cycle One** has been marked as sent.');
+    expect(message).toContain(
+      'Your payout for cycle **Cycle One** has been marked as sent.',
+    );
     expect(message).toContain('Character: MyChar');
     expect(message).toContain('Investment: 100.00 ISK');
     expect(message).toContain('Payout: 110.00 ISK');
     expect(message).toContain('/settings/notifications');
   });
 });
-
-

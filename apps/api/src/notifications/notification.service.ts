@@ -362,7 +362,9 @@ export class NotificationService {
             select: { id: true, name: true },
           });
     if (!cycle)
-      throw new Error('No COMPLETED cycle found for preview (provide cycleId).');
+      throw new Error(
+        'No COMPLETED cycle found for preview (provide cycleId).',
+      );
 
     const title = cycle.name ?? cycle.id;
     const detailsUrl = this.cycleDetailsUrl();

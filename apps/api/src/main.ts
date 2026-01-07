@@ -20,7 +20,9 @@ async function bootstrap() {
   validateEnvironment();
   const env = AppConfig.env();
   const logLevels: LogLevel[] =
-    env === 'prod' ? ['log', 'warn', 'error'] : ['log', 'warn', 'error', 'debug', 'verbose'];
+    env === 'prod'
+      ? ['log', 'warn', 'error']
+      : ['log', 'warn', 'error', 'debug', 'verbose'];
 
   const app = await NestFactory.create(AppModule, {
     bufferLogs: true,

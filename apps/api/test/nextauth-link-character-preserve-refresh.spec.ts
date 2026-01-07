@@ -44,7 +44,7 @@ describe('NextAuth token persistence safeguards', () => {
     });
 
     expect(tx.characterToken.upsert).toHaveBeenCalled();
-    const call = (tx.characterToken.upsert as jest.Mock).mock.calls[0]?.[0];
+    const call = tx.characterToken.upsert.mock.calls[0]?.[0];
     expect(call?.update?.refreshTokenEnc).toBe('ENC_EXISTING');
     expect(call?.create?.refreshTokenEnc).toBe('ENC_EXISTING');
   });
@@ -90,12 +90,10 @@ describe('NextAuth token persistence safeguards', () => {
       scopes: 'publicData',
     });
 
-    const call = (tx.characterToken.upsert as jest.Mock).mock.calls[0]?.[0];
+    const call = tx.characterToken.upsert.mock.calls[0]?.[0];
     expect(call?.update?.refreshTokenEnc).toBe('ENC_NEW');
     expect(call?.create?.refreshTokenEnc).toBe('ENC_NEW');
 
     jest.restoreAllMocks();
   });
 });
-
-

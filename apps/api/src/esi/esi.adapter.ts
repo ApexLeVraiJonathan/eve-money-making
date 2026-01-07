@@ -7,4 +7,3 @@
  * We only need a DI token here, so define it locally.
  */
 export const ESI_CLIENT_ADAPTER = Symbol('ESI_CLIENT_ADAPTER');
-

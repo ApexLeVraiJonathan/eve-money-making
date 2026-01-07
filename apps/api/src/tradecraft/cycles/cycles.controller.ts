@@ -26,6 +26,7 @@ import { PayoutService } from './services/payout.service';
 import { PaymentMatchingService } from './services/payment-matching.service';
 import { CapitalService } from './services/capital.service';
 import { ProfitService } from './services/profit.service';
+import { CycleLinesIntelService } from './services/cycle-lines-intel.service';
 import { WalletService } from '@api/tradecraft/wallet/services/wallet.service';
 import { AllocationService } from '@api/tradecraft/wallet/services/allocation.service';
 import { AppConfig } from '@api/common/config';
@@ -81,6 +82,7 @@ export class CyclesController {
     private readonly paymentMatchingService: PaymentMatchingService,
     private readonly capitalService: CapitalService,
     private readonly profitService: ProfitService,
+    private readonly cycleLinesIntel: CycleLinesIntelService,
     private readonly wallet: WalletService,
     private readonly allocation: AllocationService,
     private readonly jingleYieldService: JingleYieldService,
@@ -185,7 +187,10 @@ export class CyclesController {
     summary:
       'Admin: backfill missing JingleYield rollover participations into a target cycle and process them safely',
   })
-  @ApiParam({ name: 'cycleId', description: 'Target cycle ID (OPEN or PLANNED)' })
+  @ApiParam({
+    name: 'cycleId',
+    description: 'Target cycle ID (OPEN or PLANNED)',
+  })
   async backfillJingleYieldRollovers(
     @Param('cycleId') cycleId: string,
     @Body() body: BackfillJingleYieldRolloversRequestDto,
@@ -632,6 +637,21 @@ export class CyclesController {
   @ApiParam({ name: 'cycleId', description: 'Cycle ID' })
   async listCycleLines(@Param('cycleId') cycleId: string): Promise<unknown> {
     return await this.cycleLineService.listCycleLines(cycleId);
+  }
+
+  @Get('cycles/:cycleId/lines/intel')
+  @Roles('ADMIN')
+  @UseGuards(RolesGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary:
+      'Cycle lines intelligence (global + destination aggregated lists for admin)',
+  })
+  @ApiParam({ name: 'cycleId', description: 'Cycle ID' })
+  async getCycleLinesIntel(
+    @Param('cycleId') cycleId: string,
+  ): Promise<unknown> {
+    return await this.cycleLinesIntel.getCycleLinesIntel(cycleId);
   }
 
   @Patch('lines/:lineId')

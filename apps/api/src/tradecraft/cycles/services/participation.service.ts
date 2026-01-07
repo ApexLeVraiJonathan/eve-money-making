@@ -88,7 +88,8 @@ export class ParticipationService {
       return {
         principalCapIsk: ParticipationService.DEFAULT_PRINCIPAL_CAP_ISK,
         maximumCapIsk: ParticipationService.DEFAULT_MAXIMUM_CAP_ISK,
-        effectivePrincipalCapIsk: ParticipationService.DEFAULT_PRINCIPAL_CAP_ISK,
+        effectivePrincipalCapIsk:
+          ParticipationService.DEFAULT_PRINCIPAL_CAP_ISK,
       };
     }
 
@@ -391,9 +392,14 @@ export class ParticipationService {
           characterName,
           amountIsk: displayAmount.toFixed(2),
           userPrincipalIsk: (() => {
-            const basePrincipal = Number(activeParticipation.userPrincipalIsk ?? activeParticipation.amountIsk);
+            const basePrincipal = Number(
+              activeParticipation.userPrincipalIsk ??
+                activeParticipation.amountIsk,
+            );
             // For full payout / initial only rollovers, principal carries forward unchanged.
-            return Number.isFinite(basePrincipal) ? basePrincipal.toFixed(2) : '0.00';
+            return Number.isFinite(basePrincipal)
+              ? basePrincipal.toFixed(2)
+              : '0.00';
           })(),
           memo: rolloverMemo,
           status: 'AWAITING_INVESTMENT', // Will be auto-validated on cycle close
@@ -487,7 +493,7 @@ export class ParticipationService {
     // and use the *previous cycle principal* from rolloverFromParticipation as the
     // base principal for cap checks. This lets us enforce the 10B principal cap
     // while still keeping the existing placeholder semantics.
-    let requestedTotal = currentAmountRaw + delta;
+    const requestedTotal = currentAmountRaw + delta;
     const requestedUserPrincipal = currentUserPrincipalRaw + delta;
     const userId = participation.userId ?? undefined;
     const caps = userId

@@ -32,7 +32,8 @@ export class UserService {
       select: { userId: true },
     });
     for (const r of participationIds) {
-      if (typeof r.userId === 'string' && r.userId.length > 0) ids.add(r.userId);
+      if (typeof r.userId === 'string' && r.userId.length > 0)
+        ids.add(r.userId);
     }
 
     const settingsIds = await this.prisma.autoRolloverSettings.findMany({
@@ -40,7 +41,8 @@ export class UserService {
       select: { userId: true },
     });
     for (const r of settingsIds) {
-      if (typeof r.userId === 'string' && r.userId.length > 0) ids.add(r.userId);
+      if (typeof r.userId === 'string' && r.userId.length > 0)
+        ids.add(r.userId);
     }
 
     const jyIds = await this.prisma.jingleYieldProgram.findMany({
@@ -48,7 +50,8 @@ export class UserService {
       select: { userId: true },
     });
     for (const r of jyIds) {
-      if (typeof r.userId === 'string' && r.userId.length > 0) ids.add(r.userId);
+      if (typeof r.userId === 'string' && r.userId.length > 0)
+        ids.add(r.userId);
     }
 
     const allIds = [...ids];
@@ -152,7 +155,10 @@ export class UserService {
   }
 
   // Back-compat for the older API name: treated as maximum cap.
-  async updateTradecraftMaxParticipation(userId: string, maxIsk: string | null) {
+  async updateTradecraftMaxParticipation(
+    userId: string,
+    maxIsk: string | null,
+  ) {
     return await this.updateTradecraftCaps(userId, {
       principalCapIsk: null,
       maximumCapIsk: maxIsk,
@@ -160,11 +166,11 @@ export class UserService {
   }
 
   async clearTradecraftMaxParticipationDeprecated(userId: string) {
-      return await this.prisma.user.update({
-        where: { id: userId },
+    return await this.prisma.user.update({
+      where: { id: userId },
       data: { tradecraftMaximumCapIsk: null },
       select: { id: true, tradecraftMaximumCapIsk: true },
-      });
+    });
   }
 
   async setRole(userId: string, role: 'ADMIN' | 'USER') {

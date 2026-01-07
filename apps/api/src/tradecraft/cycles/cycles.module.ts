@@ -18,6 +18,7 @@ import { CapitalService } from './services/capital.service';
 import { ProfitService } from './services/profit.service';
 import { JingleYieldService } from './services/jingle-yield.service';
 import { AutoRolloverSettingsService } from './services/auto-rollover-settings.service';
+import { CycleLinesIntelService } from './services/cycle-lines-intel.service';
 
 // Controllers
 import { CyclesController } from './cycles.controller';
@@ -46,6 +47,7 @@ import { WalletModule } from '@api/tradecraft/wallet/wallet.module';
     PaymentMatchingService,
     CapitalService,
     ProfitService,
+    CycleLinesIntelService,
     Logger,
   ],
   controllers: [CyclesController],
@@ -61,6 +63,7 @@ import { WalletModule } from '@api/tradecraft/wallet/wallet.module';
     PaymentMatchingService,
     CapitalService,
     ProfitService,
+    CycleLinesIntelService,
   ],
 })
 export class CyclesModule {}

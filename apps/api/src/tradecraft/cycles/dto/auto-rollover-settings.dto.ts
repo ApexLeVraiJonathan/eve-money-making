@@ -5,7 +5,10 @@ export class AutoRolloverSettingsResponseDto {
   @ApiProperty({ example: false })
   enabled!: boolean;
 
-  @ApiProperty({ enum: ['FULL_PAYOUT', 'INITIAL_ONLY'], example: 'INITIAL_ONLY' })
+  @ApiProperty({
+    enum: ['FULL_PAYOUT', 'INITIAL_ONLY'],
+    example: 'INITIAL_ONLY',
+  })
   defaultRolloverType!: 'FULL_PAYOUT' | 'INITIAL_ONLY';
 }
 
@@ -14,9 +17,10 @@ export class UpdateAutoRolloverSettingsRequestDto {
   @IsBoolean()
   enabled!: boolean;
 
-  @ApiProperty({ enum: ['FULL_PAYOUT', 'INITIAL_ONLY'], example: 'INITIAL_ONLY' })
+  @ApiProperty({
+    enum: ['FULL_PAYOUT', 'INITIAL_ONLY'],
+    example: 'INITIAL_ONLY',
+  })
   @IsEnum(['FULL_PAYOUT', 'INITIAL_ONLY'])
   defaultRolloverType!: 'FULL_PAYOUT' | 'INITIAL_ONLY';
 }
-
-

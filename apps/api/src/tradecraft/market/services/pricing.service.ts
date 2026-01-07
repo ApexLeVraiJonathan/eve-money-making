@@ -479,9 +479,8 @@ export class PricingService {
       const [stationIdStr, typeIdStr] = k.split(':');
       return { locationId: Number(stationIdStr), typeId: Number(typeIdStr) };
     });
-    const latestTradeByKey = await this.marketData.getLatestMarketTradesForPairs(
-      pairs,
-    );
+    const latestTradeByKey =
+      await this.marketData.getLatestMarketTradesForPairs(pairs);
 
     const pushUpdate = (params2: {
       order: (typeof ourOrders)[number];
@@ -546,7 +545,10 @@ export class PricingService {
           ourPrice: params2.order.price,
           volumeTotal: params2.order.volume_total,
         });
-        if (targetCompetitorPrice !== null && params2.order.price > targetCompetitorPrice) {
+        if (
+          targetCompetitorPrice !== null &&
+          params2.order.price > targetCompetitorPrice
+        ) {
           const suggested = nextCheaperTick(targetCompetitorPrice);
           if (suggested > 0) {
             suggestedPrice = suggested;
@@ -662,15 +664,15 @@ export class PricingService {
           });
 
           pushUpdate({
-            order: second!,
+            order: second,
             stationId,
             typeId,
             itemName,
-            competitorLowest: firstEval.targetCompetitorPrice ?? second!.price,
+            competitorLowest: firstEval.targetCompetitorPrice ?? second.price,
             suggestedNewPriceTicked:
-              baseHigh > 0 ? baseHigh : nextCheaperTick(second!.price),
+              baseHigh > 0 ? baseHigh : nextCheaperTick(second.price),
             reasons: ['ladder'],
-            expiryMeta: computeExpiryMeta(second!),
+            expiryMeta: computeExpiryMeta(second),
           });
         } else {
           pushUpdate({
