@@ -1,9 +1,9 @@
 /**
  * @eve/api-client - Unified HTTP client for web apps
- * 
+ *
  * Provides a consistent client with multi-baseURL support and auto-injection
  * of Authorization headers from NextAuth sessions or localStorage.
- * 
+ *
  * Features:
  * - Multi-app support with different base URLs
  * - Automatic auth token injection (NextAuth or localStorage)
@@ -15,7 +15,10 @@
 export type HttpMethod = "GET" | "POST" | "PATCH" | "DELETE" | "PUT";
 export type AppId = "api" | "web-portal" | "web-admin" | string;
 
-export type ApiClientOptions = Omit<RequestInit, "method" | "body" | "headers"> & {
+export type ApiClientOptions = Omit<
+  RequestInit,
+  "method" | "body" | "headers"
+> & {
   headers?: Record<string, string>;
   token?: string; // Manual token override (for server components with NextAuth)
 };
@@ -36,7 +39,8 @@ export class ApiError extends Error {
 
 /**
  * Base URL configuration per app
- * Note: NEXT_PUBLIC_API_URL should NOT include /api suffix - it's added by the backend routes
+ * Note: Depending on deployment, your API may be mounted under a prefix (e.g. `/api`).
+ * `NEXT_PUBLIC_API_URL` may include that prefix.
  */
 const BASES: Record<AppId, string> = {
   api: process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000",
@@ -81,7 +85,9 @@ async function request<T>(
     ...(customHeaders ?? {}),
   };
 
-  const url = `${base}${path.startsWith("/") ? path : `/${path}`}`;
+  const trimmedBase = base.replace(/\/+$/, "");
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  const url = `${trimmedBase}${normalizedPath}`;
 
   try {
     const res = await fetch(url, {
@@ -92,29 +98,27 @@ async function request<T>(
       ...fetchOpts,
     });
 
-    // Handle 204 No Content
-    if (res.status === 204) {
-      return undefined as T;
+    // Compatibility retry:
+    // Some deployments mount the API under `/api` while clients call root paths.
+    // If we get a 404, retry once with an `/api` prefix.
+    const shouldTryApiPrefix =
+      res.status === 404 &&
+      !normalizedPath.startsWith("/api/") &&
+      !trimmedBase.endsWith("/api");
+
+    if (shouldTryApiPrefix) {
+      const altUrl = `${trimmedBase}/api${normalizedPath}`;
+      const altRes = await fetch(altUrl, {
+        method,
+        headers,
+        credentials: "include",
+        body: body ? JSON.stringify(body) : undefined,
+        ...fetchOpts,
+      });
+      return await handleResponse<T>(altRes);
     }
 
-    // Try to parse response body
-    let responseData: unknown;
-    const contentType = res.headers.get("content-type");
-    if (contentType?.includes("application/json")) {
-      responseData = await res.json();
-    } else {
-      responseData = await res.text();
-    }
-
-    // Handle error responses
-    if (!res.ok) {
-      const message = typeof responseData === "string" 
-        ? responseData 
-        : (responseData as any)?.message ?? `HTTP ${res.status}`;
-      throw new ApiError(message, res.status, responseData);
-    }
-
-    return responseData as T;
+    return await handleResponse<T>(res);
   } catch (error) {
     // Re-throw ApiError as-is
     if (error instanceof ApiError) {
@@ -129,26 +133,61 @@ async function request<T>(
   }
 }
 
+async function handleResponse<T>(res: Response): Promise<T> {
+  // Handle 204 No Content
+  if (res.status === 204) {
+    return undefined as T;
+  }
+
+  // Try to parse response body
+  let responseData: unknown;
+  const contentType = res.headers.get("content-type");
+  if (contentType?.includes("application/json")) {
+    responseData = await res.json();
+  } else {
+    responseData = await res.text();
+  }
+
+  // Handle error responses
+  if (!res.ok) {
+    const message =
+      typeof responseData === "string"
+        ? responseData
+        : (responseData as any)?.message ?? `HTTP ${res.status}`;
+    throw new ApiError(message, res.status, responseData);
+  }
+
+  return responseData as T;
+}
+
 /**
  * API client instance with HTTP methods
  */
 export interface ApiClient {
   get: <T>(path: string, opts?: ApiClientOptions) => Promise<T>;
-  post: <T>(path: string, body?: unknown, opts?: ApiClientOptions) => Promise<T>;
-  patch: <T>(path: string, body?: unknown, opts?: ApiClientOptions) => Promise<T>;
+  post: <T>(
+    path: string,
+    body?: unknown,
+    opts?: ApiClientOptions
+  ) => Promise<T>;
+  patch: <T>(
+    path: string,
+    body?: unknown,
+    opts?: ApiClientOptions
+  ) => Promise<T>;
   put: <T>(path: string, body?: unknown, opts?: ApiClientOptions) => Promise<T>;
   delete: <T>(path: string, opts?: ApiClientOptions) => Promise<T>;
 }
 
 /**
  * Create an API client for a specific app with optional token injection.
- * 
+ *
  * Usage (Client Component):
  * ```ts
  * const client = clientForApp("api");
  * const data = await client.get<User[]>("/users");
  * ```
- * 
+ *
  * Usage (Server Component with NextAuth):
  * ```ts
  * import { auth } from "@/auth";
@@ -156,7 +195,7 @@ export interface ApiClient {
  * const client = clientForApp("api", session?.accessToken);
  * const data = await client.get<User[]>("/users");
  * ```
- * 
+ *
  * @param appId - App identifier for base URL selection
  * @param token - Optional auth token (for server components)
  * @returns API client instance
@@ -178,4 +217,3 @@ export function clientForApp(appId: AppId = "api", token?: string): ApiClient {
       request<T>(base, path, "DELETE", undefined, { ...tokenOpt, ...opts }),
   };
 }
-

@@ -122,6 +122,22 @@ export class CyclesController {
     return await this.cycleService.listCycles();
   }
 
+  // IMPORTANT: Static routes must be declared before `cycles/:id`
+  // Otherwise Express will match `history`/`overview` as `:id`.
+  @Public()
+  @Get('cycles/history')
+  @ApiOperation({ summary: 'Get public cycle history with profit metrics' })
+  async getCycleHistory(): Promise<unknown> {
+    return await this.cycleService.getCycleHistory();
+  }
+
+  @Public()
+  @Get('cycles/overview')
+  @ApiOperation({ summary: 'Get cycles overview' })
+  async cyclesOverview(): Promise<unknown> {
+    return (await this.cycleService.getCycleOverview()) as unknown;
+  }
+
   @Public()
   @Get('cycles/:id')
   @ApiOperation({ summary: 'Get a cycle by ID' })
@@ -154,20 +170,6 @@ export class CyclesController {
   @ApiParam({ name: 'id', description: 'Cycle ID' })
   async deleteCycle(@Param('id') id: string) {
     return await this.cycleService.deletePlannedCycle(id);
-  }
-
-  @Public()
-  @Get('cycles/history')
-  @ApiOperation({ summary: 'Get public cycle history with profit metrics' })
-  async getCycleHistory(): Promise<unknown> {
-    return await this.cycleService.getCycleHistory();
-  }
-
-  @Public()
-  @Get('cycles/overview')
-  @ApiOperation({ summary: 'Get cycles overview' })
-  async cyclesOverview(): Promise<unknown> {
-    return (await this.cycleService.getCycleOverview()) as unknown;
   }
 
   @Post('cycles/:id/close')
