@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   Logger,
+  NotFoundException,
   Param,
   Post,
   Query,
@@ -40,6 +41,7 @@ import { Public } from '@api/characters/decorators/public.decorator';
 import { CreateCycleRequest } from './dto/create-cycle.dto';
 import { PlanCycleRequest } from './dto/plan-cycle.dto';
 import { OpenCycleRequest } from './dto/open-cycle.dto';
+import { UpdateCycleRequest } from './dto/update-cycle.dto';
 import { AppendEntryRequest } from './dto/append-entry.dto';
 import { GetEntriesQuery } from './dto/get-entries-query.dto';
 import { CreateParticipationManualRequest } from './dto/create-participation-manual.dto';
@@ -118,6 +120,40 @@ export class CyclesController {
   @ApiOperation({ summary: 'List all arbitrage cycles' })
   async listCycles() {
     return await this.cycleService.listCycles();
+  }
+
+  @Public()
+  @Get('cycles/:id')
+  @ApiOperation({ summary: 'Get a cycle by ID' })
+  @ApiParam({ name: 'id', description: 'Cycle ID' })
+  async getCycleById(@Param('id') id: string) {
+    const cycle = await this.cycleService.getCycleById(id);
+    if (!cycle) throw new NotFoundException('Cycle not found');
+    return cycle;
+  }
+
+  @Patch('cycles/:id')
+  @Roles('ADMIN')
+  @UseGuards(RolesGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Update a cycle (admin only)' })
+  @ApiParam({ name: 'id', description: 'Cycle ID' })
+  async updateCycle(@Param('id') id: string, @Body() body: UpdateCycleRequest) {
+    return await this.cycleService.updateCycle(id, {
+      name: body.name,
+      startedAt: body.startedAt ? new Date(body.startedAt) : undefined,
+      initialInjectionIsk: body.initialInjectionIsk,
+    });
+  }
+
+  @Delete('cycles/:id')
+  @Roles('ADMIN')
+  @UseGuards(RolesGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Delete a PLANNED cycle (admin only)' })
+  @ApiParam({ name: 'id', description: 'Cycle ID' })
+  async deleteCycle(@Param('id') id: string) {
+    return await this.cycleService.deletePlannedCycle(id);
   }
 
   @Public()

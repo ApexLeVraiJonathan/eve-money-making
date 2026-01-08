@@ -1,4 +1,11 @@
-import { Injectable, Logger, forwardRef, Inject } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  forwardRef,
+  Inject,
+} from '@nestjs/common';
 import { PrismaService } from '@api/prisma/prisma.service';
 import { PackageService } from '@api/tradecraft/market/services/package.service';
 import { CapitalService } from './capital.service';
@@ -353,6 +360,100 @@ export class CycleService {
     return await this.prisma.cycle.findUnique({
       where: { id: cycleId },
     });
+  }
+
+  /**
+   * Update a cycle.
+   *
+   * Rules:
+   * - PLANNED: can update name, startedAt, initialInjectionIsk
+   * - OPEN/COMPLETED: can update name only (no timeline/capital mutations)
+   */
+  async updateCycle(
+    cycleId: string,
+    input: {
+      name?: string;
+      startedAt?: Date;
+      initialInjectionIsk?: string;
+    },
+  ) {
+    const cycle = await this.prisma.cycle.findUnique({
+      where: { id: cycleId },
+    });
+    if (!cycle) throw new NotFoundException('Cycle not found');
+
+    const isPlanned = cycle.status === 'PLANNED';
+    const data: Record<string, unknown> = {};
+
+    if (typeof input.name !== 'undefined') {
+      data.name = input.name ?? null;
+    }
+
+    if (!isPlanned) {
+      if (typeof input.startedAt !== 'undefined') {
+        throw new BadRequestException(
+          'startedAt can only be updated while cycle is PLANNED',
+        );
+      }
+      if (typeof input.initialInjectionIsk !== 'undefined') {
+        throw new BadRequestException(
+          'initialInjectionIsk can only be updated while cycle is PLANNED',
+        );
+      }
+    } else {
+      if (typeof input.startedAt !== 'undefined')
+        data.startedAt = input.startedAt;
+      if (typeof input.initialInjectionIsk !== 'undefined') {
+        data.initialInjectionIsk = input.initialInjectionIsk ?? null;
+      }
+    }
+
+    if (Object.keys(data).length === 0) return cycle;
+
+    return await this.prisma.cycle.update({
+      where: { id: cycleId },
+      data,
+    });
+  }
+
+  /**
+   * Delete a cycle.
+   *
+   * Safety:
+   * - Only PLANNED cycles can be deleted
+   * - Blocks deletion if referenced by a JingleYield program start/completion
+   *
+   * Note: cycle relations are mostly `onDelete: Cascade`, so this operation can
+   * remove participations/lines/etc. Keep it admin-only.
+   */
+  async deletePlannedCycle(cycleId: string) {
+    const cycle = await this.prisma.cycle.findUnique({
+      where: { id: cycleId },
+    });
+    if (!cycle) throw new NotFoundException('Cycle not found');
+
+    if (cycle.status !== 'PLANNED') {
+      throw new BadRequestException('Only PLANNED cycles can be deleted');
+    }
+
+    const jyRefs = await this.prisma.jingleYieldProgram.count({
+      where: {
+        OR: [{ startCycleId: cycleId }, { completedCycleId: cycleId }],
+      },
+    });
+    if (jyRefs > 0) {
+      throw new BadRequestException(
+        'Cycle is referenced by a JingleYield program and cannot be deleted',
+      );
+    }
+
+    try {
+      return await this.prisma.cycle.delete({ where: { id: cycleId } });
+    } catch (err: unknown) {
+      throw new BadRequestException(
+        `Failed to delete cycle: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   }
 
   /**

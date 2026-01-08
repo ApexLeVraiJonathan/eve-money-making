@@ -402,7 +402,8 @@ export class CycleLinesIntelService {
 
       // rollover tri-state aggregation
       if (existing.isRollover !== undefined && r.isRollover !== undefined) {
-        if (existing.isRollover !== r.isRollover) existing.isRollover = undefined;
+        if (existing.isRollover !== r.isRollover)
+          existing.isRollover = undefined;
       } else if (existing.isRollover !== r.isRollover) {
         // one side missing/undefined => treat as mixed
         existing.isRollover = undefined;
@@ -493,7 +494,8 @@ export class CycleLinesIntelService {
 
           // rollover tri-state aggregation (true=all rollover, false=all new, undefined=mixed)
           if (existing.isRollover !== undefined && r.isRollover !== undefined) {
-            if (existing.isRollover !== r.isRollover) existing.isRollover = undefined;
+            if (existing.isRollover !== r.isRollover)
+              existing.isRollover = undefined;
           } else if (existing.isRollover !== r.isRollover) {
             existing.isRollover = undefined;
           }

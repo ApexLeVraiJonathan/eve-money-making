@@ -379,6 +379,65 @@ export function useCloseCycle() {
 }
 
 /**
+ * Update a cycle (admin only)
+ */
+export function useUpdateCycle() {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      cycleId,
+      data,
+    }: {
+      cycleId: string;
+      data: { name?: string; startedAt?: string; initialInjectionIsk?: string };
+    }) => client.patch<Cycle>(`/ledger/cycles/${cycleId}`, data),
+    onSuccess: (_, { cycleId }) => {
+      queryClient.invalidateQueries({ queryKey: qk.cycles._root });
+      queryClient.invalidateQueries({ queryKey: qk.cycles.byId(cycleId) });
+    },
+  });
+}
+
+/**
+ * Delete a PLANNED cycle (admin only)
+ */
+export function useDeleteCycle() {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (cycleId: string) =>
+      client.delete<void>(`/ledger/cycles/${cycleId}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: qk.cycles._root });
+    },
+  });
+}
+
+/**
+ * Allocate wallet transactions to cycle lines (admin only)
+ */
+export function useAllocateCycleTransactions() {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (cycleId: string) =>
+      client.post<{ buysAllocated: number; sellsAllocated: number }>(
+        `/ledger/cycles/${cycleId}/allocate`,
+        {},
+      ),
+    onSuccess: (_, cycleId) => {
+      queryClient.invalidateQueries({ queryKey: qk.cycleLines._root });
+      queryClient.invalidateQueries({ queryKey: qk.cycles.capital(cycleId) });
+      queryClient.invalidateQueries({ queryKey: qk.cycles.profit(cycleId) });
+    },
+  });
+}
+
+/**
  * Create a cycle snapshot
  */
 export function useCreateCycleSnapshot() {

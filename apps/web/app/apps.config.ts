@@ -118,12 +118,17 @@ export const APPS: AppConfig[] = [
     admin: [
       {
         name: "Cycles",
-        url: "/tradecraft/admin/profit",
+        url: "/tradecraft/admin/cycles",
         icon: Recycle,
         items: [
           {
-            name: "Manage Lines",
-            url: "/tradecraft/admin/lines",
+            name: "Manage Cycles",
+            url: "/tradecraft/admin/cycles",
+            icon: Recycle,
+          },
+          {
+            name: "Cycle Intel",
+            url: "/tradecraft/admin/cycleintel",
             icon: Recycle,
           },
           {
