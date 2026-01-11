@@ -45,6 +45,21 @@ import {
 
 const PLANNER_DRAFT_STORAGE_KEY = "planner-draft-v1";
 
+const COURIER_PRESETS = {
+  blockade: {
+    id: "blockade",
+    label: "Blockade Runner",
+    maxVolumeM3: 13_000,
+    maxCollateralISK: 4_000_000_000,
+  },
+  dst: {
+    id: "dst",
+    label: "DST",
+    maxVolumeM3: 60_000,
+    maxCollateralISK: 2_000_000_000,
+  },
+} as const;
+
 const defaultPayload = {
   shippingCostByStation: {
     60008494: 45000000,
@@ -52,11 +67,12 @@ const defaultPayload = {
     60011866: 15000000,
     60004588: 25000000,
   },
-  packageCapacityM3: 60000,
-  investmentISK: 10_000_000_000,
-  perDestinationMaxBudgetSharePerItem: 0.2,
-  maxPackagesHint: 20,
-  maxPackageCollateralISK: 5_000_000_000, // 5B ISK default
+  // Defaults tuned for Blockade Runner style hauling (safer, smaller volume, higher collateral tolerance)
+  packageCapacityM3: COURIER_PRESETS.blockade.maxVolumeM3,
+  investmentISK: 36_000_000_000,
+  perDestinationMaxBudgetSharePerItem: 0.15,
+  maxPackagesHint: 100,
+  maxPackageCollateralISK: COURIER_PRESETS.blockade.maxCollateralISK,
   allocation: { mode: "best" as const },
 };
 
@@ -109,6 +125,20 @@ export default function PlannerPage() {
   const [collateralDisplay, setCollateralDisplay] = React.useState(
     defaultPayload.maxPackageCollateralISK.toLocaleString(),
   );
+
+  // Courier contract mode/state (kept in sync with JSON payload)
+  const [courierMode, setCourierMode] = React.useState<
+    "blockade" | "dst" | "auto" | "custom"
+  >("blockade");
+  const [autoBlockadeMaxVolumeM3, setAutoBlockadeMaxVolumeM3] =
+    React.useState<number>(COURIER_PRESETS.blockade.maxVolumeM3);
+  const [autoBlockadeMaxCollateralISK, setAutoBlockadeMaxCollateralISK] =
+    React.useState<number>(COURIER_PRESETS.blockade.maxCollateralISK);
+  const [autoDstMaxVolumeM3, setAutoDstMaxVolumeM3] = React.useState<number>(
+    COURIER_PRESETS.dst.maxVolumeM3,
+  );
+  const [autoDstMaxCollateralISK, setAutoDstMaxCollateralISK] =
+    React.useState<number>(COURIER_PRESETS.dst.maxCollateralISK);
 
   // Advanced Options State
   const [showAdvancedOptions, setShowAdvancedOptions] = React.useState(false);
@@ -173,6 +203,93 @@ export default function PlannerPage() {
   const formatNumber = React.useCallback((value: number): string => {
     return value.toLocaleString();
   }, []);
+
+  const updateJsonSafely = React.useCallback(
+    (
+      updater: (current: Record<string, unknown>) => Record<string, unknown>,
+    ) => {
+      try {
+        const current = JSON.parse(json) as Record<string, unknown>;
+        const updated = updater(current);
+        const next = JSON.stringify(updated, null, 2);
+        if (next !== json) setJson(next);
+      } catch {
+        // If JSON is invalid, don't try to sync derived state into it.
+      }
+    },
+    [json],
+  );
+
+  // Keep courier mode/presets in sync with the JSON payload + the visible capacity/collateral fields.
+  React.useEffect(() => {
+    if (courierMode === "custom") {
+      updateJsonSafely((j) => {
+        // Custom mode uses the legacy fields directly.
+        const next = { ...j };
+        delete (next as { courierContracts?: unknown }).courierContracts;
+        return next;
+      });
+      return;
+    }
+
+    if (courierMode === "blockade" || courierMode === "dst") {
+      const preset =
+        courierMode === "blockade"
+          ? COURIER_PRESETS.blockade
+          : COURIER_PRESETS.dst;
+
+      setCapacityDisplay(formatNumber(preset.maxVolumeM3));
+      setCollateralDisplay(formatNumber(preset.maxCollateralISK));
+
+      updateJsonSafely((j) => {
+        const next = { ...j };
+        next.packageCapacityM3 = preset.maxVolumeM3;
+        next.maxPackageCollateralISK = preset.maxCollateralISK;
+        delete (next as { courierContracts?: unknown }).courierContracts;
+        return next;
+      });
+      return;
+    }
+
+    // Auto (mix): we let the packager choose the best preset per package.
+    const maxVolume = Math.max(autoBlockadeMaxVolumeM3, autoDstMaxVolumeM3);
+    const maxCollateral = Math.max(
+      autoBlockadeMaxCollateralISK,
+      autoDstMaxCollateralISK,
+    );
+
+    setCapacityDisplay(formatNumber(maxVolume));
+    setCollateralDisplay(formatNumber(maxCollateral));
+
+    updateJsonSafely((j) => {
+      const next = { ...j };
+      next.packageCapacityM3 = maxVolume;
+      next.maxPackageCollateralISK = maxCollateral;
+      (next as { courierContracts?: unknown }).courierContracts = [
+        {
+          id: "blockade",
+          label: "Blockade Runner",
+          maxVolumeM3: autoBlockadeMaxVolumeM3,
+          maxCollateralISK: autoBlockadeMaxCollateralISK,
+        },
+        {
+          id: "dst",
+          label: "DST",
+          maxVolumeM3: autoDstMaxVolumeM3,
+          maxCollateralISK: autoDstMaxCollateralISK,
+        },
+      ];
+      return next;
+    });
+  }, [
+    courierMode,
+    autoBlockadeMaxVolumeM3,
+    autoBlockadeMaxCollateralISK,
+    autoDstMaxVolumeM3,
+    autoDstMaxCollateralISK,
+    formatNumber,
+    updateJsonSafely,
+  ]);
 
   // Helper to get current parameters as an object
   const getCurrentParams = React.useCallback(() => {
@@ -248,6 +365,63 @@ export default function PlannerPage() {
       setCollateralDisplay(
         formatNumber((params.maxPackageCollateralISK as number) || 5000000000),
       );
+
+      // Load courier mode/presets (optional)
+      const contracts = (params as { courierContracts?: unknown })
+        .courierContracts;
+      if (Array.isArray(contracts) && contracts.length > 0) {
+        if (contracts.length >= 2) {
+          setCourierMode("auto");
+          const blockade = contracts.find(
+            (c) => (c as { id?: string })?.id === "blockade",
+          ) as { maxVolumeM3?: number; maxCollateralISK?: number } | undefined;
+          const dst = contracts.find(
+            (c) => (c as { id?: string })?.id === "dst",
+          ) as { maxVolumeM3?: number; maxCollateralISK?: number } | undefined;
+
+          setAutoBlockadeMaxVolumeM3(
+            Number(
+              blockade?.maxVolumeM3 ?? COURIER_PRESETS.blockade.maxVolumeM3,
+            ),
+          );
+          setAutoBlockadeMaxCollateralISK(
+            Number(
+              blockade?.maxCollateralISK ??
+                COURIER_PRESETS.blockade.maxCollateralISK,
+            ),
+          );
+          setAutoDstMaxVolumeM3(
+            Number(dst?.maxVolumeM3 ?? COURIER_PRESETS.dst.maxVolumeM3),
+          );
+          setAutoDstMaxCollateralISK(
+            Number(
+              dst?.maxCollateralISK ?? COURIER_PRESETS.dst.maxCollateralISK,
+            ),
+          );
+        } else {
+          const only = contracts[0] as { id?: string };
+          if (only?.id === "blockade") setCourierMode("blockade");
+          else if (only?.id === "dst") setCourierMode("dst");
+          else setCourierMode("custom");
+        }
+      } else {
+        // Infer from legacy fields if possible
+        const cap = Number(params.packageCapacityM3);
+        const col = Number(params.maxPackageCollateralISK);
+        if (
+          cap === COURIER_PRESETS.blockade.maxVolumeM3 &&
+          col === COURIER_PRESETS.blockade.maxCollateralISK
+        ) {
+          setCourierMode("blockade");
+        } else if (
+          cap === COURIER_PRESETS.dst.maxVolumeM3 &&
+          col === COURIER_PRESETS.dst.maxCollateralISK
+        ) {
+          setCourierMode("dst");
+        } else {
+          setCourierMode("custom");
+        }
+      }
 
       // Load liquidity options - clear if not in profile
       const liqOpts =
@@ -412,6 +586,13 @@ export default function PlannerPage() {
     setCollateralDisplay(
       defaultPayload.maxPackageCollateralISK.toLocaleString(),
     );
+
+    // Reset courier mode/presets
+    setCourierMode("blockade");
+    setAutoBlockadeMaxVolumeM3(COURIER_PRESETS.blockade.maxVolumeM3);
+    setAutoBlockadeMaxCollateralISK(COURIER_PRESETS.blockade.maxCollateralISK);
+    setAutoDstMaxVolumeM3(COURIER_PRESETS.dst.maxVolumeM3);
+    setAutoDstMaxCollateralISK(COURIER_PRESETS.dst.maxCollateralISK);
 
     // Reset advanced options
     setShowAdvancedOptions(false);
@@ -709,6 +890,38 @@ export default function PlannerPage() {
             <CardContent>
               <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
                 <div className="space-y-2">
+                  <Label>Courier Contract</Label>
+                  <Select
+                    value={courierMode}
+                    onValueChange={(value) =>
+                      setCourierMode(
+                        value as "blockade" | "dst" | "auto" | "custom",
+                      )
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="blockade">
+                        Blockade Runner (13,000 m³ / 4B collateral)
+                      </SelectItem>
+                      <SelectItem value="dst">
+                        DST (60,000 m³ / 2B collateral)
+                      </SelectItem>
+                      <SelectItem value="auto">
+                        Auto (mix Blockade + DST per package)
+                      </SelectItem>
+                      <SelectItem value="custom">Custom (manual)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Auto mode lets the planner choose the best courier preset
+                    per package based on volume and collateral constraints.
+                  </p>
+                </div>
+
+                <div className="space-y-2">
                   <Label htmlFor="capacity">Package Capacity (m³)</Label>
                   <Input
                     id="capacity"
@@ -716,9 +929,14 @@ export default function PlannerPage() {
                     value={capacityDisplay}
                     onChange={(e) => handleCapacityChange(e.target.value)}
                     onBlur={handleCapacityBlur}
+                    disabled={courierMode !== "custom"}
                   />
                   <p className="text-xs text-muted-foreground">
-                    Maximum volume per package
+                    {courierMode === "auto"
+                      ? "Auto mode uses per-package presets; this field shows the max envelope."
+                      : courierMode === "custom"
+                        ? "Maximum volume per package"
+                        : "Derived from selected courier preset"}
                   </p>
                 </div>
 
@@ -772,12 +990,88 @@ export default function PlannerPage() {
                     value={collateralDisplay}
                     onChange={(e) => handleCollateralChange(e.target.value)}
                     onBlur={handleCollateralBlur}
+                    disabled={courierMode !== "custom"}
                   />
                   <p className="text-xs text-muted-foreground">
-                    Max total value per package
+                    {courierMode === "auto"
+                      ? "Auto mode uses per-package presets; this field shows the max envelope."
+                      : courierMode === "custom"
+                        ? "Max total value per package"
+                        : "Derived from selected courier preset"}
                   </p>
                 </div>
               </div>
+
+              {courierMode === "auto" && (
+                <div className="mt-6 space-y-3">
+                  <div className="text-sm font-semibold">
+                    Auto Courier Presets
+                  </div>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-3 rounded-lg border p-4">
+                      <div className="text-sm font-medium">Blockade Runner</div>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div className="space-y-2">
+                          <Label>Max Volume (m³)</Label>
+                          <Input
+                            type="number"
+                            value={autoBlockadeMaxVolumeM3}
+                            onChange={(e) =>
+                              setAutoBlockadeMaxVolumeM3(
+                                Number(e.target.value || 0),
+                              )
+                            }
+                            min="0"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Max Collateral (ISK)</Label>
+                          <Input
+                            type="number"
+                            value={autoBlockadeMaxCollateralISK}
+                            onChange={(e) =>
+                              setAutoBlockadeMaxCollateralISK(
+                                Number(e.target.value || 0),
+                              )
+                            }
+                            min="0"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="space-y-3 rounded-lg border p-4">
+                      <div className="text-sm font-medium">DST</div>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div className="space-y-2">
+                          <Label>Max Volume (m³)</Label>
+                          <Input
+                            type="number"
+                            value={autoDstMaxVolumeM3}
+                            onChange={(e) =>
+                              setAutoDstMaxVolumeM3(Number(e.target.value || 0))
+                            }
+                            min="0"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Max Collateral (ISK)</Label>
+                          <Input
+                            type="number"
+                            value={autoDstMaxCollateralISK}
+                            onChange={(e) =>
+                              setAutoDstMaxCollateralISK(
+                                Number(e.target.value || 0),
+                              )
+                            }
+                            min="0"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -1063,7 +1357,7 @@ export default function PlannerPage() {
 
                       <LabeledInput
                         label="Spread Bias"
-                        tooltip="For roundRobin mode: controls how evenly to spread opportunities. Higher values = more even distribution across destinations."
+                        tooltip="For targetWeighted mode: controls how strongly to bias selection toward under-target destinations. Higher values = stronger correction toward targets."
                       >
                         <Input
                           type="number"
@@ -1078,7 +1372,7 @@ export default function PlannerPage() {
                           min="0"
                           step="0.1"
                           placeholder="Default"
-                          disabled={allocationMode !== "roundRobin"}
+                          disabled={allocationMode !== "targetWeighted"}
                         />
                       </LabeledInput>
                     </div>
@@ -1453,6 +1747,15 @@ export default function PlannerPage() {
                                   <div>
                                     <div className="font-medium">
                                       Package #{pkg.packageIndex}
+                                      {pkg.courierContractLabel ||
+                                      pkg.courierContractId ? (
+                                        <span className="ml-2 inline-flex items-center rounded-md bg-muted px-2 py-0.5 text-xs font-medium">
+                                          {(
+                                            pkg.courierContractLabel ??
+                                            pkg.courierContractId
+                                          )?.toString()}
+                                        </span>
+                                      ) : null}
                                     </div>
                                     <div className="text-xs text-muted-foreground">
                                       {pkg.items.length} items •{" "}

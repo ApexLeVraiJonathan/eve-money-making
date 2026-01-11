@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 
 import {
+  CourierContractPreset,
   DestinationConfig,
   MultiPlanOptions,
   PackagePlan,
@@ -37,7 +38,10 @@ export class ArbitragePackagerService {
     maxPackageCollateralISK: number;
     shippingMarginMultiplier: number;
     densityWeight: number;
-  }): Omit<PackagePlan, 'packageIndex' | 'efficiency'> | null {
+  }): Omit<
+    PackagePlan,
+    'packageIndex' | 'efficiency' | 'courierContractId' | 'courierContractLabel'
+  > | null {
     const {
       destinationStationId,
       shippingCostISK,
@@ -178,6 +182,152 @@ export class ArbitragePackagerService {
     };
   }
 
+  private resolveCourierContracts(opts: MultiPlanOptions): CourierContractPreset[] {
+    const maxPackageCollateralISK = opts.maxPackageCollateralISK ?? 5_000_000_000;
+    const fallback: CourierContractPreset = {
+      id: 'default',
+      label: 'Default',
+      maxVolumeM3: opts.packageCapacityM3,
+      maxCollateralISK: maxPackageCollateralISK,
+    };
+
+    const list = (opts.courierContracts ?? []).filter(
+      (c) => c && c.maxVolumeM3 > 0 && c.maxCollateralISK >= 0,
+    );
+
+    return list.length > 0 ? list : [fallback];
+  }
+
+  private pickBestCourierCandidate(params: {
+    destinationStationId: number;
+    shippingCostISK: number;
+    itemsState: ItemState[];
+    budgetLeft: number;
+    perItemBudgetCapISK: number;
+    itemExposureForDest: Record<number, { spendISK: number; units: number }>;
+    courierContracts: CourierContractPreset[];
+    shippingMarginMultiplier: number;
+    densityWeight: number;
+  }):
+    | (Omit<PackagePlan, 'packageIndex' | 'efficiency'> & {
+        courierContractId: string;
+        courierContractLabel: string;
+        courierMaxVolumeM3: number;
+        courierMaxCollateralISK: number;
+      })
+    | null {
+    const {
+      destinationStationId,
+      shippingCostISK,
+      itemsState,
+      budgetLeft,
+      perItemBudgetCapISK,
+      itemExposureForDest,
+      courierContracts,
+      shippingMarginMultiplier,
+      densityWeight,
+    } = params;
+
+    const candidates: Array<{
+      courier: CourierContractPreset;
+      cand: ReturnType<typeof this.buildBestPackageForDestination>;
+    }> = [];
+
+    for (const courier of courierContracts) {
+      const simulated = itemsState.map((x) => ({ ...x }));
+      const cand = this.buildBestPackageForDestination({
+        destinationStationId,
+        shippingCostISK,
+        itemsState: simulated,
+        packageCapacityM3: courier.maxVolumeM3,
+        budgetLeft,
+        perItemBudgetCapISK,
+        itemExposureForDest,
+        maxPackageCollateralISK: courier.maxCollateralISK,
+        shippingMarginMultiplier,
+        densityWeight,
+      });
+      if (!cand) continue;
+      candidates.push({ courier, cand });
+    }
+
+    if (candidates.length === 0) return null;
+
+    // Choose best overall by efficiency (ROI), then net profit.
+    candidates.sort((a, b) => {
+      const effA = a.cand!.netProfitISK / Math.max(1, a.cand!.spendISK);
+      const effB = b.cand!.netProfitISK / Math.max(1, b.cand!.spendISK);
+      if (Math.abs(effA - effB) > 1e-9) return effB - effA;
+      return (b.cand?.netProfitISK ?? 0) - (a.cand?.netProfitISK ?? 0);
+    });
+
+    const bestOverall = candidates[0]!;
+
+    // Courier preference rule (safety-first):
+    // If the best overall package would fit inside the *first* courier preset,
+    // we prefer that first courier (e.g., Blockade) when possible.
+    const preferred = courierContracts[0];
+    const fitsPreferred =
+      preferred.maxVolumeM3 >= bestOverall.cand!.usedCapacityM3 &&
+      preferred.maxCollateralISK >= bestOverall.cand!.spendISK;
+
+    const preferredCand = candidates.find((c) => c.courier.id === preferred.id);
+
+    const chosen =
+      fitsPreferred && preferredCand
+        ? preferredCand
+        : fitsPreferred
+          ? { courier: preferred, cand: bestOverall.cand }
+          : bestOverall;
+
+    return {
+      ...(chosen.cand as NonNullable<typeof chosen.cand>),
+      courierContractId: chosen.courier.id,
+      courierContractLabel: chosen.courier.label,
+      courierMaxVolumeM3: chosen.courier.maxVolumeM3,
+      courierMaxCollateralISK: chosen.courier.maxCollateralISK,
+    };
+  }
+
+  private commitBestCourierPackage(params: {
+    destinationStationId: number;
+    shippingCostISK: number;
+    itemsState: ItemState[];
+    budgetLeft: number;
+    perItemBudgetCapISK: number;
+    itemExposureForDest: Record<number, { spendISK: number; units: number }>;
+    courierContracts: CourierContractPreset[];
+    shippingMarginMultiplier: number;
+    densityWeight: number;
+  }):
+    | (Omit<PackagePlan, 'packageIndex' | 'efficiency'> & {
+        courierContractId: string;
+        courierContractLabel: string;
+        courierMaxVolumeM3: number;
+        courierMaxCollateralISK: number;
+      })
+    | null {
+    // Evaluate on copies to choose best courier, then commit exact chosen items to real refs.
+    // This guarantees the committed package matches the evaluated one (and avoids re-greedy differences).
+    const evaluated = this.pickBestCourierCandidate(params);
+    if (!evaluated) return null;
+
+    // Apply evaluated package to real state
+    const unitsByType = new Map<number, number>();
+    for (const it of evaluated.items) {
+      unitsByType.set(it.typeId, (unitsByType.get(it.typeId) ?? 0) + it.units);
+    }
+    for (const [typeId, units] of unitsByType.entries()) {
+      const st = params.itemsState.find((x) => x.typeId === typeId);
+      if (!st || st.remainingUnits < units) {
+        return null;
+      }
+      st.remainingUnits -= units;
+    }
+
+    return evaluated;
+  }
+
   /**
    * Multi-destination planner:
    * - Enforces 20% (default) global cap per item across ALL destinations (risk spread).
@@ -194,6 +344,7 @@ export class ArbitragePackagerService {
       perDestinationMaxBudgetSharePerItem = 0.2,
       maxPackagesHint = 30,
       maxPackageCollateralISK = 5_000_000_000, // 5B ISK default
+      courierContracts,
       minPackageNetProfitISK, // undefined = no threshold
       minPackageROIPercent, // undefined = no threshold
       shippingMarginMultiplier = 1.0, // default 1.0 = break-even
@@ -204,6 +355,12 @@ export class ArbitragePackagerService {
 
     const mode = allocation.mode ?? 'best';
     const spreadBias = allocation.spreadBias ?? 0.5;
+    const effectiveCouriers = this.resolveCourierContracts({
+      ...opts,
+      courierContracts,
+      packageCapacityM3,
+      maxPackageCollateralISK,
+    });
 
     // Build mutable state per destination
     const destStates = destinationsIn.map((d) => ({
@@ -281,15 +438,14 @@ export class ArbitragePackagerService {
 
         const perItemCapISK =
           perDestinationMaxBudgetSharePerItem * investmentISK;
-        const cand = this.buildBestPackageForDestination({
+        const cand = this.pickBestCourierCandidate({
           destinationStationId: d.destinationStationId,
           shippingCostISK: d.shippingCostISK,
-          itemsState: d.itemsState.map((x) => ({ ...x })), // simulate
-          packageCapacityM3,
+          itemsState: d.itemsState, // simulated internally per courier
           budgetLeft,
           perItemBudgetCapISK: perItemCapISK,
           itemExposureForDest: itemExposureByDest[d.destinationStationId],
-          maxPackageCollateralISK,
+          courierContracts: effectiveCouriers,
           shippingMarginMultiplier,
           densityWeight,
         });
@@ -357,16 +513,15 @@ export class ArbitragePackagerService {
       // Commit against real state (not the simulated copy)
       const chosenDest = destStates[best.idx];
       const perItemCapISK = perDestinationMaxBudgetSharePerItem * investmentISK;
-      const committed = this.buildBestPackageForDestination({
+      const committed = this.commitBestCourierPackage({
         destinationStationId: chosenDest.destinationStationId,
         shippingCostISK: chosenDest.shippingCostISK,
         itemsState: chosenDest.itemsState, // real refs
-        packageCapacityM3,
         budgetLeft,
         perItemBudgetCapISK: perItemCapISK,
         itemExposureForDest:
           itemExposureByDest[chosenDest.destinationStationId],
-        maxPackageCollateralISK,
+        courierContracts: effectiveCouriers,
         shippingMarginMultiplier,
         densityWeight,
       });
@@ -377,16 +532,15 @@ export class ArbitragePackagerService {
         if (candidateSet.length === 0) break;
         const next = candidateSet[0];
         const nextDest = destStates[next.idx];
-        const committed2 = this.buildBestPackageForDestination({
+        const committed2 = this.commitBestCourierPackage({
           destinationStationId: nextDest.destinationStationId,
           shippingCostISK: nextDest.shippingCostISK,
           itemsState: nextDest.itemsState,
-          packageCapacityM3,
           budgetLeft,
           perItemBudgetCapISK: perItemCapISK,
           itemExposureForDest:
             itemExposureByDest[nextDest.destinationStationId],
-          maxPackageCollateralISK,
+          courierContracts: effectiveCouriers,
           shippingMarginMultiplier,
           densityWeight,
         });
@@ -396,6 +550,10 @@ export class ArbitragePackagerService {
         packages.push({
           packageIndex: pkgIndex++,
           destinationStationId: committed2.destinationStationId,
+          courierContractId: committed2.courierContractId,
+          courierContractLabel: committed2.courierContractLabel,
+          courierMaxVolumeM3: committed2.courierMaxVolumeM3,
+          courierMaxCollateralISK: committed2.courierMaxCollateralISK,
           items: committed2.items,
           spendISK: committed2.spendISK,
           grossProfitISK: committed2.grossProfitISK,
@@ -420,6 +578,10 @@ export class ArbitragePackagerService {
         packages.push({
           packageIndex: pkgIndex++,
           destinationStationId: committed.destinationStationId,
+          courierContractId: committed.courierContractId,
+          courierContractLabel: committed.courierContractLabel,
+          courierMaxVolumeM3: committed.courierMaxVolumeM3,
+          courierMaxCollateralISK: committed.courierMaxCollateralISK,
           items: committed.items,
           spendISK: committed.spendISK,
           grossProfitISK: committed.grossProfitISK,
@@ -459,12 +621,27 @@ export class ArbitragePackagerService {
 
     notes.push(
       `Per-destination item cap: ≤ ${(perDestinationMaxBudgetSharePerItem * 100).toFixed(0)}% of total budget per item (per destination).`,
-      `Max package collateral: ${(maxPackageCollateralISK / 1_000_000_000).toFixed(1)}B ISK.`,
+      `Max package collateral (legacy/default): ${(maxPackageCollateralISK / 1_000_000_000).toFixed(1)}B ISK.`,
       `Max packages considered: ${maxPackagesHint}.`,
       `Shipping margin multiplier: ${shippingMarginMultiplier.toFixed(1)}× (requires box profit ≥ ${shippingMarginMultiplier.toFixed(1)}× shipping cost).`,
       `Density weight: ${densityWeight.toFixed(2)} (${densityWeight === 1 ? 'pure density/space-limited' : densityWeight === 0 ? 'pure ROI/capital-limited' : 'blended strategy'}).`,
       `Allocation mode: ${mode}${mode === 'targetWeighted' ? ` (bias=${spreadBias}, targets=${JSON.stringify(targets)})` : ''}.`,
     );
+
+    // Courier usage notes
+    const courierCounts = packages.reduce<Record<string, number>>((acc, p) => {
+      const k = p.courierContractId ?? 'default';
+      acc[k] = (acc[k] ?? 0) + 1;
+      return acc;
+    }, {});
+    if (effectiveCouriers.length > 1) {
+      notes.push(
+        `Courier contracts enabled: ${effectiveCouriers.map((c) => `${c.label}(${Math.round(c.maxVolumeM3).toLocaleString()} m³ / ${(c.maxCollateralISK / 1_000_000_000).toFixed(1)}B)`).join(', ')}.`,
+        `Packages by courier: ${Object.entries(courierCounts)
+          .map(([k, v]) => `${k}=${v}`)
+          .join(', ')}.`,
+      );
+    }
 
     // Add quality threshold notes if set
     if (minPackageNetProfitISK !== undefined) {

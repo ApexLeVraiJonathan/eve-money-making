@@ -27,6 +27,17 @@ export interface AllocationOptions {
   spreadBias?: number; // only for targetWeighted; default 0.5
 }
 
+export interface CourierContractPreset {
+  /** Stable identifier (e.g., 'blockade', 'dst', 'custom') */
+  id: string;
+  /** Human label for UI/debug */
+  label: string;
+  /** Maximum package volume for this courier contract */
+  maxVolumeM3: number;
+  /** Maximum collateral/value for this courier contract */
+  maxCollateralISK: number;
+}
+
 export interface MultiPlanOptions {
   packageCapacityM3: number;
   investmentISK: number;
@@ -35,6 +46,12 @@ export interface MultiPlanOptions {
   maxPackagesHint?: number; // default 30
   // Maximum package collateral (total value of items in package) - default 5B ISK
   maxPackageCollateralISK?: number; // default 5_000_000_000
+  /**
+   * Optional set of courier contract presets.
+   * When provided, the packager will choose the best feasible preset per package
+   * (enables mixing contract types like Blockade + DST in a single run).
+   */
+  courierContracts?: CourierContractPreset[];
   // Package Quality Thresholds: reject packages below these minimums
   minPackageNetProfitISK?: number; // minimum net profit required per package (after shipping)
   minPackageROIPercent?: number; // minimum ROI required per package (netProfit/spend * 100)
@@ -64,6 +81,10 @@ export interface PackagePlan {
   packageIndex: number;
   destinationStationId: number;
   destinationName?: string;
+  courierContractId?: string;
+  courierContractLabel?: string;
+  courierMaxVolumeM3?: number;
+  courierMaxCollateralISK?: number;
   items: PackedUnit[];
   spendISK: number;
   grossProfitISK: number;

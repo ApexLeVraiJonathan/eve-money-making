@@ -463,6 +463,12 @@ export interface PlanPackagesRequest {
   perDestinationMaxBudgetSharePerItem?: number;
   maxPackagesHint?: number;
   maxPackageCollateralISK?: number;
+  courierContracts?: Array<{
+    id: string;
+    label: string;
+    maxVolumeM3: number;
+    maxCollateralISK: number;
+  }>;
   minPackageNetProfitISK?: number;
   minPackageROIPercent?: number;
   shippingMarginMultiplier?: number;
@@ -493,6 +499,10 @@ export interface PackagePlan {
   packageIndex: number;
   destinationStationId: number;
   destinationName?: string;
+  courierContractId?: string;
+  courierContractLabel?: string;
+  courierMaxVolumeM3?: number;
+  courierMaxCollateralISK?: number;
   items: PackedUnit[];
   spendISK: number;
   grossProfitISK: number;

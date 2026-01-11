@@ -548,6 +548,12 @@ export class ArbitrageService {
         params.perDestinationMaxBudgetSharePerItem ?? 0.2,
       maxPackagesHint: params.maxPackagesHint ?? 30,
       maxPackageCollateralISK: params.maxPackageCollateralISK,
+      courierContracts: params.courierContracts?.map((c) => ({
+        id: c.id,
+        label: c.label,
+        maxVolumeM3: c.maxVolumeM3,
+        maxCollateralISK: c.maxCollateralISK,
+      })),
       minPackageNetProfitISK: params.minPackageNetProfitISK,
       minPackageROIPercent: params.minPackageROIPercent,
       shippingMarginMultiplier: params.shippingMarginMultiplier,

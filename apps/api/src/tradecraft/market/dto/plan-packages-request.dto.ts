@@ -10,6 +10,8 @@ import {
   ValidateNested,
   IsBoolean,
   IsArray,
+  IsString,
+  MaxLength,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -250,6 +252,46 @@ export class ArbitrageOptions {
   minTotalProfitISK?: number;
 }
 
+export class CourierContractPresetDto {
+  @ApiProperty({
+    description: "Stable identifier (e.g., 'blockade', 'dst', 'custom')",
+    example: 'blockade',
+    maxLength: 50,
+  })
+  @IsString()
+  @MaxLength(50)
+  id!: string;
+
+  @ApiProperty({
+    description: 'Human label for UI/debug',
+    example: 'Blockade Runner',
+    maxLength: 100,
+  })
+  @IsString()
+  @MaxLength(100)
+  label!: string;
+
+  @ApiProperty({
+    description: 'Maximum package volume for this courier contract',
+    minimum: 0.001,
+    example: 13000,
+  })
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0.001)
+  maxVolumeM3!: number;
+
+  @ApiProperty({
+    description: 'Maximum package collateral/value for this courier contract',
+    minimum: 0,
+    example: 4000000000,
+  })
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  maxCollateralISK!: number;
+}
+
 /**
  * Request DTO for POST /arbitrage/plan-packages
  *
@@ -322,6 +364,17 @@ export class PlanPackagesRequest {
   @IsNumber()
   @Min(0.001)
   maxPackageCollateralISK?: number;
+
+  @ApiPropertyOptional({
+    description:
+      'Optional courier contract presets (enables mixing contract types like Blockade + DST in a single run)',
+    type: [CourierContractPresetDto],
+  })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CourierContractPresetDto)
+  courierContracts?: CourierContractPresetDto[];
 
   @ApiPropertyOptional({
     description:
