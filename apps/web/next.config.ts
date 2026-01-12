@@ -2,6 +2,7 @@ import type { NextConfig } from "next";
 import {
   PHASE_DEVELOPMENT_SERVER,
   PHASE_PRODUCTION_BUILD,
+  PHASE_PRODUCTION_SERVER,
 } from "next/constants";
 
 export default function nextConfig(phase: string): NextConfig {
@@ -19,8 +20,14 @@ export default function nextConfig(phase: string): NextConfig {
 
   // Prevent `next build` and `next dev --turbopack` from racing on the same `.next/`
   // directory (common on Windows when a build happens while the dev server is running).
+  //
+  // We intentionally keep production *build* output separate from production *runtime*
+  // so `next build` can run while the prod server is up without racing on the same
+  // folder (common on Windows).
   if (phase === PHASE_PRODUCTION_BUILD) {
     config.distDir = ".next-build";
+  } else if (phase === PHASE_PRODUCTION_SERVER) {
+    config.distDir = ".next-run";
   } else if (phase === PHASE_DEVELOPMENT_SERVER) {
     config.distDir = ".next";
   }

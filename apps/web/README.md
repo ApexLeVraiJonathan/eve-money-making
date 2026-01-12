@@ -284,6 +284,16 @@ See [../../docs/CRITICAL_USER_FLOWS.md](../../docs/CRITICAL_USER_FLOWS.md) for d
 pnpm run build
 ```
 
+### Notes on `.next` folders (Windows-safe)
+
+This repo intentionally separates Next.js output folders to avoid file-lock/race issues when a build happens while a server is running:
+
+- **Dev server** (`pnpm run dev`) uses `.next/`
+- **Prod build output** (`pnpm run build`) writes to `.next-build/`
+- **Prod runtime** (`pnpm run start`) reads from `.next-run/`
+
+`pnpm run start` will automatically initialize `.next-run/` from `.next-build/` if needed.
+
 ### Environment Variables
 
 Set all production environment variables:
