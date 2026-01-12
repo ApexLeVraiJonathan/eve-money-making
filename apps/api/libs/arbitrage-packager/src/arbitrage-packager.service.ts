@@ -182,8 +182,11 @@ export class ArbitragePackagerService {
     };
   }
 
-  private resolveCourierContracts(opts: MultiPlanOptions): CourierContractPreset[] {
-    const maxPackageCollateralISK = opts.maxPackageCollateralISK ?? 5_000_000_000;
+  private resolveCourierContracts(
+    opts: MultiPlanOptions,
+  ): CourierContractPreset[] {
+    const maxPackageCollateralISK =
+      opts.maxPackageCollateralISK ?? 5_000_000_000;
     const fallback: CourierContractPreset = {
       id: 'default',
       label: 'Default',

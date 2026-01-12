@@ -38,7 +38,7 @@ export type AdminItem = {
 };
 
 export type AppConfig = {
-  id: "arbitrage" | "brokerage" | "characters";
+  id: "arbitrage" | "brokerage" | "characters" | "skill-issue";
   label: string;
   basePath: string;
   // Any path that should mark this app as active
@@ -243,6 +243,20 @@ export const APPS: AppConfig[] = [
           { title: "Math", url: "/characters/skill-farms/math" },
           { title: "Tracking", url: "/characters/skill-farms/tracking" },
         ],
+      },
+    ],
+  },
+  {
+    id: "skill-issue",
+    label: "Skill-Issue",
+    basePath: "/skill-issue",
+    pathPrefixes: ["/skill-issue"],
+    icon: Zap,
+    navMain: [
+      {
+        title: "Fit Analysis",
+        url: "/skill-issue",
+        icon: Zap,
       },
     ],
   },

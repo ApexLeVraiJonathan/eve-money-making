@@ -374,6 +374,97 @@ export interface SkillEncyclopediaResponse {
   skills: SkillEncyclopediaEntry[];
 }
 
+// Skill-Issue (Fit Skill Influence) contracts
+
+export interface SkillIssueAnalyzeRequest {
+  /**
+   * One of the user's linked character IDs.
+   */
+  characterId: number;
+  /**
+   * EFT-format fit text (copied from in-game or tools).
+   */
+  eft: string;
+}
+
+export type SkillIssueSkillRequirementStatus = "met" | "missing" | "unknown";
+
+export interface SkillIssueSkillRequirement {
+  /**
+   * Skill type ID (EVE type ID).
+   */
+  skillId: number;
+  /**
+   * Best-effort resolved name (from TypeId.name), null when unknown.
+   */
+  skillName: string | null;
+  /**
+   * Maximum required level across all items in the fit.
+   */
+  requiredLevel: number;
+  /**
+   * Character's trained level (0–5) when available.
+   */
+  trainedLevel: number | null;
+  status: SkillIssueSkillRequirementStatus;
+  /**
+   * Type IDs in the fit that introduced this requirement (ship/modules/charges/etc).
+   */
+  requiredByTypeIds: number[];
+}
+
+export interface SkillIssueInfluencingSkill {
+  /**
+   * Skill type ID (EVE type ID).
+   */
+  skillId: number;
+  /**
+   * Best-effort resolved name (from TypeId.name), null when unknown.
+   */
+  skillName: string | null;
+  /**
+   * Dogma attribute IDs this skill can modify (superset; does not guarantee applicability).
+   */
+  modifiedAttributeIds: number[];
+  /**
+   * Coarse UI categories derived from modified dogma attribute names.
+   * Intended for grouping in the Skill-Issue UI (MVP-A).
+   */
+  categories: Array<
+    | "Capacitor"
+    | "Fitting Resources"
+    | "Offense"
+    | "Defense"
+    | "Targeting"
+    | "Navigation"
+    | "Drones"
+    | "Other"
+  >;
+}
+
+export interface SkillIssueParsedFit {
+  shipName: string | null;
+  shipTypeId: number | null;
+  /**
+   * All raw type names extracted from the EFT text (ship/modules/charges/drones/cargo).
+   */
+  extractedTypeNames: string[];
+  /**
+   * Any extracted type names that could not be resolved to a type ID in our TypeId table.
+   */
+  unresolvedTypeNames: string[];
+  /**
+   * All resolved type IDs that are considered part of the fit.
+   */
+  fitTypeIds: number[];
+}
+
+export interface SkillIssueAnalyzeResponse {
+  fit: SkillIssueParsedFit;
+  requiredSkills: SkillIssueSkillRequirement[];
+  influencingSkills: SkillIssueInfluencingSkill[];
+}
+
 // Skill Farm Assistant contracts
 
 export type SkillFarmRequirementStatus = "pass" | "fail" | "warning";

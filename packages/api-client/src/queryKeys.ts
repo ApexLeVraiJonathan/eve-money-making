@@ -218,6 +218,13 @@ export const qk = {
       ["skillPlans", "progress", planId, characterId] as const,
   },
 
+  /** Skill-Issue (fit analysis) */
+  skillIssue: {
+    _root: ["skillIssue"] as const,
+    analyze: (characterId: number, eft: string) =>
+      ["skillIssue", "analyze", characterId, eft] as const,
+  },
+
   /** Notifications & preferences */
   notifications: {
     _root: ["notifications"] as const,

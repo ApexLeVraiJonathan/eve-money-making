@@ -48,10 +48,37 @@ async function bootstrap() {
 
   // Enable CORS for Next.js origin with Authorization header support
   const corsConfig = AppConfig.cors();
+  const envName = AppConfig.env();
   app.enableCors({
-    origin: corsConfig.origins,
+    origin: (
+      origin: string | undefined,
+      cb: (err: Error | null, ok: boolean) => void,
+    ) => {
+      // Allow non-browser clients (no Origin header)
+      if (!origin) return cb(null, true);
+
+      // Allow configured origins
+      if (corsConfig.origins.includes(origin)) return cb(null, true);
+
+      // Dev/test convenience: allow LAN devserver origins (Playwright often hits the web app via LAN IP)
+      if (envName !== 'prod') {
+        const ok =
+          /^https?:\/\/(localhost|127\.0\.0\.1|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(1[6-9]|2\d|3[0-1])\.\d+\.\d+):3001$/u.test(
+            origin,
+          );
+        if (ok) return cb(null, true);
+      }
+
+      return cb(new Error(`CORS blocked for origin: ${origin}`), false);
+    },
     credentials: true,
-    allowedHeaders: ['Authorization', 'Content-Type', 'Cookie', 'x-request-id'],
+    allowedHeaders: [
+      'Authorization',
+      'Content-Type',
+      'Cookie',
+      'x-request-id',
+      'x-api-key',
+    ],
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   });
 

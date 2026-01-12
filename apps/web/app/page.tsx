@@ -16,6 +16,8 @@ const descriptions: Record<string, string> = {
     "Track your invested capital and profit share across arbitrage cycles.",
   characters:
     "Manage your linked characters and plan future character and skill farm setups.",
+  "skill-issue":
+    "Paste a fit and compare against a character to see required and influencing skills.",
 };
 
 export default function LandingPage() {

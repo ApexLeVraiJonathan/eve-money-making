@@ -21,6 +21,7 @@ import { SkillPlansModule } from './skill-plans/skill-plans.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { CompositeAuthGuard } from './characters/guards/composite-auth.guard';
 import { Public } from './characters/decorators/public.decorator';
+import { SkillIssueModule } from './skill-issue/skill-issue.module';
 
 @Controller('health')
 class HealthController {
@@ -52,6 +53,7 @@ class HealthController {
     CharacterManagementModule,
     SkillFarmModule,
     SkillPlansModule,
+    SkillIssueModule,
   ],
   controllers: [HealthController],
   providers: [
