@@ -117,6 +117,18 @@ export type TradeStrategyLabSweepReport = {
     strategyId: string;
     strategyName: string;
     overallScore: number | null;
+    sellShareSummary: {
+      bySellShare: Array<{
+        sellSharePct: number;
+        scoreMedianAcrossPriceModels: number | null;
+        roiMedianAcrossPriceModels: number | null;
+        worstDDMedianAcrossPriceModels: number | null;
+        relistFeesMedianIskAcrossPriceModels: number | null;
+      }>;
+      robustScoreMedianAcrossSellShares: number | null;
+      robustScoreMinAcrossSellShares: number | null;
+      scoreAtMinSellShare: number | null;
+    };
     scenarioScores: Array<{
       scenario: { priceModel: "LOW" | "AVG" | "HIGH"; sellSharePct: number };
       roiMedian: number | null;

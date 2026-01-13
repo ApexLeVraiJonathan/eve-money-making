@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
-  Check,
   ChevronDown,
   ClipboardCopy,
   Eye,

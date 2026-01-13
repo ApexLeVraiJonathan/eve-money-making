@@ -18,6 +18,7 @@ import { CreateTradeStrategyWalkForwardDto } from './dto/create-walk-forward.dto
 import { CreateTradeStrategyWalkForwardAllDto } from './dto/create-walk-forward-all.dto';
 import type { LiquidityItemDto } from '@api/tradecraft/market/dto/liquidity-item.dto';
 import { CreateTradeStrategyLabSweepDto } from './dto/create-lab-sweep.dto';
+import { Prisma } from '@eve/prisma';
 
 type PriceModel = 'LOW' | 'AVG' | 'HIGH';
 
@@ -48,6 +49,22 @@ function addDays(d: Date, days: number): Date {
   out.setUTCHours(0, 0, 0, 0);
   out.setUTCDate(out.getUTCDate() + days);
   return out;
+}
+
+function getLastNDatesIso(n: number, anchorDateIso: string): string[] {
+  // Mirrors DataImportService.getLastNDates():
+  // - anchor normalized to UTC midnight
+  // - returns last N dates ending at (anchor - 1 day)
+  const dates: string[] = [];
+  const anchor = parseIsoDateOnly(anchorDateIso);
+  anchor.setUTCHours(0, 0, 0, 0);
+  anchor.setUTCDate(anchor.getUTCDate() - 1);
+  for (let i = n - 1; i >= 0; i--) {
+    const d = new Date(anchor);
+    d.setUTCDate(anchor.getUTCDate() - i);
+    dates.push(formatIsoDateOnly(d));
+  }
+  return dates;
 }
 
 function median(values: number[]): number | null {
@@ -679,10 +696,24 @@ export class StrategyLabService {
         score: number | null;
       }>;
       overallScore: number | null;
+      sellShareSummary: {
+        bySellShare: Array<{
+          sellSharePct: number;
+          scoreMedianAcrossPriceModels: number | null;
+          roiMedianAcrossPriceModels: number | null;
+          worstDDMedianAcrossPriceModels: number | null;
+          relistFeesMedianIskAcrossPriceModels: number | null;
+        }>;
+        robustScoreMedianAcrossSellShares: number | null;
+        robustScoreMinAcrossSellShares: number | null;
+        scoreAtMinSellShare: number | null;
+      };
     }> = [];
 
-    // Simple scoring: reward ROI, penalize drawdown and relist costs.
-    // score ~= roiMedian - 0.25*worstDD - (relistFeesMedian / capital)*100
+    // Scoring for strategy selection:
+    // ROI should dominate. DD matters (risk). Relist costs are a light operational penalty.
+    //
+    // score ~= roiMedian - 0.15*worstDD - 0.05*(relistFeesMedian / capital)*100
     const scoreFn = (x: {
       roiMedian: number | null;
       worstDD: number | null;
@@ -695,20 +726,24 @@ export class StrategyLabService {
       )
         return null;
       const relistPct = (x.relistFeesMedianIsk / dto.initialCapitalIsk) * 100;
-      return x.roiMedian - 0.25 * x.worstDD - relistPct;
+      const ddPenalty = 0.15 * x.worstDD;
+      const relistPenalty = 0.05 * relistPct;
+      return x.roiMedian - ddPenalty - relistPenalty;
     };
 
-    for (const s of strategies) {
-      const scenarioScores: Array<{
-        scenario: Scenario;
-        roiMedian: number | null;
-        worstDD: number | null;
-        winRate: number | null;
-        relistFeesMedianIsk: number | null;
-        score: number | null;
-      }> = [];
+    // Concurrency:
+    // The sweep is mostly CPU-light but DB-heavy. Run a couple of strategy-scenario
+    // batches in parallel to cut wall time without overwhelming Postgres.
+    const SWEEP_CONCURRENCY = 2;
 
-      for (const sc of scenarios) {
+    const workItems = strategies.flatMap((s) =>
+      scenarios.map((sc) => ({ strategy: s, scenario: sc })),
+    );
+
+    const scored = await this.mapWithConcurrency(
+      workItems,
+      SWEEP_CONCURRENCY,
+      async ({ strategy: s, scenario: sc }) => {
         const report = await this.createAndExecuteWalkForward(
           {
             strategyId: s.id,
@@ -728,7 +763,11 @@ export class StrategyLabService {
 
         const agg = (report as any)?.aggregates ?? {};
         const roiMedian =
-          typeof agg.roiMedian === 'number' ? agg.roiMedian : agg.roiMedian != null ? Number(agg.roiMedian) : null;
+          typeof agg.roiMedian === 'number'
+            ? agg.roiMedian
+            : agg.roiMedian != null
+              ? Number(agg.roiMedian)
+              : null;
         const worstDD =
           typeof agg.maxDrawdownWorst === 'number'
             ? agg.maxDrawdownWorst
@@ -736,7 +775,11 @@ export class StrategyLabService {
               ? Number(agg.maxDrawdownWorst)
               : null;
         const winRate =
-          typeof agg.winRate === 'number' ? agg.winRate : agg.winRate != null ? Number(agg.winRate) : null;
+          typeof agg.winRate === 'number'
+            ? agg.winRate
+            : agg.winRate != null
+              ? Number(agg.winRate)
+              : null;
         const relistFeesMedianIsk =
           typeof agg.relistFeesMedianIsk === 'number'
             ? agg.relistFeesMedianIsk
@@ -745,32 +788,154 @@ export class StrategyLabService {
               : null;
 
         const score = scoreFn({ roiMedian, worstDD, relistFeesMedianIsk });
-        scenarioScores.push({
+        return {
+          strategyId: s.id,
+          strategyName: s.name,
           scenario: sc,
           roiMedian,
           worstDD,
           winRate,
           relistFeesMedianIsk,
           score,
-        });
-      }
+        };
+      },
+    );
 
-      const validScores = scenarioScores
+    const byStrategy = new Map<
+      string,
+      {
+        strategyId: string;
+        strategyName: string;
+        scenarioScores: Array<{
+          scenario: Scenario;
+          roiMedian: number | null;
+          worstDD: number | null;
+          winRate: number | null;
+          relistFeesMedianIsk: number | null;
+          score: number | null;
+        }>;
+      }
+    >();
+
+    for (const row of scored) {
+      const cur =
+        byStrategy.get(row.strategyId) ??
+        {
+          strategyId: row.strategyId,
+          strategyName: row.strategyName,
+          scenarioScores: [],
+        };
+      cur.scenarioScores.push({
+        scenario: row.scenario,
+        roiMedian: row.roiMedian,
+        worstDD: row.worstDD,
+        winRate: row.winRate,
+        relistFeesMedianIsk: row.relistFeesMedianIsk,
+        score: row.score,
+      });
+      byStrategy.set(row.strategyId, cur);
+    }
+
+    for (const cur of byStrategy.values()) {
+      const validScores = cur.scenarioScores
         .map((x) => x.score)
-        .filter((x): x is number => typeof x === 'number' && Number.isFinite(x));
+        .filter(
+          (x): x is number => typeof x === 'number' && Number.isFinite(x),
+        );
       const overallScore = validScores.length ? median(validScores) : null;
 
+      // Robustness across sellShare:
+      // 1) For each sellSharePct, aggregate across price models (median across price models)
+      // 2) Then compute robustness as (median across sellShares) and (min across sellShares)
+      const byShare = new Map<number, typeof cur.scenarioScores>();
+      for (const s of cur.scenarioScores) {
+        const sp = s.scenario.sellSharePct;
+        const list = byShare.get(sp) ?? [];
+        list.push(s);
+        byShare.set(sp, list);
+      }
+
+      const shareKeys = Array.from(byShare.keys()).sort((a, b) => a - b);
+      const medianAcross = (vals: Array<number | null>) => {
+        const nums = vals
+          .map((v) => (typeof v === 'number' ? v : null))
+          .filter((v): v is number => v !== null && Number.isFinite(v))
+          .sort((a, b) => a - b);
+        return nums.length ? median(nums) : null;
+      };
+
+      const bySellShare = shareKeys.map((sellSharePct) => {
+        const rows = byShare.get(sellSharePct) ?? [];
+        return {
+          sellSharePct,
+          scoreMedianAcrossPriceModels: medianAcross(rows.map((r) => r.score)),
+          roiMedianAcrossPriceModels: medianAcross(rows.map((r) => r.roiMedian)),
+          worstDDMedianAcrossPriceModels: medianAcross(rows.map((r) => r.worstDD)),
+          relistFeesMedianIskAcrossPriceModels: medianAcross(
+            rows.map((r) => r.relistFeesMedianIsk),
+          ),
+        };
+      });
+
+      const shareScores = bySellShare
+        .map((x) => x.scoreMedianAcrossPriceModels)
+        .filter((x): x is number => typeof x === 'number' && Number.isFinite(x))
+        .sort((a, b) => a - b);
+      const robustScoreMedianAcrossSellShares = shareScores.length
+        ? median(shareScores)
+        : null;
+      const robustScoreMinAcrossSellShares = shareScores.length
+        ? Math.min(...shareScores)
+        : null;
+      const minShare = shareKeys.length ? shareKeys[0] : null;
+      const scoreAtMinSellShare =
+        minShare !== null
+          ? (bySellShare.find((x) => x.sellSharePct === minShare)
+              ?.scoreMedianAcrossPriceModels ?? null)
+          : null;
+
       results.push({
-        strategyId: s.id,
-        strategyName: s.name,
-        scenarioScores,
+        strategyId: cur.strategyId,
+        strategyName: cur.strategyName,
+        scenarioScores: cur.scenarioScores,
         overallScore,
+        sellShareSummary: {
+          bySellShare,
+          robustScoreMedianAcrossSellShares,
+          robustScoreMinAcrossSellShares,
+          scoreAtMinSellShare,
+        },
       });
     }
 
     results.sort((a, b) => {
-      const aOk = typeof a.overallScore === 'number' && Number.isFinite(a.overallScore);
-      const bOk = typeof b.overallScore === 'number' && Number.isFinite(b.overallScore);
+      // Primary: robustness at the lowest sellShare (most realistic)
+      const aLow = a.sellShareSummary.scoreAtMinSellShare;
+      const bLow = b.sellShareSummary.scoreAtMinSellShare;
+      const aLowOk = typeof aLow === 'number' && Number.isFinite(aLow);
+      const bLowOk = typeof bLow === 'number' && Number.isFinite(bLow);
+      if (aLowOk && bLowOk && aLow !== bLow) return bLow - aLow;
+      if (aLowOk && !bLowOk) return -1;
+      if (!aLowOk && bLowOk) return 1;
+
+      // Secondary: robustness across sellShares (min, then median)
+      const aMin = a.sellShareSummary.robustScoreMinAcrossSellShares;
+      const bMin = b.sellShareSummary.robustScoreMinAcrossSellShares;
+      const aMinOk = typeof aMin === 'number' && Number.isFinite(aMin);
+      const bMinOk = typeof bMin === 'number' && Number.isFinite(bMin);
+      if (aMinOk && bMinOk && aMin !== bMin) return bMin - aMin;
+
+      const aMed = a.sellShareSummary.robustScoreMedianAcrossSellShares;
+      const bMed = b.sellShareSummary.robustScoreMedianAcrossSellShares;
+      const aMedOk = typeof aMed === 'number' && Number.isFinite(aMed);
+      const bMedOk = typeof bMed === 'number' && Number.isFinite(bMed);
+      if (aMedOk && bMedOk && aMed !== bMed) return bMed - aMed;
+
+      // Fallback: old overallScore
+      const aOk =
+        typeof a.overallScore === 'number' && Number.isFinite(a.overallScore);
+      const bOk =
+        typeof b.overallScore === 'number' && Number.isFinite(b.overallScore);
       if (aOk && bOk) return (b.overallScore as number) - (a.overallScore as number);
       if (aOk) return -1;
       if (bOk) return 1;
@@ -795,6 +960,27 @@ export class StrategyLabService {
       scenarios,
       results,
     };
+  }
+
+  private async mapWithConcurrency<TIn, TOut>(
+    items: TIn[],
+    concurrency: number,
+    worker: (item: TIn) => Promise<TOut>,
+  ): Promise<TOut[]> {
+    const c = Math.max(1, Math.floor(concurrency));
+    const out: TOut[] = new Array(items.length);
+    let idx = 0;
+
+    const runWorker = async () => {
+      for (;;) {
+        const i = idx++;
+        if (i >= items.length) return;
+        out[i] = await worker(items[i]);
+      }
+    };
+
+    await Promise.all(Array.from({ length: Math.min(c, items.length) }, () => runWorker()));
+    return out;
   }
 
   // ============================================================================
@@ -1216,9 +1402,22 @@ export class StrategyLabService {
     }
 
     const sellSharePct =
-      params.sellModel === 'VOLUME_SHARE'
-        ? (params.sellSharePct ?? 0.05)
-        : 0.05;
+      params.sellModel === 'VOLUME_SHARE' ? (params.sellSharePct ?? 0.05) : null;
+
+    // Optional: calibrated per-pair capture shares derived from historical sales allocations vs market volume.
+    // This reduces "fantasy fills" from a global sellSharePct and reflects how much volume we tend to capture
+    // for each item/destination, based on historical operations.
+    const calibrated =
+      params.sellModel === 'CALIBRATED_CAPTURE'
+        ? await this.computeCalibratedCapture({
+            stationIds,
+            typeIds,
+            anchorDateIso: formatIsoDateOnly(params.start),
+            windowDays: params.params.liquidityOptions?.windowDays ?? 14,
+          })
+        : null;
+    const calibratedShareByPair = calibrated?.shareByPair ?? null;
+    const calibratedFallbackShare = calibrated?.fallbackShare ?? 0.02;
     const totalSpend = plan.totalSpendISK;
     const totalShipping = plan.totalShippingISK;
     const cash0 = params.initialCapitalIsk - totalSpend - totalShipping;
@@ -1273,7 +1472,11 @@ export class StrategyLabService {
         const dailyAmount = lastAmount.get(pairKey) ?? 0;
         if (priceRaw === null) continue;
 
-        const cap = Math.max(0, Math.floor(dailyAmount * sellSharePct));
+        const share =
+          params.sellModel === 'VOLUME_SHARE'
+            ? (sellSharePct ?? 0.05)
+            : calibratedShareByPair?.get(pairKey) ?? calibratedFallbackShare;
+        const cap = Math.max(0, Math.floor(dailyAmount * share));
         if (cap <= 0) continue;
 
         const sold = Math.min(pos.unitsRemaining, cap);
@@ -1395,9 +1598,111 @@ export class StrategyLabService {
             days: dayRows.length,
             relistFeePercent,
             relistEventsPerDay,
+            fillModel:
+              params.sellModel === 'CALIBRATED_CAPTURE'
+                ? {
+                    mode: 'CALIBRATED_CAPTURE',
+                    fallbackShare: calibratedFallbackShare,
+                    calibratedPairs: calibratedShareByPair?.size ?? 0,
+                  }
+                : {
+                    mode: 'VOLUME_SHARE',
+                    sellSharePct,
+                  },
           },
         },
       });
     });
+  }
+
+  private async computeCalibratedCapture(params: {
+    stationIds: number[];
+    typeIds: number[];
+    anchorDateIso: string;
+    windowDays: number;
+  }): Promise<{ shareByPair: Map<string, number>; fallbackShare: number }> {
+    const out = new Map<string, number>();
+    const stationIds = Array.from(new Set(params.stationIds)).filter((x) =>
+      Number.isFinite(x),
+    );
+    const typeIds = Array.from(new Set(params.typeIds)).filter((x) =>
+      Number.isFinite(x),
+    );
+    if (!stationIds.length || !typeIds.length)
+      return { shareByPair: out, fallbackShare: 0.02 };
+
+    const dates = getLastNDatesIso(params.windowDays, params.anchorDateIso);
+    if (!dates.length) return { shareByPair: out, fallbackShare: 0.02 };
+    const windowStart = parseIsoDateOnly(dates[0]);
+    const windowEnd = parseIsoDateOnly(dates[dates.length - 1]);
+    const windowEndExclusive = addDays(windowEnd, 1);
+
+    const marketTotals = await this.prisma.$queryRaw<
+      Array<{ stationId: number; typeId: number; amount: bigint }>
+    >(Prisma.sql`
+      SELECT
+        location_id AS "stationId",
+        type_id AS "typeId",
+        SUM(amount)::bigint AS "amount"
+      FROM market_order_trades_daily
+      WHERE is_buy_order = false
+        AND location_id IN (${Prisma.join(stationIds)})
+        AND type_id IN (${Prisma.join(typeIds)})
+        AND scan_date >= ${windowStart}
+        AND scan_date <= ${windowEnd}
+      GROUP BY location_id, type_id
+    `);
+
+    const marketByPair = new Map<string, number>();
+    let marketTotalAll = 0;
+    for (const r of marketTotals) {
+      const amt = Number(r.amount);
+      marketByPair.set(`${r.stationId}:${r.typeId}`, amt);
+      if (Number.isFinite(amt) && amt > 0) marketTotalAll += amt;
+    }
+
+    // We do NOT have sell_allocations populated in this environment (count=0).
+    // Instead, calibrate capture using OUR actual sell wallet transactions at the destination station:
+    // share ~= (our sold qty over window) / (market volume over window)
+    const sellTotals = await this.prisma.$queryRaw<
+      Array<{ stationId: number; typeId: number; qty: bigint }>
+    >(Prisma.sql`
+      SELECT
+        location_id AS "stationId",
+        type_id AS "typeId",
+        SUM(quantity)::bigint AS "qty"
+      FROM wallet_transactions
+      WHERE is_buy = false
+        AND location_id IN (${Prisma.join(stationIds)})
+        AND type_id IN (${Prisma.join(typeIds)})
+        AND date >= ${windowStart}
+        AND date < ${windowEndExclusive}
+      GROUP BY location_id, type_id
+    `);
+
+    let soldTotalAll = 0;
+    for (const r of sellTotals) {
+      const k = `${r.stationId}:${r.typeId}`;
+      const sold = Number(r.qty);
+      const market = marketByPair.get(k) ?? 0;
+      if (!Number.isFinite(sold) || sold <= 0) continue;
+      if (!Number.isFinite(market) || market <= 0) continue;
+      const raw = sold / market;
+      // Clamp to avoid pathological ratios; calibrated capture is meant to be conservative.
+      const share = Math.max(0.0, Math.min(0.2, raw));
+      out.set(k, share);
+      soldTotalAll += sold;
+    }
+
+    // Data-driven fallback:
+    // If we have any historical sells, use the *global* observed capture share over this same window.
+    // This avoids the "everything falls back to 2%" behavior, which can make calibrated sweeps look
+    // artificially flat and overly punitive.
+    const globalRaw =
+      marketTotalAll > 0 && soldTotalAll > 0 ? soldTotalAll / marketTotalAll : 0;
+    const fallbackShare =
+      globalRaw > 0 ? Math.max(0.0, Math.min(0.2, globalRaw)) : 0.02;
+
+    return { shareByPair: out, fallbackShare };
   }
 }

@@ -20,7 +20,6 @@ import { Alert, AlertDescription } from "@eve/ui";
 import { formatIsk } from "@/lib/utils";
 import {
   useCreateTradeStrategy,
-  useCreateTradeStrategyRun,
   type TradeStrategyWalkForwardReport,
   type TradeStrategyWalkForwardAllReport,
   useTradeStrategyWalkForward,
@@ -135,7 +134,6 @@ export default function StrategyLabPage() {
   const { data: strategies = [] } = useTradeStrategies();
   const { data: runs = [] } = useTradeStrategyRuns();
   const createStrategy = useCreateTradeStrategy();
-  const createRun = useCreateTradeStrategyRun();
   const walkForward = useTradeStrategyWalkForward();
   const walkForwardAll = useTradeStrategyWalkForwardAll();
   const labSweep = useTradeStrategyLabSweep();
@@ -154,9 +152,13 @@ export default function StrategyLabPage() {
   const [initialCapital, setInitialCapital] =
     React.useState<string>("50000000000");
   const [sellSharePct, setSellSharePct] = React.useState<string>("0.20");
+  const [sellModel, setSellModel] = React.useState<
+    "VOLUME_SHARE" | "CALIBRATED_CAPTURE"
+  >("VOLUME_SHARE");
   const [priceModel, setPriceModel] = React.useState<"LOW" | "AVG" | "HIGH">(
     "LOW",
   );
+  const [nameContains, setNameContains] = React.useState<string>("SL-");
 
   // Walk-forward defaults
   const [wfTrainDays, setWfTrainDays] = React.useState<string>("14");
@@ -196,116 +198,6 @@ export default function StrategyLabPage() {
         </TabsList>
 
         <TabsContent value="runs" className="mt-4 space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Start Backtest Run</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label>Strategy</Label>
-                  <select
-                    className="w-full rounded-md border bg-background px-3 py-2 text-sm"
-                    value={strategyId}
-                    onChange={(e) => setStrategyId(e.target.value)}
-                  >
-                    <option value="">Select…</option>
-                    {strategies
-                      .filter((s) => s.isActive)
-                      .map((s) => (
-                        <option key={s.id} value={s.id}>
-                          {s.name}
-                        </option>
-                      ))}
-                  </select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Initial Capital (ISK)</Label>
-                  <Input
-                    value={initialCapital}
-                    onChange={(e) => setInitialCapital(e.target.value)}
-                  />
-                </div>
-              </div>
-
-              <div className="grid gap-4 md:grid-cols-3">
-                <div className="space-y-2">
-                  <Label>Start date (YYYY-MM-DD)</Label>
-                  <Input
-                    value={startDate}
-                    onChange={(e) => setStartDate(e.target.value)}
-                    placeholder="2026-01-01"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>End date (YYYY-MM-DD)</Label>
-                  <Input
-                    value={endDate}
-                    onChange={(e) => setEndDate(e.target.value)}
-                    placeholder="2026-01-30"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Daily volume share (0..1)</Label>
-                  <Input
-                    value={sellSharePct}
-                    onChange={(e) => setSellSharePct(e.target.value)}
-                  />
-                </div>
-              </div>
-
-              <div className="grid gap-4 md:grid-cols-3">
-                <div className="space-y-2">
-                  <Label>Price model</Label>
-                  <select
-                    className="w-full rounded-md border bg-background px-3 py-2 text-sm"
-                    value={priceModel}
-                    onChange={(e) =>
-                      setPriceModel(e.target.value as "LOW" | "AVG" | "HIGH")
-                    }
-                  >
-                    <option value="LOW">LOW (conservative)</option>
-                    <option value="AVG">AVG</option>
-                    <option value="HIGH">HIGH</option>
-                  </select>
-                </div>
-              </div>
-
-              <Button
-                disabled={createRun.isPending}
-                onClick={async () => {
-                  try {
-                    setError(null);
-                    const cap = Number(initialCapital);
-                    const share = Number(sellSharePct);
-                    if (!strategyId) throw new Error("Pick a strategy");
-                    if (!startDate || !endDate)
-                      throw new Error("Provide start/end dates");
-                    if (!Number.isFinite(cap) || cap <= 0)
-                      throw new Error("Invalid initial capital");
-                    if (!Number.isFinite(share) || share < 0 || share > 1)
-                      throw new Error("sellSharePct must be between 0 and 1");
-
-                    await createRun.mutateAsync({
-                      strategyId,
-                      startDate,
-                      endDate,
-                      initialCapitalIsk: cap,
-                      sellModel: "VOLUME_SHARE",
-                      sellSharePct: share,
-                      priceModel,
-                    });
-                  } catch (e: unknown) {
-                    setError(e instanceof Error ? e.message : String(e));
-                  }
-                }}
-              >
-                {createRun.isPending ? "Running..." : "Run backtest"}
-              </Button>
-            </CardContent>
-          </Card>
-
           <Card>
             <CardHeader>
               <CardTitle>Walk-Forward Batch (Automated Validation)</CardTitle>
@@ -390,11 +282,35 @@ export default function StrategyLabPage() {
                   <Input
                     value={sellSharePct}
                     onChange={(e) => setSellSharePct(e.target.value)}
+                    disabled={sellModel === "CALIBRATED_CAPTURE"}
                   />
+                  {sellModel === "CALIBRATED_CAPTURE" ? (
+                    <div className="text-xs text-muted-foreground">
+                      Ignored for calibrated capture (uses observed capture per
+                      item/destination).
+                    </div>
+                  ) : null}
                 </div>
               </div>
 
               <div className="grid gap-4 md:grid-cols-3">
+                <div className="space-y-2">
+                  <Label>Sell model</Label>
+                  <select
+                    className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                    value={sellModel}
+                    onChange={(e) =>
+                      setSellModel(
+                        e.target.value as "VOLUME_SHARE" | "CALIBRATED_CAPTURE",
+                      )
+                    }
+                  >
+                    <option value="VOLUME_SHARE">VOLUME_SHARE</option>
+                    <option value="CALIBRATED_CAPTURE">
+                      CALIBRATED_CAPTURE
+                    </option>
+                  </select>
+                </div>
                 <div className="space-y-2">
                   <Label>Price model</Label>
                   <select
@@ -408,6 +324,14 @@ export default function StrategyLabPage() {
                     <option value="AVG">AVG</option>
                     <option value="HIGH">HIGH</option>
                   </select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Strategy name contains (filter)</Label>
+                  <Input
+                    value={nameContains}
+                    onChange={(e) => setNameContains(e.target.value)}
+                    placeholder='e.g. "SL-01V" (leave blank for all)'
+                  />
                 </div>
               </div>
 
@@ -431,8 +355,10 @@ export default function StrategyLabPage() {
                       throw new Error("Provide start/end dates");
                     if (!Number.isFinite(cap) || cap <= 0)
                       throw new Error("Invalid initial capital");
-                    if (!Number.isFinite(share) || share < 0 || share > 1)
-                      throw new Error("sellSharePct must be between 0 and 1");
+                    if (sellModel === "VOLUME_SHARE") {
+                      if (!Number.isFinite(share) || share < 0 || share > 1)
+                        throw new Error("sellSharePct must be between 0 and 1");
+                    }
                     if (!Number.isFinite(trainDays) || trainDays < 1)
                       throw new Error("trainDays must be >= 1");
                     if (!Number.isFinite(testDays) || testDays < 1)
@@ -451,8 +377,9 @@ export default function StrategyLabPage() {
                       testWindowDays: testDays,
                       stepDays,
                       maxRuns,
-                      sellModel: "VOLUME_SHARE",
-                      sellSharePct: share,
+                      sellModel,
+                      sellSharePct:
+                        sellModel === "VOLUME_SHARE" ? share : undefined,
                       priceModel,
                     });
                     setWfReport(report);
@@ -486,8 +413,10 @@ export default function StrategyLabPage() {
                       throw new Error("Provide start/end dates");
                     if (!Number.isFinite(cap) || cap <= 0)
                       throw new Error("Invalid initial capital");
-                    if (!Number.isFinite(share) || share < 0 || share > 1)
-                      throw new Error("sellSharePct must be between 0 and 1");
+                    if (sellModel === "VOLUME_SHARE") {
+                      if (!Number.isFinite(share) || share < 0 || share > 1)
+                        throw new Error("sellSharePct must be between 0 and 1");
+                    }
                     if (!Number.isFinite(trainDays) || trainDays < 1)
                       throw new Error("trainDays must be >= 1");
                     if (!Number.isFinite(testDays) || testDays < 1)
@@ -505,10 +434,11 @@ export default function StrategyLabPage() {
                       testWindowDays: testDays,
                       stepDays,
                       maxRuns,
-                      sellModel: "VOLUME_SHARE",
-                      sellSharePct: share,
+                      sellModel,
+                      sellSharePct:
+                        sellModel === "VOLUME_SHARE" ? share : undefined,
                       priceModel,
-                      nameContains: "SL-",
+                      nameContains: nameContains.trim() || undefined,
                     });
                     setWfAllReport(report);
                   } catch (e: unknown) {
@@ -549,11 +479,14 @@ export default function StrategyLabPage() {
                       testWindowDays: testDays,
                       stepDays,
                       maxRuns,
-                      sellModel: "VOLUME_SHARE",
-                      // default sweep: price models x sell shares
+                      sellModel,
+                      // default sweep: price models x sell shares (includes a more realistic low-share grid)
                       priceModels: ["LOW", "AVG", "HIGH"],
-                      sellSharePcts: [0.1, 0.2],
-                      nameContains: "SL-",
+                      sellSharePcts:
+                        sellModel === "VOLUME_SHARE"
+                          ? [0.05, 0.1, 0.15, 0.2]
+                          : [0.05],
+                      nameContains: nameContains.trim() || undefined,
                     });
                     setSweepReport(report);
                   } catch (e: unknown) {
@@ -794,6 +727,11 @@ export default function StrategyLabPage() {
                       {sweepReport.scenarios.length} • strategies=
                       {sweepReport.results.length}
                     </div>
+                    <div className="text-muted-foreground">
+                      score = roiMedian − 0.15×worstDD −
+                      0.05×relistFeesMedian%capital (ROI dominates; DD
+                      secondary; relist is a light penalty)
+                    </div>
                   </div>
 
                   <Card>
@@ -802,19 +740,73 @@ export default function StrategyLabPage() {
                     </CardHeader>
                     <CardContent className="space-y-2">
                       {sweepReport.results[0] ? (
-                        <div className="rounded-md border p-3 flex items-center justify-between">
-                          <div className="min-w-0">
-                            <div className="text-sm font-medium truncate">
-                              {sweepReport.results[0].strategyName}
+                        (() => {
+                          const w = sweepReport.results[0];
+                          const medianOfSorted = (arr: number[]) => {
+                            if (arr.length === 0) return null;
+                            const mid = Math.floor(arr.length / 2);
+                            return arr.length % 2 === 1
+                              ? arr[mid]
+                              : (arr[mid - 1] + arr[mid]) / 2;
+                          };
+
+                          const rois = w.scenarioScores
+                            .map((s) => s.roiMedian)
+                            .filter(
+                              (x): x is number =>
+                                typeof x === "number" && Number.isFinite(x),
+                            )
+                            .sort((a, b) => a - b);
+                          const dds = w.scenarioScores
+                            .map((s) => s.worstDD)
+                            .filter(
+                              (x): x is number =>
+                                typeof x === "number" && Number.isFinite(x),
+                            )
+                            .sort((a, b) => a - b);
+                          const relists = w.scenarioScores
+                            .map((s) => s.relistFeesMedianIsk)
+                            .filter(
+                              (x): x is number =>
+                                typeof x === "number" && Number.isFinite(x),
+                            )
+                            .sort((a, b) => a - b);
+
+                          const roiMed = medianOfSorted(rois);
+                          const ddMed = medianOfSorted(dds);
+                          const relistMed = medianOfSorted(relists);
+
+                          return (
+                            <div className="rounded-md border p-3 flex items-center justify-between">
+                              <div className="min-w-0">
+                                <div className="text-sm font-medium truncate">
+                                  {w.strategyName}
+                                </div>
+                                <div className="text-xs text-muted-foreground">
+                                  overallScore=
+                                  {w.overallScore !== null
+                                    ? w.overallScore.toFixed(3)
+                                    : "—"}
+                                  {" • "}
+                                  roiMedian=
+                                  {roiMed !== null
+                                    ? `${roiMed.toFixed(2)}%`
+                                    : "—"}
+                                  {" • "}
+                                  worstDD(med)=
+                                  {ddMed !== null
+                                    ? `${ddMed.toFixed(2)}%`
+                                    : "—"}
+                                  {" • "}
+                                  relistFees(med)=
+                                  {relistMed !== null
+                                    ? formatIsk(relistMed)
+                                    : "—"}
+                                </div>
+                              </div>
                             </div>
-                            <div className="text-xs text-muted-foreground">
-                              overallScore=
-                              {sweepReport.results[0].overallScore !== null
-                                ? sweepReport.results[0].overallScore.toFixed(3)
-                                : "—"}
-                            </div>
-                          </div>
-                        </div>
+                          );
+                        })()
                       ) : (
                         <div className="text-sm text-muted-foreground">—</div>
                       )}
@@ -824,26 +816,109 @@ export default function StrategyLabPage() {
                   <Card>
                     <CardHeader>
                       <CardTitle>
-                        Robust ranking (median score across scenarios)
+                        Robust ranking (sorted by low sell-share score)
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-2">
                       <div className="divide-y rounded-md border">
-                        {sweepReport.results.map((r) => (
-                          <div
-                            key={r.strategyId}
-                            className="p-3 flex items-center justify-between"
-                          >
-                            <div className="text-sm font-medium truncate">
-                              {r.strategyName}
+                        {sweepReport.results.map((r) => {
+                          const medianOfSorted = (arr: number[]) => {
+                            if (arr.length === 0) return null;
+                            const mid = Math.floor(arr.length / 2);
+                            return arr.length % 2 === 1
+                              ? arr[mid]
+                              : (arr[mid - 1] + arr[mid]) / 2;
+                          };
+
+                          const rois = r.scenarioScores
+                            .map((s) => s.roiMedian)
+                            .filter(
+                              (x): x is number =>
+                                typeof x === "number" && Number.isFinite(x),
+                            )
+                            .sort((a, b) => a - b);
+                          const dds = r.scenarioScores
+                            .map((s) => s.worstDD)
+                            .filter(
+                              (x): x is number =>
+                                typeof x === "number" && Number.isFinite(x),
+                            )
+                            .sort((a, b) => a - b);
+                          const relists = r.scenarioScores
+                            .map((s) => s.relistFeesMedianIsk)
+                            .filter(
+                              (x): x is number =>
+                                typeof x === "number" && Number.isFinite(x),
+                            )
+                            .sort((a, b) => a - b);
+
+                          const roiMed = medianOfSorted(rois);
+                          const ddMed = medianOfSorted(dds);
+                          const relistMed = medianOfSorted(relists);
+
+                          const lowShareScore =
+                            r.sellShareSummary?.scoreAtMinSellShare ?? null;
+                          const robustMin =
+                            r.sellShareSummary
+                              ?.robustScoreMinAcrossSellShares ?? null;
+                          const robustMed =
+                            r.sellShareSummary
+                              ?.robustScoreMedianAcrossSellShares ?? null;
+                          const primaryRankScore = lowShareScore;
+
+                          return (
+                            <div
+                              key={r.strategyId}
+                              className="p-3 flex items-center justify-between gap-4"
+                            >
+                              <div className="min-w-0">
+                                <div className="text-sm font-medium truncate">
+                                  {r.strategyName}
+                                </div>
+                                <div className="text-xs text-muted-foreground">
+                                  roiMedian=
+                                  {roiMed !== null
+                                    ? `${roiMed.toFixed(2)}%`
+                                    : "—"}
+                                  {" • "}
+                                  worstDD(med)=
+                                  {ddMed !== null
+                                    ? `${ddMed.toFixed(2)}%`
+                                    : "—"}
+                                  {" • "}
+                                  relistFees(med)=
+                                  {relistMed !== null
+                                    ? formatIsk(relistMed)
+                                    : "—"}
+                                  {" • "}
+                                  lowSellShareScore=
+                                  {lowShareScore !== null
+                                    ? lowShareScore.toFixed(3)
+                                    : "—"}
+                                  {" • "}
+                                  robust(min/med)=
+                                  {robustMin !== null
+                                    ? robustMin.toFixed(3)
+                                    : "—"}
+                                  /
+                                  {robustMed !== null
+                                    ? robustMed.toFixed(3)
+                                    : "—"}
+                                  {" • "}
+                                  overallScore=
+                                  {r.overallScore !== null
+                                    ? r.overallScore.toFixed(3)
+                                    : "—"}
+                                </div>
+                              </div>
+                              <div className="text-sm tabular-nums">
+                                {primaryRankScore !== null
+                                  ? primaryRankScore.toFixed(3)
+                                  : "—"}
+                              </div>
                             </div>
-                            <div className="text-sm tabular-nums">
-                              {r.overallScore !== null
-                                ? r.overallScore.toFixed(3)
-                                : "—"}
-                            </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </CardContent>
                   </Card>
