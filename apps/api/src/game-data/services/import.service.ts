@@ -9,6 +9,7 @@ import * as unzipper from 'unzipper';
 import { PrismaService } from '../../prisma/prisma.service';
 import { DataImportService } from '@shared/data-import';
 import { EsiService } from '../../esi/esi.service';
+import { AppConfig } from '@api/common/config';
 import type {
   ImportMissingMarketTradesResponse,
   ImportMarketTradesDayResult,
@@ -17,6 +18,7 @@ import type {
 @Injectable()
 export class ImportService {
   private readonly BASE_URL_ADAM4EVE = 'https://static.adam4eve.eu/';
+  private readonly PG_INT_MAX = 2147483647;
 
   constructor(
     private readonly logger: Logger,
@@ -986,10 +988,13 @@ export class ImportService {
       select: { stationId: true },
     });
     const trackedSet = new Set(tracked.map((t) => t.stationId));
+    // Ensure we always import the configured source station for planner buy pricing
+    trackedSet.add(AppConfig.arbitrage().sourceStationId);
 
     let inserted = 0,
       skipped = 0,
-      totalRows = 0;
+      totalRows = 0,
+      clamped = 0;
 
     try {
       const yyyy = date.slice(0, 4);
@@ -1074,11 +1079,11 @@ export class ImportService {
           const typeId = Number(row.type_id);
           const isBuyOrder = row.is_buy_order === '1';
           const hasGone = row.has_gone === '1';
-          const amount = Number(row.amount);
+          let amount = Number(row.amount);
           const high = row.high;
           const low = row.low;
           const avg = row.avg;
-          const orderNum = Number(row.orderNum);
+          let orderNum = Number(row.orderNum);
           const iskValue = row.iskValue;
           if (
             !Number.isInteger(locationId) ||
@@ -1089,6 +1094,16 @@ export class ImportService {
           ) {
             skipped++;
             return;
+          }
+
+          // Postgres int4 guard: Adam4EVE can exceed 2.1B units/day for ultra-liquid items (e.g. Tritanium in Jita)
+          if (amount > this.PG_INT_MAX) {
+            amount = this.PG_INT_MAX;
+            clamped++;
+          }
+          if (orderNum > this.PG_INT_MAX) {
+            orderNum = this.PG_INT_MAX;
+            clamped++;
           }
           await batcher.push({
             scanDate,
@@ -1126,12 +1141,157 @@ export class ImportService {
     } finally {
       const durationMs = Date.now() - startedAt;
       this.logger.log(
-        `Finished import: marketOrderTrades_daily_${date} in ${durationMs}ms (inserted=${inserted}, skipped=${skipped}, totalRows=${totalRows}, batchSize=${batchSize})`,
+        `Finished import: marketOrderTrades_daily_${date} in ${durationMs}ms (inserted=${inserted}, skipped=${skipped}, clamped=${clamped}, totalRows=${totalRows}, batchSize=${batchSize})`,
         context,
       );
     }
 
-    return { inserted, skipped, totalRows, batchSize };
+    return { inserted, skipped, clamped, totalRows, batchSize };
+  }
+
+  async importMarketOrderTradesWeeklyByUrl(url: string, batchSize = 5000) {
+    const context = ImportService.name;
+    const startedAt = Date.now();
+    this.logger.log(
+      `Starting import of weekly market trades from URL (batchSize=${batchSize})`,
+      context,
+    );
+
+    // Collect tracked station IDs to filter rows
+    const tracked = await this.prisma.trackedStation.findMany({
+      select: { stationId: true },
+    });
+    const trackedSet = new Set(tracked.map((t) => t.stationId));
+    // Ensure we always import the configured source station for planner buy pricing
+    trackedSet.add(AppConfig.arbitrage().sourceStationId);
+
+    let inserted = 0,
+      skipped = 0,
+      totalRows = 0,
+      clamped = 0;
+
+    const batcher = this.dataImportService.createBatcher<{
+      scanDate: Date;
+      locationId: number;
+      typeId: number;
+      isBuyOrder: boolean;
+      regionId: number;
+      hasGone: boolean;
+      amount: number;
+      high: string;
+      low: string;
+      avg: string;
+      orderNum: number;
+      iskValue: string;
+    }>({
+      size: batchSize,
+      flush: async (items) => {
+        const { count } = await this.prisma.marketOrderTradeDaily.createMany({
+          data: items,
+          skipDuplicates: true,
+        });
+        inserted += count;
+      },
+    });
+
+    try {
+      const res = await axios.get(url, { responseType: 'stream' });
+      const input = res.data as Readable;
+
+      await this.dataImportService.streamCsv<Record<string, string>>(
+        input,
+        async (row) => {
+          totalRows++;
+          const locationId = Number(row.location_id);
+          if (!trackedSet.has(locationId)) {
+            skipped++;
+            return;
+          }
+
+          const scanDateStr = row.scanDate ?? row.scan_date;
+          if (!scanDateStr) {
+            skipped++;
+            return;
+          }
+          const scanDate = new Date(`${scanDateStr}T00:00:00.000Z`);
+          if (Number.isNaN(scanDate.getTime())) {
+            skipped++;
+            return;
+          }
+
+          const regionId = Number(row.region_id);
+          const typeId = Number(row.type_id);
+          const isBuyOrder = row.is_buy_order === '1';
+          const hasGone = row.has_gone === '1';
+          let amount = Number(row.amount);
+          const high = row.high;
+          const low = row.low;
+          const avg = row.avg;
+          let orderNum = Number(row.orderNum);
+          const iskValue = row.iskValue;
+          if (
+            !Number.isInteger(locationId) ||
+            !Number.isInteger(regionId) ||
+            !Number.isInteger(typeId) ||
+            !Number.isInteger(amount) ||
+            !Number.isInteger(orderNum)
+          ) {
+            skipped++;
+            return;
+          }
+
+          // Postgres int4 guard: weekly backfills include Jita + ultra-liquid items that can exceed 2.1B units/day
+          if (amount > this.PG_INT_MAX) {
+            amount = this.PG_INT_MAX;
+            clamped++;
+          }
+          if (orderNum > this.PG_INT_MAX) {
+            orderNum = this.PG_INT_MAX;
+            clamped++;
+          }
+
+          await batcher.push({
+            scanDate,
+            locationId,
+            typeId,
+            isBuyOrder,
+            regionId,
+            hasGone,
+            amount,
+            high,
+            low,
+            avg,
+            orderNum,
+            iskValue,
+          });
+        },
+      );
+
+      await batcher.finish();
+    } catch (error) {
+      if (error instanceof Error) {
+        this.logger.error(
+          `Failed during weekly market trades import from URL: ${url}`,
+          error.stack,
+          context,
+        );
+      } else {
+        this.logger.error(
+          `Failed during weekly market trades import from URL: ${url} - ${String(error)}`,
+          undefined,
+          context,
+        );
+      }
+      throw error;
+    } finally {
+      const durationMs = Date.now() - startedAt;
+      this.logger.log(
+        `Finished weekly market trades import in ${durationMs}ms (inserted=${inserted}, skipped=${skipped}, clamped=${clamped}, totalRows=${totalRows}, batchSize=${batchSize})`,
+        context,
+      );
+    }
+
+    return { inserted, skipped, clamped, totalRows, batchSize, url };
   }
 
   async getMissingMarketOrderTradeDates(daysBack = 15) {

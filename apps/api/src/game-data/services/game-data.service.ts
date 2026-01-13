@@ -12,6 +12,10 @@ export class GameDataService {
   private readonly logger = new Logger(GameDataService.name);
   private readonly jitaStationId = 60003760;
   private jitaRegionIdCache: number | null = null;
+  private readonly typeWithVolumeCache = new Map<
+    number,
+    { id: number; name: string; volume: number | null }
+  >();
 
   constructor(private readonly prisma: PrismaService) {}
 
@@ -146,17 +150,46 @@ export class GameDataService {
       }
     >
   > {
-    const types = await this.prisma.typeId.findMany({
-      where: { id: { in: typeIds } },
-      select: { id: true, name: true, volume: true },
-    });
+    const result = new Map<
+      number,
+      { id: number; name: string; volume: number | null }
+    >();
 
-    return new Map(
-      types.map((t) => [
-        t.id,
-        { id: t.id, name: t.name, volume: t.volume ? Number(t.volume) : null },
-      ]),
+    const unique = Array.from(new Set(typeIds)).filter((x) =>
+      Number.isFinite(x),
     );
+    if (unique.length === 0) return result;
+
+    const missing: number[] = [];
+    for (const id of unique) {
+      const cached = this.typeWithVolumeCache.get(id);
+      if (cached) result.set(id, cached);
+      else missing.push(id);
+    }
+
+    if (missing.length === 0) return result;
+
+    // Chunk to avoid pathological giant IN (...) queries in hot paths (Strategy Lab batches)
+    const chunkSize = 1000;
+    for (let i = 0; i < missing.length; i += chunkSize) {
+      const chunk = missing.slice(i, i + chunkSize);
+      const types = await this.prisma.typeId.findMany({
+        where: { id: { in: chunk } },
+        select: { id: true, name: true, volume: true },
+      });
+
+      for (const t of types) {
+        const row = {
+          id: t.id,
+          name: t.name,
+          volume: t.volume ? Number(t.volume) : null,
+        };
+        this.typeWithVolumeCache.set(t.id, row);
+        result.set(t.id, row);
+      }
+    }
+
+    return result;
   }
 
   /**

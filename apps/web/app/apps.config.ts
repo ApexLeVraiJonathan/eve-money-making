@@ -158,6 +158,11 @@ export const APPS: AppConfig[] = [
         url: "/tradecraft/admin/undercut-checker",
         icon: TrendingUp,
         items: [
+          {
+            name: "Strategy Lab",
+            url: "/tradecraft/admin/strategy-lab",
+            icon: Recycle,
+          },
           { name: "Planner", url: "/tradecraft/admin/planner", icon: Recycle },
           {
             name: "Undercut Checker",

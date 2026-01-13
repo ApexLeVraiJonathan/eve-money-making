@@ -1,0 +1,1403 @@
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { PrismaService } from '@api/prisma/prisma.service';
+import { LiquidityService } from '@api/tradecraft/market/services/liquidity.service';
+import { GameDataService } from '@api/game-data/services/game-data.service';
+import { ArbitragePackagerService } from '@app/arbitrage-packager';
+import type {
+  DestinationConfig,
+  MultiPlanOptions,
+  PlanResult,
+} from '@app/arbitrage-packager/interfaces/packager.interfaces';
+import { AppConfig } from '@api/common/config';
+import { getEffectiveSell } from '@api/tradecraft/market/fees';
+import type { PlanPackagesRequest } from '@api/tradecraft/market/dto/plan-packages-request.dto';
+import { CreateTradeStrategyDto } from './dto/create-strategy.dto';
+import { UpdateTradeStrategyDto } from './dto/update-strategy.dto';
+import { CreateTradeStrategyRunDto } from './dto/create-run.dto';
+import { CreateTradeStrategyWalkForwardDto } from './dto/create-walk-forward.dto';
+import { CreateTradeStrategyWalkForwardAllDto } from './dto/create-walk-forward-all.dto';
+import type { LiquidityItemDto } from '@api/tradecraft/market/dto/liquidity-item.dto';
+import { CreateTradeStrategyLabSweepDto } from './dto/create-lab-sweep.dto';
+
+type PriceModel = 'LOW' | 'AVG' | 'HIGH';
+
+function parseIsoDateOnly(s: string): Date {
+  // Expect YYYY-MM-DD
+  return new Date(`${s}T00:00:00.000Z`);
+}
+
+function formatIsoDateOnly(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+
+function dateRangeInclusive(start: Date, end: Date): Date[] {
+  const out: Date[] = [];
+  const cur = new Date(start);
+  cur.setUTCHours(0, 0, 0, 0);
+  const endUtc = new Date(end);
+  endUtc.setUTCHours(0, 0, 0, 0);
+  while (cur.getTime() <= endUtc.getTime()) {
+    out.push(new Date(cur));
+    cur.setUTCDate(cur.getUTCDate() + 1);
+  }
+  return out;
+}
+
+function addDays(d: Date, days: number): Date {
+  const out = new Date(d);
+  out.setUTCHours(0, 0, 0, 0);
+  out.setUTCDate(out.getUTCDate() + days);
+  return out;
+}
+
+function median(values: number[]): number | null {
+  if (!values.length) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  if (sorted.length % 2 === 0) return (sorted[mid - 1] + sorted[mid]) / 2;
+  return sorted[mid];
+}
+
+function percentile(values: number[], p: number): number | null {
+  if (!values.length) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const idx = (sorted.length - 1) * p;
+  const lo = Math.floor(idx);
+  const hi = Math.ceil(idx);
+  if (lo === hi) return sorted[lo];
+  const w = idx - lo;
+  return sorted[lo] * (1 - w) + sorted[hi] * w;
+}
+
+@Injectable()
+export class StrategyLabService {
+  private readonly logger = new Logger(StrategyLabService.name);
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly liquidity: LiquidityService,
+    private readonly gameData: GameDataService,
+    private readonly packager: ArbitragePackagerService,
+  ) {}
+
+  // ============================================================================
+  // Strategies
+  // ============================================================================
+
+  async listStrategies() {
+    return await this.prisma.tradeStrategy.findMany({
+      orderBy: [{ updatedAt: 'desc' }],
+    });
+  }
+
+  async createStrategy(dto: CreateTradeStrategyDto) {
+    return await this.prisma.tradeStrategy.create({
+      data: {
+        name: dto.name,
+        description: dto.description ?? null,
+        params: dto.params as any,
+        isActive: dto.isActive ?? true,
+      },
+    });
+  }
+
+  async getStrategy(id: string) {
+    const s = await this.prisma.tradeStrategy.findUnique({ where: { id } });
+    if (!s) throw new NotFoundException('Strategy not found');
+    return s;
+  }
+
+  async updateStrategy(id: string, dto: UpdateTradeStrategyDto) {
+    await this.getStrategy(id);
+    return await this.prisma.tradeStrategy.update({
+      where: { id },
+      data: {
+        name: dto.name,
+        description: dto.description,
+        params: dto.params as any,
+        isActive: dto.isActive,
+      },
+    });
+  }
+
+  async deleteStrategy(id: string) {
+    await this.getStrategy(id);
+    // soft-delete
+    return await this.prisma.tradeStrategy.update({
+      where: { id },
+      data: { isActive: false },
+    });
+  }
+
+  // ============================================================================
+  // Runs
+  // ============================================================================
+
+  async listRuns() {
+    return await this.prisma.tradeStrategyRun.findMany({
+      orderBy: [{ createdAt: 'desc' }],
+      include: { strategy: { select: { id: true, name: true } } },
+    });
+  }
+
+  async getRun(id: string) {
+    const run = await this.prisma.tradeStrategyRun.findUnique({
+      where: { id },
+      include: {
+        strategy: true,
+        days: { orderBy: { date: 'asc' } },
+        positions: {
+          orderBy: [{ realizedProfitIsk: 'asc' }],
+          include: { type: { select: { name: true } } },
+        },
+      },
+    });
+    if (!run) throw new NotFoundException('Run not found');
+    return run;
+  }
+
+  async createAndExecuteRun(dto: CreateTradeStrategyRunDto) {
+    const strategy = await this.getStrategy(dto.strategyId);
+    const start = parseIsoDateOnly(dto.startDate);
+    const end = parseIsoDateOnly(dto.endDate);
+    if (start.getTime() > end.getTime()) {
+      throw new Error('startDate must be <= endDate');
+    }
+
+    const sellModel = dto.sellModel;
+    const priceModel: PriceModel = dto.priceModel ?? 'LOW';
+
+    const created = await this.prisma.tradeStrategyRun.create({
+      data: {
+        strategyId: strategy.id,
+        status: 'RUNNING',
+        startDate: start,
+        endDate: end,
+        initialCapitalIsk: dto.initialCapitalIsk.toFixed(2),
+        sellModel,
+        sellSharePct:
+          dto.sellSharePct !== undefined ? String(dto.sellSharePct) : null,
+        priceModel,
+        startedAt: new Date(),
+        assumptions: {
+          fees: AppConfig.arbitrage().fees,
+          sourceStationId: AppConfig.arbitrage().sourceStationId,
+          relistEventsPerDay: 3,
+        },
+      },
+    });
+
+    try {
+      await this.executeBacktestRun({
+        runId: created.id,
+        params: strategy.params as unknown as PlanPackagesRequest,
+        start,
+        end,
+        initialCapitalIsk: dto.initialCapitalIsk,
+        sellModel,
+        sellSharePct: dto.sellSharePct,
+        priceModel,
+      });
+
+      return await this.getRun(created.id);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      this.logger.error(`[run ${created.id}] failed: ${msg}`);
+      await this.prisma.tradeStrategyRun.update({
+        where: { id: created.id },
+        data: { status: 'FAILED', error: msg, finishedAt: new Date() },
+      });
+      throw e;
+    }
+  }
+
+  async createAndExecuteWalkForward(
+    dto: CreateTradeStrategyWalkForwardDto,
+    opts?: {
+      liquidityRawByAnchor?: Map<
+        string,
+        Record<
+          string,
+          { stationName: string; totalItems: number; items: LiquidityItemDto[] }
+        >
+      >;
+    },
+  ) {
+    const strategy = await this.getStrategy(dto.strategyId);
+
+    const batchId = `wf_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`;
+    const baseStart = parseIsoDateOnly(dto.startDate);
+    const lastEnd = parseIsoDateOnly(dto.endDate);
+
+    const stepDays = dto.stepDays ?? dto.testWindowDays;
+    const maxRuns = dto.maxRuns ?? 12;
+    const priceModel: PriceModel = dto.priceModel ?? 'LOW';
+
+    const runs: Array<{
+      runId: string;
+      trainStartDate: string;
+      trainEndDate: string;
+      testStartDate: string;
+      testEndDate: string;
+      status: string;
+      summary: any;
+    }> = [];
+
+    // Aggregate loser signals across runs
+    const loserCounts = new Map<
+      string,
+      { typeId: number; destinationStationId: number; count: number; totalLoss: number }
+    >();
+
+    let cursorStart = baseStart;
+    for (let i = 0; i < maxRuns; i++) {
+      const testStart = cursorStart;
+      const testEnd = addDays(testStart, dto.testWindowDays - 1);
+      if (testEnd.getTime() > lastEnd.getTime()) break;
+
+      const trainEnd = addDays(testStart, -1);
+      const trainStart = addDays(testStart, -dto.trainWindowDays);
+
+      const effectiveParams = {
+        ...(strategy.params as any),
+        liquidityOptions: {
+          ...(((strategy.params as any)?.liquidityOptions ?? {}) as any),
+          windowDays: dto.trainWindowDays,
+        },
+      } as unknown as PlanPackagesRequest;
+
+      const created = await this.prisma.tradeStrategyRun.create({
+        data: {
+          strategyId: strategy.id,
+          status: 'RUNNING',
+          startDate: testStart,
+          endDate: testEnd,
+          initialCapitalIsk: dto.initialCapitalIsk.toFixed(2),
+          sellModel: dto.sellModel,
+          sellSharePct:
+            dto.sellSharePct !== undefined ? String(dto.sellSharePct) : null,
+          priceModel,
+          startedAt: new Date(),
+          assumptions: {
+            batchId,
+            trainWindowDays: dto.trainWindowDays,
+            testWindowDays: dto.testWindowDays,
+            stepDays,
+            trainStartDate: formatIsoDateOnly(trainStart),
+            trainEndDate: formatIsoDateOnly(trainEnd),
+            fees: AppConfig.arbitrage().fees,
+            sourceStationId: AppConfig.arbitrage().sourceStationId,
+            relistEventsPerDay: 3,
+          },
+        },
+      });
+
+      try {
+        const anchorDateIso = formatIsoDateOnly(testStart);
+        const liquidityRawOverride = opts?.liquidityRawByAnchor?.get(
+          anchorDateIso,
+        );
+        await this.executeBacktestRun({
+          runId: created.id,
+          params: effectiveParams,
+          start: testStart,
+          end: testEnd,
+          initialCapitalIsk: dto.initialCapitalIsk,
+          sellModel: dto.sellModel,
+          sellSharePct: dto.sellSharePct,
+          priceModel,
+          liquidityRawOverride,
+        });
+
+        const run = await this.prisma.tradeStrategyRun.findUnique({
+          where: { id: created.id },
+          select: { id: true, status: true, summary: true },
+        });
+
+        // Collect losers for blacklist suggestions
+        const losers = await this.prisma.tradeStrategyRunPosition.findMany({
+          where: { runId: created.id },
+          select: {
+            typeId: true,
+            destinationStationId: true,
+            realizedProfitIsk: true,
+          },
+          orderBy: { realizedProfitIsk: 'asc' },
+          take: 50,
+        });
+        for (const p of losers) {
+          const loss = Number(p.realizedProfitIsk);
+          if (!Number.isFinite(loss) || loss >= 0) continue;
+          const key = `${p.typeId}:${p.destinationStationId}`;
+          const cur = loserCounts.get(key) ?? {
+            typeId: p.typeId,
+            destinationStationId: p.destinationStationId,
+            count: 0,
+            totalLoss: 0,
+          };
+          cur.count += 1;
+          cur.totalLoss += loss;
+          loserCounts.set(key, cur);
+        }
+
+        runs.push({
+          runId: created.id,
+          trainStartDate: formatIsoDateOnly(trainStart),
+          trainEndDate: formatIsoDateOnly(trainEnd),
+          testStartDate: formatIsoDateOnly(testStart),
+          testEndDate: formatIsoDateOnly(testEnd),
+          status: run?.status ?? 'UNKNOWN',
+          summary: run?.summary ?? null,
+        });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        this.logger.error(`[wf ${batchId} run ${created.id}] failed: ${msg}`);
+        await this.prisma.tradeStrategyRun.update({
+          where: { id: created.id },
+          data: { status: 'FAILED', error: msg, finishedAt: new Date() },
+        });
+        runs.push({
+          runId: created.id,
+          trainStartDate: formatIsoDateOnly(trainStart),
+          trainEndDate: formatIsoDateOnly(trainEnd),
+          testStartDate: formatIsoDateOnly(testStart),
+          testEndDate: formatIsoDateOnly(testEnd),
+          status: 'FAILED',
+          summary: null,
+        });
+      }
+
+      cursorStart = addDays(cursorStart, stepDays);
+    }
+
+    // Aggregate report
+    const roi = runs
+      .map((r) => {
+        const v = (r.summary as any)?.roiPercent;
+        const n = typeof v === 'number' ? v : typeof v === 'string' ? Number(v) : NaN;
+        return Number.isFinite(n) ? n : null;
+      })
+      .filter((x): x is number => x !== null);
+
+    const dd = runs
+      .map((r) => {
+        const v = (r.summary as any)?.maxDrawdownPct;
+        const n = typeof v === 'number' ? v : typeof v === 'string' ? Number(v) : NaN;
+        return Number.isFinite(n) ? n : null;
+      })
+      .filter((x): x is number => x !== null);
+
+    const profits = runs
+      .map((r) => {
+        const v = (r.summary as any)?.totalProfitIsk;
+        const n = typeof v === 'number' ? v : typeof v === 'string' ? Number(v) : NaN;
+        return Number.isFinite(n) ? n : null;
+      })
+      .filter((x): x is number => x !== null);
+
+    const relistFees = runs
+      .map((r) => {
+        const v = (r.summary as any)?.totalRelistFeesIsk;
+        const n = typeof v === 'number' ? v : typeof v === 'string' ? Number(v) : NaN;
+        return Number.isFinite(n) ? n : null;
+      })
+      .filter((x): x is number => x !== null);
+
+    const winRate =
+      profits.length > 0
+        ? profits.filter((p) => p > 0).length / profits.length
+        : null;
+
+    const recurringLosers = Array.from(loserCounts.values())
+      .filter((x) => x.count >= 2)
+      .sort((a, b) => a.totalLoss - b.totalLoss)
+      .slice(0, 25);
+
+    const typeIds = Array.from(new Set(recurringLosers.map((x) => x.typeId)));
+    const names = typeIds.length
+      ? await this.prisma.typeId.findMany({
+          where: { id: { in: typeIds } },
+          select: { id: true, name: true },
+        })
+      : [];
+    const nameByType = new Map(names.map((n) => [n.id, n.name]));
+
+    const blacklistSuggestions = recurringLosers.map((x) => ({
+      typeId: x.typeId,
+      typeName: nameByType.get(x.typeId) ?? null,
+      destinationStationId: x.destinationStationId,
+      loserRuns: x.count,
+      totalLossIsk: x.totalLoss,
+    }));
+
+    return {
+      batchId,
+      strategy: { id: strategy.id, name: strategy.name },
+      config: {
+        startDate: dto.startDate,
+        endDate: dto.endDate,
+        trainWindowDays: dto.trainWindowDays,
+        testWindowDays: dto.testWindowDays,
+        stepDays,
+        maxRuns,
+        sellModel: dto.sellModel,
+        sellSharePct: dto.sellSharePct ?? null,
+        priceModel,
+        initialCapitalIsk: dto.initialCapitalIsk,
+      },
+      aggregates: {
+        runs: runs.length,
+        completed: runs.filter((r) => r.status === 'COMPLETED').length,
+        winRate,
+        roiMedian: median(roi),
+        roiP10: percentile(roi, 0.1),
+        roiP90: percentile(roi, 0.9),
+        maxDrawdownWorst: dd.length ? Math.max(...dd) : null,
+        profitMedianIsk: median(profits),
+        profitP10Isk: percentile(profits, 0.1),
+        profitP90Isk: percentile(profits, 0.9),
+        relistFeesMedianIsk: median(relistFees),
+        relistFeesP10Isk: percentile(relistFees, 0.1),
+        relistFeesP90Isk: percentile(relistFees, 0.9),
+      },
+      runs,
+      blacklistSuggestions,
+    };
+  }
+
+  async createAndExecuteWalkForwardAll(dto: CreateTradeStrategyWalkForwardAllDto) {
+    const globalBatchId = `wf_all_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`;
+    const where: any = { isActive: true };
+    if (dto.nameContains?.trim()) {
+      where.name = { contains: dto.nameContains.trim(), mode: 'insensitive' };
+    }
+
+    const strategies = await this.prisma.tradeStrategy.findMany({
+      where,
+      orderBy: [{ name: 'asc' }],
+    });
+
+    // Precompute raw liquidity once per test-start anchorDate for the shared trainWindowDays.
+    // This is the dominant cost in /walk-forward/all; caching here avoids repeating it per strategy.
+    const stepDays = dto.stepDays ?? dto.testWindowDays;
+    const maxRuns = dto.maxRuns ?? 12;
+    const baseStart = parseIsoDateOnly(dto.startDate);
+    const lastEnd = parseIsoDateOnly(dto.endDate);
+    const liquidityRawByAnchor = new Map<
+      string,
+      Record<string, { stationName: string; totalItems: number; items: LiquidityItemDto[] }>
+    >();
+    {
+      let cursorStart = baseStart;
+      for (let i = 0; i < maxRuns; i++) {
+        const testStart = cursorStart;
+        const testEnd = addDays(testStart, dto.testWindowDays - 1);
+        if (testEnd.getTime() > lastEnd.getTime()) break;
+        const anchorDate = formatIsoDateOnly(testStart);
+        if (!liquidityRawByAnchor.has(anchorDate)) {
+          const raw = await this.liquidity.runRaw({
+            windowDays: dto.trainWindowDays,
+            anchorDate,
+          });
+          liquidityRawByAnchor.set(anchorDate, raw);
+        }
+        cursorStart = addDays(cursorStart, stepDays);
+      }
+    }
+
+    const results: Array<{
+      strategyId: string;
+      strategyName: string;
+      report: any;
+    }> = [];
+
+    const globalLosers = new Map<
+      string,
+      {
+        typeId: number;
+        typeName: string | null;
+        destinationStationId: number;
+        loserRuns: number;
+        totalLossIsk: number;
+        strategies: Set<string>;
+      }
+    >();
+
+    for (const s of strategies) {
+      // Reuse per-strategy walk-forward runner
+      const report = await this.createAndExecuteWalkForward({
+        strategyId: s.id,
+        startDate: dto.startDate,
+        endDate: dto.endDate,
+        initialCapitalIsk: dto.initialCapitalIsk,
+        trainWindowDays: dto.trainWindowDays,
+        testWindowDays: dto.testWindowDays,
+        stepDays: dto.stepDays,
+        maxRuns: dto.maxRuns,
+        sellModel: dto.sellModel,
+        sellSharePct: dto.sellSharePct,
+        priceModel: dto.priceModel,
+      }, { liquidityRawByAnchor });
+
+      results.push({
+        strategyId: s.id,
+        strategyName: s.name,
+        report,
+      });
+
+      // Aggregate recurring losers across all strategies
+      const bl = ((report as any)?.blacklistSuggestions ?? []) as Array<{
+        typeId: number;
+        typeName: string | null;
+        destinationStationId: number;
+        loserRuns: number;
+        totalLossIsk: number;
+      }>;
+      for (const x of bl) {
+        const key = `${x.typeId}:${x.destinationStationId}`;
+        const cur = globalLosers.get(key) ?? {
+          typeId: x.typeId,
+          typeName: x.typeName ?? null,
+          destinationStationId: x.destinationStationId,
+          loserRuns: 0,
+          totalLossIsk: 0,
+          strategies: new Set<string>(),
+        };
+        cur.loserRuns += x.loserRuns;
+        cur.totalLossIsk += x.totalLossIsk;
+        cur.strategies.add(s.name);
+        if (!cur.typeName && x.typeName) cur.typeName = x.typeName;
+        globalLosers.set(key, cur);
+      }
+    }
+
+    // Sort for convenience: highest median ROI first (nulls last)
+    results.sort((a, b) => {
+      const am = Number((a.report as any)?.aggregates?.roiMedian);
+      const bm = Number((b.report as any)?.aggregates?.roiMedian);
+      const aOk = Number.isFinite(am);
+      const bOk = Number.isFinite(bm);
+      if (aOk && bOk) return bm - am;
+      if (aOk) return -1;
+      if (bOk) return 1;
+      return a.strategyName.localeCompare(b.strategyName);
+    });
+
+    const globalBlacklistSuggestions = Array.from(globalLosers.values())
+      .filter((x) => x.strategies.size >= 2)
+      .sort((a, b) => a.totalLossIsk - b.totalLossIsk)
+      .slice(0, 50)
+      .map((x) => ({
+        typeId: x.typeId,
+        typeName: x.typeName,
+        destinationStationId: x.destinationStationId,
+        loserRuns: x.loserRuns,
+        strategies: Array.from(x.strategies).sort(),
+        totalLossIsk: x.totalLossIsk,
+      }));
+
+    return {
+      globalBatchId,
+      config: {
+        startDate: dto.startDate,
+        endDate: dto.endDate,
+        trainWindowDays: dto.trainWindowDays,
+        testWindowDays: dto.testWindowDays,
+        stepDays: dto.stepDays ?? dto.testWindowDays,
+        maxRuns: dto.maxRuns ?? 12,
+        sellModel: dto.sellModel,
+        sellSharePct: dto.sellSharePct ?? null,
+        priceModel: dto.priceModel ?? 'LOW',
+        initialCapitalIsk: dto.initialCapitalIsk,
+        nameContains: dto.nameContains ?? null,
+      },
+      results,
+      globalBlacklistSuggestions,
+    };
+  }
+
+  /**
+   * Run a lab sweep across scenarios (priceModel x sellSharePct) for all active strategies.
+   * Returns a compact ranking that is easy to interpret.
+   */
+  async runLabSweep(dto: CreateTradeStrategyLabSweepDto) {
+    const globalSweepId = `sweep_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`;
+    const where: any = { isActive: true };
+    if (dto.nameContains?.trim()) {
+      where.name = { contains: dto.nameContains.trim(), mode: 'insensitive' };
+    }
+    const strategies = await this.prisma.tradeStrategy.findMany({
+      where,
+      orderBy: [{ name: 'asc' }],
+    });
+
+    const stepDays = dto.stepDays ?? dto.testWindowDays;
+    const maxRuns = dto.maxRuns ?? 12;
+
+    type Scenario = { priceModel: 'LOW' | 'AVG' | 'HIGH'; sellSharePct: number };
+    const scenarios: Scenario[] = [];
+    for (const pm of dto.priceModels) {
+      for (const sp of dto.sellSharePcts) {
+        scenarios.push({ priceModel: pm, sellSharePct: sp });
+      }
+    }
+
+    // Precompute raw liquidity once per anchor window (shared across all scenarios)
+    const baseStart = parseIsoDateOnly(dto.startDate);
+    const lastEnd = parseIsoDateOnly(dto.endDate);
+    const liquidityRawByAnchor = new Map<
+      string,
+      Record<string, { stationName: string; totalItems: number; items: LiquidityItemDto[] }>
+    >();
+    {
+      let cursorStart = baseStart;
+      for (let i = 0; i < maxRuns; i++) {
+        const testStart = cursorStart;
+        const testEnd = addDays(testStart, dto.testWindowDays - 1);
+        if (testEnd.getTime() > lastEnd.getTime()) break;
+        const anchorDate = formatIsoDateOnly(testStart);
+        if (!liquidityRawByAnchor.has(anchorDate)) {
+          const raw = await this.liquidity.runRaw({
+            windowDays: dto.trainWindowDays,
+            anchorDate,
+          });
+          liquidityRawByAnchor.set(anchorDate, raw);
+        }
+        cursorStart = addDays(cursorStart, stepDays);
+      }
+    }
+
+    const results: Array<{
+      strategyId: string;
+      strategyName: string;
+      scenarioScores: Array<{
+        scenario: Scenario;
+        roiMedian: number | null;
+        worstDD: number | null;
+        winRate: number | null;
+        relistFeesMedianIsk: number | null;
+        score: number | null;
+      }>;
+      overallScore: number | null;
+    }> = [];
+
+    // Simple scoring: reward ROI, penalize drawdown and relist costs.
+    // score ~= roiMedian - 0.25*worstDD - (relistFeesMedian / capital)*100
+    const scoreFn = (x: {
+      roiMedian: number | null;
+      worstDD: number | null;
+      relistFeesMedianIsk: number | null;
+    }) => {
+      if (
+        x.roiMedian === null ||
+        x.worstDD === null ||
+        x.relistFeesMedianIsk === null
+      )
+        return null;
+      const relistPct = (x.relistFeesMedianIsk / dto.initialCapitalIsk) * 100;
+      return x.roiMedian - 0.25 * x.worstDD - relistPct;
+    };
+
+    for (const s of strategies) {
+      const scenarioScores: Array<{
+        scenario: Scenario;
+        roiMedian: number | null;
+        worstDD: number | null;
+        winRate: number | null;
+        relistFeesMedianIsk: number | null;
+        score: number | null;
+      }> = [];
+
+      for (const sc of scenarios) {
+        const report = await this.createAndExecuteWalkForward(
+          {
+            strategyId: s.id,
+            startDate: dto.startDate,
+            endDate: dto.endDate,
+            initialCapitalIsk: dto.initialCapitalIsk,
+            trainWindowDays: dto.trainWindowDays,
+            testWindowDays: dto.testWindowDays,
+            stepDays: dto.stepDays,
+            maxRuns: dto.maxRuns,
+            sellModel: dto.sellModel,
+            sellSharePct: sc.sellSharePct,
+            priceModel: sc.priceModel,
+          },
+          { liquidityRawByAnchor },
+        );
+
+        const agg = (report as any)?.aggregates ?? {};
+        const roiMedian =
+          typeof agg.roiMedian === 'number' ? agg.roiMedian : agg.roiMedian != null ? Number(agg.roiMedian) : null;
+        const worstDD =
+          typeof agg.maxDrawdownWorst === 'number'
+            ? agg.maxDrawdownWorst
+            : agg.maxDrawdownWorst != null
+              ? Number(agg.maxDrawdownWorst)
+              : null;
+        const winRate =
+          typeof agg.winRate === 'number' ? agg.winRate : agg.winRate != null ? Number(agg.winRate) : null;
+        const relistFeesMedianIsk =
+          typeof agg.relistFeesMedianIsk === 'number'
+            ? agg.relistFeesMedianIsk
+            : agg.relistFeesMedianIsk != null
+              ? Number(agg.relistFeesMedianIsk)
+              : null;
+
+        const score = scoreFn({ roiMedian, worstDD, relistFeesMedianIsk });
+        scenarioScores.push({
+          scenario: sc,
+          roiMedian,
+          worstDD,
+          winRate,
+          relistFeesMedianIsk,
+          score,
+        });
+      }
+
+      const validScores = scenarioScores
+        .map((x) => x.score)
+        .filter((x): x is number => typeof x === 'number' && Number.isFinite(x));
+      const overallScore = validScores.length ? median(validScores) : null;
+
+      results.push({
+        strategyId: s.id,
+        strategyName: s.name,
+        scenarioScores,
+        overallScore,
+      });
+    }
+
+    results.sort((a, b) => {
+      const aOk = typeof a.overallScore === 'number' && Number.isFinite(a.overallScore);
+      const bOk = typeof b.overallScore === 'number' && Number.isFinite(b.overallScore);
+      if (aOk && bOk) return (b.overallScore as number) - (a.overallScore as number);
+      if (aOk) return -1;
+      if (bOk) return 1;
+      return a.strategyName.localeCompare(b.strategyName);
+    });
+
+    return {
+      globalSweepId,
+      config: {
+        startDate: dto.startDate,
+        endDate: dto.endDate,
+        trainWindowDays: dto.trainWindowDays,
+        testWindowDays: dto.testWindowDays,
+        stepDays,
+        maxRuns,
+        sellModel: dto.sellModel,
+        priceModels: dto.priceModels,
+        sellSharePcts: dto.sellSharePcts,
+        initialCapitalIsk: dto.initialCapitalIsk,
+        nameContains: dto.nameContains ?? null,
+      },
+      scenarios,
+      results,
+    };
+  }
+
+  // ============================================================================
+  // Backtest core (MVP)
+  // ============================================================================
+
+  private pickPrice(
+    latest: { high: string; low: string; avg: string },
+    m: PriceModel,
+  ) {
+    const high = Number(latest.high);
+    const low = Number(latest.low);
+    const avg = Number(latest.avg);
+    if (m === 'HIGH') return high;
+    if (m === 'AVG') return avg;
+    return low;
+  }
+
+  private async getLatestSellTradesForTypesOnOrBefore(params: {
+    locationId: number;
+    typeIds: number[];
+    onOrBefore: Date; // inclusive
+  }): Promise<
+    Map<
+      number,
+      { scanDate: Date; high: number; low: number; avg: number; amount: number }
+    >
+  > {
+    const out = new Map<
+      number,
+      { scanDate: Date; high: number; low: number; avg: number; amount: number }
+    >();
+    if (!params.typeIds.length) return out;
+
+    // DISTINCT ON (type_id) gives newest row <= anchor per type at this station.
+    const rows = await this.prisma.$queryRaw<
+      Array<{
+        typeId: number;
+        scanDate: Date;
+        high: unknown;
+        low: unknown;
+        avg: unknown;
+        amount: number;
+      }>
+    >`
+      SELECT DISTINCT ON (m.type_id)
+        m.type_id as "typeId",
+        m.scan_date as "scanDate",
+        m.high as "high",
+        m.low as "low",
+        m.avg as "avg",
+        m.amount as "amount"
+      FROM market_order_trades_daily m
+      WHERE m.location_id = ${params.locationId}
+        AND m.is_buy_order = false
+        AND m.type_id = ANY(${params.typeIds}::int[])
+        AND m.scan_date <= ${params.onOrBefore}::date
+      ORDER BY m.type_id, m.scan_date DESC
+    `;
+
+    for (const r of rows) {
+      out.set(r.typeId, {
+        scanDate: r.scanDate,
+        high: Number(r.high),
+        low: Number(r.low),
+        avg: Number(r.avg),
+        amount: r.amount,
+      });
+    }
+    return out;
+  }
+
+  private async buildHistoricalPlan(params: {
+    request: PlanPackagesRequest;
+    anchorDate: string; // YYYY-MM-DD (window ends at anchor-1)
+    priceModel: PriceModel;
+    liquidityRawOverride?: Record<
+      string,
+      { stationName: string; totalItems: number; items: LiquidityItemDto[] }
+    >;
+  }): Promise<{
+    plan: PlanResult;
+    buyUnitPriceByType: Map<number, number>;
+  }> {
+    const defaults = AppConfig.arbitrage();
+    const fees = defaults.fees;
+    const sourceStationId = defaults.sourceStationId;
+
+    const maxInventoryDays =
+      params.request.arbitrageOptions?.maxInventoryDays ??
+      defaults.maxInventoryDays;
+    const minMarginPercent =
+      params.request.arbitrageOptions?.minMarginPercent ??
+      defaults.minMarginPercent;
+    const minTotalProfitISK =
+      params.request.arbitrageOptions?.minTotalProfitISK ??
+      defaults.minTotalProfitISK;
+
+    const salesTaxPercent =
+      params.request.arbitrageOptions?.salesTaxPercent ?? fees.salesTaxPercent;
+    const brokerFeePercent =
+      params.request.arbitrageOptions?.brokerFeePercent ??
+      fees.brokerFeePercent;
+    const feeInputs = { salesTaxPercent, brokerFeePercent };
+
+    const liquidityWindowDays =
+      params.request.liquidityOptions?.windowDays ?? 30;
+    // Pull raw liquidity once (optionally supplied by caller) and apply the request thresholds locally.
+    // This enables caching in Strategy Lab and avoids expensive recomputation for /walk-forward/all.
+    const liquidityRaw =
+      params.liquidityRawOverride ??
+      (await this.liquidity.runRaw({
+        windowDays: liquidityWindowDays,
+        anchorDate: params.anchorDate,
+      }));
+
+    const minCoverageRatio =
+      params.request.liquidityOptions?.minCoverageRatio ?? 0.57;
+    const minISK = params.request.liquidityOptions?.minLiquidityThresholdISK ?? 1_000_000;
+    const minTrades = params.request.liquidityOptions?.minWindowTrades ?? 5;
+
+    const liquidity: typeof liquidityRaw = {};
+    for (const [stationId, data] of Object.entries(liquidityRaw)) {
+      const filtered = data.items.filter((it) => {
+        const coverage = it.coverageDays / Math.max(1, liquidityWindowDays);
+        if (coverage < minCoverageRatio) return false;
+        if (it.avgDailyIskValue < minISK) return false;
+        if (it.avgDailyTrades < minTrades) return false;
+        return true;
+      });
+      liquidity[stationId] = {
+        stationName: data.stationName,
+        totalItems: filtered.length,
+        items: filtered,
+      };
+    }
+
+    // Apply station filters if provided (match live arbitrage service behavior)
+    let stations = Object.entries(liquidity);
+    const allow = params.request.arbitrageOptions?.destinationStationIds;
+    if (allow?.length) {
+      const allowSet = new Set(allow.map(String));
+      stations = stations.filter(([id]) => allowSet.has(id));
+    }
+    const exclude =
+      params.request.arbitrageOptions?.excludeDestinationStationIds;
+    if (exclude?.length) {
+      const exSet = new Set(exclude.map(String));
+      stations = stations.filter(([id]) => !exSet.has(id));
+    }
+
+    const anchorMinus1 = parseIsoDateOnly(params.anchorDate);
+    anchorMinus1.setUTCDate(anchorMinus1.getUTCDate() - 1);
+
+    // Collect all typeIds we might consider so we can fetch source prices in one go.
+    const allTypeIds = Array.from(
+      new Set(stations.flatMap(([, g]) => g.items.map((it) => it.typeId))),
+    );
+
+    const sourceTradesByType = await this.getLatestSellTradesForTypesOnOrBefore(
+      {
+        locationId: sourceStationId,
+        typeIds: allTypeIds,
+        onOrBefore: anchorMinus1,
+      },
+    );
+
+    // Volumes for packager:
+    // Prefer volumeM3 coming from LiquidityService (join from type_ids) to avoid a huge "typeId IN (...)"
+    // lookup per run. Fall back to gameData only if missing.
+    const volByType = new Map<number, number>();
+    for (const [, g] of stations) {
+      for (const it of g.items) {
+        if (typeof it.volumeM3 === 'number' && Number.isFinite(it.volumeM3)) {
+          volByType.set(it.typeId, it.volumeM3);
+        }
+      }
+    }
+    const missingVol = allTypeIds.filter((id) => !volByType.has(id));
+    if (missingVol.length) {
+      // If we’re missing *a lot* of volumes, querying item_types for all of them tends to be slow and
+      // (in dev) often just returns null volumes anyway. In that case we simply skip those items.
+      //
+      // If the missing set is small, we do a best-effort lookup (cached/chunked in GameDataService).
+      const LOOKUP_LIMIT = 200;
+      if (missingVol.length <= LOOKUP_LIMIT) {
+        const volumeData = await this.gameData.getTypesWithVolumes(missingVol);
+        for (const [id, data] of volumeData.entries()) {
+          if (typeof data.volume === 'number' && Number.isFinite(data.volume)) {
+            volByType.set(id, data.volume);
+          }
+        }
+      } else {
+        this.logger.warn(
+          `[strategy-lab] Missing volumeM3 for ${missingVol.length} types in planning window ${params.anchorDate}. ` +
+            `Skipping those items to avoid slow type volume lookups. ` +
+            `If this causes empty plans, run ImportService.importTypeVolumes() in dev.`,
+        );
+      }
+    }
+
+    const destinations: DestinationConfig[] = [];
+    const buyUnitPriceByType = new Map<number, number>();
+
+    for (const [stationIdStr, group] of stations) {
+      const destinationStationId = Number(stationIdStr);
+      const items = [];
+
+      for (const liq of group.items) {
+        const srcTrade = sourceTradesByType.get(liq.typeId) ?? null;
+        if (!srcTrade) continue;
+
+        const srcPriceRaw = this.pickPrice(
+          {
+            high: String(srcTrade.high),
+            low: String(srcTrade.low),
+            avg: String(srcTrade.avg),
+          },
+          // For MVP: buy price conservatism is handled by priceModel; caller can choose HIGH.
+          params.priceModel,
+        );
+
+        if (!Number.isFinite(srcPriceRaw) || srcPriceRaw <= 0) continue;
+        buyUnitPriceByType.set(liq.typeId, srcPriceRaw);
+
+        const latest = liq.latest;
+        if (!latest) continue;
+        const dstPriceRaw = this.pickPrice(latest, params.priceModel);
+        if (!Number.isFinite(dstPriceRaw) || dstPriceRaw <= 0) continue;
+
+        // Optional deviation filter vs historical avg from liquidity window.
+        const maxDev =
+          params.request.arbitrageOptions?.maxPriceDeviationMultiple;
+        if (maxDev !== undefined) {
+          const liqAvg = Number(latest.avg);
+          if (liqAvg > 0 && dstPriceRaw > liqAvg * maxDev) continue;
+        }
+
+        const effectiveSell = getEffectiveSell(dstPriceRaw, feeInputs);
+        const unitProfit = effectiveSell - srcPriceRaw;
+        const marginPct = (unitProfit / srcPriceRaw) * 100;
+        if (marginPct < minMarginPercent) continue;
+
+        const qty = Math.max(
+          0,
+          Math.floor(liq.avgDailyAmount * maxInventoryDays),
+        );
+        if (qty <= 0) continue;
+        const totalProfit = unitProfit * qty;
+        if (totalProfit < minTotalProfitISK) continue;
+
+        const m3 = volByType.get(liq.typeId) ?? 0;
+        if (m3 <= 0) continue;
+
+        items.push({
+          typeId: liq.typeId,
+          name: liq.typeName ?? String(liq.typeId),
+          sourceStationId,
+          destinationStationId,
+          sourcePrice: srcPriceRaw,
+          destinationPrice: dstPriceRaw,
+          netProfitISK: unitProfit,
+          arbitrageQuantity: qty,
+          m3,
+        });
+      }
+
+      if (items.length === 0) continue;
+
+      destinations.push({
+        destinationStationId,
+        shippingCostISK:
+          (params.request.shippingCostByStation as any)?.[
+            destinationStationId
+          ] ?? 0,
+        items,
+      });
+    }
+
+    const opts: MultiPlanOptions = {
+      packageCapacityM3: params.request.packageCapacityM3,
+      investmentISK: params.request.investmentISK,
+      perDestinationMaxBudgetSharePerItem:
+        params.request.perDestinationMaxBudgetSharePerItem ?? 0.2,
+      maxPackagesHint: params.request.maxPackagesHint ?? 30,
+      maxPackageCollateralISK: params.request.maxPackageCollateralISK,
+      courierContracts: params.request.courierContracts?.map((c) => ({
+        id: c.id,
+        label: c.label,
+        maxVolumeM3: c.maxVolumeM3,
+        maxCollateralISK: c.maxCollateralISK,
+      })),
+      minPackageNetProfitISK: params.request.minPackageNetProfitISK,
+      minPackageROIPercent: params.request.minPackageROIPercent,
+      shippingMarginMultiplier: params.request.shippingMarginMultiplier,
+      densityWeight: params.request.densityWeight,
+      destinationCaps: params.request.destinationCaps as any,
+      allocation: params.request.allocation as any,
+    };
+
+    const plan = this.packager.planMultiDestination(destinations, opts);
+    return { plan, buyUnitPriceByType };
+  }
+
+  private async executeBacktestRun(params: {
+    runId: string;
+    params: PlanPackagesRequest;
+    start: Date;
+    end: Date;
+    initialCapitalIsk: number;
+    sellModel: 'VOLUME_SHARE' | 'CALIBRATED_CAPTURE';
+    sellSharePct?: number;
+    priceModel: PriceModel;
+    liquidityRawOverride?: Record<
+      string,
+      { stationName: string; totalItems: number; items: LiquidityItemDto[] }
+    >;
+  }) {
+    const defaults = AppConfig.arbitrage();
+    const fees = defaults.fees;
+    const feeInputs = {
+      salesTaxPercent:
+        params.params.arbitrageOptions?.salesTaxPercent ?? fees.salesTaxPercent,
+      brokerFeePercent:
+        params.params.arbitrageOptions?.brokerFeePercent ??
+        fees.brokerFeePercent,
+    };
+    const relistFeePercent: number =
+      (params.params as any)?.arbitrageOptions?.relistFeePercent ??
+      fees.relistFeePercent;
+    const relistEventsPerDay: number =
+      (params.params as any)?.arbitrageOptions?.relistEventsPerDay ?? 3;
+
+    // For planning, anchor window ends at (start - 1 day). Use startDate as anchor.
+    const anchorDate = formatIsoDateOnly(params.start);
+    const { plan, buyUnitPriceByType } = await this.buildHistoricalPlan({
+      request: params.params,
+      anchorDate,
+      priceModel: params.priceModel,
+      liquidityRawOverride: params.liquidityRawOverride,
+    });
+
+    // Aggregate positions from plan
+    const unitsByKey = new Map<
+      string,
+      { destinationStationId: number; typeId: number; units: number }
+    >();
+    for (const pkg of plan.packages) {
+      for (const it of pkg.items) {
+        const key = `${pkg.destinationStationId}:${it.typeId}`;
+        const cur = unitsByKey.get(key);
+        if (cur) cur.units += it.units;
+        else
+          unitsByKey.set(key, {
+            destinationStationId: pkg.destinationStationId,
+            typeId: it.typeId,
+            units: it.units,
+          });
+      }
+    }
+
+    const positions = Array.from(unitsByKey.values()).map((p) => {
+      const buy = buyUnitPriceByType.get(p.typeId) ?? null;
+      if (buy === null) {
+        throw new Error(`Missing buy price for typeId=${p.typeId} at source`);
+      }
+      const costBasis = buy * p.units;
+      return {
+        destinationStationId: p.destinationStationId,
+        typeId: p.typeId,
+        plannedUnits: p.units,
+        buyUnitPriceIsk: buy,
+        unitsSold: 0,
+        unitsRemaining: p.units,
+        costBasisIskRemaining: costBasis,
+        realizedProfitIsk: 0,
+      };
+    });
+
+    // Fetch market daily rows for all involved pairs across date range (destination sells only)
+    const dates = dateRangeInclusive(params.start, params.end);
+    const stationIds = Array.from(
+      new Set(positions.map((p) => p.destinationStationId)),
+    );
+    const typeIds = Array.from(new Set(positions.map((p) => p.typeId)));
+
+    const marketRows = await this.prisma.marketOrderTradeDaily.findMany({
+      where: {
+        isBuyOrder: false,
+        locationId: { in: stationIds },
+        typeId: { in: typeIds },
+        scanDate: { gte: params.start, lte: params.end },
+      },
+      select: {
+        scanDate: true,
+        locationId: true,
+        typeId: true,
+        high: true,
+        low: true,
+        avg: true,
+        amount: true,
+      },
+      orderBy: [{ scanDate: 'asc' }],
+    });
+
+    const marketByKey = new Map<string, { price: number; amount: number }>();
+    for (const r of marketRows) {
+      const dateKey = r.scanDate.toISOString().slice(0, 10);
+      const price =
+        params.priceModel === 'HIGH'
+          ? Number(r.high)
+          : params.priceModel === 'AVG'
+            ? Number(r.avg)
+            : Number(r.low);
+      marketByKey.set(`${dateKey}:${r.locationId}:${r.typeId}`, {
+        price,
+        amount: r.amount,
+      });
+    }
+
+    const sellSharePct =
+      params.sellModel === 'VOLUME_SHARE'
+        ? (params.sellSharePct ?? 0.05)
+        : 0.05;
+    const totalSpend = plan.totalSpendISK;
+    const totalShipping = plan.totalShippingISK;
+    const cash0 = params.initialCapitalIsk - totalSpend - totalShipping;
+
+    // Simulate day-by-day
+    let cash = cash0;
+    let realizedProfit = 0;
+    let relistFeesPaid = 0;
+    let navPeak = Number.NEGATIVE_INFINITY;
+    let maxDrawdown = 0;
+
+    // last-known price per pair for missing days
+    const lastPrice = new Map<string, number>();
+    const lastAmount = new Map<string, number>();
+    // last known price we "listed at" for relist logic
+    const lastListedPrice = new Map<string, number>();
+
+    const dayRows: Array<{
+      date: Date;
+      cashIsk: number;
+      inventoryCostIsk: number;
+      inventoryMarkIsk: number;
+      realizedProfitIsk: number;
+      unrealizedProfitIsk: number;
+      navIsk: number;
+    }> = [];
+
+    for (const day of dates) {
+      const dayKey = day.toISOString().slice(0, 10);
+
+      // Track which pairs likely triggered repricing today (proxy for being undercut).
+      // We approximate "needs relist" as: today's gross price proxy < last listed gross price.
+      const relistPairsToday = new Set<string>();
+
+      // Sell loop
+      for (const pos of positions) {
+        if (pos.unitsRemaining <= 0) continue;
+
+        const pairKey = `${pos.destinationStationId}:${pos.typeId}`;
+        const rowKey = `${dayKey}:${pos.destinationStationId}:${pos.typeId}`;
+        const row = marketByKey.get(rowKey) ?? null;
+        if (row && Number.isFinite(row.price) && row.price > 0) {
+          // Determine if we'd need to reprice: proxy price moved down vs last "listed" price
+          const prevListed = lastListedPrice.get(pairKey) ?? row.price;
+          if (row.price < prevListed) relistPairsToday.add(pairKey);
+          lastListedPrice.set(pairKey, row.price);
+
+          lastPrice.set(pairKey, row.price);
+          lastAmount.set(pairKey, row.amount);
+        }
+        const priceRaw = lastPrice.get(pairKey) ?? null;
+        const dailyAmount = lastAmount.get(pairKey) ?? 0;
+        if (priceRaw === null) continue;
+
+        const cap = Math.max(0, Math.floor(dailyAmount * sellSharePct));
+        if (cap <= 0) continue;
+
+        const sold = Math.min(pos.unitsRemaining, cap);
+        if (sold <= 0) continue;
+
+        const netSell = getEffectiveSell(priceRaw, feeInputs);
+        const profitPerUnit = netSell - pos.buyUnitPriceIsk;
+        const profitToday = profitPerUnit * sold;
+
+        pos.unitsSold += sold;
+        pos.unitsRemaining -= sold;
+        pos.realizedProfitIsk += profitToday;
+        pos.costBasisIskRemaining = pos.buyUnitPriceIsk * pos.unitsRemaining;
+
+        realizedProfit += profitToday;
+        cash += netSell * sold;
+      }
+
+      // Relist fees (operational drag):
+      // Undercut-checker uses: fee = remainingUnits * newPrice * (relistPct/100).
+      // Here we apply that ONLY on days where the price proxy moved down (reprice needed),
+      // and only for positions that still have remaining units.
+      if (relistFeePercent > 0 && relistEventsPerDay > 0 && relistPairsToday.size) {
+        let dailyRelistFee = 0;
+        for (const pos of positions) {
+          if (pos.unitsRemaining <= 0) continue;
+          const pairKey = `${pos.destinationStationId}:${pos.typeId}`;
+          if (!relistPairsToday.has(pairKey)) continue;
+          const priceGross = lastPrice.get(pairKey) ?? pos.buyUnitPriceIsk;
+          if (!Number.isFinite(priceGross) || priceGross <= 0) continue;
+          const remainingOrderValue = priceGross * pos.unitsRemaining;
+          dailyRelistFee +=
+            remainingOrderValue * (relistFeePercent / 100) * relistEventsPerDay;
+        }
+        if (dailyRelistFee > 0) {
+          cash -= dailyRelistFee;
+          realizedProfit -= dailyRelistFee;
+          relistFeesPaid += dailyRelistFee;
+        }
+      }
+
+      // Mark-to-market remaining inventory
+      let inventoryCost = 0;
+      let inventoryMark = 0;
+      for (const pos of positions) {
+        inventoryCost += pos.costBasisIskRemaining;
+        const pairKey = `${pos.destinationStationId}:${pos.typeId}`;
+        const priceRaw = lastPrice.get(pairKey) ?? null;
+        if (priceRaw === null || pos.unitsRemaining <= 0) continue;
+        inventoryMark +=
+          getEffectiveSell(priceRaw, feeInputs) * pos.unitsRemaining;
+      }
+
+      const nav = cash + inventoryMark;
+      navPeak = Math.max(navPeak, nav);
+      if (navPeak > 0) {
+        const dd = (navPeak - nav) / navPeak;
+        maxDrawdown = Math.max(maxDrawdown, dd);
+      }
+
+      dayRows.push({
+        date: day,
+        cashIsk: cash,
+        inventoryCostIsk: inventoryCost,
+        inventoryMarkIsk: inventoryMark,
+        realizedProfitIsk: realizedProfit,
+        unrealizedProfitIsk: inventoryMark - inventoryCost,
+        navIsk: nav,
+      });
+    }
+
+    const navEnd = dayRows[dayRows.length - 1]?.navIsk ?? cash0;
+    const totalProfit = navEnd - params.initialCapitalIsk;
+
+    // Persist everything
+    await this.prisma.$transaction(async (tx) => {
+      await tx.tradeStrategyRunPosition.createMany({
+        data: positions.map((p) => ({
+          runId: params.runId,
+          destinationStationId: p.destinationStationId,
+          typeId: p.typeId,
+          plannedUnits: p.plannedUnits,
+          buyUnitPriceIsk: p.buyUnitPriceIsk.toFixed(2),
+          unitsSold: p.unitsSold,
+          unitsRemaining: p.unitsRemaining,
+          costBasisIskRemaining: p.costBasisIskRemaining.toFixed(2),
+          realizedProfitIsk: p.realizedProfitIsk.toFixed(2),
+        })),
+      });
+
+      await tx.tradeStrategyRunDay.createMany({
+        data: dayRows.map((d) => ({
+          runId: params.runId,
+          date: d.date,
+          cashIsk: d.cashIsk.toFixed(2),
+          inventoryCostIsk: d.inventoryCostIsk.toFixed(2),
+          inventoryMarkIsk: d.inventoryMarkIsk.toFixed(2),
+          realizedProfitIsk: d.realizedProfitIsk.toFixed(2),
+          unrealizedProfitIsk: d.unrealizedProfitIsk.toFixed(2),
+          navIsk: d.navIsk.toFixed(2),
+        })),
+      });
+
+      await tx.tradeStrategyRun.update({
+        where: { id: params.runId },
+        data: {
+          status: 'COMPLETED',
+          finishedAt: new Date(),
+          summary: {
+            totalSpendIsk: totalSpend,
+            totalShippingIsk: totalShipping,
+            totalRelistFeesIsk: relistFeesPaid,
+            totalProfitIsk: totalProfit,
+            roiPercent:
+              params.initialCapitalIsk > 0
+                ? (totalProfit / params.initialCapitalIsk) * 100
+                : null,
+            maxDrawdownPct: maxDrawdown * 100,
+            days: dayRows.length,
+            relistFeePercent,
+            relistEventsPerDay,
+          },
+        },
+      });
+    });
+  }
+}

@@ -7,6 +7,7 @@ import { BatchSizeDto } from './dto/batch-size.dto';
 import { ImportDayDto } from './dto/import-day.dto';
 import { ImportMissingDto } from './dto/import-missing.dto';
 import { ImportSdeSkillsDto } from './dto/import-sde-skills.dto';
+import { ImportWeeklyUrlDto } from './dto/import-weekly-url.dto';
 
 @ApiTags('admin')
 @Controller('import')
@@ -125,6 +126,22 @@ export class ImportController {
     return this.importService.importMissingMarketOrderTrades(
       body?.daysBack,
       body?.batchSize,
+    );
+  }
+
+  @Post('market-trades/weekly-url')
+  @Roles('ADMIN')
+  @UseGuards(RolesGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Import market trades from an Adam4EVE weekly CSV URL (dev backfill)',
+    description:
+      'Downloads and imports an Adam4EVE weekly MarketOrdersTrades CSV. Filters to tracked stations plus the configured source station.',
+  })
+  async importMarketTradesWeeklyUrl(@Body() body: ImportWeeklyUrlDto) {
+    return this.importService.importMarketOrderTradesWeeklyByUrl(
+      body.url,
+      body.batchSize,
     );
   }
 

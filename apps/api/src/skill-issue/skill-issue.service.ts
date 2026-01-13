@@ -85,30 +85,26 @@ const SKILL_REQUIRES_FIT_NAME_TOKEN: Record<number, string[]> = {
 
 @Injectable()
 export class SkillIssueService {
-  private skillImpactIndex:
-    | Map<
-        number,
-        {
-          alwaysShip: Set<number>;
-          alwaysItem: Set<number>;
-          requiredSkill: Set<number>;
-          byGroup: Map<number, Set<number>>;
-        }
-      >
-    | null = null;
-  private skillImpactIndexPromise:
-    | Promise<
-        Map<
-          number,
-          {
-            alwaysShip: Set<number>;
-            alwaysItem: Set<number>;
-            requiredSkill: Set<number>;
-            byGroup: Map<number, Set<number>>;
-          }
-        >
-      >
-    | null = null;
+  private skillImpactIndex: Map<
+    number,
+    {
+      alwaysShip: Set<number>;
+      alwaysItem: Set<number>;
+      requiredSkill: Set<number>;
+      byGroup: Map<number, Set<number>>;
+    }
+  > | null = null;
+  private skillImpactIndexPromise: Promise<
+    Map<
+      number,
+      {
+        alwaysShip: Set<number>;
+        alwaysItem: Set<number>;
+        requiredSkill: Set<number>;
+        byGroup: Map<number, Set<number>>;
+      }
+    >
+  > | null = null;
 
   private attributeCategoryById: Map<
     number,
@@ -119,9 +115,10 @@ export class SkillIssueService {
   > | null = null;
 
   private shipBonusAttributeIds: Set<number> | null = null;
-  private shipBonusAttrToDownstreamModifiedAttrIds:
-    | Map<number, Set<number>>
-    | null = null;
+  private shipBonusAttrToDownstreamModifiedAttrIds: Map<
+    number,
+    Set<number>
+  > | null = null;
   private proxyModifyingAttrToEffectModifiedAttrIds = new Map<
     number,
     Map<number, Set<number>>
@@ -165,9 +162,8 @@ export class SkillIssueService {
   private async getEffectToModifiedAttrsForModifyingAttr(
     modifyingAttrId: number,
   ): Promise<Map<number, Set<number>>> {
-    const cached = this.proxyModifyingAttrToEffectModifiedAttrIds.get(
-      modifyingAttrId,
-    );
+    const cached =
+      this.proxyModifyingAttrToEffectModifiedAttrIds.get(modifyingAttrId);
     if (cached) return cached;
 
     const sdeDir = this.getDefaultSdeDir();
@@ -789,7 +785,9 @@ export class SkillIssueService {
     for (const r of influencingSkillRows) influencingNameById.set(r.id, r.name);
 
     const influencingSkills: SkillIssueInfluencingSkill[] = [];
-    const influencingSorted = influencingIds.sort((a, b) => a.skillId - b.skillId);
+    const influencingSorted = influencingIds.sort(
+      (a, b) => a.skillId - b.skillId,
+    );
     for (const x of influencingSorted) {
       const modifiedAttributeIds = x.intersect.sort((a, b) => a - b);
       const cats = new Set<SkillIssueInfluenceCategory>();

@@ -13,6 +13,13 @@ import { MarketDataService } from './market-data.service';
 export type LiquidityCheckParams = {
   /** Station ID to check liquidity for; if omitted, checks all tracked stations */
   station_id?: number;
+  /**
+   * Anchor date (YYYY-MM-DD, UTC) for the liquidity window.
+   *
+   * When provided, the liquidity window ends at (anchorDate - 1 day), matching
+   * how the daily Adam4EVE trade aggregates are produced and imported.
+   */
+  anchorDate?: string;
   /** Time window in days for liquidity calculation */
   windowDays?: number;
   /** Minimum coverage ratio (0..1) – fraction of days in window that must have trades */
@@ -67,7 +74,7 @@ export class LiquidityService {
     if (stationIds.length === 0) return {};
 
     // Date window (yesterday backward)
-    const dates = this.dataImport.getLastNDates(windowDays);
+    const dates = this.dataImport.getLastNDates(windowDays, params?.anchorDate);
     const result: Record<
       string,
       { stationName: string; totalItems: number; items: LiquidityItemDto[] }
@@ -83,13 +90,13 @@ export class LiquidityService {
         const current = index++;
         if (current >= stationIds.length) break;
         const sId = stationIds[current];
-        const items = await this.computeStationLiquidity(
-          sId,
-          dates,
+        const raw = await this.computeStationLiquidityRaw(sId, dates);
+        const items = this.applyLiquidityFilters(raw, {
+          windowDays,
           minCoverageRatio,
           minISK,
           minTradesPerDay,
-        );
+        });
         entries.push([sId, items]);
       }
     });
@@ -107,12 +114,98 @@ export class LiquidityService {
     return result;
   }
 
-  private async computeStationLiquidity(
+  /**
+   * Raw station liquidity without threshold filtering. This is intentionally reusable
+   * for Strategy Lab so we can cache and apply different knob thresholds cheaply.
+   */
+  async runRaw(
+    params?: LiquidityCheckParams,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _reqId?: string,
+  ): Promise<
+    Record<
+      string,
+      { stationName: string; totalItems: number; items: LiquidityItemDto[] }
+    >
+  > {
+    const stationId = params?.station_id;
+    const windowDays = params?.windowDays ?? 30;
+
+    // Determine stations to analyze and station names
+    let stationIds: number[] = [];
+    const stationIdToName = new Map<number, string>();
+
+    if (stationId) {
+      stationIds = [stationId];
+      const s = await this.gameData.getStation(stationId);
+      if (s?.name) stationIdToName.set(stationId, s.name);
+    } else {
+      const tracked = await this.marketData.getTrackedStationsWithDetails();
+      stationIds = tracked.map((t) => t.stationId);
+      for (const t of tracked) {
+        stationIdToName.set(t.stationId, t.stationName);
+      }
+    }
+
+    if (stationIds.length === 0) return {};
+
+    const dates = this.dataImport.getLastNDates(windowDays, params?.anchorDate);
+    const result: Record<
+      string,
+      { stationName: string; totalItems: number; items: LiquidityItemDto[] }
+    > = {};
+
+    const concurrency = Math.min(4, Math.max(1, stationIds.length));
+    let index = 0;
+    const entries: Array<[number, LiquidityItemDto[]]> = [];
+
+    const workers = Array.from({ length: concurrency }, async () => {
+      for (;;) {
+        const current = index++;
+        if (current >= stationIds.length) break;
+        const sId = stationIds[current];
+        const items = await this.computeStationLiquidityRaw(sId, dates);
+        entries.push([sId, items]);
+      }
+    });
+
+    await Promise.all(workers);
+
+    for (const [sId, items] of entries) {
+      result[String(sId)] = {
+        stationName: stationIdToName.get(sId) ?? '',
+        totalItems: items.length,
+        items,
+      };
+    }
+
+    return result;
+  }
+
+  private applyLiquidityFilters(
+    raw: LiquidityItemDto[],
+    params: {
+      windowDays: number;
+      minCoverageRatio: number;
+      minISK: number;
+      minTradesPerDay: number;
+    },
+  ): LiquidityItemDto[] {
+    const { windowDays, minCoverageRatio, minISK, minTradesPerDay } = params;
+    const items: LiquidityItemDto[] = [];
+    for (const it of raw) {
+      const coverage = it.coverageDays / Math.max(1, windowDays);
+      if (coverage < minCoverageRatio) continue;
+      if (it.avgDailyIskValue < minISK) continue;
+      if (it.avgDailyTrades < minTradesPerDay) continue;
+      items.push(it);
+    }
+    return items.sort((a, b) => b.avgDailyIskValue - a.avgDailyIskValue);
+  }
+
+  private async computeStationLiquidityRaw(
     sId: number,
     dates: string[],
-    minCoverageRatio: number,
-    minISK: number,
-    minTradesPerDay: number,
   ): Promise<LiquidityItemDto[]> {
     const rows = (await this.prisma.marketOrderTradeDaily.findMany({
       where: {
@@ -120,7 +213,7 @@ export class LiquidityService {
         isBuyOrder: false,
         scanDate: { in: dates.map((d) => new Date(`${d}T00:00:00.000Z`)) },
       },
-      include: { type: true },
+      include: { type: { select: { name: true, volume: true } } },
     })) as unknown as Array<{
       typeId: number;
       scanDate: Date;
@@ -130,7 +223,7 @@ export class LiquidityService {
       low: Prisma.Decimal;
       avg: Prisma.Decimal;
       orderNum: number;
-      type: { name: string } | null;
+      type: { name: string; volume: string | null } | null;
     }>;
 
     const byType = new Map<
@@ -144,7 +237,7 @@ export class LiquidityService {
         low: Prisma.Decimal;
         avg: Prisma.Decimal;
         orderNum: number;
-        type: { name: string } | null;
+        type: { name: string; volume: string | null } | null;
       }>
     >();
     for (const r of rows) {
@@ -156,20 +249,16 @@ export class LiquidityService {
     const items: LiquidityItemDto[] = [];
     for (const [tId, list] of byType) {
       const uniqueDays = new Set(list.map((r) => r.scanDate.toISOString()));
-      const coverage = uniqueDays.size / dates.length;
-      if (coverage < minCoverageRatio) continue;
 
       const totalAmount = list.reduce((sum, r) => sum + r.amount, 0);
       const avgDailyAmount = Math.round(totalAmount / dates.length);
 
       const totalIsk = list.reduce((sum, r) => sum + Number(r.iskValue), 0);
       const avgDailyIskValue = Math.round(totalIsk / dates.length);
-      if (avgDailyIskValue < minISK) continue;
 
       // Average trades per day over the window, from orderNum
       const totalTrades = list.reduce((sum, r) => sum + (r.orderNum ?? 0), 0);
       const avgDailyTrades = Math.round(totalTrades / dates.length);
-      if (avgDailyTrades < minTradesPerDay) continue;
 
       let latest = null as { high: string; low: string; avg: string } | null;
       let latestDateMs = -1;
@@ -188,6 +277,7 @@ export class LiquidityService {
       items.push({
         typeId: tId,
         typeName: list[0]?.type?.name,
+        volumeM3: list[0]?.type?.volume ? Number(list[0]?.type?.volume) : undefined,
         avgDailyAmount,
         latest,
         avgDailyIskValue,

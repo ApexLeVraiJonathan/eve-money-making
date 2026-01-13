@@ -53,6 +53,28 @@ enum ParameterProfileScope {
   PLANNER
 }
 
+/// Strategy Lab run lifecycle status
+enum TradeStrategyRunStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+/// How simulated sell-through is modeled
+enum TradeStrategySellModel {
+  VOLUME_SHARE
+  CALIBRATED_CAPTURE
+}
+
+/// How we pick the daily price proxy from MarketOrderTradeDaily
+enum TradeStrategyPriceModel {
+  LOW
+  AVG
+  HIGH
+}
+
 /// Rollover type for automatic reinvestment
 enum RolloverType {
   FULL_PAYOUT // Roll over entire payout (initial + profit), capped at 20B
@@ -120,6 +142,7 @@ model TypeId {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   marketTrades    MarketOrderTradeDaily[]
+  strategyRunPositions TradeStrategyRunPosition[]
   SkillDefinition SkillDefinition[]
 
   @@map("item_types")
@@ -989,4 +1012,109 @@ model ParameterProfile {
   @@unique([scope, name])
   @@index([scope])
   @@map("parameter_profiles")
+}
+
+// ============================================================================
+// Tradecraft Strategy Lab (paper trading / backtesting)
+// ============================================================================
+
+model TradeStrategy {
+  id          String   @id @default(uuid()) @map("id")
+  name        String   @map("name")
+  description String?  @map("description")
+  params      Json     @map("params") // compatible with PlanPackagesRequest shape
+  isActive    Boolean  @default(true) @map("is_active")
+  createdBy   String?  @map("created_by")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  runs TradeStrategyRun[]
+
+  @@unique([name])
+  @@index([isActive])
+  @@map("trade_strategies")
+}
+
+model TradeStrategyRun {
+  id                String                 @id @default(uuid()) @map("id")
+  strategyId        String                 @map("strategy_id")
+  strategy          TradeStrategy          @relation(fields: [strategyId], references: [id], onDelete: Cascade)
+  status            TradeStrategyRunStatus @default(QUEUED) @map("status")
+
+  startDate DateTime @map("start_date") @db.Date
+  endDate   DateTime @map("end_date") @db.Date
+
+  // Core assumptions
+  initialCapitalIsk Decimal                 @map("initial_capital_isk") @db.Decimal(28, 2)
+  sellModel         TradeStrategySellModel  @map("sell_model")
+  sellSharePct      Decimal?                @map("sell_share_pct") @db.Decimal(10, 6)
+  priceModel        TradeStrategyPriceModel @default(LOW) @map("price_model")
+
+  assumptions Json? @map("assumptions") // fee settings, source station, etc.
+  summary     Json? @map("summary") // cached metrics for lists
+  error       String? @map("error")
+
+  startedAt  DateTime? @map("started_at")
+  finishedAt DateTime? @map("finished_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  days      TradeStrategyRunDay[]
+  positions TradeStrategyRunPosition[]
+
+  @@index([strategyId])
+  @@index([status])
+  @@index([startDate, endDate])
+  @@map("trade_strategy_runs")
+}
+
+model TradeStrategyRunDay {
+  id    String          @id @default(uuid()) @map("id")
+  runId String          @map("run_id")
+  run   TradeStrategyRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  date DateTime @map("date") @db.Date
+
+  cashIsk           Decimal @map("cash_isk") @db.Decimal(28, 2)
+  inventoryCostIsk  Decimal @map("inventory_cost_isk") @db.Decimal(28, 2)
+  inventoryMarkIsk  Decimal @map("inventory_mark_isk") @db.Decimal(28, 2)
+  realizedProfitIsk Decimal @map("realized_profit_isk") @db.Decimal(28, 2)
+  unrealizedProfitIsk Decimal @map("unrealized_profit_isk") @db.Decimal(28, 2)
+  navIsk            Decimal @map("nav_isk") @db.Decimal(28, 2)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([runId, date])
+  @@index([runId])
+  @@index([date])
+  @@map("trade_strategy_run_days")
+}
+
+model TradeStrategyRunPosition {
+  id    String          @id @default(uuid()) @map("id")
+  runId String          @map("run_id")
+  run   TradeStrategyRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  destinationStationId Int @map("destination_station_id")
+  typeId               Int @map("type_id")
+  type                 TypeId @relation(fields: [typeId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  plannedUnits Int @map("planned_units")
+
+  buyUnitPriceIsk Decimal @map("buy_unit_price_isk") @db.Decimal(28, 2)
+  unitsSold       Int     @default(0) @map("units_sold")
+  unitsRemaining  Int     @default(0) @map("units_remaining")
+
+  costBasisIskRemaining Decimal @map("cost_basis_isk_remaining") @db.Decimal(28, 2)
+  realizedProfitIsk     Decimal @map("realized_profit_isk") @db.Decimal(28, 2)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([runId, destinationStationId, typeId])
+  @@index([runId])
+  @@index([destinationStationId])
+  @@index([typeId])
+  @@map("trade_strategy_run_positions")
 }

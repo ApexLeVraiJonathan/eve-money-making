@@ -34,16 +34,30 @@ export class DataImportService {
     }
   }
 
-  /** Return ISO dates for the last N days ending at yesterday (UTC) */
-  getLastNDates(n: number): string[] {
+  /**
+   * Return ISO dates for the last N days ending at "yesterday" (UTC) relative to an anchor date.
+   *
+   * - If no anchor is provided, the anchor is "today" (current behavior).
+   * - The returned list ALWAYS ends at (anchor - 1 day), matching how Adam4EVE daily files work.
+   *
+   * Example:
+   * - anchorDateIso = "2026-01-10", n=3 => ["2026-01-07","2026-01-08","2026-01-09"]
+   */
+  getLastNDates(n: number, anchorDateIso?: string | Date): string[] {
     const dates: string[] = [];
-    const yesterday = new Date();
-    // normalize to UTC midnight and move to yesterday
-    yesterday.setUTCHours(0, 0, 0, 0);
-    yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+    const anchor =
+      anchorDateIso instanceof Date
+        ? new Date(anchorDateIso)
+        : anchorDateIso
+          ? new Date(`${anchorDateIso}T00:00:00.000Z`)
+          : new Date();
+
+    // normalize anchor to UTC midnight and move to "yesterday" relative to anchor
+    anchor.setUTCHours(0, 0, 0, 0);
+    anchor.setUTCDate(anchor.getUTCDate() - 1);
     for (let i = n - 1; i >= 0; i--) {
-      const d = new Date(yesterday);
-      d.setUTCDate(yesterday.getUTCDate() - i);
+      const d = new Date(anchor);
+      d.setUTCDate(anchor.getUTCDate() - i);
       const yyyy = d.getUTCFullYear();
       const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
       const dd = String(d.getUTCDate()).padStart(2, '0');
