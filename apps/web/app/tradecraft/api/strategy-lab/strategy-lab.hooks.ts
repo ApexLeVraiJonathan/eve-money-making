@@ -140,6 +140,47 @@ export type TradeStrategyLabSweepReport = {
   }>;
 };
 
+export type TradeStrategyCycleWalkForwardAllReport = {
+  settings: {
+    startDate: string;
+    cycles: number;
+    cycleDays: number;
+    initialCapitalIsk: number;
+    sellModel: "VOLUME_SHARE";
+    sellSharePct: number;
+    priceModel: "LOW" | "AVG" | "HIGH";
+    rebuyTriggerCashPct: number;
+    reserveCashPct: number;
+    repricesPerDay: number;
+    skipRepriceIfMarginPctLeq: number;
+    nameContains: string | null;
+  };
+  results: Array<{
+    strategyId: string;
+    strategyName: string;
+    totalProfitIsk: number;
+    avgProfitIskPerCycle: number;
+    cycles: Array<{
+      cycleIndex: number;
+      startDate: string;
+      endDate: string;
+      profitIsk: number;
+      capitalStartIsk: number;
+      capitalEndIsk: number;
+      cashEndIsk: number;
+      inventoryCostEndIsk: number;
+      buyEvents: number;
+      totalSpendIsk: number;
+      totalShippingIsk: number;
+      relistFeesPaidIsk: number;
+      repricesApplied: number;
+      repricesSkippedRed: number;
+      unitsSold: number;
+    }>;
+    notes: string[];
+  }>;
+};
+
 export function useTradeStrategies() {
   const client = useApiClient();
   return useQuery({
@@ -277,5 +318,29 @@ export function useTradeStrategyLabSweep() {
       priceModels: Array<"LOW" | "AVG" | "HIGH">;
     }) =>
       client.post<TradeStrategyLabSweepReport>("/strategy-lab/lab-sweep", data),
+  });
+}
+
+export function useTradeStrategyCycleWalkForwardAll() {
+  const client = useApiClient();
+  return useMutation({
+    mutationFn: (data: {
+      startDate: string;
+      cycles: number;
+      cycleDays?: number;
+      initialCapitalIsk: number;
+      rebuyTriggerCashPct?: number;
+      reserveCashPct?: number;
+      repricesPerDay?: number;
+      skipRepriceIfMarginPctLeq?: number;
+      nameContains?: string;
+      sellModel: "VOLUME_SHARE";
+      sellSharePct: number;
+      priceModel?: "LOW" | "AVG" | "HIGH";
+    }) =>
+      client.post<TradeStrategyCycleWalkForwardAllReport>(
+        "/strategy-lab/cycle-walk-forward/all",
+        data,
+      ),
   });
 }

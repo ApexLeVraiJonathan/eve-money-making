@@ -23,6 +23,7 @@ import { CreateTradeStrategyRunDto } from './dto/create-run.dto';
 import { CreateTradeStrategyWalkForwardDto } from './dto/create-walk-forward.dto';
 import { CreateTradeStrategyWalkForwardAllDto } from './dto/create-walk-forward-all.dto';
 import { CreateTradeStrategyLabSweepDto } from './dto/create-lab-sweep.dto';
+import { CreateTradeStrategyCycleWalkForwardAllDto } from './dto/create-cycle-walk-forward-all.dto';
 
 @ApiTags('strategy-lab')
 @ApiBearerAuth()
@@ -123,5 +124,16 @@ export class StrategyLabController {
   })
   async labSweep(@Body() body: CreateTradeStrategyLabSweepDto) {
     return await this.service.runLabSweep(body);
+  }
+
+  @Post('cycle-walk-forward/all')
+  @ApiOperation({
+    summary:
+      'Simulate multiple consecutive 14-day cycles (rebuy trigger + rollover-at-cost) across all active strategies and return a ranked report.',
+  })
+  async cycleWalkForwardAll(
+    @Body() body: CreateTradeStrategyCycleWalkForwardAllDto,
+  ) {
+    return await this.service.createAndExecuteCycleWalkForwardAll(body);
   }
 }

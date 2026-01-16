@@ -16,9 +16,11 @@ import { UpdateTradeStrategyDto } from './dto/update-strategy.dto';
 import { CreateTradeStrategyRunDto } from './dto/create-run.dto';
 import { CreateTradeStrategyWalkForwardDto } from './dto/create-walk-forward.dto';
 import { CreateTradeStrategyWalkForwardAllDto } from './dto/create-walk-forward-all.dto';
+import { CreateTradeStrategyCycleWalkForwardAllDto } from './dto/create-cycle-walk-forward-all.dto';
 import type { LiquidityItemDto } from '@api/tradecraft/market/dto/liquidity-item.dto';
 import { CreateTradeStrategyLabSweepDto } from './dto/create-lab-sweep.dto';
 import { Prisma } from '@eve/prisma';
+import { nextCheaperTick } from '@eve/eve-core/money';
 
 type PriceModel = 'LOW' | 'AVG' | 'HIGH';
 
@@ -1613,6 +1615,557 @@ export class StrategyLabService {
         },
       });
     });
+  }
+
+  /**
+   * Cycle-walk-forward (MVP):
+   * - Simulates consecutive fixed-length cycles (default 14 days)
+   * - Rebuy trigger: when cash/(cash+inventoryCost) >= threshold, run planner and buy again
+   * - Reprice logic: if market price drops vs our last listed, only reprice if not "red" (<= -10% margin)
+   * - Sells: volume-share capped, but only when we're competitively priced (listed <= market proxy)
+   * - Profit accounting: Δ(total capital at cost) per cycle, where total capital at cost = cash + inventoryCost
+   *
+   * This matches the operational workflow:
+   * - Inventory rolls over at cost (admin buyback/sellback), so leftover inventory does not distort cycle profit.
+   */
+  async createAndExecuteCycleWalkForwardAll(
+    dto: CreateTradeStrategyCycleWalkForwardAllDto,
+  ) {
+    const priceModel: PriceModel = dto.priceModel ?? 'LOW';
+    const cycles = dto.cycles;
+    const cycleDays = dto.cycleDays ?? 14;
+    const rebuyTriggerCashPct = dto.rebuyTriggerCashPct ?? 0.25;
+    const reserveCashPct = dto.reserveCashPct ?? 0.02;
+    const repricesPerDay = dto.repricesPerDay ?? 3;
+    const skipRepriceIfMarginPctLeq = dto.skipRepriceIfMarginPctLeq ?? -10;
+
+    if (dto.sellModel !== 'VOLUME_SHARE') {
+      throw new Error('Only sellModel=VOLUME_SHARE is supported for cycle sim MVP');
+    }
+
+    const start0 = parseIsoDateOnly(dto.startDate);
+    const nameContains = dto.nameContains?.trim()
+      ? dto.nameContains.trim().toLowerCase()
+      : null;
+
+    const all = await this.prisma.tradeStrategy.findMany({
+      where: { isActive: true },
+      select: { id: true, name: true, params: true },
+      orderBy: { name: 'asc' },
+    });
+    const strategies = nameContains
+      ? all.filter((s) => s.name.toLowerCase().includes(nameContains))
+      : all;
+
+    const liquidityRawByAnchor = new Map<
+      string,
+      Record<
+        string,
+        { stationName: string; totalItems: number; items: LiquidityItemDto[] }
+      >
+    >();
+
+    const results: Array<{
+      strategyId: string;
+      strategyName: string;
+      totalProfitIsk: number;
+      avgProfitIskPerCycle: number;
+      cycles: Array<{
+        cycleIndex: number;
+        startDate: string;
+        endDate: string;
+        profitIsk: number;
+        capitalStartIsk: number;
+        capitalEndIsk: number;
+        cashEndIsk: number;
+        inventoryCostEndIsk: number;
+        buyEvents: number;
+        totalSpendIsk: number;
+        totalShippingIsk: number;
+        relistFeesPaidIsk: number;
+        repricesApplied: number;
+        repricesSkippedRed: number;
+        unitsSold: number;
+      }>;
+      notes: string[];
+    }> = [];
+
+    // bounded concurrency to keep DB stable
+    const concurrency = 2;
+    let idx = 0;
+    const workers = Array.from(
+      { length: Math.min(concurrency, strategies.length) },
+      async () => {
+        for (;;) {
+          const current = idx++;
+          if (current >= strategies.length) break;
+          const s = strategies[current];
+          try {
+            const r = await this.simulateCycleWalkForwardStrategy({
+              strategyId: s.id,
+              strategyName: s.name,
+              params: s.params as unknown as PlanPackagesRequest,
+              start0,
+              cycles,
+              cycleDays,
+              initialCapitalIsk: dto.initialCapitalIsk,
+              sellSharePct: dto.sellSharePct,
+              priceModel,
+              rebuyTriggerCashPct,
+              reserveCashPct,
+              repricesPerDay,
+              skipRepriceIfMarginPctLeq,
+              liquidityRawByAnchor,
+            });
+            results.push(r);
+          } catch (e) {
+            const msg = e instanceof Error ? e.message : String(e);
+            this.logger.warn(`[cycle-wf] strategy=${s.name} failed: ${msg}`);
+            results.push({
+              strategyId: s.id,
+              strategyName: s.name,
+              totalProfitIsk: Number.NEGATIVE_INFINITY,
+              avgProfitIskPerCycle: Number.NEGATIVE_INFINITY,
+              cycles: [],
+              notes: [`FAILED: ${msg}`],
+            });
+          }
+        }
+      },
+    );
+    await Promise.all(workers);
+
+    // sort best-first by total profit (cash-based, inventory-at-cost neutral)
+    results.sort(
+      (a, b) => (b.totalProfitIsk ?? -Infinity) - (a.totalProfitIsk ?? -Infinity),
+    );
+
+    return {
+      settings: {
+        startDate: dto.startDate,
+        cycles,
+        cycleDays,
+        initialCapitalIsk: dto.initialCapitalIsk,
+        sellModel: dto.sellModel,
+        sellSharePct: dto.sellSharePct,
+        priceModel,
+        rebuyTriggerCashPct,
+        reserveCashPct,
+        repricesPerDay,
+        skipRepriceIfMarginPctLeq,
+        nameContains: dto.nameContains ?? null,
+      },
+      results,
+    };
+  }
+
+  private async simulateCycleWalkForwardStrategy(params: {
+    strategyId: string;
+    strategyName: string;
+    params: PlanPackagesRequest;
+    start0: Date;
+    cycles: number;
+    cycleDays: number;
+    initialCapitalIsk: number;
+    sellSharePct: number;
+    priceModel: PriceModel;
+    rebuyTriggerCashPct: number;
+    reserveCashPct: number;
+    repricesPerDay: number;
+    skipRepriceIfMarginPctLeq: number;
+    liquidityRawByAnchor: Map<
+      string,
+      Record<
+        string,
+        { stationName: string; totalItems: number; items: LiquidityItemDto[] }
+      >
+    >;
+  }): Promise<{
+    strategyId: string;
+    strategyName: string;
+    totalProfitIsk: number;
+    avgProfitIskPerCycle: number;
+    cycles: Array<{
+      cycleIndex: number;
+      startDate: string;
+      endDate: string;
+      profitIsk: number;
+      capitalStartIsk: number;
+      capitalEndIsk: number;
+      cashEndIsk: number;
+      inventoryCostEndIsk: number;
+      buyEvents: number;
+      totalSpendIsk: number;
+      totalShippingIsk: number;
+      relistFeesPaidIsk: number;
+      repricesApplied: number;
+      repricesSkippedRed: number;
+      unitsSold: number;
+    }>;
+    notes: string[];
+  }> {
+    const defaults = AppConfig.arbitrage();
+    const fees = defaults.fees;
+    const feeInputs = {
+      salesTaxPercent:
+        params.params.arbitrageOptions?.salesTaxPercent ?? fees.salesTaxPercent,
+      brokerFeePercent:
+        params.params.arbitrageOptions?.brokerFeePercent ?? fees.brokerFeePercent,
+    };
+    const relistFeePercent: number =
+      (params.params as any)?.arbitrageOptions?.relistFeePercent ??
+      fees.relistFeePercent;
+
+    const key = (stationId: number, typeId: number) => `${stationId}:${typeId}`;
+    type Position = {
+      destinationStationId: number;
+      typeId: number;
+      units: number;
+      totalCostIsk: number; // WAC * units (cost basis)
+      listedPriceIsk: number | null; // last listed gross price
+    };
+
+    const positions = new Map<string, Position>();
+    let cash = params.initialCapitalIsk;
+
+    const marketByKey = new Map<string, { price: number; amount: number }>();
+    const ensureMarketRows = async (p: {
+      stationIds: number[];
+      typeIds: number[];
+      start: Date;
+      end: Date;
+    }) => {
+      const stationIds = Array.from(new Set(p.stationIds)).filter((x) =>
+        Number.isFinite(x),
+      );
+      const typeIds = Array.from(new Set(p.typeIds)).filter((x) =>
+        Number.isFinite(x),
+      );
+      if (!stationIds.length || !typeIds.length) return;
+      const rows = await this.prisma.marketOrderTradeDaily.findMany({
+        where: {
+          isBuyOrder: false,
+          locationId: { in: stationIds },
+          typeId: { in: typeIds },
+          scanDate: { gte: p.start, lte: p.end },
+        },
+        select: {
+          scanDate: true,
+          locationId: true,
+          typeId: true,
+          high: true,
+          low: true,
+          avg: true,
+          amount: true,
+        },
+        orderBy: [{ scanDate: 'asc' }],
+      });
+      for (const r of rows) {
+        const dateKey = r.scanDate.toISOString().slice(0, 10);
+        const price =
+          params.priceModel === 'HIGH'
+            ? Number(r.high)
+            : params.priceModel === 'AVG'
+              ? Number(r.avg)
+              : Number(r.low);
+        if (!Number.isFinite(price) || price <= 0) continue;
+        marketByKey.set(`${dateKey}:${r.locationId}:${r.typeId}`, {
+          price,
+          amount: r.amount,
+        });
+      }
+    };
+
+    const inventoryCostTotal = () => {
+      let sum = 0;
+      for (const p of positions.values()) sum += p.totalCostIsk;
+      return sum;
+    };
+
+    const capitalAtCost = () => cash + inventoryCostTotal();
+
+    const cycleRows: Array<{
+      cycleIndex: number;
+      startDate: string;
+      endDate: string;
+      profitIsk: number;
+      capitalStartIsk: number;
+      capitalEndIsk: number;
+      cashEndIsk: number;
+      inventoryCostEndIsk: number;
+      buyEvents: number;
+      totalSpendIsk: number;
+      totalShippingIsk: number;
+      relistFeesPaidIsk: number;
+      repricesApplied: number;
+      repricesSkippedRed: number;
+      unitsSold: number;
+    }> = [];
+
+    const notes: string[] = [];
+    let cursor = params.start0;
+
+    for (let c = 0; c < params.cycles; c++) {
+      const cycleStart = cursor;
+      const cycleEnd = addDays(cycleStart, params.cycleDays - 1);
+      const dates = dateRangeInclusive(cycleStart, cycleEnd);
+      const capitalStart = capitalAtCost();
+
+      let buyEvents = 0;
+      let totalSpend = 0;
+      let totalShipping = 0;
+      let relistFeesPaid = 0;
+      let repricesApplied = 0;
+      let repricesSkippedRed = 0;
+      let unitsSold = 0;
+
+      // Prime market cache for existing inventory pairs (if any)
+      if (positions.size) {
+        const stationIds = Array.from(
+          new Set(
+            Array.from(positions.values()).map((p) => p.destinationStationId),
+          ),
+        );
+        const typeIds = Array.from(
+          new Set(Array.from(positions.values()).map((p) => p.typeId)),
+        );
+        await ensureMarketRows({
+          stationIds,
+          typeIds,
+          start: cycleStart,
+          end: cycleEnd,
+        });
+      }
+
+      for (const day of dates) {
+        const dayIso = formatIsoDateOnly(day);
+
+        // Reprice pass (skip reds)
+        if (relistFeePercent > 0 && params.repricesPerDay > 0) {
+          for (const p of positions.values()) {
+            if (p.units <= 0) continue;
+            const row =
+              marketByKey.get(
+                `${dayIso}:${p.destinationStationId}:${p.typeId}`,
+              ) ?? null;
+            if (!row || !Number.isFinite(row.price) || row.price <= 0) continue;
+
+            if (p.listedPriceIsk === null) {
+              p.listedPriceIsk = nextCheaperTick(row.price);
+              continue;
+            }
+
+            if (row.price >= p.listedPriceIsk) continue;
+
+            const suggested = nextCheaperTick(row.price);
+            const unitCost = p.units > 0 ? p.totalCostIsk / p.units : 0;
+            if (unitCost <= 0) continue;
+
+            const effectiveSell = getEffectiveSell(suggested, feeInputs);
+            const profitPerUnit = effectiveSell - unitCost;
+            const marginPct = (profitPerUnit / unitCost) * 100;
+
+            if (marginPct <= params.skipRepriceIfMarginPctLeq) {
+              repricesSkippedRed++;
+              continue;
+            }
+
+            const remainingValueGross = suggested * p.units;
+            const fee =
+              remainingValueGross *
+              (relistFeePercent / 100) *
+              params.repricesPerDay;
+            if (fee > 0) {
+              cash -= fee;
+              relistFeesPaid += fee;
+              if (cash < 0) cash = 0;
+            }
+            p.listedPriceIsk = suggested;
+            repricesApplied++;
+          }
+        }
+
+        // Sell pass
+        for (const p of positions.values()) {
+          if (p.units <= 0) continue;
+          const row =
+            marketByKey.get(
+              `${dayIso}:${p.destinationStationId}:${p.typeId}`,
+            ) ?? null;
+          if (!row || !Number.isFinite(row.price) || row.price <= 0) continue;
+          if (!Number.isFinite(row.amount) || row.amount <= 0) continue;
+          if (p.listedPriceIsk === null) continue;
+          if (p.listedPriceIsk > row.price) continue;
+
+          const cap = Math.max(0, Math.floor(row.amount * params.sellSharePct));
+          if (cap <= 0) continue;
+          const sold = Math.min(p.units, cap);
+          if (sold <= 0) continue;
+
+          const unitCost = p.units > 0 ? p.totalCostIsk / p.units : 0;
+          const netSell = getEffectiveSell(p.listedPriceIsk, feeInputs);
+          cash += netSell * sold;
+
+          p.units -= sold;
+          p.totalCostIsk -= unitCost * sold;
+          if (p.units <= 0) {
+            p.units = 0;
+            p.totalCostIsk = 0;
+          }
+          unitsSold += sold;
+        }
+
+        // Rebuy trigger
+        const invCost = inventoryCostTotal();
+        const denom = cash + invCost;
+        const cashPct = denom > 0 ? cash / denom : 1;
+        if (cashPct >= params.rebuyTriggerCashPct) {
+          const reserveTarget = denom * params.reserveCashPct;
+          const investable = Math.max(0, cash - reserveTarget);
+          if (investable > 1_000_000) {
+            const anchorDateIso = dayIso;
+            const windowDays = params.params.liquidityOptions?.windowDays ?? 14;
+            const liqKey = `${anchorDateIso}:${windowDays}`;
+            const liqRaw =
+              params.liquidityRawByAnchor.get(liqKey) ??
+              (await this.liquidity.runRaw({
+                windowDays,
+                anchorDate: anchorDateIso,
+              }));
+            if (!params.liquidityRawByAnchor.has(liqKey))
+              params.liquidityRawByAnchor.set(liqKey, liqRaw);
+
+            const req = {
+              ...(params.params as any),
+              investmentISK: investable,
+            } as PlanPackagesRequest;
+
+            const { plan, buyUnitPriceByType } = await this.buildHistoricalPlan({
+              request: req,
+              anchorDate: anchorDateIso,
+              priceModel: params.priceModel,
+              liquidityRawOverride: liqRaw,
+            });
+
+            if (plan.packages.length > 0) {
+              buyEvents++;
+              totalSpend += plan.totalSpendISK;
+              totalShipping += plan.totalShippingISK;
+              cash -= plan.totalSpendISK + plan.totalShippingISK;
+              if (cash < 0) cash = 0;
+
+              const boughtByPair = new Map<
+                string,
+                { stationId: number; typeId: number; units: number; unitCost: number }
+              >();
+              for (const pkg of plan.packages) {
+                for (const it of pkg.items) {
+                  const unitCost =
+                    buyUnitPriceByType.get(it.typeId) ?? it.unitCost;
+                  const k = key(pkg.destinationStationId, it.typeId);
+                  const cur = boughtByPair.get(k);
+                  if (cur) cur.units += it.units;
+                  else
+                    boughtByPair.set(k, {
+                      stationId: pkg.destinationStationId,
+                      typeId: it.typeId,
+                      units: it.units,
+                      unitCost,
+                    });
+                }
+              }
+
+              const newStationIds = Array.from(
+                new Set(Array.from(boughtByPair.values()).map((x) => x.stationId)),
+              );
+              const newTypeIds = Array.from(
+                new Set(Array.from(boughtByPair.values()).map((x) => x.typeId)),
+              );
+              await ensureMarketRows({
+                stationIds: newStationIds,
+                typeIds: newTypeIds,
+                start: day,
+                end: cycleEnd,
+              });
+
+              for (const b of boughtByPair.values()) {
+                const k = key(b.stationId, b.typeId);
+                const addCost = b.unitCost * b.units;
+                const row =
+                  marketByKey.get(`${dayIso}:${b.stationId}:${b.typeId}`) ??
+                  null;
+                const initialList =
+                  row && row.price > 0 ? nextCheaperTick(row.price) : null;
+
+                const cur = positions.get(k);
+                if (cur) {
+                  cur.units += b.units;
+                  cur.totalCostIsk += addCost;
+                  if (cur.listedPriceIsk === null) cur.listedPriceIsk = initialList;
+                } else {
+                  positions.set(k, {
+                    destinationStationId: b.stationId,
+                    typeId: b.typeId,
+                    units: b.units,
+                    totalCostIsk: addCost,
+                    listedPriceIsk: initialList,
+                  });
+                }
+              }
+            }
+          }
+        }
+      }
+
+      const capitalEnd = capitalAtCost();
+      const profit = capitalEnd - capitalStart;
+
+      cycleRows.push({
+        cycleIndex: c + 1,
+        startDate: formatIsoDateOnly(cycleStart),
+        endDate: formatIsoDateOnly(cycleEnd),
+        profitIsk: profit,
+        capitalStartIsk: capitalStart,
+        capitalEndIsk: capitalEnd,
+        cashEndIsk: cash,
+        inventoryCostEndIsk: inventoryCostTotal(),
+        buyEvents,
+        totalSpendIsk: totalSpend,
+        totalShippingIsk: totalShipping,
+        relistFeesPaidIsk: relistFeesPaid,
+        repricesApplied,
+        repricesSkippedRed,
+        unitsSold,
+      });
+
+      cursor = addDays(cycleEnd, 1);
+    }
+
+    const totalProfit = cycleRows.reduce((s, r) => s + r.profitIsk, 0);
+    const avgProfit = cycleRows.length ? totalProfit / cycleRows.length : 0;
+
+    notes.push(
+      `Profit accounting: Δ(cash + inventoryCost) per cycle (inventory at cost, rollover-neutral).`,
+    );
+    notes.push(
+      `Rebuy: triggers at cashPct>=${params.rebuyTriggerCashPct.toFixed(
+        3,
+      )}, then keeps reserveCashPct≈${params.reserveCashPct.toFixed(3)}.`,
+    );
+    notes.push(
+      `Reprice skip: marginPct<=${params.skipRepriceIfMarginPctLeq.toFixed(
+        2,
+      )}% treated as red (no update).`,
+    );
+
+    return {
+      strategyId: params.strategyId,
+      strategyName: params.strategyName,
+      totalProfitIsk: totalProfit,
+      avgProfitIskPerCycle: avgProfit,
+      cycles: cycleRows,
+      notes,
+    };
   }
 
   private async computeCalibratedCapture(params: {

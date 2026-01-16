@@ -26,6 +26,8 @@ import {
   useTradeStrategyWalkForwardAll,
   useTradeStrategyLabSweep,
   type TradeStrategyLabSweepReport,
+  useTradeStrategyCycleWalkForwardAll,
+  type TradeStrategyCycleWalkForwardAllReport,
   useTradeStrategies,
   useTradeStrategyRuns,
 } from "../../api";
@@ -137,6 +139,7 @@ export default function StrategyLabPage() {
   const walkForward = useTradeStrategyWalkForward();
   const walkForwardAll = useTradeStrategyWalkForwardAll();
   const labSweep = useTradeStrategyLabSweep();
+  const cycleWalkForwardAll = useTradeStrategyCycleWalkForwardAll();
 
   const [newName, setNewName] = React.useState("");
   const [newDescription, setNewDescription] = React.useState("");
@@ -171,6 +174,17 @@ export default function StrategyLabPage() {
     React.useState<TradeStrategyWalkForwardAllReport | null>(null);
   const [sweepReport, setSweepReport] =
     React.useState<TradeStrategyLabSweepReport | null>(null);
+  const [cycleWfReport, setCycleWfReport] =
+    React.useState<TradeStrategyCycleWalkForwardAllReport | null>(null);
+
+  const [cycleCount, setCycleCount] = React.useState<string>("6");
+  const [cycleDays, setCycleDays] = React.useState<string>("14");
+  const [rebuyTriggerCashPct, setRebuyTriggerCashPct] =
+    React.useState<string>("0.25");
+  const [reserveCashPct, setReserveCashPct] = React.useState<string>("0.02");
+  const [repricesPerDay, setRepricesPerDay] = React.useState<string>("3");
+  const [skipRepriceIfMarginPctLeq, setSkipRepriceIfMarginPctLeq] =
+    React.useState<string>("-10");
 
   return (
     <div className="p-6 space-y-6">
@@ -198,6 +212,255 @@ export default function StrategyLabPage() {
         </TabsList>
 
         <TabsContent value="runs" className="mt-4 space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>
+                Cycle Walk-Forward (Rolling Cycle Simulation)
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="text-sm text-muted-foreground">
+                Simulates repeated 14-day cycles with rebuy triggers and
+                rollover-at-cost. Ranking is by total profit across cycles (cash
+                based; leftover inventory is neutralized by cost rollover).
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-3">
+                <div className="space-y-2">
+                  <Label>Cycle start date (YYYY-MM-DD)</Label>
+                  <Input
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Cycles</Label>
+                  <Input
+                    value={cycleCount}
+                    onChange={(e) => setCycleCount(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Cycle days</Label>
+                  <Input
+                    value={cycleDays}
+                    onChange={(e) => setCycleDays(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-3">
+                <div className="space-y-2">
+                  <Label>Initial capital (ISK)</Label>
+                  <Input
+                    value={initialCapital}
+                    onChange={(e) => setInitialCapital(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Daily volume share (sellSharePct)</Label>
+                  <Input
+                    value={sellSharePct}
+                    onChange={(e) => setSellSharePct(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Price model</Label>
+                  <select
+                    className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                    value={priceModel}
+                    onChange={(e) =>
+                      setPriceModel(e.target.value as "LOW" | "AVG" | "HIGH")
+                    }
+                  >
+                    <option value="LOW">LOW</option>
+                    <option value="AVG">AVG</option>
+                    <option value="HIGH">HIGH</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-3">
+                <div className="space-y-2">
+                  <Label>Rebuy trigger cash % (e.g. 0.25)</Label>
+                  <Input
+                    value={rebuyTriggerCashPct}
+                    onChange={(e) => setRebuyTriggerCashPct(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Reserve cash % after buy (e.g. 0.02)</Label>
+                  <Input
+                    value={reserveCashPct}
+                    onChange={(e) => setReserveCashPct(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Strategy name contains (filter)</Label>
+                  <Input
+                    value={nameContains}
+                    onChange={(e) => setNameContains(e.target.value)}
+                    placeholder="SL-"
+                  />
+                </div>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-3">
+                <div className="space-y-2">
+                  <Label>Reprices/day (fee multiplier)</Label>
+                  <Input
+                    value={repricesPerDay}
+                    onChange={(e) => setRepricesPerDay(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Skip reprice if margin% ≤ (red)</Label>
+                  <Input
+                    value={skipRepriceIfMarginPctLeq}
+                    onChange={(e) =>
+                      setSkipRepriceIfMarginPctLeq(e.target.value)
+                    }
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Sell model</Label>
+                  <select
+                    className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                    value="VOLUME_SHARE"
+                    disabled
+                  >
+                    <option value="VOLUME_SHARE">VOLUME_SHARE</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Button
+                  disabled={cycleWalkForwardAll.isPending}
+                  onClick={async () => {
+                    setError(null);
+                    setCycleWfReport(null);
+                    try {
+                      const report = await cycleWalkForwardAll.mutateAsync({
+                        startDate,
+                        cycles: Number(cycleCount),
+                        cycleDays: Number(cycleDays),
+                        initialCapitalIsk: Number(initialCapital),
+                        rebuyTriggerCashPct: Number(rebuyTriggerCashPct),
+                        reserveCashPct: Number(reserveCashPct),
+                        repricesPerDay: Number(repricesPerDay),
+                        skipRepriceIfMarginPctLeq: Number(
+                          skipRepriceIfMarginPctLeq,
+                        ),
+                        nameContains: nameContains || undefined,
+                        sellModel: "VOLUME_SHARE",
+                        sellSharePct: Number(sellSharePct),
+                        priceModel,
+                      });
+                      setCycleWfReport(report);
+                    } catch (e: unknown) {
+                      setError(
+                        e instanceof Error ? e.message : "Request failed",
+                      );
+                    }
+                  }}
+                >
+                  {cycleWalkForwardAll.isPending
+                    ? "Simulating..."
+                    : "Run cycle walk-forward (all strategies)"}
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => setCycleWfReport(null)}
+                >
+                  Clear
+                </Button>
+              </div>
+
+              {cycleWfReport && (
+                <div className="space-y-3">
+                  <div className="text-xs text-muted-foreground">
+                    cycles={cycleWfReport.settings.cycles} • days=
+                    {cycleWfReport.settings.cycleDays} • sellShare=
+                    {cycleWfReport.settings.sellSharePct} • rebuyTrigger=
+                    {cycleWfReport.settings.rebuyTriggerCashPct} • reserve=
+                    {cycleWfReport.settings.reserveCashPct}
+                  </div>
+
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Ranking (total profit)</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-2">
+                      {cycleWfReport.results.length ? (
+                        <div className="space-y-2">
+                          {cycleWfReport.results.slice(0, 25).map((r) => (
+                            <div
+                              key={r.strategyId}
+                              className="rounded-md border p-3 flex items-center justify-between gap-4"
+                            >
+                              <div className="min-w-0">
+                                <div className="text-sm font-medium truncate">
+                                  {r.strategyName}
+                                </div>
+                                <div className="text-xs text-muted-foreground">
+                                  totalProfit={formatIsk(r.totalProfitIsk)} •
+                                  avg/cycle={formatIsk(r.avgProfitIskPerCycle)}
+                                  {" • "}
+                                  lastCycleProfit=
+                                  {r.cycles.length
+                                    ? formatIsk(
+                                        r.cycles[r.cycles.length - 1].profitIsk,
+                                      )
+                                    : "—"}
+                                </div>
+                              </div>
+                              <div className="text-sm tabular-nums">
+                                {Number.isFinite(r.totalProfitIsk)
+                                  ? formatIsk(r.totalProfitIsk)
+                                  : "—"}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="text-sm text-muted-foreground">—</div>
+                      )}
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Best strategy cycles</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-2">
+                      {cycleWfReport.results[0]?.cycles?.length ? (
+                        <div className="space-y-2">
+                          {cycleWfReport.results[0].cycles.map((c) => (
+                            <div
+                              key={c.cycleIndex}
+                              className="flex items-center justify-between text-sm"
+                            >
+                              <div className="text-muted-foreground">
+                                cycle {c.cycleIndex}: {c.startDate} {"→"}{" "}
+                                {c.endDate}
+                              </div>
+                              <div className="tabular-nums">
+                                {formatIsk(c.profitIsk)}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="text-sm text-muted-foreground">—</div>
+                      )}
+                    </CardContent>
+                  </Card>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
           <Card>
             <CardHeader>
               <CardTitle>Walk-Forward Batch (Automated Validation)</CardTitle>
