@@ -3,9 +3,12 @@
  *
  * Usage:
  *   node apps/api/scripts/seed-strategy-lab.cjs
+ *   node apps/api/scripts/seed-strategy-lab.cjs --clear
  *
  * Notes:
  * - Upserts by strategy name (unique).
+ * - If --clear is provided, deletes ALL existing Strategy Lab strategies first
+ *   (and cascades their runs).
  * - Does NOT automatically execute runs (use the web UI to run backtests).
  */
 
@@ -35,15 +38,36 @@ const BASE_PARAMS = {
     minLiquidityThresholdISK: 1_000_000,
     minWindowTrades: 5,
   },
-  arbitrageOptions: {},
+  arbitrageOptions: {
+    // Leave fees undefined to use server defaults, but keep core knobs explicit.
+  },
 };
 
 function makeStrategies() {
+  // "Day 1" neutral starter pack: intentionally diverse, not based on past lab results.
   return [
     {
-      name: "SL-01 Conservative / High Margin / Low Inventory",
+      name: "SL-START 01 Baseline",
       description:
-        "Low risk: higher margin threshold, low inventory days, stricter price deviation filter; aims to reduce tail losses.",
+        "Baseline: typical planner defaults; neutral starting point for lab work.",
+      params: {
+        ...BASE_PARAMS,
+        densityWeight: 1.0,
+        shippingMarginMultiplier: 1.1,
+        minPackageROIPercent: 5,
+        arbitrageOptions: {
+          ...BASE_PARAMS.arbitrageOptions,
+          maxInventoryDays: 3,
+          minMarginPercent: 10,
+          maxPriceDeviationMultiple: 2.5,
+          minTotalProfitISK: 10_000_000,
+        },
+      },
+    },
+    {
+      name: "SL-START 02 Conservative",
+      description:
+        "Conservative: tighter liquidity and pricing filters, higher margin, smaller inventory days.",
       params: {
         ...BASE_PARAMS,
         perDestinationMaxBudgetSharePerItem: 0.1,
@@ -66,28 +90,9 @@ function makeStrategies() {
       },
     },
     {
-      name: "SL-02 Balanced / Default-ish",
+      name: "SL-START 03 Aggressive",
       description:
-        "Baseline: similar to typical planner defaults (3 days inventory, ~10% margin), moderate filters.",
-      params: {
-        ...BASE_PARAMS,
-        perDestinationMaxBudgetSharePerItem: 0.15,
-        densityWeight: 1.0,
-        shippingMarginMultiplier: 1.1,
-        minPackageROIPercent: 5,
-        arbitrageOptions: {
-          ...BASE_PARAMS.arbitrageOptions,
-          maxInventoryDays: 3,
-          minMarginPercent: 10,
-          maxPriceDeviationMultiple: 2.5,
-          minTotalProfitISK: 10_000_000,
-        },
-      },
-    },
-    {
-      name: "SL-03 Aggressive / Higher Inventory / Lower Margin",
-      description:
-        "Higher risk: looser margin and larger inventory days; should improve gross returns but may increase drawdowns/losers.",
+        "Aggressive: looser filters and thresholds; explores higher throughput at higher risk.",
       params: {
         ...BASE_PARAMS,
         perDestinationMaxBudgetSharePerItem: 0.2,
@@ -110,9 +115,9 @@ function makeStrategies() {
       },
     },
     {
-      name: "SL-04 Capital Efficiency / ROI-Weighted",
+      name: "SL-START 04 ROI-Weighted",
       description:
-        "Treat ISK as the scarce resource: bias toward ROI rather than space/density.",
+        "Bias toward ROI rather than m3 density; tests whether ISK efficiency dominates.",
       params: {
         ...BASE_PARAMS,
         densityWeight: 0.25,
@@ -128,29 +133,14 @@ function makeStrategies() {
       },
     },
     {
-      name: "SL-05 Diversified / Target-Weighted Destinations",
+      name: "SL-START 05 Density-First",
       description:
-        "Force diversification between hubs; uses targetWeighted allocation with mild bias.",
+        "Bias toward profit per m3 (density) rather than ROI; otherwise baseline.",
       params: {
         ...BASE_PARAMS,
-        allocation: {
-          mode: "targetWeighted",
-          spreadBias: 0.5,
-          targets: {
-            "60004588": 0.25,
-            "60005686": 0.25,
-            "60008494": 0.25,
-            "60011866": 0.25,
-          },
-        },
-        destinationCaps: {
-          "60004588": { maxShare: 0.35 },
-          "60005686": { maxShare: 0.35 },
-          "60008494": { maxShare: 0.35 },
-          "60011866": { maxShare: 0.35 },
-        },
-        shippingMarginMultiplier: 1.15,
-        minPackageROIPercent: 5.5,
+        densityWeight: 1.25,
+        shippingMarginMultiplier: 1.1,
+        minPackageROIPercent: 5,
         arbitrageOptions: {
           ...BASE_PARAMS.arbitrageOptions,
           maxInventoryDays: 3,
@@ -160,10 +150,169 @@ function makeStrategies() {
         },
       },
     },
+    {
+      name: "SL-START 06 Inventory 1 Day",
+      description:
+        "Fast-turnover: cap inventory horizon at 1 day; otherwise baseline.",
+      params: {
+        ...BASE_PARAMS,
+        densityWeight: 1.0,
+        shippingMarginMultiplier: 1.1,
+        minPackageROIPercent: 5,
+        arbitrageOptions: {
+          ...BASE_PARAMS.arbitrageOptions,
+          maxInventoryDays: 1,
+          minMarginPercent: 10,
+          maxPriceDeviationMultiple: 2.5,
+          minTotalProfitISK: 10_000_000,
+        },
+      },
+    },
+    // =========================================================================
+    // Branches from SL-START 06 (Inventory 1 Day)
+    // =========================================================================
+    {
+      name: "SL-06V A (Inv1 + ROI-Weighted)",
+      description:
+        "Branch of SL-START 06: inventory=1 day plus ROI-weighted selection (bias to ROI).",
+      params: {
+        ...BASE_PARAMS,
+        densityWeight: 0.25,
+        shippingMarginMultiplier: 1.2,
+        minPackageROIPercent: 7,
+        arbitrageOptions: {
+          ...BASE_PARAMS.arbitrageOptions,
+          maxInventoryDays: 1,
+          minMarginPercent: 11,
+          maxPriceDeviationMultiple: 2.2,
+          minTotalProfitISK: 10_000_000,
+        },
+      },
+    },
+    {
+      name: "SL-06V B (Inv1 + Density-First)",
+      description:
+        "Branch of SL-START 06: inventory=1 day plus density-first selection (profit per m3).",
+      params: {
+        ...BASE_PARAMS,
+        densityWeight: 1.25,
+        shippingMarginMultiplier: 1.1,
+        minPackageROIPercent: 5,
+        arbitrageOptions: {
+          ...BASE_PARAMS.arbitrageOptions,
+          maxInventoryDays: 1,
+          minMarginPercent: 10,
+          maxPriceDeviationMultiple: 2.5,
+          minTotalProfitISK: 10_000_000,
+        },
+      },
+    },
+    {
+      name: "SL-06V C (Inv1 + Strict Spike Filter)",
+      description:
+        "Branch of SL-START 06: inventory=1 day plus strict price deviation filter (avoid spikes).",
+      params: {
+        ...BASE_PARAMS,
+        densityWeight: 1.0,
+        shippingMarginMultiplier: 1.1,
+        minPackageROIPercent: 5,
+        arbitrageOptions: {
+          ...BASE_PARAMS.arbitrageOptions,
+          maxInventoryDays: 1,
+          minMarginPercent: 10,
+          maxPriceDeviationMultiple: 1.6,
+          minTotalProfitISK: 10_000_000,
+        },
+      },
+    },
+    {
+      name: "SL-06V D (Inv1 + Conservative Gates)",
+      description:
+        "Branch of SL-START 06: inventory=1 day plus conservative liquidity gates + tighter pricing filters.",
+      params: {
+        ...BASE_PARAMS,
+        perDestinationMaxBudgetSharePerItem: 0.1,
+        densityWeight: 0.8,
+        shippingMarginMultiplier: 1.3,
+        minPackageROIPercent: 8,
+        liquidityOptions: {
+          ...BASE_PARAMS.liquidityOptions,
+          minCoverageRatio: 0.7,
+          minLiquidityThresholdISK: 3_000_000,
+          minWindowTrades: 8,
+        },
+        arbitrageOptions: {
+          ...BASE_PARAMS.arbitrageOptions,
+          maxInventoryDays: 1,
+          minMarginPercent: 12,
+          maxPriceDeviationMultiple: 1.8,
+          minTotalProfitISK: 15_000_000,
+        },
+      },
+    },
+    {
+      name: "SL-06V E (Inv1 + ROI + Strict Spike)",
+      description:
+        "Branch of SL-START 06: inventory=1 day plus ROI-weighting and strict spike filter.",
+      params: {
+        ...BASE_PARAMS,
+        densityWeight: 0.25,
+        shippingMarginMultiplier: 1.2,
+        minPackageROIPercent: 7,
+        arbitrageOptions: {
+          ...BASE_PARAMS.arbitrageOptions,
+          maxInventoryDays: 1,
+          minMarginPercent: 11,
+          maxPriceDeviationMultiple: 1.6,
+          minTotalProfitISK: 10_000_000,
+        },
+      },
+    },
+    {
+      name: "SL-START 07 Inventory 7 Days",
+      description:
+        "Slow-turnover: cap inventory horizon at 7 days; otherwise baseline.",
+      params: {
+        ...BASE_PARAMS,
+        densityWeight: 1.0,
+        shippingMarginMultiplier: 1.1,
+        minPackageROIPercent: 5,
+        arbitrageOptions: {
+          ...BASE_PARAMS.arbitrageOptions,
+          maxInventoryDays: 7,
+          minMarginPercent: 10,
+          maxPriceDeviationMultiple: 2.5,
+          minTotalProfitISK: 10_000_000,
+        },
+      },
+    },
+    {
+      name: "SL-START 08 Strict Spike Filter",
+      description:
+        "Strict price deviation filter (avoid spikes) while keeping baseline inventory/margin.",
+      params: {
+        ...BASE_PARAMS,
+        densityWeight: 1.0,
+        shippingMarginMultiplier: 1.1,
+        minPackageROIPercent: 5,
+        arbitrageOptions: {
+          ...BASE_PARAMS.arbitrageOptions,
+          maxInventoryDays: 3,
+          minMarginPercent: 10,
+          maxPriceDeviationMultiple: 1.6,
+          minTotalProfitISK: 10_000_000,
+        },
+      },
+    },
   ];
 }
 
+function parseArgs(argv) {
+  return { clear: argv.includes("--clear") };
+}
+
 async function main() {
+  const args = parseArgs(process.argv.slice(2));
   const url = process.env.DATABASE_URL;
   if (!url) {
     throw new Error(
@@ -174,6 +323,11 @@ async function main() {
   const adapter = new PrismaPg({ connectionString: url });
   const prisma = new PrismaClient({ adapter });
   try {
+    if (args.clear) {
+      const res = await prisma.tradeStrategy.deleteMany({});
+      console.log(`[clear] deletedStrategies=${res.count}`);
+    }
+
     const strategies = makeStrategies();
     for (const s of strategies) {
       const upserted = await prisma.tradeStrategy.upsert({

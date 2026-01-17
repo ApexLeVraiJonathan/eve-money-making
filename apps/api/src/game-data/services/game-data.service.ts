@@ -173,10 +173,10 @@ export class GameDataService {
     const chunkSize = 1000;
     for (let i = 0; i < missing.length; i += chunkSize) {
       const chunk = missing.slice(i, i + chunkSize);
-    const types = await this.prisma.typeId.findMany({
+      const types = await this.prisma.typeId.findMany({
         where: { id: { in: chunk } },
-      select: { id: true, name: true, volume: true },
-    });
+        select: { id: true, name: true, volume: true },
+      });
 
       for (const t of types) {
         const row = {

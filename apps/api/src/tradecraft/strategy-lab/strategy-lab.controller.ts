@@ -6,6 +6,7 @@ import {
   Patch,
   Post,
   Delete,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import {
@@ -24,6 +25,11 @@ import { CreateTradeStrategyWalkForwardDto } from './dto/create-walk-forward.dto
 import { CreateTradeStrategyWalkForwardAllDto } from './dto/create-walk-forward-all.dto';
 import { CreateTradeStrategyLabSweepDto } from './dto/create-lab-sweep.dto';
 import { CreateTradeStrategyCycleWalkForwardAllDto } from './dto/create-cycle-walk-forward-all.dto';
+import { CreateTradeStrategyCycleRobustnessDto } from './dto/create-cycle-robustness.dto';
+import { ClearTradeStrategyRunsDto } from './dto/clear-runs.dto';
+import { DeactivateTradeStrategiesDto } from './dto/deactivate-strategies.dto';
+import { MarketDataCoverageQueryDto } from './dto/market-data-coverage.dto';
+import { ClearTradeStrategiesDto } from './dto/clear-strategies.dto';
 
 @ApiTags('strategy-lab')
 @ApiBearerAuth()
@@ -73,6 +79,21 @@ export class StrategyLabController {
     return await this.service.deleteStrategy(id);
   }
 
+  @Post('strategies/deactivate')
+  @ApiOperation({ summary: 'Bulk deactivate strategies (set isActive=false)' })
+  async deactivateStrategies(@Body() body: DeactivateTradeStrategiesDto) {
+    return await this.service.deactivateStrategies(body);
+  }
+
+  @Post('strategies/clear')
+  @ApiOperation({
+    summary:
+      'Hard delete strategies (and cascade-delete their runs/days/positions).',
+  })
+  async clearStrategies(@Body() body: ClearTradeStrategiesDto) {
+    return await this.service.clearStrategies(body);
+  }
+
   // ============================================================================
   // Runs
   // ============================================================================
@@ -88,6 +109,15 @@ export class StrategyLabController {
   @ApiParam({ name: 'id' })
   async getRun(@Param('id') id: string) {
     return await this.service.getRun(id);
+  }
+
+  @Post('runs/clear')
+  @ApiOperation({
+    summary:
+      'Clear strategy runs (deletes runs + their days/positions via cascade).',
+  })
+  async clearRuns(@Body() body: ClearTradeStrategyRunsDto) {
+    return await this.service.clearRuns(body);
   }
 
   @Post('runs')
@@ -126,6 +156,15 @@ export class StrategyLabController {
     return await this.service.runLabSweep(body);
   }
 
+  @Get('market-data-coverage')
+  @ApiOperation({
+    summary:
+      'Preflight check: determine whether MarketOrderTradeDaily has full date coverage for a given window.',
+  })
+  async marketDataCoverage(@Query() q: MarketDataCoverageQueryDto) {
+    return await this.service.getMarketDataCoverage(q);
+  }
+
   @Post('cycle-walk-forward/all')
   @ApiOperation({
     summary:
@@ -135,5 +174,14 @@ export class StrategyLabController {
     @Body() body: CreateTradeStrategyCycleWalkForwardAllDto,
   ) {
     return await this.service.createAndExecuteCycleWalkForwardAll(body);
+  }
+
+  @Post('cycle-walk-forward/robustness')
+  @ApiOperation({
+    summary:
+      'Run single-buy simulations across many start dates and aggregate tail-risk metrics (p10/median/p90, loss rate).',
+  })
+  async cycleRobustness(@Body() body: CreateTradeStrategyCycleRobustnessDto) {
+    return await this.service.createAndExecuteCycleRobustness(body);
   }
 }

@@ -134,7 +134,8 @@ export class ImportController {
   @UseGuards(RolesGuard)
   @ApiBearerAuth()
   @ApiOperation({
-    summary: 'Import market trades from an Adam4EVE weekly CSV URL (dev backfill)',
+    summary:
+      'Import market trades from an Adam4EVE weekly CSV URL (dev backfill)',
     description:
       'Downloads and imports an Adam4EVE weekly MarketOrdersTrades CSV. Filters to tracked stations plus the configured source station.',
   })

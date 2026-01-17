@@ -108,4 +108,3 @@ export class CreateTradeStrategyWalkForwardDto {
   @IsEnum(['LOW', 'AVG', 'HIGH'])
   priceModel?: 'LOW' | 'AVG' | 'HIGH';
 }
-

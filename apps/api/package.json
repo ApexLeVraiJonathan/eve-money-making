@@ -24,7 +24,9 @@
     "prisma:migrate:deploy": "pnpm --filter @eve/prisma prisma:migrate:deploy",
     "db:studio": "pnpm --filter @eve/prisma prisma:studio",
     "db:seed": "pnpm --filter @eve/prisma run prisma db seed",
-    "db:reset": "pnpm --filter @eve/prisma run prisma migrate reset"
+    "db:reset": "pnpm --filter @eve/prisma run prisma migrate reset",
+    "seed:strategy-lab": "node scripts/seed-strategy-lab.cjs",
+    "seed:strategy-lab:clear": "node scripts/seed-strategy-lab.cjs --clear"
   },
   "dependencies": {
     "@eve/eve-core": "workspace:*",

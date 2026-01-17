@@ -26,4 +26,3 @@ export class ImportWeeklyUrlDto {
   @Max(50000)
   batchSize?: number;
 }
-

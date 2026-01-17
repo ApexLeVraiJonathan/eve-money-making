@@ -19,10 +19,38 @@ import { CreateTradeStrategyWalkForwardAllDto } from './dto/create-walk-forward-
 import { CreateTradeStrategyCycleWalkForwardAllDto } from './dto/create-cycle-walk-forward-all.dto';
 import type { LiquidityItemDto } from '@api/tradecraft/market/dto/liquidity-item.dto';
 import { CreateTradeStrategyLabSweepDto } from './dto/create-lab-sweep.dto';
+import { CreateTradeStrategyCycleRobustnessDto } from './dto/create-cycle-robustness.dto';
 import { Prisma } from '@eve/prisma';
 import { nextCheaperTick } from '@eve/eve-core/money';
 
 type PriceModel = 'LOW' | 'AVG' | 'HIGH';
+
+type StrategyLabBlacklist = {
+  globalTypeIds: Set<number>;
+  byDestinationTypeIds: Map<number, Set<number>>;
+};
+
+function compileBlacklist(input?: {
+  globalTypeIds?: number[];
+  byDestinationTypeIds?: Record<string, number[]>;
+}): StrategyLabBlacklist | null {
+  if (!input) return null;
+  const global = new Set(
+    (input.globalTypeIds ?? []).filter((x) => Number.isFinite(x)),
+  );
+  const byDest = new Map<number, Set<number>>();
+  for (const [stationIdStr, typeIds] of Object.entries(
+    input.byDestinationTypeIds ?? {},
+  )) {
+    const stationId = Number(stationIdStr);
+    if (!Number.isFinite(stationId)) continue;
+    const set = new Set((typeIds ?? []).filter((x) => Number.isFinite(x)));
+    if (!set.size) continue;
+    byDest.set(stationId, set);
+  }
+  if (global.size === 0 && byDest.size === 0) return null;
+  return { globalTypeIds: global, byDestinationTypeIds: byDest };
+}
 
 function parseIsoDateOnly(s: string): Date {
   // Expect YYYY-MM-DD
@@ -88,6 +116,8 @@ function percentile(values: number[], p: number): number | null {
   return sorted[lo] * (1 - w) + sorted[hi] * w;
 }
 
+// (reserved for future numeric guards)
+
 @Injectable()
 export class StrategyLabService {
   private readonly logger = new Logger(StrategyLabService.name);
@@ -148,6 +178,31 @@ export class StrategyLabService {
     });
   }
 
+  async deactivateStrategies(dto: { nameContains?: string }) {
+    const nameContains = dto.nameContains?.trim()
+      ? dto.nameContains.trim()
+      : null;
+    const where: any = {};
+    if (nameContains)
+      where.name = { contains: nameContains, mode: 'insensitive' };
+    const res = await this.prisma.tradeStrategy.updateMany({
+      where,
+      data: { isActive: false },
+    });
+    return { deactivated: res.count };
+  }
+
+  async clearStrategies(dto: { nameContains?: string }) {
+    const nameContains = dto.nameContains?.trim()
+      ? dto.nameContains.trim()
+      : null;
+    const where: any = {};
+    if (nameContains)
+      where.name = { contains: nameContains, mode: 'insensitive' };
+    const res = await this.prisma.tradeStrategy.deleteMany({ where });
+    return { deletedStrategies: res.count };
+  }
+
   // ============================================================================
   // Runs
   // ============================================================================
@@ -173,6 +228,105 @@ export class StrategyLabService {
     });
     if (!run) throw new NotFoundException('Run not found');
     return run;
+  }
+
+  async clearRuns(dto: { nameContains?: string }) {
+    const nameContains = dto.nameContains?.trim()
+      ? dto.nameContains.trim()
+      : null;
+    if (!nameContains) {
+      const res = await this.prisma.tradeStrategyRun.deleteMany({});
+      return { deletedRuns: res.count };
+    }
+    const strategies = await this.prisma.tradeStrategy.findMany({
+      where: { name: { contains: nameContains, mode: 'insensitive' } },
+      select: { id: true },
+    });
+    const ids = strategies.map((s) => s.id);
+    if (!ids.length) return { deletedRuns: 0 };
+    const res = await this.prisma.tradeStrategyRun.deleteMany({
+      where: { strategyId: { in: ids } },
+    });
+    return { deletedRuns: res.count };
+  }
+
+  async getMarketDataCoverage(q: { startDate: string; days: number }) {
+    const start = parseIsoDateOnly(q.startDate);
+    const end = addDays(start, q.days - 1);
+
+    const stats = await this.prisma.$queryRaw<
+      Array<{ minDate: Date | null; maxDate: Date | null }>
+    >(Prisma.sql`
+      SELECT
+        MIN(scan_date)::date AS "minDate",
+        MAX(scan_date)::date AS "maxDate"
+      FROM market_order_trades_daily
+      WHERE is_buy_order = false
+    `);
+    const minDate = stats[0]?.minDate ?? null;
+    const maxDate = stats[0]?.maxDate ?? null;
+
+    const missingAgg = await this.prisma.$queryRaw<
+      Array<{ missingDays: bigint; haveDays: bigint }>
+    >(Prisma.sql`
+      WITH req AS (
+        SELECT generate_series(${start}::date, ${end}::date, '1 day'::interval)::date AS d
+      ),
+      have AS (
+        SELECT DISTINCT scan_date::date AS d
+        FROM market_order_trades_daily
+        WHERE is_buy_order = false
+          AND scan_date >= ${start}::date
+          AND scan_date <= ${end}::date
+      )
+      SELECT
+        COUNT(*) FILTER (WHERE have.d IS NULL)::bigint AS "missingDays",
+        COUNT(*) FILTER (WHERE have.d IS NOT NULL)::bigint AS "haveDays"
+      FROM req
+      LEFT JOIN have USING (d)
+    `);
+
+    const missingDays = Number(missingAgg[0]?.missingDays ?? 0);
+    const haveDays = Number(missingAgg[0]?.haveDays ?? 0);
+
+    const missingDates = await this.prisma.$queryRaw<Array<{ d: Date }>>(
+      Prisma.sql`
+        WITH req AS (
+          SELECT generate_series(${start}::date, ${end}::date, '1 day'::interval)::date AS d
+        ),
+        have AS (
+          SELECT DISTINCT scan_date::date AS d
+          FROM market_order_trades_daily
+          WHERE is_buy_order = false
+            AND scan_date >= ${start}::date
+            AND scan_date <= ${end}::date
+        )
+        SELECT req.d AS d
+        FROM req
+        LEFT JOIN have USING (d)
+        WHERE have.d IS NULL
+        ORDER BY req.d ASC
+        LIMIT 60
+      `,
+    );
+
+    return {
+      requested: {
+        startDate: q.startDate,
+        endDate: formatIsoDateOnly(end),
+        days: q.days,
+      },
+      available: {
+        minDate: minDate ? formatIsoDateOnly(minDate) : null,
+        maxDate: maxDate ? formatIsoDateOnly(maxDate) : null,
+      },
+      coverage: {
+        haveDays,
+        missingDays,
+        isComplete: missingDays === 0,
+      },
+      missingDates: missingDates.map((x) => formatIsoDateOnly(x.d)),
+    };
   }
 
   async createAndExecuteRun(dto: CreateTradeStrategyRunDto) {
@@ -265,7 +419,12 @@ export class StrategyLabService {
     // Aggregate loser signals across runs
     const loserCounts = new Map<
       string,
-      { typeId: number; destinationStationId: number; count: number; totalLoss: number }
+      {
+        typeId: number;
+        destinationStationId: number;
+        count: number;
+        totalLoss: number;
+      }
     >();
 
     let cursorStart = baseStart;
@@ -313,9 +472,8 @@ export class StrategyLabService {
 
       try {
         const anchorDateIso = formatIsoDateOnly(testStart);
-        const liquidityRawOverride = opts?.liquidityRawByAnchor?.get(
-          anchorDateIso,
-        );
+        const liquidityRawOverride =
+          opts?.liquidityRawByAnchor?.get(anchorDateIso);
         await this.executeBacktestRun({
           runId: created.id,
           params: effectiveParams,
@@ -393,7 +551,8 @@ export class StrategyLabService {
     const roi = runs
       .map((r) => {
         const v = (r.summary as any)?.roiPercent;
-        const n = typeof v === 'number' ? v : typeof v === 'string' ? Number(v) : NaN;
+        const n =
+          typeof v === 'number' ? v : typeof v === 'string' ? Number(v) : NaN;
         return Number.isFinite(n) ? n : null;
       })
       .filter((x): x is number => x !== null);
@@ -401,7 +560,8 @@ export class StrategyLabService {
     const dd = runs
       .map((r) => {
         const v = (r.summary as any)?.maxDrawdownPct;
-        const n = typeof v === 'number' ? v : typeof v === 'string' ? Number(v) : NaN;
+        const n =
+          typeof v === 'number' ? v : typeof v === 'string' ? Number(v) : NaN;
         return Number.isFinite(n) ? n : null;
       })
       .filter((x): x is number => x !== null);
@@ -409,7 +569,8 @@ export class StrategyLabService {
     const profits = runs
       .map((r) => {
         const v = (r.summary as any)?.totalProfitIsk;
-        const n = typeof v === 'number' ? v : typeof v === 'string' ? Number(v) : NaN;
+        const n =
+          typeof v === 'number' ? v : typeof v === 'string' ? Number(v) : NaN;
         return Number.isFinite(n) ? n : null;
       })
       .filter((x): x is number => x !== null);
@@ -417,7 +578,8 @@ export class StrategyLabService {
     const relistFees = runs
       .map((r) => {
         const v = (r.summary as any)?.totalRelistFeesIsk;
-        const n = typeof v === 'number' ? v : typeof v === 'string' ? Number(v) : NaN;
+        const n =
+          typeof v === 'number' ? v : typeof v === 'string' ? Number(v) : NaN;
         return Number.isFinite(n) ? n : null;
       })
       .filter((x): x is number => x !== null);
@@ -484,7 +646,9 @@ export class StrategyLabService {
     };
   }
 
-  async createAndExecuteWalkForwardAll(dto: CreateTradeStrategyWalkForwardAllDto) {
+  async createAndExecuteWalkForwardAll(
+    dto: CreateTradeStrategyWalkForwardAllDto,
+  ) {
     const globalBatchId = `wf_all_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`;
     const where: any = { isActive: true };
     if (dto.nameContains?.trim()) {
@@ -504,7 +668,10 @@ export class StrategyLabService {
     const lastEnd = parseIsoDateOnly(dto.endDate);
     const liquidityRawByAnchor = new Map<
       string,
-      Record<string, { stationName: string; totalItems: number; items: LiquidityItemDto[] }>
+      Record<
+        string,
+        { stationName: string; totalItems: number; items: LiquidityItemDto[] }
+      >
     >();
     {
       let cursorStart = baseStart;
@@ -544,19 +711,22 @@ export class StrategyLabService {
 
     for (const s of strategies) {
       // Reuse per-strategy walk-forward runner
-      const report = await this.createAndExecuteWalkForward({
-        strategyId: s.id,
-        startDate: dto.startDate,
-        endDate: dto.endDate,
-        initialCapitalIsk: dto.initialCapitalIsk,
-        trainWindowDays: dto.trainWindowDays,
-        testWindowDays: dto.testWindowDays,
-        stepDays: dto.stepDays,
-        maxRuns: dto.maxRuns,
-        sellModel: dto.sellModel,
-        sellSharePct: dto.sellSharePct,
-        priceModel: dto.priceModel,
-      }, { liquidityRawByAnchor });
+      const report = await this.createAndExecuteWalkForward(
+        {
+          strategyId: s.id,
+          startDate: dto.startDate,
+          endDate: dto.endDate,
+          initialCapitalIsk: dto.initialCapitalIsk,
+          trainWindowDays: dto.trainWindowDays,
+          testWindowDays: dto.testWindowDays,
+          stepDays: dto.stepDays,
+          maxRuns: dto.maxRuns,
+          sellModel: dto.sellModel,
+          sellSharePct: dto.sellSharePct,
+          priceModel: dto.priceModel,
+        },
+        { liquidityRawByAnchor },
+      );
 
       results.push({
         strategyId: s.id,
@@ -653,7 +823,10 @@ export class StrategyLabService {
     const stepDays = dto.stepDays ?? dto.testWindowDays;
     const maxRuns = dto.maxRuns ?? 12;
 
-    type Scenario = { priceModel: 'LOW' | 'AVG' | 'HIGH'; sellSharePct: number };
+    type Scenario = {
+      priceModel: 'LOW' | 'AVG' | 'HIGH';
+      sellSharePct: number;
+    };
     const scenarios: Scenario[] = [];
     for (const pm of dto.priceModels) {
       for (const sp of dto.sellSharePcts) {
@@ -666,7 +839,10 @@ export class StrategyLabService {
     const lastEnd = parseIsoDateOnly(dto.endDate);
     const liquidityRawByAnchor = new Map<
       string,
-      Record<string, { stationName: string; totalItems: number; items: LiquidityItemDto[] }>
+      Record<
+        string,
+        { stationName: string; totalItems: number; items: LiquidityItemDto[] }
+      >
     >();
     {
       let cursorStart = baseStart;
@@ -820,13 +996,11 @@ export class StrategyLabService {
     >();
 
     for (const row of scored) {
-      const cur =
-        byStrategy.get(row.strategyId) ??
-        {
-          strategyId: row.strategyId,
-          strategyName: row.strategyName,
-          scenarioScores: [],
-        };
+      const cur = byStrategy.get(row.strategyId) ?? {
+        strategyId: row.strategyId,
+        strategyName: row.strategyName,
+        scenarioScores: [],
+      };
       cur.scenarioScores.push({
         scenario: row.scenario,
         roiMedian: row.roiMedian,
@@ -871,8 +1045,12 @@ export class StrategyLabService {
         return {
           sellSharePct,
           scoreMedianAcrossPriceModels: medianAcross(rows.map((r) => r.score)),
-          roiMedianAcrossPriceModels: medianAcross(rows.map((r) => r.roiMedian)),
-          worstDDMedianAcrossPriceModels: medianAcross(rows.map((r) => r.worstDD)),
+          roiMedianAcrossPriceModels: medianAcross(
+            rows.map((r) => r.roiMedian),
+          ),
+          worstDDMedianAcrossPriceModels: medianAcross(
+            rows.map((r) => r.worstDD),
+          ),
           relistFeesMedianIskAcrossPriceModels: medianAcross(
             rows.map((r) => r.relistFeesMedianIsk),
           ),
@@ -938,7 +1116,8 @@ export class StrategyLabService {
         typeof a.overallScore === 'number' && Number.isFinite(a.overallScore);
       const bOk =
         typeof b.overallScore === 'number' && Number.isFinite(b.overallScore);
-      if (aOk && bOk) return (b.overallScore as number) - (a.overallScore as number);
+      if (aOk && bOk)
+        return (b.overallScore as number) - (a.overallScore as number);
       if (aOk) return -1;
       if (bOk) return 1;
       return a.strategyName.localeCompare(b.strategyName);
@@ -981,7 +1160,9 @@ export class StrategyLabService {
       }
     };
 
-    await Promise.all(Array.from({ length: Math.min(c, items.length) }, () => runWorker()));
+    await Promise.all(
+      Array.from({ length: Math.min(c, items.length) }, () => runWorker()),
+    );
     return out;
   }
 
@@ -1063,6 +1244,9 @@ export class StrategyLabService {
       string,
       { stationName: string; totalItems: number; items: LiquidityItemDto[] }
     >;
+    existingUnitsByPair?: Map<string, number>; // key = `${stationId}:${typeId}`
+    inventoryMode?: 'IGNORE' | 'SKIP_EXISTING' | 'TOP_OFF';
+    blacklist?: StrategyLabBlacklist | null;
   }): Promise<{
     plan: PlanResult;
     buyUnitPriceByType: Map<number, number>;
@@ -1101,7 +1285,8 @@ export class StrategyLabService {
 
     const minCoverageRatio =
       params.request.liquidityOptions?.minCoverageRatio ?? 0.57;
-    const minISK = params.request.liquidityOptions?.minLiquidityThresholdISK ?? 1_000_000;
+    const minISK =
+      params.request.liquidityOptions?.minLiquidityThresholdISK ?? 1_000_000;
     const minTrades = params.request.liquidityOptions?.minWindowTrades ?? 5;
 
     const liquidity: typeof liquidityRaw = {};
@@ -1132,6 +1317,39 @@ export class StrategyLabService {
     if (exclude?.length) {
       const exSet = new Set(exclude.map(String));
       stations = stations.filter(([id]) => !exSet.has(id));
+    }
+
+    // Apply optional blacklist (Strategy Lab only).
+    // Supports global typeId exclusions and per-destination exclusions.
+    if (params.blacklist) {
+      const global = params.blacklist.globalTypeIds;
+      const byDest = params.blacklist.byDestinationTypeIds;
+      stations = stations
+        .map(([stationIdStr, g]) => {
+          const stationId = Number(stationIdStr);
+          const per = byDest.get(stationId);
+          const filteredItems = g.items.filter((it) => {
+            if (global.has(it.typeId)) return false;
+            if (per && per.has(it.typeId)) return false;
+            return true;
+          });
+          return [
+            stationIdStr,
+            {
+              ...g,
+              totalItems: filteredItems.length,
+              items: filteredItems,
+            },
+          ] as [
+            string,
+            {
+              stationName: string;
+              totalItems: number;
+              items: LiquidityItemDto[];
+            },
+          ];
+        })
+        .filter(([, g]) => g.items.length > 0);
     }
 
     const anchorMinus1 = parseIsoDateOnly(params.anchorDate);
@@ -1231,7 +1449,24 @@ export class StrategyLabService {
           Math.floor(liq.avgDailyAmount * maxInventoryDays),
         );
         if (qty <= 0) continue;
-        const totalProfit = unitProfit * qty;
+
+        // Inventory behavior: allow the simulator to mimic prod behavior.
+        // - IGNORE: always plan full qty (matches current Strategy Lab behavior)
+        // - SKIP_EXISTING: if we already hold any of this pair, skip
+        // - TOP_OFF: reduce planned qty so we don't exceed maxInventoryDays worth of stock
+        const invMode = params.inventoryMode ?? 'IGNORE';
+        const existing =
+          params.existingUnitsByPair?.get(
+            `${destinationStationId}:${liq.typeId}`,
+          ) ?? 0;
+        let plannedQty = qty;
+        if (invMode === 'SKIP_EXISTING') {
+          if (existing > 0) continue;
+        } else if (invMode === 'TOP_OFF') {
+          plannedQty = Math.max(0, qty - existing);
+          if (plannedQty <= 0) continue;
+        }
+        const totalProfit = unitProfit * plannedQty;
         if (totalProfit < minTotalProfitISK) continue;
 
         const m3 = volByType.get(liq.typeId) ?? 0;
@@ -1245,7 +1480,7 @@ export class StrategyLabService {
           sourcePrice: srcPriceRaw,
           destinationPrice: dstPriceRaw,
           netProfitISK: unitProfit,
-          arbitrageQuantity: qty,
+          arbitrageQuantity: plannedQty,
           m3,
         });
       }
@@ -1300,6 +1535,7 @@ export class StrategyLabService {
       string,
       { stationName: string; totalItems: number; items: LiquidityItemDto[] }
     >;
+    blacklist?: StrategyLabBlacklist | null;
   }) {
     const defaults = AppConfig.arbitrage();
     const fees = defaults.fees;
@@ -1323,6 +1559,7 @@ export class StrategyLabService {
       anchorDate,
       priceModel: params.priceModel,
       liquidityRawOverride: params.liquidityRawOverride,
+      blacklist: params.blacklist ?? null,
     });
 
     // Aggregate positions from plan
@@ -1404,7 +1641,9 @@ export class StrategyLabService {
     }
 
     const sellSharePct =
-      params.sellModel === 'VOLUME_SHARE' ? (params.sellSharePct ?? 0.05) : null;
+      params.sellModel === 'VOLUME_SHARE'
+        ? (params.sellSharePct ?? 0.05)
+        : null;
 
     // Optional: calibrated per-pair capture shares derived from historical sales allocations vs market volume.
     // This reduces "fantasy fills" from a global sellSharePct and reflects how much volume we tend to capture
@@ -1471,13 +1710,15 @@ export class StrategyLabService {
           lastAmount.set(pairKey, row.amount);
         }
         const priceRaw = lastPrice.get(pairKey) ?? null;
-        const dailyAmount = lastAmount.get(pairKey) ?? 0;
+        // Only sell on days where we have actual market rows.
+        // Missing days should be "no data" (no sells), consistent with coverage checks.
+        const dailyAmount = row ? row.amount : 0;
         if (priceRaw === null) continue;
 
         const share =
           params.sellModel === 'VOLUME_SHARE'
             ? (sellSharePct ?? 0.05)
-            : calibratedShareByPair?.get(pairKey) ?? calibratedFallbackShare;
+            : (calibratedShareByPair?.get(pairKey) ?? calibratedFallbackShare);
         const cap = Math.max(0, Math.floor(dailyAmount * share));
         if (cap <= 0) continue;
 
@@ -1501,7 +1742,11 @@ export class StrategyLabService {
       // Undercut-checker uses: fee = remainingUnits * newPrice * (relistPct/100).
       // Here we apply that ONLY on days where the price proxy moved down (reprice needed),
       // and only for positions that still have remaining units.
-      if (relistFeePercent > 0 && relistEventsPerDay > 0 && relistPairsToday.size) {
+      if (
+        relistFeePercent > 0 &&
+        relistEventsPerDay > 0 &&
+        relistPairsToday.size
+      ) {
         let dailyRelistFee = 0;
         for (const pos of positions) {
           if (pos.unitsRemaining <= 0) continue;
@@ -1631,16 +1876,21 @@ export class StrategyLabService {
   async createAndExecuteCycleWalkForwardAll(
     dto: CreateTradeStrategyCycleWalkForwardAllDto,
   ) {
-    const priceModel: PriceModel = dto.priceModel ?? 'LOW';
+    const singleBuy = dto.singleBuy ?? false;
+    const priceModel: PriceModel =
+      dto.priceModel ?? (singleBuy ? 'AVG' : 'LOW');
     const cycles = dto.cycles;
     const cycleDays = dto.cycleDays ?? 14;
     const rebuyTriggerCashPct = dto.rebuyTriggerCashPct ?? 0.25;
     const reserveCashPct = dto.reserveCashPct ?? 0.02;
-    const repricesPerDay = dto.repricesPerDay ?? 3;
+    const repricesPerDay = dto.repricesPerDay ?? (singleBuy ? 1 : 3);
     const skipRepriceIfMarginPctLeq = dto.skipRepriceIfMarginPctLeq ?? -10;
+    const inventoryMode = dto.inventoryMode ?? 'SKIP_EXISTING';
 
     if (dto.sellModel !== 'VOLUME_SHARE') {
-      throw new Error('Only sellModel=VOLUME_SHARE is supported for cycle sim MVP');
+      throw new Error(
+        'Only sellModel=VOLUME_SHARE is supported for cycle sim MVP',
+      );
     }
 
     const start0 = parseIsoDateOnly(dto.startDate);
@@ -1669,12 +1919,15 @@ export class StrategyLabService {
       strategyId: string;
       strategyName: string;
       totalProfitIsk: number;
+      totalProfitCashIsk: number;
       avgProfitIskPerCycle: number;
+      avgProfitCashIskPerCycle: number;
       cycles: Array<{
         cycleIndex: number;
         startDate: string;
         endDate: string;
         profitIsk: number;
+        profitCashIsk: number;
         capitalStartIsk: number;
         capitalEndIsk: number;
         cashEndIsk: number;
@@ -1715,6 +1968,8 @@ export class StrategyLabService {
               reserveCashPct,
               repricesPerDay,
               skipRepriceIfMarginPctLeq,
+              inventoryMode,
+              singleBuy,
               liquidityRawByAnchor,
             });
             results.push(r);
@@ -1725,7 +1980,9 @@ export class StrategyLabService {
               strategyId: s.id,
               strategyName: s.name,
               totalProfitIsk: Number.NEGATIVE_INFINITY,
+              totalProfitCashIsk: Number.NEGATIVE_INFINITY,
               avgProfitIskPerCycle: Number.NEGATIVE_INFINITY,
+              avgProfitCashIskPerCycle: Number.NEGATIVE_INFINITY,
               cycles: [],
               notes: [`FAILED: ${msg}`],
             });
@@ -1735,9 +1992,11 @@ export class StrategyLabService {
     );
     await Promise.all(workers);
 
-    // sort best-first by total profit (cash-based, inventory-at-cost neutral)
+    // sort best-first by total cash profit (matches /tradecraft/admin/profit)
     results.sort(
-      (a, b) => (b.totalProfitIsk ?? -Infinity) - (a.totalProfitIsk ?? -Infinity),
+      (a, b) =>
+        (b.totalProfitCashIsk ?? -Infinity) -
+        (a.totalProfitCashIsk ?? -Infinity),
     );
 
     return {
@@ -1753,9 +2012,280 @@ export class StrategyLabService {
         reserveCashPct,
         repricesPerDay,
         skipRepriceIfMarginPctLeq,
+        inventoryMode,
+        singleBuy,
         nameContains: dto.nameContains ?? null,
       },
       results,
+    };
+  }
+
+  async createAndExecuteCycleRobustness(
+    dto: CreateTradeStrategyCycleRobustnessDto,
+  ) {
+    const stepDays = dto.stepDays ?? 2;
+    const maxDays = dto.maxDays ?? 21;
+    const repricesPerDay = dto.repricesPerDay ?? 1;
+    const skipRepriceIfMarginPctLeq = dto.skipRepriceIfMarginPctLeq ?? -10;
+    const priceModel: PriceModel = dto.priceModel ?? 'AVG';
+    const inventoryMode = dto.inventoryMode ?? 'SKIP_EXISTING';
+
+    const startFrom = parseIsoDateOnly(dto.startDateFrom);
+    const startTo = parseIsoDateOnly(dto.startDateTo);
+    if (startFrom.getTime() > startTo.getTime()) {
+      throw new Error('startDateFrom must be <= startDateTo');
+    }
+
+    const nameContains = dto.nameContains?.trim()
+      ? dto.nameContains.trim().toLowerCase()
+      : null;
+
+    const all = await this.prisma.tradeStrategy.findMany({
+      where: { isActive: true },
+      select: { id: true, name: true, params: true },
+      orderBy: { name: 'asc' },
+    });
+    const strategies = nameContains
+      ? all.filter((s) => s.name.toLowerCase().includes(nameContains))
+      : all;
+
+    const starts: Date[] = [];
+    {
+      let cur = new Date(startFrom);
+      cur.setUTCHours(0, 0, 0, 0);
+      const end = new Date(startTo);
+      end.setUTCHours(0, 0, 0, 0);
+      while (cur.getTime() <= end.getTime()) {
+        starts.push(new Date(cur));
+        cur = addDays(cur, stepDays);
+      }
+    }
+
+    // Shared liquidity raw cache
+    const liquidityRawByAnchor = new Map<
+      string,
+      Record<
+        string,
+        { stationName: string; totalItems: number; items: LiquidityItemDto[] }
+      >
+    >();
+
+    const blacklistCompiled = compileBlacklist(dto.blacklist);
+
+    const runVariant = async (variant: {
+      label: 'NO_BLACKLIST' | 'WITH_BLACKLIST';
+      blacklist: StrategyLabBlacklist | null;
+    }) => {
+      // Run bounded concurrency to avoid hammering Postgres
+      const CONCURRENCY = 2;
+      const work = strategies.flatMap((s) => starts.map((d) => ({ s, d })));
+
+      const rows = await this.mapWithConcurrency(
+        work,
+        CONCURRENCY,
+        async ({ s, d }) => {
+          const start0 = new Date(d);
+          const r = await this.simulateCycleWalkForwardStrategy({
+            strategyId: s.id,
+            strategyName: s.name,
+            params: s.params as unknown as PlanPackagesRequest,
+            start0,
+            cycles: 1,
+            cycleDays: maxDays,
+            initialCapitalIsk: dto.initialCapitalIsk,
+            sellSharePct: dto.sellSharePct,
+            priceModel,
+            rebuyTriggerCashPct: 1, // unused (singleBuy=true)
+            reserveCashPct: 0, // unused (singleBuy=true)
+            repricesPerDay,
+            skipRepriceIfMarginPctLeq,
+            inventoryMode,
+            singleBuy: true,
+            blacklist: variant.blacklist,
+            liquidityRawByAnchor,
+          });
+
+          const c0 = r.cycles[0];
+          const profitCash = c0?.profitCashIsk ?? 0;
+          return {
+            strategyId: s.id,
+            strategyName: s.name,
+            startDate: formatIsoDateOnly(start0),
+            profitCashIsk: profitCash,
+            positionsSummary: r.positionsSummary ?? [],
+          };
+        },
+      );
+
+      const byStrategy = new Map<
+        string,
+        {
+          strategyId: string;
+          strategyName: string;
+          profits: number[];
+          best?: { startDate: string; profitCashIsk: number };
+          worst?: { startDate: string; profitCashIsk: number };
+        }
+      >();
+
+      for (const r of rows) {
+        const cur = byStrategy.get(r.strategyId) ?? {
+          strategyId: r.strategyId,
+          strategyName: r.strategyName,
+          profits: [],
+        };
+        cur.profits.push(r.profitCashIsk);
+        if (!cur.best || r.profitCashIsk > cur.best.profitCashIsk) {
+          cur.best = { startDate: r.startDate, profitCashIsk: r.profitCashIsk };
+        }
+        if (!cur.worst || r.profitCashIsk < cur.worst.profitCashIsk) {
+          cur.worst = {
+            startDate: r.startDate,
+            profitCashIsk: r.profitCashIsk,
+          };
+        }
+        byStrategy.set(r.strategyId, cur);
+      }
+
+      // Aggregate repeat offenders across all strategies/runs (typeId + destination).
+      const offenders = new Map<
+        string,
+        {
+          typeId: number;
+          typeName: string | null;
+          destinationStationId: number;
+          stationName: string | null;
+          runs: number;
+          loserRuns: number;
+          redRuns: number;
+          totalProfitCashIsk: number;
+          totalLossCashIsk: number;
+          strategies: Set<string>;
+        }
+      >();
+      for (const row of rows) {
+        for (const p of row.positionsSummary) {
+          const key = `${p.destinationStationId}:${p.typeId}`;
+          const cur = offenders.get(key) ?? {
+            typeId: p.typeId,
+            typeName: p.typeName ?? null,
+            destinationStationId: p.destinationStationId,
+            stationName: p.stationName ?? null,
+            runs: 0,
+            loserRuns: 0,
+            redRuns: 0,
+            totalProfitCashIsk: 0,
+            totalLossCashIsk: 0,
+            strategies: new Set<string>(),
+          };
+          cur.runs += 1;
+          cur.strategies.add(row.strategyName);
+          cur.totalProfitCashIsk += p.profitCashIsk;
+          if (p.profitCashIsk < 0) {
+            cur.loserRuns += 1;
+            cur.totalLossCashIsk += p.profitCashIsk;
+          }
+          if (p.isRed) cur.redRuns += 1;
+          if (!cur.typeName && p.typeName) cur.typeName = p.typeName;
+          if (!cur.stationName && p.stationName)
+            cur.stationName = p.stationName;
+          offenders.set(key, cur);
+        }
+      }
+
+      const repeatOffenders = Array.from(offenders.values())
+        .filter((x) => x.loserRuns >= 2 || x.redRuns >= 2)
+        .sort((a, b) => {
+          if (a.totalLossCashIsk !== b.totalLossCashIsk)
+            return a.totalLossCashIsk - b.totalLossCashIsk;
+          if (a.redRuns !== b.redRuns) return b.redRuns - a.redRuns;
+          if (a.loserRuns !== b.loserRuns) return b.loserRuns - a.loserRuns;
+          return `${a.typeId}`.localeCompare(`${b.typeId}`);
+        })
+        .slice(0, 50)
+        .map((x) => ({
+          typeId: x.typeId,
+          typeName: x.typeName,
+          destinationStationId: x.destinationStationId,
+          stationName: x.stationName,
+          runs: x.runs,
+          loserRuns: x.loserRuns,
+          redRuns: x.redRuns,
+          totalProfitCashIsk: x.totalProfitCashIsk,
+          totalLossCashIsk: x.totalLossCashIsk,
+          strategies: Array.from(x.strategies).sort(),
+        }));
+
+      const results = Array.from(byStrategy.values()).map((x) => {
+        const profits = x.profits.filter((n) => Number.isFinite(n));
+        const lossRate =
+          profits.length > 0
+            ? profits.filter((p) => p < 0).length / profits.length
+            : null;
+        return {
+          strategyId: x.strategyId,
+          strategyName: x.strategyName,
+          runs: profits.length,
+          lossRate,
+          profitP10Isk: percentile(profits, 0.1),
+          profitMedianIsk: median(profits),
+          profitP90Isk: percentile(profits, 0.9),
+          best: x.best ?? null,
+          worst: x.worst ?? null,
+        };
+      });
+
+      results.sort((a, b) => {
+        const ap10 =
+          typeof a.profitP10Isk === 'number' ? a.profitP10Isk : -Infinity;
+        const bp10 =
+          typeof b.profitP10Isk === 'number' ? b.profitP10Isk : -Infinity;
+        if (ap10 !== bp10) return bp10 - ap10;
+        const am =
+          typeof a.profitMedianIsk === 'number' ? a.profitMedianIsk : -Infinity;
+        const bm =
+          typeof b.profitMedianIsk === 'number' ? b.profitMedianIsk : -Infinity;
+        if (am !== bm) return bm - am;
+        const al = typeof a.lossRate === 'number' ? a.lossRate : 1;
+        const bl = typeof b.lossRate === 'number' ? b.lossRate : 1;
+        if (al !== bl) return al - bl;
+        return a.strategyName.localeCompare(b.strategyName);
+      });
+
+      return { label: variant.label, results, repeatOffenders };
+    };
+
+    const noBlacklist = await runVariant({
+      label: 'NO_BLACKLIST',
+      blacklist: null,
+    });
+    const withBlacklist = blacklistCompiled
+      ? await runVariant({
+          label: 'WITH_BLACKLIST',
+          blacklist: blacklistCompiled,
+        })
+      : null;
+
+    return {
+      config: {
+        startDateFrom: dto.startDateFrom,
+        startDateTo: dto.startDateTo,
+        stepDays,
+        maxDays,
+        initialCapitalIsk: dto.initialCapitalIsk,
+        sellSharePct: dto.sellSharePct,
+        priceModel,
+        repricesPerDay,
+        skipRepriceIfMarginPctLeq,
+        inventoryMode,
+        nameContains: dto.nameContains ?? null,
+      },
+      starts: starts.map((d) => formatIsoDateOnly(d)),
+      blacklist: dto.blacklist ?? null,
+      reports: {
+        noBlacklist,
+        withBlacklist,
+      },
     };
   }
 
@@ -1773,6 +2303,9 @@ export class StrategyLabService {
     reserveCashPct: number;
     repricesPerDay: number;
     skipRepriceIfMarginPctLeq: number;
+    inventoryMode: 'IGNORE' | 'SKIP_EXISTING' | 'TOP_OFF';
+    singleBuy?: boolean;
+    blacklist?: StrategyLabBlacklist | null;
     liquidityRawByAnchor: Map<
       string,
       Record<
@@ -1784,25 +2317,54 @@ export class StrategyLabService {
     strategyId: string;
     strategyName: string;
     totalProfitIsk: number;
+    totalProfitCashIsk: number;
     avgProfitIskPerCycle: number;
+    avgProfitCashIskPerCycle: number;
     cycles: Array<{
       cycleIndex: number;
       startDate: string;
       endDate: string;
       profitIsk: number;
+      profitCashIsk: number;
+      roiPct: number | null;
       capitalStartIsk: number;
       capitalEndIsk: number;
+      cashStartIsk: number;
+      inventoryCostStartIsk: number;
       cashEndIsk: number;
       inventoryCostEndIsk: number;
+      cashPctMin: number;
+      cashPctMax: number;
       buyEvents: number;
+      buyDates: string[];
       totalSpendIsk: number;
       totalShippingIsk: number;
       relistFeesPaidIsk: number;
       repricesApplied: number;
       repricesSkippedRed: number;
       unitsSold: number;
+      grossSalesIsk: number;
+      salesNetIsk: number;
+      avgNetSellPerUnitIsk: number | null;
+      salesTaxIsk: number;
+      brokerFeesIsk: number;
+      cogsIsk: number;
+      positionsHeldEnd: number;
     }>;
     notes: string[];
+    positionsSummary?: Array<{
+      destinationStationId: number;
+      stationName: string | null;
+      typeId: number;
+      typeName: string | null;
+      isRed: boolean;
+      profitCashIsk: number;
+      totalShippingIsk: number;
+      totalRelistFeesIsk: number;
+      totalBrokerFeesIsk: number;
+      unitsSold: number;
+      unitsRemaining: number;
+    }>;
   }> {
     const defaults = AppConfig.arbitrage();
     const fees = defaults.fees;
@@ -1810,11 +2372,13 @@ export class StrategyLabService {
       salesTaxPercent:
         params.params.arbitrageOptions?.salesTaxPercent ?? fees.salesTaxPercent,
       brokerFeePercent:
-        params.params.arbitrageOptions?.brokerFeePercent ?? fees.brokerFeePercent,
+        params.params.arbitrageOptions?.brokerFeePercent ??
+        fees.brokerFeePercent,
     };
     const relistFeePercent: number =
       (params.params as any)?.arbitrageOptions?.relistFeePercent ??
       fees.relistFeePercent;
+    const singleBuy = params.singleBuy ?? false;
 
     const key = (stationId: number, typeId: number) => `${stationId}:${typeId}`;
     type Position = {
@@ -1823,6 +2387,16 @@ export class StrategyLabService {
       units: number;
       totalCostIsk: number; // WAC * units (cost basis)
       listedPriceIsk: number | null; // last listed gross price
+      isRed: boolean; // true once margin drops into "red" zone (no more updates)
+      // Per-position cash metrics (for repeat offender analysis)
+      grossSalesIsk: number;
+      salesNetIsk: number;
+      salesTaxIsk: number;
+      cogsIsk: number;
+      brokerFeesIsk: number;
+      relistFeesIsk: number;
+      shippingIsk: number;
+      unitsSold: number;
     };
 
     const positions = new Map<string, Position>();
@@ -1891,15 +2465,29 @@ export class StrategyLabService {
       profitIsk: number;
       capitalStartIsk: number;
       capitalEndIsk: number;
+      cashStartIsk: number;
+      inventoryCostStartIsk: number;
       cashEndIsk: number;
       inventoryCostEndIsk: number;
+      cashPctMin: number;
+      cashPctMax: number;
       buyEvents: number;
+      buyDates: string[];
       totalSpendIsk: number;
       totalShippingIsk: number;
       relistFeesPaidIsk: number;
       repricesApplied: number;
       repricesSkippedRed: number;
       unitsSold: number;
+      grossSalesIsk: number;
+      salesNetIsk: number;
+      avgNetSellPerUnitIsk: number | null;
+      salesTaxIsk: number;
+      brokerFeesIsk: number;
+      cogsIsk: number;
+      profitCashIsk: number;
+      roiPct: number | null;
+      positionsHeldEnd: number;
     }> = [];
 
     const notes: string[] = [];
@@ -1909,15 +2497,205 @@ export class StrategyLabService {
       const cycleStart = cursor;
       const cycleEnd = addDays(cycleStart, params.cycleDays - 1);
       const dates = dateRangeInclusive(cycleStart, cycleEnd);
-      const capitalStart = capitalAtCost();
+      const cashStart = cash;
+      const invStart = inventoryCostTotal();
+      const capitalStart = cashStart + invStart;
 
       let buyEvents = 0;
+      const buyDates: string[] = [];
       let totalSpend = 0;
       let totalShipping = 0;
       let relistFeesPaid = 0;
       let repricesApplied = 0;
       let repricesSkippedRed = 0;
       let unitsSold = 0;
+      let grossSalesIsk = 0;
+      let salesNetIsk = 0;
+      let salesTaxIsk = 0;
+      let brokerFeesIsk = 0;
+      let cogsIsk = 0;
+      let cashPctMin = 1;
+      let cashPctMax = 0;
+
+      const observeCashPct = () => {
+        const invCost = inventoryCostTotal();
+        const denom = cash + invCost;
+        const cashPct = denom > 0 ? cash / denom : 1;
+        cashPctMin = Math.min(cashPctMin, cashPct);
+        cashPctMax = Math.max(cashPctMax, cashPct);
+      };
+
+      const runPlannerBuy = async (
+        dayIso: string,
+        buyDate: Date,
+      ): Promise<boolean> => {
+        const invCost = inventoryCostTotal();
+        const denom = cash + invCost;
+        const reserveTarget = denom * params.reserveCashPct;
+        const investable = Math.max(0, cash - reserveTarget);
+        if (investable <= 1_000_000) return false;
+
+        const anchorDateIso = dayIso;
+        const windowDays = params.params.liquidityOptions?.windowDays ?? 14;
+        const liqKey = `${anchorDateIso}:${windowDays}`;
+        const liqRaw =
+          params.liquidityRawByAnchor.get(liqKey) ??
+          (await this.liquidity.runRaw({
+            windowDays,
+            anchorDate: anchorDateIso,
+          }));
+        if (!params.liquidityRawByAnchor.has(liqKey))
+          params.liquidityRawByAnchor.set(liqKey, liqRaw);
+
+        const req = {
+          ...(params.params as any),
+          investmentISK: investable,
+        } as PlanPackagesRequest;
+
+        const existingUnitsByPair = new Map<string, number>();
+        if (params.inventoryMode !== 'IGNORE') {
+          for (const p of positions.values()) {
+            if (p.units > 0) {
+              existingUnitsByPair.set(
+                `${p.destinationStationId}:${p.typeId}`,
+                p.units,
+              );
+            }
+          }
+        }
+
+        const { plan, buyUnitPriceByType } = await this.buildHistoricalPlan({
+          request: req,
+          anchorDate: anchorDateIso,
+          priceModel: params.priceModel,
+          liquidityRawOverride: liqRaw,
+          existingUnitsByPair:
+            params.inventoryMode !== 'IGNORE' ? existingUnitsByPair : undefined,
+          inventoryMode: params.inventoryMode,
+          blacklist: params.blacklist ?? null,
+        });
+
+        if (plan.packages.length === 0) return false;
+
+        // Cash-constrained execution: buy only packages we can afford while preserving reserve.
+        let boughtAny = false;
+        let spendThisBuy = 0;
+        let shipThisBuy = 0;
+
+        const boughtByPair = new Map<
+          string,
+          {
+            stationId: number;
+            typeId: number;
+            units: number;
+            unitCost: number;
+            shippingIsk: number;
+          }
+        >();
+
+        for (const pkg of plan.packages) {
+          const pkgCost = pkg.spendISK + pkg.shippingISK;
+          if (pkgCost <= 0) continue;
+          if (cash - pkgCost < reserveTarget) break;
+
+          cash -= pkgCost;
+          spendThisBuy += pkg.spendISK;
+          shipThisBuy += pkg.shippingISK;
+          boughtAny = true;
+
+          // Allocate package shipping across items proportional to item spend.
+          const itemCosts = pkg.items.map((it) => {
+            const unitCost = buyUnitPriceByType.get(it.typeId) ?? it.unitCost;
+            const cost = unitCost * it.units;
+            return { typeId: it.typeId, units: it.units, unitCost, cost };
+          });
+          const totalItemCost = itemCosts.reduce(
+            (s, x) => s + (x.cost > 0 ? x.cost : 0),
+            0,
+          );
+
+          for (const it of pkg.items) {
+            const unitCost = buyUnitPriceByType.get(it.typeId) ?? it.unitCost;
+            const k = key(pkg.destinationStationId, it.typeId);
+            const cur = boughtByPair.get(k);
+            const itemCost = unitCost * it.units;
+            const shipAlloc =
+              pkg.shippingISK > 0 && totalItemCost > 0 && itemCost > 0
+                ? (pkg.shippingISK * itemCost) / totalItemCost
+                : 0;
+            if (cur) {
+              cur.units += it.units;
+              cur.shippingIsk += shipAlloc;
+            } else
+              boughtByPair.set(k, {
+                stationId: pkg.destinationStationId,
+                typeId: it.typeId,
+                units: it.units,
+                unitCost,
+                shippingIsk: shipAlloc,
+              });
+          }
+        }
+
+        if (!boughtAny) return false;
+
+        buyEvents++;
+        buyDates.push(dayIso);
+        totalSpend += spendThisBuy;
+        totalShipping += shipThisBuy;
+
+        // Observe cash% after buys as well (will usually be near reserve)
+        observeCashPct();
+
+        const newStationIds = Array.from(
+          new Set(Array.from(boughtByPair.values()).map((x) => x.stationId)),
+        );
+        const newTypeIds = Array.from(
+          new Set(Array.from(boughtByPair.values()).map((x) => x.typeId)),
+        );
+        await ensureMarketRows({
+          stationIds: newStationIds,
+          typeIds: newTypeIds,
+          start: buyDate,
+          end: cycleEnd,
+        });
+
+        for (const b of boughtByPair.values()) {
+          const k = key(b.stationId, b.typeId);
+          const addCost = b.unitCost * b.units;
+          const row =
+            marketByKey.get(`${dayIso}:${b.stationId}:${b.typeId}`) ?? null;
+          const initialList =
+            row && row.price > 0 ? nextCheaperTick(row.price) : null;
+
+          const cur = positions.get(k);
+          if (cur) {
+            cur.units += b.units;
+            cur.totalCostIsk += addCost;
+            cur.shippingIsk += b.shippingIsk;
+            if (cur.listedPriceIsk === null) cur.listedPriceIsk = initialList;
+          } else {
+            positions.set(k, {
+              destinationStationId: b.stationId,
+              typeId: b.typeId,
+              units: b.units,
+              totalCostIsk: addCost,
+              listedPriceIsk: initialList,
+              isRed: false,
+              grossSalesIsk: 0,
+              salesNetIsk: 0,
+              salesTaxIsk: 0,
+              cogsIsk: 0,
+              brokerFeesIsk: 0,
+              relistFeesIsk: 0,
+              shippingIsk: b.shippingIsk,
+              unitsSold: 0,
+            });
+          }
+        }
+
+        return true;
+      };
 
       // Prime market cache for existing inventory pairs (if any)
       if (positions.size) {
@@ -1937,13 +2715,21 @@ export class StrategyLabService {
         });
       }
 
+      let lastSimDay = cycleEnd;
+
+      if (singleBuy) {
+        await runPlannerBuy(formatIsoDateOnly(cycleStart), cycleStart);
+      }
+
       for (const day of dates) {
         const dayIso = formatIsoDateOnly(day);
+        observeCashPct();
 
         // Reprice pass (skip reds)
         if (relistFeePercent > 0 && params.repricesPerDay > 0) {
           for (const p of positions.values()) {
             if (p.units <= 0) continue;
+            if (singleBuy && p.isRed) continue;
             const row =
               marketByKey.get(
                 `${dayIso}:${p.destinationStationId}:${p.typeId}`,
@@ -1951,7 +2737,20 @@ export class StrategyLabService {
             if (!row || !Number.isFinite(row.price) || row.price <= 0) continue;
 
             if (p.listedPriceIsk === null) {
-              p.listedPriceIsk = nextCheaperTick(row.price);
+              const initialListPrice = nextCheaperTick(row.price);
+              const grossListValue = initialListPrice * p.units;
+              const brokerFee =
+                grossListValue * (feeInputs.brokerFeePercent / 100);
+
+              // Cash-constrained: if we can't afford to list, skip listing today.
+              if (brokerFee > 0) {
+                if (brokerFee > cash) continue;
+                cash -= brokerFee;
+                brokerFeesIsk += brokerFee;
+                p.brokerFeesIsk += brokerFee;
+              }
+
+              p.listedPriceIsk = initialListPrice;
               continue;
             }
 
@@ -1967,6 +2766,9 @@ export class StrategyLabService {
 
             if (marginPct <= params.skipRepriceIfMarginPctLeq) {
               repricesSkippedRed++;
+              if (singleBuy) {
+                p.isRed = true;
+              }
               continue;
             }
 
@@ -1975,10 +2777,12 @@ export class StrategyLabService {
               remainingValueGross *
               (relistFeePercent / 100) *
               params.repricesPerDay;
+            // Cash-constrained: if we can't afford the reprice fees, we simply skip the update.
             if (fee > 0) {
+              if (fee > cash) continue;
               cash -= fee;
               relistFeesPaid += fee;
-              if (cash < 0) cash = 0;
+              p.relistFeesIsk += fee;
             }
             p.listedPriceIsk = suggested;
             repricesApplied++;
@@ -1988,6 +2792,7 @@ export class StrategyLabService {
         // Sell pass
         for (const p of positions.values()) {
           if (p.units <= 0) continue;
+          if (singleBuy && p.isRed) continue;
           const row =
             marketByKey.get(
               `${dayIso}:${p.destinationStationId}:${p.typeId}`,
@@ -2003,8 +2808,19 @@ export class StrategyLabService {
           if (sold <= 0) continue;
 
           const unitCost = p.units > 0 ? p.totalCostIsk / p.units : 0;
-          const netSell = getEffectiveSell(p.listedPriceIsk, feeInputs);
-          cash += netSell * sold;
+          const grossSell = p.listedPriceIsk * sold;
+          const salesTax = grossSell * (feeInputs.salesTaxPercent / 100);
+          const netSales = grossSell - salesTax;
+          cash += netSales;
+          grossSalesIsk += grossSell;
+          salesNetIsk += netSales;
+          salesTaxIsk += salesTax;
+          cogsIsk += unitCost * sold;
+          p.grossSalesIsk += grossSell;
+          p.salesNetIsk += netSales;
+          p.salesTaxIsk += salesTax;
+          p.cogsIsk += unitCost * sold;
+          p.unitsSold += sold;
 
           p.units -= sold;
           p.totalCostIsk -= unitCost * sold;
@@ -2015,134 +2831,88 @@ export class StrategyLabService {
           unitsSold += sold;
         }
 
-        // Rebuy trigger
-        const invCost = inventoryCostTotal();
-        const denom = cash + invCost;
-        const cashPct = denom > 0 ? cash / denom : 1;
-        if (cashPct >= params.rebuyTriggerCashPct) {
-          const reserveTarget = denom * params.reserveCashPct;
-          const investable = Math.max(0, cash - reserveTarget);
-          if (investable > 1_000_000) {
-            const anchorDateIso = dayIso;
-            const windowDays = params.params.liquidityOptions?.windowDays ?? 14;
-            const liqKey = `${anchorDateIso}:${windowDays}`;
-            const liqRaw =
-              params.liquidityRawByAnchor.get(liqKey) ??
-              (await this.liquidity.runRaw({
-                windowDays,
-                anchorDate: anchorDateIso,
-              }));
-            if (!params.liquidityRawByAnchor.has(liqKey))
-              params.liquidityRawByAnchor.set(liqKey, liqRaw);
+        // Observe cash% after sells (this is what drives rebuy triggers)
+        observeCashPct();
 
-            const req = {
-              ...(params.params as any),
-              investmentISK: investable,
-            } as PlanPackagesRequest;
+        // Rebuy trigger (disabled in single-buy mode)
+        if (!singleBuy) {
+          const invCost = inventoryCostTotal();
+          const denom = cash + invCost;
+          const cashPct = denom > 0 ? cash / denom : 1;
+          if (cashPct >= params.rebuyTriggerCashPct) {
+            await runPlannerBuy(dayIso, day);
+          }
+        }
 
-            const { plan, buyUnitPriceByType } = await this.buildHistoricalPlan({
-              request: req,
-              anchorDate: anchorDateIso,
-              priceModel: params.priceModel,
-              liquidityRawOverride: liqRaw,
-            });
-
-            if (plan.packages.length > 0) {
-              buyEvents++;
-              totalSpend += plan.totalSpendISK;
-              totalShipping += plan.totalShippingISK;
-              cash -= plan.totalSpendISK + plan.totalShippingISK;
-              if (cash < 0) cash = 0;
-
-              const boughtByPair = new Map<
-                string,
-                { stationId: number; typeId: number; units: number; unitCost: number }
-              >();
-              for (const pkg of plan.packages) {
-                for (const it of pkg.items) {
-                  const unitCost =
-                    buyUnitPriceByType.get(it.typeId) ?? it.unitCost;
-                  const k = key(pkg.destinationStationId, it.typeId);
-                  const cur = boughtByPair.get(k);
-                  if (cur) cur.units += it.units;
-                  else
-                    boughtByPair.set(k, {
-                      stationId: pkg.destinationStationId,
-                      typeId: it.typeId,
-                      units: it.units,
-                      unitCost,
-                    });
-                }
-              }
-
-              const newStationIds = Array.from(
-                new Set(Array.from(boughtByPair.values()).map((x) => x.stationId)),
-              );
-              const newTypeIds = Array.from(
-                new Set(Array.from(boughtByPair.values()).map((x) => x.typeId)),
-              );
-              await ensureMarketRows({
-                stationIds: newStationIds,
-                typeIds: newTypeIds,
-                start: day,
-                end: cycleEnd,
-              });
-
-              for (const b of boughtByPair.values()) {
-                const k = key(b.stationId, b.typeId);
-                const addCost = b.unitCost * b.units;
-                const row =
-                  marketByKey.get(`${dayIso}:${b.stationId}:${b.typeId}`) ??
-                  null;
-                const initialList =
-                  row && row.price > 0 ? nextCheaperTick(row.price) : null;
-
-                const cur = positions.get(k);
-                if (cur) {
-                  cur.units += b.units;
-                  cur.totalCostIsk += addCost;
-                  if (cur.listedPriceIsk === null) cur.listedPriceIsk = initialList;
-                } else {
-                  positions.set(k, {
-                    destinationStationId: b.stationId,
-                    typeId: b.typeId,
-                    units: b.units,
-                    totalCostIsk: addCost,
-                    listedPriceIsk: initialList,
-                  });
-                }
-              }
-            }
+        if (singleBuy) {
+          const hasActive = Array.from(positions.values()).some(
+            (p) => p.units > 0 && !p.isRed,
+          );
+          if (!hasActive) {
+            lastSimDay = day;
+            break;
           }
         }
       }
 
       const capitalEnd = capitalAtCost();
       const profit = capitalEnd - capitalStart;
+      const positionsHeldEnd = Array.from(positions.values()).filter(
+        (p) => p.units > 0,
+      ).length;
+      const avgNetSellPerUnitIsk =
+        unitsSold > 0 ? salesNetIsk / unitsSold : null;
+      const profitCashIsk =
+        salesNetIsk - cogsIsk - totalShipping - brokerFeesIsk - relistFeesPaid;
+      const roiPct =
+        capitalStart > 0 ? (profitCashIsk / capitalStart) * 100 : null;
 
       cycleRows.push({
         cycleIndex: c + 1,
         startDate: formatIsoDateOnly(cycleStart),
-        endDate: formatIsoDateOnly(cycleEnd),
+        endDate: formatIsoDateOnly(lastSimDay),
         profitIsk: profit,
         capitalStartIsk: capitalStart,
         capitalEndIsk: capitalEnd,
+        cashStartIsk: cashStart,
+        inventoryCostStartIsk: invStart,
         cashEndIsk: cash,
         inventoryCostEndIsk: inventoryCostTotal(),
+        cashPctMin,
+        cashPctMax,
         buyEvents,
+        buyDates,
         totalSpendIsk: totalSpend,
         totalShippingIsk: totalShipping,
         relistFeesPaidIsk: relistFeesPaid,
         repricesApplied,
         repricesSkippedRed,
         unitsSold,
+        grossSalesIsk,
+        salesNetIsk,
+        avgNetSellPerUnitIsk,
+        salesTaxIsk,
+        brokerFeesIsk,
+        cogsIsk,
+        profitCashIsk,
+        roiPct,
+        positionsHeldEnd,
       });
 
-      cursor = addDays(cycleEnd, 1);
+      cursor = addDays(lastSimDay, 1);
     }
 
-    const totalProfit = cycleRows.reduce((s, r) => s + r.profitIsk, 0);
-    const avgProfit = cycleRows.length ? totalProfit / cycleRows.length : 0;
+    const totalProfitNavIsk = cycleRows.reduce((s, r) => s + r.profitIsk, 0);
+    const totalProfitCashIsk = cycleRows.reduce(
+      (s, r) => s + r.profitCashIsk,
+      0,
+    );
+    const avgProfitNavIsk = cycleRows.length
+      ? totalProfitNavIsk / cycleRows.length
+      : 0;
+    const avgProfitCashIsk = cycleRows.length
+      ? totalProfitCashIsk / cycleRows.length
+      : 0;
 
     notes.push(
       `Profit accounting: Δ(cash + inventoryCost) per cycle (inventory at cost, rollover-neutral).`,
@@ -2157,14 +2927,61 @@ export class StrategyLabService {
         2,
       )}% treated as red (no update).`,
     );
+    notes.push(`Inventory mode: ${params.inventoryMode}.`);
+    if (singleBuy) {
+      notes.push(
+        `Single-buy mode: one initial plan only; cycle ends when all positions are sold or marked red.`,
+      );
+    }
+
+    // Build per-position summary for repeat-offender analysis (used by robustness runner).
+    const stationIdsForNames = Array.from(
+      new Set(
+        Array.from(positions.values()).map((p) => p.destinationStationId),
+      ),
+    );
+    const typeIdsForNames = Array.from(
+      new Set(Array.from(positions.values()).map((p) => p.typeId)),
+    );
+    const stationInfo = stationIdsForNames.length
+      ? await this.gameData.getStationsWithRegions(stationIdsForNames)
+      : new Map<number, { name: string }>();
+    const typeNames = typeIdsForNames.length
+      ? await this.gameData.getTypeNames(typeIdsForNames)
+      : new Map<number, string>();
+
+    const positionsSummary = Array.from(positions.values()).map((p) => {
+      const profitCashIsk =
+        p.salesNetIsk -
+        p.cogsIsk -
+        p.shippingIsk -
+        p.brokerFeesIsk -
+        p.relistFeesIsk;
+      return {
+        destinationStationId: p.destinationStationId,
+        stationName: stationInfo.get(p.destinationStationId)?.name ?? null,
+        typeId: p.typeId,
+        typeName: typeNames.get(p.typeId) ?? null,
+        isRed: p.isRed,
+        profitCashIsk,
+        totalShippingIsk: p.shippingIsk,
+        totalRelistFeesIsk: p.relistFeesIsk,
+        totalBrokerFeesIsk: p.brokerFeesIsk,
+        unitsSold: p.unitsSold,
+        unitsRemaining: p.units,
+      };
+    });
 
     return {
       strategyId: params.strategyId,
       strategyName: params.strategyName,
-      totalProfitIsk: totalProfit,
-      avgProfitIskPerCycle: avgProfit,
+      totalProfitIsk: totalProfitNavIsk,
+      totalProfitCashIsk,
+      avgProfitIskPerCycle: avgProfitNavIsk,
+      avgProfitCashIskPerCycle: avgProfitCashIsk,
       cycles: cycleRows,
       notes,
+      positionsSummary,
     };
   }
 
@@ -2252,7 +3069,9 @@ export class StrategyLabService {
     // This avoids the "everything falls back to 2%" behavior, which can make calibrated sweeps look
     // artificially flat and overly punitive.
     const globalRaw =
-      marketTotalAll > 0 && soldTotalAll > 0 ? soldTotalAll / marketTotalAll : 0;
+      marketTotalAll > 0 && soldTotalAll > 0
+        ? soldTotalAll / marketTotalAll
+        : 0;
     const fallbackShare =
       globalRaw > 0 ? Math.max(0.0, Math.min(0.2, globalRaw)) : 0.02;
 

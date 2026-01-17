@@ -13,7 +13,10 @@ import {
 } from 'class-validator';
 
 export class CreateTradeStrategyLabSweepDto {
-  @ApiProperty({ example: '2025-11-24', description: 'Start date (YYYY-MM-DD)' })
+  @ApiProperty({
+    example: '2025-11-24',
+    description: 'Start date (YYYY-MM-DD)',
+  })
   @IsString()
   @MaxLength(10)
   startDate!: string;
@@ -41,14 +44,20 @@ export class CreateTradeStrategyLabSweepDto {
   @Min(1)
   testWindowDays!: number;
 
-  @ApiPropertyOptional({ example: 7, description: 'Step size between runs (days)' })
+  @ApiPropertyOptional({
+    example: 7,
+    description: 'Step size between runs (days)',
+  })
   @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(1)
   stepDays?: number;
 
-  @ApiPropertyOptional({ example: 6, description: 'Max runs per scenario per strategy' })
+  @ApiPropertyOptional({
+    example: 6,
+    description: 'Max runs per scenario per strategy',
+  })
   @IsOptional()
   @Type(() => Number)
   @IsInt()
@@ -92,4 +101,3 @@ export class CreateTradeStrategyLabSweepDto {
   @IsEnum(['LOW', 'AVG', 'HIGH'], { each: true })
   priceModels!: Array<'LOW' | 'AVG' | 'HIGH'>;
 }
-

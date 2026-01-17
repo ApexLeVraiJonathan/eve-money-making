@@ -277,7 +277,9 @@ export class LiquidityService {
       items.push({
         typeId: tId,
         typeName: list[0]?.type?.name,
-        volumeM3: list[0]?.type?.volume ? Number(list[0]?.type?.volume) : undefined,
+        volumeM3: list[0]?.type?.volume
+          ? Number(list[0]?.type?.volume)
+          : undefined,
         avgDailyAmount,
         latest,
         avgDailyIskValue,

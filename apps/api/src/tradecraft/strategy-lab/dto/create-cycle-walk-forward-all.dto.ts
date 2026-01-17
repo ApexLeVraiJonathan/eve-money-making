@@ -3,6 +3,7 @@ import { Type } from 'class-transformer';
 import {
   IsEnum,
   IsInt,
+  IsBoolean,
   IsNumber,
   IsOptional,
   IsString,
@@ -83,6 +84,16 @@ export class CreateTradeStrategyCycleWalkForwardAllDto {
 
   @ApiPropertyOptional({
     description:
+      'Single-buy mode: run the planner once at cycle start, then only sell/reprice until positions are sold or red. Disables rebuys.',
+    example: true,
+  })
+  @IsOptional()
+  @Type(() => Boolean)
+  @IsBoolean()
+  singleBuy?: boolean;
+
+  @ApiPropertyOptional({
+    description:
       'Reprices per day (approximated from daily data): if an order is updated today, we apply relist fees multiplied by this number. Default 3.',
     example: 3,
   })
@@ -125,7 +136,8 @@ export class CreateTradeStrategyCycleWalkForwardAllDto {
   sellModel!: 'VOLUME_SHARE';
 
   @ApiProperty({
-    description: 'When sellModel=VOLUME_SHARE: percent of daily volume we can sell (0..1).',
+    description:
+      'When sellModel=VOLUME_SHARE: percent of daily volume we can sell (0..1).',
     example: 0.1,
   })
   @Type(() => Number)
@@ -142,5 +154,14 @@ export class CreateTradeStrategyCycleWalkForwardAllDto {
   @IsOptional()
   @IsEnum(['LOW', 'AVG', 'HIGH'])
   priceModel?: 'LOW' | 'AVG' | 'HIGH';
-}
 
+  @ApiPropertyOptional({
+    enum: ['IGNORE', 'SKIP_EXISTING', 'TOP_OFF'],
+    description:
+      'How the simulator treats existing inventory when planning rebuys. IGNORE matches current Strategy Lab behavior; SKIP_EXISTING matches prod default; TOP_OFF matches prod allowInventoryTopOff.',
+    example: 'SKIP_EXISTING',
+  })
+  @IsOptional()
+  @IsEnum(['IGNORE', 'SKIP_EXISTING', 'TOP_OFF'])
+  inventoryMode?: 'IGNORE' | 'SKIP_EXISTING' | 'TOP_OFF';
+}
