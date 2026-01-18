@@ -20,6 +20,8 @@ import {
   Loader2,
   FileText,
   Store,
+  Copy,
+  Check,
 } from "lucide-react";
 import { Alert, AlertDescription } from "@eve/ui";
 import {
@@ -68,6 +70,7 @@ export default function SellAppraiserPage() {
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Record<string, boolean>>({});
   const [isConfirming, setIsConfirming] = useState(false);
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
   const BROKER_FEE_PCT = Number(process.env.NEXT_PUBLIC_BROKER_FEE_PCT ?? 1.5);
 
@@ -199,6 +202,15 @@ export default function SellAppraiserPage() {
 
   const toggle = (key: string) =>
     setSelected((prev) => ({ ...prev, [key]: !prev[key] }));
+
+  const copySuggestedPrice = async (price: number, key: string) => {
+    try {
+      await navigator.clipboard.writeText(price.toFixed(2));
+      setCopiedKey(key);
+    } catch (err) {
+      console.error("Failed to copy suggested price:", err);
+    }
+  };
 
   const toggleGroup = (group: GroupedResult, check: boolean) => {
     const keys = group.items.map(
@@ -509,6 +521,7 @@ export default function SellAppraiserPage() {
                         const qty = isCommitRow(r)
                           ? r.quantityRemaining
                           : r.quantity;
+                        const suggested = r.suggestedSellPriceTicked;
                         const brokerFee =
                           r.suggestedSellPriceTicked !== null
                             ? qty *
@@ -537,7 +550,26 @@ export default function SellAppraiserPage() {
                               {formatIsk(r.lowestSell)}
                             </td>
                             <td className="py-2 px-3 text-right font-medium tabular-nums">
-                              {formatIsk(r.suggestedSellPriceTicked)}
+                              <div className="flex items-center justify-end gap-2">
+                                <span>{formatIsk(suggested)}</span>
+                                {suggested !== null ? (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      copySuggestedPrice(suggested, key)
+                                    }
+                                    className="inline-flex h-6 w-6 items-center justify-center rounded hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                    title="Copy suggested price"
+                                    aria-label="Copy suggested price"
+                                  >
+                                    {copiedKey === key ? (
+                                      <Check className="h-3.5 w-3.5 text-green-600" />
+                                    ) : (
+                                      <Copy className="h-3.5 w-3.5" />
+                                    )}
+                                  </button>
+                                ) : null}
+                              </div>
                             </td>
                             {useCommit && (
                               <td className="py-2 px-3 text-right font-medium tabular-nums">

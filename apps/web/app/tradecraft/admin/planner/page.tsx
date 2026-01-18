@@ -30,7 +30,11 @@ import { Alert, AlertDescription } from "@eve/ui";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@eve/ui";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@eve/ui";
 import { ChevronDown } from "lucide-react";
-import { usePlanArbitrage, useCommitArbitrage } from "../../api";
+import {
+  usePlanArbitrage,
+  useCommitArbitrage,
+  useAddTransportFee,
+} from "../../api";
 import { ParameterProfileManager } from "../../components/ParameterProfileManager";
 import type { PlanResult, PackagePlan } from "@eve/shared";
 import { LabeledInput } from "@eve/ui";
@@ -41,6 +45,14 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
+} from "@eve/ui";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
 } from "@eve/ui";
 
 const PLANNER_DRAFT_STORAGE_KEY = "planner-draft-v1";
@@ -62,10 +74,14 @@ const COURIER_PRESETS = {
 
 const defaultPayload = {
   shippingCostByStation: {
-    60008494: 45000000,
-    60005686: 19000000,
+    // DODIXIE (60011866): 15M
+    // HEK (60005686): 15M
+    // RENS (60004588): 20M
+    // AMARR (60008494): 25M
+    60008494: 25000000,
+    60005686: 15000000,
     60011866: 15000000,
-    60004588: 25000000,
+    60004588: 20000000,
   },
   // Defaults tuned for Blockade Runner style hauling (safer, smaller volume, higher collateral tolerance)
   packageCapacityM3: COURIER_PRESETS.blockade.maxVolumeM3,
@@ -94,6 +110,10 @@ export default function PlannerPage() {
   const [error, setError] = React.useState<string | null>(null);
   const [data, setData] = React.useState<PlanResult | null>(null);
   const [memo, setMemo] = React.useState("");
+  const [commitDialogOpen, setCommitDialogOpen] = React.useState(false);
+  const [recordShipping, setRecordShipping] = React.useState(true);
+  const [shippingAmount, setShippingAmount] = React.useState<string>("");
+  const [shippingMemo, setShippingMemo] = React.useState<string>("");
   const [copiedDest, setCopiedDest] = React.useState<string | null>(null);
   const [commitSuccess, setCommitSuccess] = React.useState<{
     cycleId: string;
@@ -106,6 +126,7 @@ export default function PlannerPage() {
   // React Query mutations
   const planPackagesMutation = usePlanArbitrage();
   const commitArbitrageMutation = useCommitArbitrage();
+  const addTransportFeeMutation = useAddTransportFee();
 
   const loading = planPackagesMutation.isPending;
 
@@ -819,10 +840,73 @@ export default function PlannerPage() {
     return map;
   }, [data]);
 
+  const suggestedShipping = React.useMemo(() => {
+    if (!data) return null;
+    const n = Number(data.totalShippingISK);
+    return Number.isFinite(n) && n >= 0 ? n : null;
+  }, [data]);
+
+  const suggestedShippingMemo = React.useMemo(() => {
+    if (!data) return "Planner shipping cost";
+    const names = Array.from(
+      new Set(
+        data.packages
+          .map((p) => p.destinationName)
+          .filter((n): n is string => !!n && n.trim().length > 0),
+      ),
+    );
+    if (!names.length) return "Planner shipping cost";
+    const joined = names.slice(0, 4).join(", ");
+    const suffix = names.length > 4 ? ` +${names.length - 4} more` : "";
+    return `Planner shipping: ${joined}${suffix}`;
+  }, [data]);
+
   const handleCopyList = async (destId: string, text: string) => {
     await navigator.clipboard.writeText(text);
     setCopiedDest(destId);
     setTimeout(() => setCopiedDest(null), 2000);
+  };
+
+  const commitPlan = async (opts: { recordShipping: boolean }) => {
+    if (!data) return;
+    setError(null);
+
+    let formattedTransportAmount: string | null = null;
+    if (opts.recordShipping) {
+      const amountNum = parseFloat(shippingAmount);
+      if (isNaN(amountNum) || amountNum <= 0) {
+        setError("Please enter a valid positive shipping amount.");
+        return;
+      }
+      formattedTransportAmount = amountNum.toFixed(2);
+    }
+
+    try {
+      const payload = JSON.parse(json);
+      const body = await commitArbitrageMutation.mutateAsync({
+        request: payload,
+        result: data,
+        memo: memo || undefined,
+      });
+
+      setCommitSuccess({
+        cycleId: body.id,
+        packageCount: data.packages.length,
+      });
+      setCommitDialogOpen(false);
+
+      if (opts.recordShipping && formattedTransportAmount) {
+        await addTransportFeeMutation.mutateAsync({
+          cycleId: body.id,
+          data: {
+            amountIsk: formattedTransportAmount,
+            memo: shippingMemo || undefined,
+          },
+        });
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
   };
 
   return (
@@ -1522,21 +1606,12 @@ export default function PlannerPage() {
               disabled={!data || commitArbitrageMutation.isPending}
               onClick={async () => {
                 if (!data) return;
-                try {
-                  setError(null);
-                  const payload = JSON.parse(json);
-                  const body = await commitArbitrageMutation.mutateAsync({
-                    request: payload,
-                    result: data,
-                    memo: memo || undefined,
-                  });
-                  setCommitSuccess({
-                    cycleId: body.id,
-                    packageCount: data.packages.length,
-                  });
-                } catch (e) {
-                  setError(e instanceof Error ? e.message : String(e));
-                }
+                // Default behavior: propose recording the plan's shipping cost as a transport fee on commit.
+                const suggested = suggestedShipping ?? 0;
+                setRecordShipping(true);
+                setShippingAmount(suggested > 0 ? suggested.toFixed(2) : "");
+                setShippingMemo(suggestedShippingMemo);
+                setCommitDialogOpen(true);
               }}
               className="gap-2"
             >
@@ -1555,6 +1630,129 @@ export default function PlannerPage() {
           </div>
         )}
       </div>
+
+      <Dialog open={commitDialogOpen} onOpenChange={setCommitDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Commit plan</DialogTitle>
+            <DialogDescription>
+              Optionally record shipping/transport cost on the new cycle so it
+              is included in profit automatically.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="flex items-start gap-3">
+              <Checkbox
+                id="recordShipping"
+                checked={recordShipping}
+                onCheckedChange={(v) => setRecordShipping(Boolean(v))}
+                disabled={
+                  commitArbitrageMutation.isPending ||
+                  addTransportFeeMutation.isPending
+                }
+              />
+              <div className="space-y-1">
+                <Label
+                  htmlFor="recordShipping"
+                  className="text-sm font-medium leading-none cursor-pointer"
+                >
+                  Record shipping cost as a transport fee
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  Suggested from this plan:{" "}
+                  <span className="font-medium">
+                    {suggestedShipping !== null
+                      ? formatISK(suggestedShipping)
+                      : "—"}
+                  </span>
+                </p>
+              </div>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="shippingAmount">Amount (ISK)</Label>
+                <Input
+                  id="shippingAmount"
+                  type="number"
+                  placeholder="0.00"
+                  value={shippingAmount}
+                  onChange={(e) => setShippingAmount(e.target.value)}
+                  disabled={
+                    !recordShipping ||
+                    commitArbitrageMutation.isPending ||
+                    addTransportFeeMutation.isPending
+                  }
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="shippingMemo">Memo (optional)</Label>
+                <Input
+                  id="shippingMemo"
+                  type="text"
+                  placeholder="e.g., Jita → Amarr"
+                  value={shippingMemo}
+                  onChange={(e) => setShippingMemo(e.target.value)}
+                  disabled={
+                    !recordShipping ||
+                    commitArbitrageMutation.isPending ||
+                    addTransportFeeMutation.isPending
+                  }
+                />
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setCommitDialogOpen(false)}
+              disabled={
+                commitArbitrageMutation.isPending ||
+                addTransportFeeMutation.isPending
+              }
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => void commitPlan({ recordShipping: false })}
+              disabled={
+                !data ||
+                commitArbitrageMutation.isPending ||
+                addTransportFeeMutation.isPending
+              }
+            >
+              Commit only
+            </Button>
+            <Button
+              type="button"
+              onClick={() => void commitPlan({ recordShipping })}
+              disabled={
+                !data ||
+                commitArbitrageMutation.isPending ||
+                addTransportFeeMutation.isPending
+              }
+              className="gap-2"
+            >
+              {addTransportFeeMutation.isPending ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Recording...
+                </>
+              ) : (
+                <>
+                  <Check className="h-4 w-4" />
+                  {recordShipping ? "Commit + record shipping" : "Commit plan"}
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {error && (
         <Alert variant="destructive">

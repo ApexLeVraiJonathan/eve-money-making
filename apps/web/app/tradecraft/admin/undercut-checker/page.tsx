@@ -278,9 +278,9 @@ export default function UndercutCheckerPage() {
             <p className="text-xs text-muted-foreground">
               {groupingMode === "perOrder" && "Show all orders for each item"}
               {groupingMode === "perCharacter" &&
-                "Show orders selected to consolidate per character/item/station (lowest remaining first)"}
+                "Show orders selected to consolidate per character/item/station (highest remaining first)"}
               {groupingMode === "global" &&
-                "Show orders selected to consolidate per item/station across all characters (lowest remaining first)"}
+                "Show orders selected to consolidate per item/station across all characters (highest remaining first)"}
             </p>
           </div>
 
@@ -394,10 +394,24 @@ export default function UndercutCheckerPage() {
           </div>
 
           {result.map((group, gi) => {
-            const visibleUpdates = group.updates.filter((u) => {
-              const category = getProfitCategory(u.estimatedMarginPercentAfter);
-              return showNegativeProfit || category !== "red";
-            });
+            const visibleUpdates = group.updates
+              .filter((u) => {
+                const category = getProfitCategory(
+                  u.estimatedMarginPercentAfter,
+                );
+                return showNegativeProfit || category !== "red";
+              })
+              // EVE client typically shows larger remaining stacks first; the API can return
+              // "consolidation-friendly" ordering (smallest first), which looks reversed in UI.
+              .toSorted((a, b) => {
+                const byItem = a.itemName.localeCompare(b.itemName);
+                if (byItem !== 0) return byItem;
+                if (a.remaining !== b.remaining)
+                  return b.remaining - a.remaining;
+                if (a.currentPrice !== b.currentPrice)
+                  return b.currentPrice - a.currentPrice;
+                return b.orderId - a.orderId;
+              });
 
             return (
               <Card key={gi}>
