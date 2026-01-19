@@ -246,6 +246,53 @@ model EsiCacheEntry {
   @@map("esi_cache_entries")
 }
 
+/// Latest structure market order snapshot for self-gathered market data.
+/// Kept separate from Adam4EVE ingestion so we can validate before migrating consumers.
+///
+/// NOTE: Structure IDs exceed int4; use BigInt.
+model SelfMarketSnapshotLatest {
+  locationId BigInt   @id @map("location_id") @db.BigInt
+  observedAt DateTime @map("observed_at")
+  /// Raw ESI /markets/structures/{structure_id} payload (array of orders)
+  orders     Json     @map("orders")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([observedAt])
+  @@map("self_market_snapshot_latest")
+}
+
+/// Self-gathered daily aggregated market order trades per structure and type.
+/// This is our analogue to MarketOrderTradeDaily but:
+/// - stored separately
+/// - supports both lower/upper counting modes via hasGone being part of the PK
+/// - uses BigInt for structure IDs and amounts
+model SelfMarketOrderTradeDaily {
+  scanDate   DateTime @map("scan_date") @db.Date
+  locationId BigInt   @map("location_id") @db.BigInt
+  typeId     Int      @map("type_id")
+  isBuyOrder Boolean  @map("is_buy_order")
+  /// hasGone=false => lower-bound (deltas only). hasGone=true => upper-bound (includes eligible disappearances)
+  hasGone    Boolean  @map("has_gone")
+
+  amount   BigInt  @map("amount") @db.BigInt
+  high     Decimal @map("high") @db.Decimal(28, 2)
+  low      Decimal @map("low") @db.Decimal(28, 2)
+  avg      Decimal @map("avg") @db.Decimal(28, 2)
+  orderNum BigInt  @map("order_num") @db.BigInt
+  iskValue Decimal @map("isk_value") @db.Decimal(28, 2)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@id([scanDate, locationId, typeId, isBuyOrder, hasGone])
+  @@index([scanDate])
+  @@index([locationId])
+  @@index([typeId])
+  @@map("self_market_order_trades_daily")
+}
+
 /// Users of the application (can be single owner for now)
 model User {
   id                 String        @id @default(uuid()) @map("id")

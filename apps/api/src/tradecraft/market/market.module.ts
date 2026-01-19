@@ -6,6 +6,7 @@ import { GameDataModule } from '@api/game-data/game-data.module';
 import { CharactersModule } from '@api/characters/characters.module';
 import { DataImportModule } from '@shared/data-import';
 import { ArbitragePackagerModule } from '@app/arbitrage-packager';
+import { SelfMarketModule } from '@api/tradecraft/self-market/self-market.module';
 
 // Services
 import { ArbitrageService } from './services/arbitrage.service';
@@ -26,6 +27,7 @@ import { TrackedStationsController } from './tracked-stations.controller';
   imports: [
     PrismaModule,
     EsiModule,
+    SelfMarketModule,
     forwardRef(() => CyclesModule),
     forwardRef(() => GameDataModule),
     CharactersModule,

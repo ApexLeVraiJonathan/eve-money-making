@@ -46,6 +46,15 @@ export type DiscordOauthConfig = {
   redirectUri: string;
 };
 
+export type MarketSelfGatherConfig = {
+  enabled: boolean;
+  structureId: bigint | null;
+  characterId: number | null;
+  pollMinutes: number;
+  expiryWindowMinutes: number;
+  notifyUserId: string | null;
+};
+
 export const AppConfig = {
   /**
    * Resolve application environment. Accepts APP_ENV (dev|test|prod) or falls back to NODE_ENV.
@@ -241,6 +250,59 @@ export const AppConfig = {
       // New, clearer fields
       login: loginScopes,
       character: characterScopes,
+    };
+  },
+
+  /**
+   * Self-gathered market data collection (structure market polling).
+   */
+  marketSelfGather(): MarketSelfGatherConfig {
+    const enabled =
+      (process.env.MARKET_SELF_GATHER_ENABLED ?? '').toLowerCase() === 'true' ||
+      process.env.MARKET_SELF_GATHER_ENABLED === '1' ||
+      process.env.MARKET_SELF_GATHER_ENABLED === 'yes';
+
+    const structureIdRaw = process.env.MARKET_SELF_GATHER_STRUCTURE_ID ?? '';
+    const structureId =
+      structureIdRaw && structureIdRaw.trim().length > 0
+        ? BigInt(structureIdRaw)
+        : null;
+
+    const characterIdRaw = process.env.MARKET_SELF_GATHER_CHARACTER_ID ?? '';
+    const characterId =
+      characterIdRaw && characterIdRaw.trim().length > 0
+        ? Number(characterIdRaw)
+        : null;
+
+    // Defaults (overridable via env). This makes deployments/dev environments
+    // "just work" for the primary alliance hub without extra configuration.
+    const effectiveStructureId = structureId ?? 1045667241057n;
+    const effectiveCharacterId = characterId ?? 2122151042;
+
+    const pollMinutes = Number(
+      process.env.MARKET_SELF_GATHER_POLL_MINUTES ?? 10,
+    );
+    const expiryWindowMinutes = Number(
+      process.env.MARKET_SELF_GATHER_EXPIRY_WINDOW_MINUTES ?? 360,
+    );
+
+    const notifyUserIdRaw = process.env.MARKET_SELF_GATHER_NOTIFY_USER_ID ?? '';
+    const notifyUserId =
+      notifyUserIdRaw && notifyUserIdRaw.trim().length > 0
+        ? notifyUserIdRaw.trim()
+        : null;
+
+    return {
+      enabled,
+      structureId: effectiveStructureId,
+      characterId: effectiveCharacterId,
+      pollMinutes:
+        Number.isFinite(pollMinutes) && pollMinutes > 0 ? pollMinutes : 10,
+      expiryWindowMinutes:
+        Number.isFinite(expiryWindowMinutes) && expiryWindowMinutes >= 0
+          ? expiryWindowMinutes
+          : 360,
+      notifyUserId,
     };
   },
 

@@ -10,6 +10,8 @@ import { CharactersModule } from '@api/characters/characters.module';
 import { NotificationsModule } from '@api/notifications/notifications.module';
 import { SkillPlansModule } from '@api/skill-plans/skill-plans.module';
 import { SkillFarmModule } from '@api/skill-farm/skill-farm.module';
+import { EsiModule } from '@api/esi/esi.module';
+import { SelfMarketModule } from '@api/tradecraft/self-market/self-market.module';
 
 @Module({
   imports: [
@@ -22,6 +24,8 @@ import { SkillFarmModule } from '@api/skill-farm/skill-farm.module';
     NotificationsModule,
     SkillPlansModule,
     SkillFarmModule,
+    EsiModule,
+    SelfMarketModule,
   ],
   providers: [JobsService, Logger],
   controllers: [JobsController],

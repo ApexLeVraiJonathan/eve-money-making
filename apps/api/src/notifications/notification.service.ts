@@ -124,6 +124,30 @@ export class NotificationService {
   }
 
   /**
+   * Send a simple system alert DM to a specific user.
+   *
+   * Intended for background jobs (e.g., market self-gathering) to report
+   * persistent failures without crashing the job runner.
+   */
+  async sendSystemAlertDm(params: {
+    userId: string;
+    title: string;
+    lines: string[];
+  }): Promise<void> {
+    try {
+      const discordUserId = await this.getDiscordUserIdForUser(params.userId);
+      const content = [`**${params.title}**`, '', ...params.lines].join('\n');
+      await this.discordDm.sendDirectMessage(discordUserId, content);
+    } catch (e) {
+      this.logger.warn(
+        `Failed to send system alert DM: ${
+          e instanceof Error ? e.message : String(e ?? 'unknown')
+        }`,
+      );
+    }
+  }
+
+  /**
    * Notify all opted-in users that a new cycle has been planned.
    */
   async notifyCyclePlanned(cycleId: string): Promise<void> {

@@ -15,6 +15,7 @@ import {
   Zap,
   TrendingUp,
   ArrowLeftRight,
+  Database,
 } from "lucide-react";
 
 export type NavItem = {
@@ -158,6 +159,11 @@ export const APPS: AppConfig[] = [
         url: "/tradecraft/admin/undercut-checker",
         icon: TrendingUp,
         items: [
+          {
+            name: "Self Market",
+            url: "/tradecraft/admin/self-market",
+            icon: Database,
+          },
           {
             name: "Strategy Lab",
             url: "/tradecraft/admin/strategy-lab",

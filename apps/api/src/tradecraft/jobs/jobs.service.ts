@@ -13,6 +13,7 @@ import { NotificationService } from '@api/notifications/notification.service';
 import { SkillPlansService } from '@api/skill-plans/skill-plans.service';
 import { SkillFarmService } from '@api/skill-farm/skill-farm.service';
 import type { SkillFarmTrackingEntry } from '@eve/api-contracts';
+import { SelfMarketCollectorService } from '@api/tradecraft/self-market/self-market-collector.service';
 
 @Injectable()
 export class JobsService {
@@ -29,6 +30,7 @@ export class JobsService {
     private readonly notifications: NotificationService,
     private readonly skillPlans: SkillPlansService,
     private readonly skillFarm: SkillFarmService,
+    private readonly selfMarket: SelfMarketCollectorService,
   ) {}
 
   private jobsEnabled(): boolean {
@@ -233,6 +235,62 @@ export class JobsService {
         `Daily import failed: ${e instanceof Error ? e.message : String(e)}`,
       );
     }
+  }
+
+  @Cron(CronExpression.EVERY_10_MINUTES)
+  async runSelfMarketGathering(): Promise<void> {
+    if (
+      !this.jobsEnabled() ||
+      !this.jobFlag('JOB_SELF_MARKET_GATHER_ENABLED', true)
+    ) {
+      return;
+    }
+
+    const cfg = AppConfig.marketSelfGather();
+    if (!cfg.enabled) return;
+
+    try {
+      const res = await this.selfMarket.collectStructureOnce();
+      this.selfMarket.markSuccess();
+      this.logger.debug(
+        `Self market gather ok: structure=${cfg.structureId?.toString()} orders=${res.orderCount} keys=${res.tradesKeys}`,
+      );
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e ?? 'unknown');
+      this.logger.warn(`Self market gather failed: ${msg}`);
+
+      if (this.selfMarket.shouldNotifyFailure(new Date())) {
+        await this.notifySelfMarketFailure(msg).catch(() => undefined);
+      }
+    }
+  }
+
+  private async notifySelfMarketFailure(message: string): Promise<void> {
+    const cfg = AppConfig.marketSelfGather();
+    const characterId = cfg.characterId;
+    let userId: string | null = null;
+
+    if (characterId) {
+      const c = await this.prisma.eveCharacter.findUnique({
+        where: { id: characterId },
+        select: { userId: true, name: true, managedBy: true },
+      });
+      userId = c?.userId ?? null;
+    }
+
+    userId = userId ?? cfg.notifyUserId;
+    if (!userId) return;
+
+    const structureId = cfg.structureId?.toString() ?? '(unknown)';
+    await this.notifications.sendSystemAlertDm({
+      userId,
+      title: 'Market self-gathering warning',
+      lines: [
+        `Structure: ${structureId}`,
+        `CharacterId: ${String(characterId ?? '(unset)')}`,
+        `Error: ${message}`,
+      ],
+    });
   }
 
   /**
