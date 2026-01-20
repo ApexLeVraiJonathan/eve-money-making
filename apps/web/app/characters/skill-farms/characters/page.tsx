@@ -51,7 +51,8 @@ function CharactersContent() {
           c.requirements.biology.status === "pass" &&
           c.requirements.cybernetics.status === "pass" &&
           c.requirements.remap.status === "pass" &&
-          c.requirements.training.status === "pass";
+          c.requirements.training.status === "pass" &&
+          c.requirements.implants.status === "pass";
 
         const isActive = c.config.isActive ?? c.config.isActive;
 
@@ -79,7 +80,7 @@ function CharactersContent() {
             <CardContent className="space-y-3 text-xs text-foreground/80">
               <div className="flex flex-wrap gap-2">
                 <RequirementBadge
-                  label="5.5M SP"
+                  label="5.0M SP"
                   status={c.requirements.minSp.status}
                 />
                 <RequirementBadge
@@ -95,11 +96,11 @@ function CharactersContent() {
                   status={c.requirements.remap.status}
                 />
                 <RequirementBadge
-                  label="Can train"
+                  label="Omega"
                   status={c.requirements.training.status}
                 />
                 <RequirementBadge
-                  label="Training pod & Biology implant"
+                  label="+5 Per/Wil & BY-810"
                   status={c.requirements.implants.status}
                 />
               </div>

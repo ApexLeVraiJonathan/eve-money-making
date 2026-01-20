@@ -285,83 +285,83 @@ export class SelfMarketCollectorService {
     // avoid "expired transaction" errors.
     await this.prisma.$transaction(
       async (tx) => {
-      await tx.selfMarketSnapshotLatest.upsert({
-        where: { locationId },
-        create: {
-          locationId,
-          observedAt,
-          orders: currentOrders as unknown as object,
-        },
-        update: { observedAt, orders: currentOrders as unknown as object },
-      });
-
-      for (const agg of aggs.values()) {
-        const where = {
-          scanDate_locationId_typeId_isBuyOrder_hasGone: {
-            scanDate: agg.scanDate,
-            locationId: agg.locationId,
-            typeId: agg.typeId,
-            isBuyOrder: agg.isBuyOrder,
-            hasGone: agg.hasGone,
+        await tx.selfMarketSnapshotLatest.upsert({
+          where: { locationId },
+          create: {
+            locationId,
+            observedAt,
+            orders: currentOrders as unknown as object,
           },
-        } as const;
-
-        const existing = await tx.selfMarketOrderTradeDaily.findUnique({
-          where,
-          select: {
-            amount: true,
-            iskValue: true,
-            high: true,
-            low: true,
-            orderNum: true,
-          },
+          update: { observedAt, orders: currentOrders as unknown as object },
         });
 
-        if (!existing) {
-          const avg =
-            agg.amount > 0n
-              ? agg.iskValue.div(new Prisma.Decimal(agg.amount.toString()))
-              : new Prisma.Decimal('0');
-          await tx.selfMarketOrderTradeDaily.create({
-            data: {
+        for (const agg of aggs.values()) {
+          const where = {
+            scanDate_locationId_typeId_isBuyOrder_hasGone: {
               scanDate: agg.scanDate,
               locationId: agg.locationId,
               typeId: agg.typeId,
               isBuyOrder: agg.isBuyOrder,
               hasGone: agg.hasGone,
-              amount: agg.amount,
-              orderNum: agg.orderNum,
-              iskValue: agg.iskValue,
-              high: agg.high,
-              low: agg.low,
-              avg,
+            },
+          } as const;
+
+          const existing = await tx.selfMarketOrderTradeDaily.findUnique({
+            where,
+            select: {
+              amount: true,
+              iskValue: true,
+              high: true,
+              low: true,
+              orderNum: true,
             },
           });
-          continue;
+
+          if (!existing) {
+            const avg =
+              agg.amount > 0n
+                ? agg.iskValue.div(new Prisma.Decimal(agg.amount.toString()))
+                : new Prisma.Decimal('0');
+            await tx.selfMarketOrderTradeDaily.create({
+              data: {
+                scanDate: agg.scanDate,
+                locationId: agg.locationId,
+                typeId: agg.typeId,
+                isBuyOrder: agg.isBuyOrder,
+                hasGone: agg.hasGone,
+                amount: agg.amount,
+                orderNum: agg.orderNum,
+                iskValue: agg.iskValue,
+                high: agg.high,
+                low: agg.low,
+                avg,
+              },
+            });
+            continue;
+          }
+
+          const newAmount = existing.amount + agg.amount;
+          const newIsk = existing.iskValue.add(agg.iskValue);
+          const newOrderNum = existing.orderNum + agg.orderNum;
+          const newHigh = maxDec(existing.high, agg.high);
+          const newLow = minDec(existing.low, agg.low);
+          const newAvg =
+            newAmount > 0n
+              ? newIsk.div(new Prisma.Decimal(newAmount.toString()))
+              : new Prisma.Decimal('0');
+
+          await tx.selfMarketOrderTradeDaily.update({
+            where,
+            data: {
+              amount: newAmount,
+              iskValue: newIsk,
+              orderNum: newOrderNum,
+              high: newHigh,
+              low: newLow,
+              avg: newAvg,
+            },
+          });
         }
-
-        const newAmount = existing.amount + agg.amount;
-        const newIsk = existing.iskValue.add(agg.iskValue);
-        const newOrderNum = existing.orderNum + agg.orderNum;
-        const newHigh = maxDec(existing.high, agg.high);
-        const newLow = minDec(existing.low, agg.low);
-        const newAvg =
-          newAmount > 0n
-            ? newIsk.div(new Prisma.Decimal(newAmount.toString()))
-            : new Prisma.Decimal('0');
-
-        await tx.selfMarketOrderTradeDaily.update({
-          where,
-          data: {
-            amount: newAmount,
-            iskValue: newIsk,
-            orderNum: newOrderNum,
-            high: newHigh,
-            low: newLow,
-            avg: newAvg,
-          },
-        });
-      }
       },
       { timeout: 60_000, maxWait: 10_000 },
     );

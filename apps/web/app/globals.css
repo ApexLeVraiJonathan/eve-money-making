@@ -213,4 +213,25 @@
       animation: none;
     }
   }
+
+  /* Skill Farm page CTA pulse (Server Components-safe; no styled-jsx) */
+  @keyframes sf-pulse-glow {
+    0%,
+    100% {
+      box-shadow: 0 0 20px rgba(253, 184, 19, 0.28);
+    }
+    50% {
+      box-shadow: 0 0 34px rgba(253, 184, 19, 0.45);
+    }
+  }
+
+  .sf-pulse-glow {
+    animation: sf-pulse-glow 2s ease-in-out infinite;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .sf-pulse-glow {
+      animation: none;
+    }
+  }
 }

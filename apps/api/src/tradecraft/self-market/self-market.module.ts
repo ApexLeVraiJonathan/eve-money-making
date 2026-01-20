@@ -12,4 +12,3 @@ import { SelfMarketController } from './self-market.controller';
   exports: [SelfMarketCollectorService],
 })
 export class SelfMarketModule {}
-

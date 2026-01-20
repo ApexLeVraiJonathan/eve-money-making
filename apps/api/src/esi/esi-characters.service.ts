@@ -549,4 +549,58 @@ export class EsiCharactersService {
     });
     return data;
   }
+
+  /**
+   * Active implants in the current clone (authenticated).
+   *
+   * Wraps ESI `/latest/characters/{character_id}/implants/`.
+   */
+  async getImplants(characterId: number, reqId?: string): Promise<number[]> {
+    const { data } = await this.esi.fetchJson<number[]>(
+      `/latest/characters/${characterId}/implants/`,
+      { characterId, reqId },
+    );
+    return Array.isArray(data) ? data.map((x) => Number(x)) : [];
+  }
+
+  /**
+   * Clone overview including jump clones and their implant sets (authenticated).
+   *
+   * Wraps ESI `/latest/characters/{character_id}/clones/`.
+   */
+  async getClones(
+    characterId: number,
+    reqId?: string,
+  ): Promise<{
+    home_location?: {
+      location_id: number;
+      location_type: 'station' | 'structure' | string;
+    };
+    jump_clones?: Array<{
+      jump_clone_id: number;
+      location_id: number;
+      location_type: 'station' | 'structure' | string;
+      name?: string | null;
+      implant_ids?: number[];
+    }>;
+    last_clone_jump_date?: string;
+    last_station_change_date?: string;
+  }> {
+    const { data } = await this.esi.fetchJson<{
+      home_location?: {
+        location_id: number;
+        location_type: 'station' | 'structure' | string;
+      };
+      jump_clones?: Array<{
+        jump_clone_id: number;
+        location_id: number;
+        location_type: 'station' | 'structure' | string;
+        name?: string | null;
+        implant_ids?: number[];
+      }>;
+      last_clone_jump_date?: string;
+      last_station_change_date?: string;
+    }>(`/latest/characters/${characterId}/clones/`, { characterId, reqId });
+    return data ?? {};
+  }
 }

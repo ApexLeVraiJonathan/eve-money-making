@@ -13,9 +13,34 @@ import type {
 } from '@eve/api-contracts';
 import { CharacterManagementService } from '../character-management/character-management.service';
 import { SkillPlansService } from '../skill-plans/skill-plans.service';
+import {
+  estimateTrainingTimeSeconds,
+  type AttributeSet,
+  type SkillPrimaryAttribute,
+} from '@eve/shared/skills';
 
 const NON_EXTRACTABLE_SP = 5_500_000;
 const EXTRACTOR_CHUNK_SP = 500_000;
+const MIN_START_FARM_SP = 5_000_000;
+
+// Skill type IDs (EVE type_id) for prerequisite skills.
+// Sources: SDE / ESI ecosystems (e.g. everef).
+const SKILL_ID_BIOLOGY = 3405;
+const SKILL_ID_CYBERNETICS = 3411;
+
+// Implant type IDs (EVE type_id) for the recommended training pod.
+// We accept "+5 or better" by whitelisting known variants.
+const IMPLANTS_PERCEPTION_AT_LEAST_5 = new Set<number>([
+  10217, // Ocular Filter - Improved (+5)
+  10218, // Ocular Filter - Advanced (+6)
+  10219, // Ocular Filter - Elite (+7 / rare/unobtainable in some eras)
+]);
+const IMPLANTS_WILLPOWER_AT_LEAST_5 = new Set<number>([
+  10213, // Neural Boost - Improved (+5)
+  10214, // Neural Boost - Advanced (+6)
+  10215, // Neural Boost - Elite (+7 / rare/unobtainable in some eras)
+]);
+const IMPLANT_BIOLOGY_BY_810 = 27148; // Eifyr and Co. 'Alchemist' Biology BY-810
 
 @Injectable()
 export class SkillFarmService {
@@ -24,6 +49,198 @@ export class SkillFarmService {
     private readonly characterManagement: CharacterManagementService,
     private readonly skillPlans: SkillPlansService,
   ) {}
+
+  private buildClassicRemap(
+    primary: SkillPrimaryAttribute,
+    secondary: SkillPrimaryAttribute,
+  ): AttributeSet {
+    // Classic 27/21/17/17/17 pattern (base 17 + 10 + 4)
+    const base: AttributeSet = {
+      intelligence: 17,
+      memory: 17,
+      perception: 17,
+      willpower: 17,
+      charisma: 17,
+    };
+    base[primary] = 27;
+    base[secondary] = 21;
+    return base;
+  }
+
+  private countPrereqs(row: {
+    prerequisite1Id: number | null;
+    prerequisite2Id: number | null;
+    prerequisite3Id: number | null;
+  }): number {
+    return (
+      (row.prerequisite1Id ? 1 : 0) +
+      (row.prerequisite2Id ? 1 : 0) +
+      (row.prerequisite3Id ? 1 : 0)
+    );
+  }
+
+  async previewFarmPlan(
+    _userId: string,
+    input: {
+      primaryAttribute?:
+        | 'intelligence'
+        | 'memory'
+        | 'perception'
+        | 'willpower'
+        | 'charisma';
+      secondaryAttribute?:
+        | 'intelligence'
+        | 'memory'
+        | 'perception'
+        | 'willpower'
+        | 'charisma';
+      planDays?: number;
+      minSkillDays?: number;
+      maxPrerequisites?: number;
+      maxSkills?: number;
+      excludeNameContains?: string[];
+    },
+  ) {
+    const primary = (input.primaryAttribute ??
+      'intelligence') as SkillPrimaryAttribute;
+    const secondary = (input.secondaryAttribute ??
+      'memory') as SkillPrimaryAttribute;
+    const planDays = Math.min(Math.max(input.planDays ?? 90, 30), 365);
+    const minSkillDays = Math.min(Math.max(input.minSkillDays ?? 8, 1), 60);
+    const maxPrereqs = Math.min(Math.max(input.maxPrerequisites ?? 1, 0), 3);
+    const maxSkills = Math.min(Math.max(input.maxSkills ?? 12, 1), 50);
+    const excludeNeedles = (input.excludeNameContains ?? [])
+      .map((s) => s.trim().toLowerCase())
+      .filter(Boolean);
+
+    const attrs = this.buildClassicRemap(primary, secondary);
+    const minSeconds = minSkillDays * 24 * 3600;
+    const targetSeconds = planDays * 24 * 3600;
+
+    const rows = await this.prisma.skillDefinition.findMany({
+      where: {
+        type: { published: true },
+        rank: { not: null },
+        primaryAttribute: primary,
+        secondaryAttribute: secondary,
+      },
+      select: {
+        typeId: true,
+        rank: true,
+        primaryAttribute: true,
+        secondaryAttribute: true,
+        prerequisite1Id: true,
+        prerequisite1Level: true,
+        prerequisite2Id: true,
+        prerequisite2Level: true,
+        prerequisite3Id: true,
+        prerequisite3Level: true,
+        type: { select: { name: true } },
+      },
+      orderBy: { type: { name: 'asc' } },
+    });
+
+    const candidates = rows
+      .map((r) => {
+        const rank = r.rank ?? 1;
+        const prereqCount = this.countPrereqs({
+          prerequisite1Id: r.prerequisite1Id ?? null,
+          prerequisite2Id: r.prerequisite2Id ?? null,
+          prerequisite3Id: r.prerequisite3Id ?? null,
+        });
+        const estSeconds = estimateTrainingTimeSeconds({
+          currentLevel: 0,
+          targetLevel: 5,
+          rank,
+          attrs,
+          primary,
+          secondary,
+        });
+        return {
+          skillId: r.typeId,
+          name: r.type.name,
+          rank,
+          primaryAttribute: r.primaryAttribute,
+          secondaryAttribute: r.secondaryAttribute,
+          prerequisites: [
+            r.prerequisite1Id
+              ? {
+                  skillId: r.prerequisite1Id,
+                  level: r.prerequisite1Level ?? 1,
+                }
+              : null,
+            r.prerequisite2Id
+              ? {
+                  skillId: r.prerequisite2Id,
+                  level: r.prerequisite2Level ?? 1,
+                }
+              : null,
+            r.prerequisite3Id
+              ? {
+                  skillId: r.prerequisite3Id,
+                  level: r.prerequisite3Level ?? 1,
+                }
+              : null,
+          ].filter((x): x is { skillId: number; level: number } => !!x),
+          prereqCount,
+          estimatedSecondsToV: estSeconds,
+        };
+      })
+      .filter((c) => c.prereqCount <= maxPrereqs)
+      .filter((c) => c.estimatedSecondsToV >= minSeconds)
+      .filter((c) => {
+        if (excludeNeedles.length === 0) return true;
+        const name = c.name.toLowerCase();
+        return !excludeNeedles.some((needle) => name.includes(needle));
+      })
+      .sort((a, b) => b.estimatedSecondsToV - a.estimatedSecondsToV);
+
+    const picked: typeof candidates = [];
+    let total = 0;
+    for (const c of candidates) {
+      if (picked.length >= maxSkills) break;
+      picked.push(c);
+      total += c.estimatedSecondsToV;
+      if (total >= targetSeconds) break;
+    }
+
+    const roman = ['I', 'II', 'III', 'IV', 'V'];
+    const planName = `Skill Farm - ${primary}/${secondary} Crop (${planDays}d)`;
+    const textLines: string[] = [];
+    textLines.push(`[Skill Plan] ${planName}`);
+    textLines.push('');
+    for (const step of picked) {
+      textLines.push(`${step.name} ${roman[4]}`);
+    }
+
+    return {
+      planName,
+      recommendedAttributes: attrs,
+      assumptions: {
+        primary,
+        secondary,
+        minSkillDays,
+        planDays,
+        maxPrereqs,
+        maxSkills,
+      },
+      totalEstimatedSeconds: total,
+      steps: picked.map((s, idx) => ({
+        order: idx,
+        skillId: s.skillId,
+        name: s.name,
+        targetLevel: 5,
+        rank: s.rank,
+        estimatedSecondsToV: s.estimatedSecondsToV,
+        prerequisites: s.prerequisites,
+      })),
+      eveImportText: textLines.join('\n'),
+      notes: [
+        'This is a crop-skill list only (prereq skills are not included in the text). Ensure each character can inject these skills first.',
+        'For “cheap books”, verify skillbook prices in-market before committing; SDE does not encode book cost.',
+      ],
+    };
+  }
 
   private toRequirement(
     key: string,
@@ -37,6 +254,22 @@ export class SkillFarmService {
       status: ok ? 'pass' : 'fail',
       details: details ?? null,
     };
+  }
+
+  private getTrainedSkillLevel(
+    skills: CharacterSkillsResponse,
+    skillId: number,
+  ): number {
+    const row = skills.skills.find((s) => s.skillId === skillId);
+    return row?.trainedSkillLevel ?? 0;
+  }
+
+  private errorToReason(err: unknown): string {
+    if (err && typeof err === 'object' && 'message' in err) {
+      const msg = (err as { message?: unknown }).message;
+      if (typeof msg === 'string' && msg.trim()) return msg;
+    }
+    return 'Unknown error';
   }
 
   async getSettingsForUser(userId: string): Promise<SkillFarmSettings> {
@@ -139,6 +372,8 @@ export class SkillFarmService {
   async listCharactersWithStatus(
     userId: string,
   ): Promise<SkillFarmCharacterStatus[]> {
+    const now = new Date();
+
     const [user, configs] = await Promise.all([
       this.prisma.user.findUnique({
         where: { id: userId },
@@ -147,6 +382,7 @@ export class SkillFarmService {
             select: {
               id: true,
               name: true,
+              eveAccountId: true,
             },
             orderBy: { name: 'asc' },
           },
@@ -164,72 +400,304 @@ export class SkillFarmService {
       configByChar.set(cfg.characterId, cfg);
     }
 
+    const accountIds = Array.from(
+      new Set(
+        user.characters
+          .map((c) => c.eveAccountId)
+          .filter((x): x is string => !!x),
+      ),
+    );
+
+    const subs =
+      accountIds.length > 0
+        ? await this.prisma.eveAccountSubscription.findMany({
+            where: {
+              eveAccountId: { in: accountIds },
+              isActive: true,
+              expiresAt: { gt: now },
+              type: { in: ['PLEX'] },
+            },
+            select: { eveAccountId: true, type: true },
+          })
+        : [];
+
+    const isPlexedByAccount = new Map<string, boolean>();
+    for (const accountId of accountIds) {
+      isPlexedByAccount.set(accountId, false);
+    }
+    for (const s of subs) {
+      if (!s.eveAccountId) continue;
+      if (s.type === 'PLEX') {
+        isPlexedByAccount.set(s.eveAccountId, true);
+      }
+    }
+
     const result: SkillFarmCharacterStatus[] = [];
 
-    for (const c of user.characters) {
-      // Load live skill data for this character
-      const [skills, attrs] = await Promise.all([
-        this.characterManagement.getCharacterSkills(userId, c.id),
-        this.characterManagement.getCharacterAttributes(userId, c.id),
-      ]);
+    const fetched = new Map<
+      number,
+      {
+        skills:
+          | { ok: true; value: CharacterSkillsResponse }
+          | { ok: false; reason: string };
+        attrs:
+          | { ok: true; value: CharacterAttributesResponse }
+          | { ok: false; reason: string };
+        clones:
+          | {
+              ok: true;
+              value: Awaited<
+                ReturnType<CharacterManagementService['getCharacterClones']>
+              >;
+            }
+          | { ok: false; reason: string };
+        activeImplants:
+          | { ok: true; value: number[] }
+          | { ok: false; reason: string };
+      }
+    >();
 
-      const totalSp = skills.totalSp ?? 0;
+    // Fetch ESI-backed snapshots per character. Keep this sequential per character
+    // to be gentle on ESI rate limits while still parallelising within a character.
+    for (const c of user.characters) {
+      const [skillsRes, attrsRes, clonesRes, activeImplantsRes] =
+        await Promise.allSettled([
+          this.characterManagement.getCharacterSkills(userId, c.id),
+          this.characterManagement.getCharacterAttributes(userId, c.id),
+          this.characterManagement.getCharacterClones(userId, c.id),
+          this.characterManagement
+            .getCharacterImplants(userId, c.id)
+            .then((x) => x.implants),
+        ]);
+
+      const skills =
+        skillsRes.status === 'fulfilled'
+          ? ({ ok: true, value: skillsRes.value } as const)
+          : ({
+              ok: false,
+              reason: this.errorToReason(skillsRes.reason),
+            } as const);
+      const attrs =
+        attrsRes.status === 'fulfilled'
+          ? ({ ok: true, value: attrsRes.value } as const)
+          : ({
+              ok: false,
+              reason: this.errorToReason(attrsRes.reason),
+            } as const);
+      const clones =
+        clonesRes.status === 'fulfilled'
+          ? ({ ok: true, value: clonesRes.value } as const)
+          : ({
+              ok: false,
+              reason: this.errorToReason(clonesRes.reason),
+            } as const);
+      const activeImplants =
+        activeImplantsRes.status === 'fulfilled'
+          ? ({ ok: true, value: activeImplantsRes.value } as const)
+          : ({
+              ok: false,
+              reason: this.errorToReason(activeImplantsRes.reason),
+            } as const);
+
+      fetched.set(c.id, { skills, attrs, clones, activeImplants });
+    }
+
+    for (const c of user.characters) {
+      const snapshot = fetched.get(c.id);
+      if (!snapshot) continue;
+
+      const totalSp = snapshot.skills.ok
+        ? (snapshot.skills.value.totalSp ?? 0)
+        : 0;
       const nonExtractableSp = Math.min(totalSp, NON_EXTRACTABLE_SP);
 
-      const biology = this.findSkillLevel(skills, 'Biology');
-      const cybernetics = this.findSkillLevel(skills, 'Cybernetics');
+      const biology = snapshot.skills.ok
+        ? this.getTrainedSkillLevel(snapshot.skills.value, SKILL_ID_BIOLOGY)
+        : 0;
+      const cybernetics = snapshot.skills.ok
+        ? this.getTrainedSkillLevel(snapshot.skills.value, SKILL_ID_CYBERNETICS)
+        : 0;
 
-      const minSpReq = this.toRequirement(
-        'minSp',
-        'Minimum 5.5M SP',
-        totalSp >= NON_EXTRACTABLE_SP,
-        `Total SP: ${totalSp.toLocaleString()} (non-extractable floor: ${NON_EXTRACTABLE_SP.toLocaleString()})`,
-      );
+      const minSpReq = snapshot.skills.ok
+        ? this.toRequirement(
+            'minSp',
+            'Minimum 5.0M SP',
+            totalSp >= MIN_START_FARM_SP,
+            `Total SP: ${totalSp.toLocaleString()} (target: ${MIN_START_FARM_SP.toLocaleString()})`,
+          )
+        : ({
+            key: 'minSp',
+            label: 'Minimum 5.0M SP',
+            status: 'warning',
+            details: `Could not load skills: ${snapshot.skills.reason}`,
+          } satisfies SkillFarmRequirementEntry);
 
-      const biologyReq = this.toRequirement(
-        'biology',
-        'Biology V',
-        biology >= 5,
-        `Current level: ${biology}`,
-      );
+      const biologyReq = snapshot.skills.ok
+        ? this.toRequirement(
+            'biology',
+            'Biology V',
+            biology >= 5,
+            `Current level: ${biology}`,
+          )
+        : ({
+            key: 'biology',
+            label: 'Biology V',
+            status: 'warning',
+            details: `Could not load skills: ${snapshot.skills.reason}`,
+          } satisfies SkillFarmRequirementEntry);
 
-      const cyberneticsReq = this.toRequirement(
-        'cybernetics',
-        'Cybernetics V',
-        cybernetics >= 5,
-        `Current level: ${cybernetics}`,
-      );
+      const cyberneticsReq = snapshot.skills.ok
+        ? this.toRequirement(
+            'cybernetics',
+            'Cybernetics V',
+            cybernetics >= 5,
+            `Current level: ${cybernetics}`,
+          )
+        : ({
+            key: 'cybernetics',
+            label: 'Cybernetics V',
+            status: 'warning',
+            details: `Could not load skills: ${snapshot.skills.reason}`,
+          } satisfies SkillFarmRequirementEntry);
 
-      const remapReq = this.toRequirement(
-        'remap',
-        'At least one remap available',
-        (attrs.bonusRemaps ?? 0) > 0,
-        `Bonus remaps: ${attrs.bonusRemaps ?? 0}`,
-      );
+      const remapReq = snapshot.attrs.ok
+        ? (() => {
+            const attrs = snapshot.attrs.value;
+            const bonusRemaps = attrs.bonusRemaps ?? 0;
+            const cooldownIso = attrs.accruedRemapCooldownDate;
+            const cooldownDate = cooldownIso ? new Date(cooldownIso) : null;
+            const cooldownPassed = cooldownDate ? cooldownDate <= now : true;
+            const remapAvailable = bonusRemaps > 0 || cooldownPassed;
+            return this.toRequirement(
+              'remap',
+              'At least one remap available',
+              remapAvailable,
+              cooldownIso
+                ? `Bonus remaps: ${bonusRemaps}. Cooldown: ${cooldownIso}`
+                : `Bonus remaps: ${bonusRemaps}. Cooldown: none`,
+            );
+          })()
+        : ({
+            key: 'remap',
+            label: 'At least one remap available',
+            status: 'warning',
+            details: `Could not load attributes: ${snapshot.attrs.reason}`,
+          } satisfies SkillFarmRequirementEntry);
 
-      // Training capability: for V1 mark as pass if they have any skills and a non-empty queue
-      const queue = await this.characterManagement.getCharacterTrainingQueue(
-        userId,
-        c.id,
-      );
-      const canTrain = !queue.isQueueEmpty;
-      const trainingReq = this.toRequirement(
-        'training',
-        'Character can train skills (Omega/MCT & queue)',
-        canTrain,
-        canTrain
-          ? 'Training queue active'
-          : 'Training queue empty or character not training',
-      );
+      const accountId = c.eveAccountId ?? null;
+      let trainingReq: SkillFarmRequirementEntry;
+      if (!accountId) {
+        trainingReq = {
+          key: 'training',
+          label: 'Account is Omega (PLEX period active)',
+          status: 'warning',
+          details:
+            'Character is not assigned to an account; assign it in /characters/accounts so Omega status can be computed.',
+        };
+      } else {
+        const isPlexed = isPlexedByAccount.get(accountId) ?? false;
+        trainingReq = this.toRequirement(
+          'training',
+          'Account is Omega (PLEX period active)',
+          isPlexed,
+          isPlexed
+            ? 'Active PLEX period found for the assigned account.'
+            : 'No active PLEX period found for the assigned account.',
+        );
+      }
 
-      // Implants: V1 placeholder until cloning/implant data is wired
-      const implantsReq: SkillFarmRequirementEntry = {
-        key: 'implants',
-        label: '+5 training pod & Biology implant',
-        status: 'warning',
-        details:
-          'Implant data not yet wired; treat this as a manual checklist item for now.',
-      };
+      const implantsReq =
+        snapshot.activeImplants.ok || snapshot.clones.ok
+          ? (() => {
+              const active = snapshot.activeImplants.ok
+                ? snapshot.activeImplants.value
+                : [];
+              const jumpClones = snapshot.clones.ok
+                ? snapshot.clones.value.jumpClones
+                : [];
+
+              const cloneSets: Array<{
+                label: string;
+                implantIds: number[];
+              }> = [];
+
+              cloneSets.push({
+                label: 'Active clone',
+                implantIds: active,
+              });
+
+              for (const jc of jumpClones) {
+                cloneSets.push({
+                  label: jc.name
+                    ? `Jump clone: ${jc.name}`
+                    : `Jump clone: ${jc.jumpCloneId}`,
+                  implantIds: jc.implantIds ?? [],
+                });
+              }
+
+              const matches = (implantIds: number[]) => {
+                const hasPerception = implantIds.some((id) =>
+                  IMPLANTS_PERCEPTION_AT_LEAST_5.has(id),
+                );
+                const hasWillpower = implantIds.some((id) =>
+                  IMPLANTS_WILLPOWER_AT_LEAST_5.has(id),
+                );
+                const hasBy810 = implantIds.includes(IMPLANT_BIOLOGY_BY_810);
+                return { hasPerception, hasWillpower, hasBy810 };
+              };
+
+              const matchSet = cloneSets.find((set) => {
+                const m = matches(set.implantIds);
+                return m.hasPerception && m.hasWillpower && m.hasBy810;
+              });
+
+              if (matchSet) {
+                return this.toRequirement(
+                  'implants',
+                  '+5 training pod & Biology implant',
+                  true,
+                  `Found in: ${matchSet.label}`,
+                );
+              }
+
+              // Not present together in any single clone
+              const combined = Array.from(
+                new Set<number>(cloneSets.flatMap((s) => s.implantIds)),
+              );
+              const combinedMatch = matches(combined);
+
+              const missing: string[] = [];
+              if (!combinedMatch.hasPerception)
+                missing.push('+5 (or better) Perception implant');
+              if (!combinedMatch.hasWillpower)
+                missing.push('+5 (or better) Willpower implant');
+              if (!combinedMatch.hasBy810)
+                missing.push("Eifyr and Co. 'Alchemist' Biology BY-810");
+
+              const hasAllSomewhere =
+                combinedMatch.hasPerception &&
+                combinedMatch.hasWillpower &&
+                combinedMatch.hasBy810;
+
+              return this.toRequirement(
+                'implants',
+                '+5 training pod & Biology implant',
+                false,
+                hasAllSomewhere
+                  ? 'Implants exist across clones, but not together in a single clone.'
+                  : `Missing: ${missing.join(', ')}`,
+              );
+            })()
+          : ({
+              key: 'implants',
+              label: '+5 training pod & Biology implant',
+              status: 'warning',
+              details: `Could not load clone implants: active=${
+                snapshot.activeImplants.ok
+                  ? 'ok'
+                  : snapshot.activeImplants.reason
+              }, clones=${snapshot.clones.ok ? 'ok' : snapshot.clones.reason}`,
+            } satisfies SkillFarmRequirementEntry);
 
       const cfg = configByChar.get(c.id);
 
@@ -468,15 +936,6 @@ export class SkillFarmService {
       total,
       iskPerHour,
     };
-  }
-
-  private findSkillLevel(
-    skills: CharacterSkillsResponse,
-    skillNameContains: string,
-  ): number {
-    // We do not yet have names on CharacterSkillsResponse; treat as unknown for now.
-    // Placeholder: just return 0 so the requirement shows as missing.
-    return 0;
   }
 
   private computeExtractable(totalSp: number, farmPlanSp: number) {

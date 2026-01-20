@@ -9,6 +9,10 @@ const CHARACTER_SCOPES: readonly string[] = [
   'esi-wallet.read_character_wallet.v1',
   'esi-skills.read_skills.v1',
   'esi-skills.read_skillqueue.v1',
+  // Required for training pod verification (implants in active clone)
+  'esi-clones.read_implants.v1',
+  // Required for verifying jump clone implant sets
+  'esi-clones.read_clones.v1',
 ];
 
 // Scopes for Tradecraft when used by USERS. For user flows we only need

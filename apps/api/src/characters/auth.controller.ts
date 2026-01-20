@@ -209,6 +209,7 @@ export class AuthController {
             CharacterID: number;
             CharacterName: string;
             CharacterOwnerHash: string;
+            Scopes?: string;
           }>,
       );
 
@@ -222,8 +223,8 @@ export class AuthController {
         JSON.stringify(idTokenLike),
       ).toString('base64')}.x`;
 
-      // Store the scopes configured for character linking (for diagnostics/UI).
-      const scopes = AppConfig.esiScopes().character;
+      // Store the scopes actually granted by CCP (for diagnostics/UI).
+      const scopes = normalizeScopes(verify.Scopes ?? '');
 
       // Upsert character and token
       const linked = await this.auth.upsertCharacterWithToken(
@@ -395,6 +396,7 @@ export class AuthController {
                 CharacterID: number;
                 CharacterName: string;
                 CharacterOwnerHash: string;
+                Scopes?: string;
               }>,
           );
 
@@ -407,7 +409,7 @@ export class AuthController {
             JSON.stringify(idTokenLike),
           ).toString('base64')}.x`;
 
-          const scopes = AppConfig.esiScopes().character;
+          const scopes = normalizeScopes(verify.Scopes ?? '');
 
           const linked = await this.auth.upsertCharacterWithToken(
             fakeJwt,

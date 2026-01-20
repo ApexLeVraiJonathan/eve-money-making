@@ -13,6 +13,7 @@ import { SkillFarmService } from './skill-farm.service';
 import {
   UpdateSkillFarmCharacterDto,
   UpdateSkillFarmSettingsDto,
+  PreviewSkillFarmPlanDto,
 } from './dto/skill-farm.dto';
 import { SkillFarmMathService } from './skill-farm.math.service';
 import type {
@@ -107,5 +108,19 @@ export class SkillFarmController {
   ): Promise<SkillFarmMathResult> {
     // For V1 we do not enforce userId on inputs; they are purely numeric assumptions.
     return this.math.compute(body);
+  }
+
+  @Post('plan/preview')
+  @ApiOperation({
+    summary:
+      'Preview an auto-generated skill-farm crop plan (single attribute map) and get an EVE-importable text block',
+  })
+  async previewPlan(
+    @CurrentUser() user: RequestUser | null,
+    @Body() body: PreviewSkillFarmPlanDto,
+  ) {
+    const userId = user?.userId;
+    if (!userId) return null;
+    return await this.skillFarm.previewFarmPlan(userId, body);
   }
 }

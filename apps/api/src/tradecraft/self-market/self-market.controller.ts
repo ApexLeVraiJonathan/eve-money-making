@@ -450,4 +450,3 @@ export class SelfMarketController {
     };
   }
 }
-

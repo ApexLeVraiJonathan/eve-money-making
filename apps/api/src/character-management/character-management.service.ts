@@ -1131,6 +1131,78 @@ export class CharacterManagementService {
     };
   }
 
+  /**
+   * Get active implants in the current clone for one of the user's characters.
+   */
+  async getCharacterImplants(userId: string, characterId: number) {
+    const owned = await this.prisma.eveCharacter.findFirst({
+      where: { id: characterId, userId },
+      select: { id: true },
+    });
+
+    if (!owned) {
+      throw new ForbiddenException('Character does not belong to current user');
+    }
+
+    let implants: number[];
+    try {
+      implants = await this.esiChars.getImplants(characterId);
+    } catch (err: any) {
+      const status = err?.response?.status ?? err?.status;
+      if (status === 401 || status === 403) {
+        throw new BadRequestException(
+          'Could not load implants: ESI token is invalid, expired, or missing required implants scopes. Please re-link this character.',
+        );
+      }
+      throw err;
+    }
+
+    return {
+      characterId,
+      implants,
+    };
+  }
+
+  /**
+   * Get clone overview (including jump clones and their implant sets) for one of
+   * the user's characters.
+   */
+  async getCharacterClones(userId: string, characterId: number) {
+    const owned = await this.prisma.eveCharacter.findFirst({
+      where: { id: characterId, userId },
+      select: { id: true },
+    });
+
+    if (!owned) {
+      throw new ForbiddenException('Character does not belong to current user');
+    }
+
+    try {
+      const data = await this.esiChars.getClones(characterId);
+      return {
+        characterId,
+        homeLocation: data.home_location ?? null,
+        jumpClones: (data.jump_clones ?? []).map((jc) => ({
+          jumpCloneId: jc.jump_clone_id,
+          locationId: jc.location_id,
+          locationType: jc.location_type,
+          name: jc.name ?? null,
+          implantIds: (jc.implant_ids ?? []).map((x) => Number(x)),
+        })),
+        lastCloneJumpDate: data.last_clone_jump_date ?? null,
+        lastStationChangeDate: data.last_station_change_date ?? null,
+      };
+    } catch (err: any) {
+      const status = err?.response?.status ?? err?.status;
+      if (status === 401 || status === 403) {
+        throw new BadRequestException(
+          'Could not load clones: ESI token is invalid, expired, or missing required clones scopes. Please re-link this character.',
+        );
+      }
+      throw err;
+    }
+  }
+
   async getOverview(userId: string) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
