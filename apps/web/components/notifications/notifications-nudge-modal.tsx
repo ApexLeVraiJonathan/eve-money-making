@@ -46,9 +46,11 @@ function setCookie(name: string, value: string, days: number) {
 export function NotificationsNudgeModal() {
   const pathname = usePathname() ?? "/";
   const { data: me } = useCurrentUser();
-  const { data: discord, isLoading: loadingDiscord } = useDiscordAccount();
+  const { data: discord, isLoading: loadingDiscord } = useDiscordAccount(
+    !!me?.userId,
+  );
   const { data: prefs = [], isLoading: loadingPrefs } =
-    useNotificationPreferences();
+    useNotificationPreferences(!!me?.userId);
 
   const [returnUrl, setReturnUrl] = React.useState<string | undefined>(
     undefined,

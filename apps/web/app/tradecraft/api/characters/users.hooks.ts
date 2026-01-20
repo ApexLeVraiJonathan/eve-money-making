@@ -72,11 +72,12 @@ export function useUserFeatures() {
  * Get current user's linked characters
  * Returns empty array when not authenticated
  */
-export function useMyCharacters() {
+export function useMyCharacters(enabled = true) {
   const client = useApiClient();
 
   return useAuthenticatedQuery({
     queryKey: qk.characters.linked(),
+    enabled,
     queryFn: async () => {
       try {
         return await client.get<

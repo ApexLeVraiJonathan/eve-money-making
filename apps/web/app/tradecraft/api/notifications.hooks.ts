@@ -32,11 +32,12 @@ export type NotificationPreferenceDto = {
   enabled: boolean;
 };
 
-export function useDiscordAccount() {
+export function useDiscordAccount(enabled = true) {
   const client = useApiClient();
 
   return useAuthenticatedQuery({
     queryKey: qk.notifications.discordAccount(),
+    enabled,
     queryFn: async () => {
       try {
         return await client.get<DiscordAccountDto | null>(
@@ -53,11 +54,12 @@ export function useDiscordAccount() {
   });
 }
 
-export function useNotificationPreferences() {
+export function useNotificationPreferences(enabled = true) {
   const client = useApiClient();
 
   return useAuthenticatedQuery({
     queryKey: qk.notifications.preferences(),
+    enabled,
     queryFn: async () => {
       try {
         return await client.get<NotificationPreferenceDto[]>(

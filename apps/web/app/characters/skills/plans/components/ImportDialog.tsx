@@ -1,16 +1,17 @@
 "use client";
 
 import { useState } from "react";
-import { Button, Textarea } from "@eve/ui";
-import { Loader2 } from "lucide-react";
 import {
+  Button,
   Dialog,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
+  Textarea,
+} from "@eve/ui";
+import { Loader2 } from "lucide-react";
 
 interface ImportDialogProps {
   open: boolean;

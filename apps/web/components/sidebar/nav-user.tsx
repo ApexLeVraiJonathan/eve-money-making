@@ -22,13 +22,15 @@ import { Button } from "@eve/ui";
 import {
   logout,
   startCharacterLink,
+  useCurrentUser,
   startUserLogin,
 } from "@/app/tradecraft/api/characters/users.hooks";
 import { useMyCharacters } from "@/app/tradecraft/api/characters";
 
 export function NavUser() {
   const { isMobile } = useSidebar();
-  const { data: characters, isLoading: loading } = useMyCharacters();
+  const { data: me } = useCurrentUser();
+  const { data: characters, isLoading: loading } = useMyCharacters(!!me?.userId);
 
   const handleLogin = () => {
     const returnUrl =

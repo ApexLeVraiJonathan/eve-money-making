@@ -11,7 +11,9 @@ const COOKIE_KEY = "eve_notifications_prompt_dismissed";
 
 export function NotificationsPrompt() {
   const { data: me } = useCurrentUser();
-  const { data: prefs = [], isLoading } = useNotificationPreferences();
+  const { data: prefs = [], isLoading } = useNotificationPreferences(
+    !!me?.userId,
+  );
   const [dismissed, setDismissed] = React.useState(false);
 
   React.useEffect(() => {
