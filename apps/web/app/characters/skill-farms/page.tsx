@@ -54,13 +54,16 @@ export default function SkillFarmsIntroPage() {
           <BarChart3 className="h-8 w-8 text-[#FDB813]" aria-hidden="true" />
         </div>
 
-        <h1 className="mx-auto max-w-3xl text-balance text-5xl font-bold tracking-[-0.02em] sm:text-6xl" style={{
-          background: 'linear-gradient(135deg, #FDB813 0%, #FF8C42 100%)',
-          WebkitBackgroundClip: 'text',
-          WebkitTextFillColor: 'transparent',
-          backgroundClip: 'text',
-          color: '#FDB813'
-        }}>
+        <h1
+          className="mx-auto max-w-3xl text-balance text-5xl font-bold tracking-[-0.02em] sm:text-6xl"
+          style={{
+            background: "linear-gradient(135deg, #FDB813 0%, #FF8C42 100%)",
+            WebkitBackgroundClip: "text",
+            WebkitTextFillColor: "transparent",
+            backgroundClip: "text",
+            color: "#FDB813",
+          }}
+        >
           Skill Farm Assistant
         </h1>
 

@@ -25,7 +25,7 @@ function RequirementBadge({
     warning: <AlertTriangle className="h-3 w-3" />,
     fail: <XCircle className="h-3 w-3" />,
   };
-  
+
   if (status === "pass") {
     variant = "default";
   } else if (status === "fail") {
@@ -156,13 +156,13 @@ function CharactersContent() {
                           toast.success(
                             newState
                               ? `${c.name} added to active farm`
-                              : `${c.name} removed from farm`
+                              : `${c.name} removed from farm`,
                           );
                         },
                         onError: () => {
                           toast.error("Failed to update character status");
                         },
-                      }
+                      },
                     );
                   }}
                   disabled={!ready && !isActive}

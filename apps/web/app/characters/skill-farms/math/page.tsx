@@ -179,27 +179,27 @@ function MathContent() {
             <CardTitle className="text-base">Farm shape</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4 text-sm text-foreground/80">
-          <div className="grid gap-3 md:grid-cols-2">
-            <NumberInput
-              id="accounts"
-              label="# of accounts"
-              value={accounts}
-              onChange={(v) => setAccounts(v ?? 0)}
-            />
-            <NumberInput
-              id="charsPerAccount"
-              label="Farm characters per account"
-              value={farmCharsPerAccount}
-              onChange={(v) => setFarmCharsPerAccount(v ?? 0)}
-            />
-            <NumberInput
-              id="spPerDay"
-              label="SP per day per character"
-              value={spPerDay}
-              onChange={(v) => setSpPerDay(v ?? 0)}
-              help="Approximate SP/day with your attributes, +5s, and boosters."
-            />
-          </div>
+            <div className="grid gap-3 md:grid-cols-2">
+              <NumberInput
+                id="accounts"
+                label="# of accounts"
+                value={accounts}
+                onChange={(v) => setAccounts(v ?? 0)}
+              />
+              <NumberInput
+                id="charsPerAccount"
+                label="Farm characters per account"
+                value={farmCharsPerAccount}
+                onChange={(v) => setFarmCharsPerAccount(v ?? 0)}
+              />
+              <NumberInput
+                id="spPerDay"
+                label="SP per day per character"
+                value={spPerDay}
+                onChange={(v) => setSpPerDay(v ?? 0)}
+                help="Approximate SP/day with your attributes, +5s, and boosters."
+              />
+            </div>
             <Button onClick={handleRecalculate} disabled={status === "pending"}>
               {status === "pending" ? "Calculating…" : "Recalculate"}
             </Button>
