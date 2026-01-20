@@ -5,6 +5,8 @@ export const dynamic = "force-dynamic";
 import { useSkillFarmTracking } from "../api";
 import { Card, CardContent, CardHeader, CardTitle } from "@eve/ui/card";
 import { Badge } from "@eve/ui/badge";
+import { Skeleton } from "@eve/ui/skeleton";
+import { DynamicBreadcrumbs } from "@/components/dynamic-breadcrumbs";
 
 function StatusBadge({
   status,
@@ -22,7 +24,22 @@ function TrackingContent() {
   const { data, isLoading } = useSkillFarmTracking();
 
   if (isLoading) {
-    return <p className="text-sm text-foreground/80">Loading tracking data…</p>;
+    return (
+      <div className="space-y-4">
+        {[1, 2].map((i) => (
+          <Card key={i} className="bg-gradient-to-b from-background to-muted/5">
+            <CardHeader>
+              <Skeleton className="h-5 w-48" />
+              <Skeleton className="h-4 w-64 mt-2" />
+            </CardHeader>
+            <CardContent className="space-y-2">
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-4 w-3/4" />
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    );
   }
 
   if (!data || !data.characters.length) {
@@ -47,7 +64,7 @@ function TrackingContent() {
             <CardHeader className="flex flex-row items-center justify-between gap-2">
               <div className="space-y-1">
                 <CardTitle className="text-base">{c.name}</CardTitle>
-                <p className="text-xs text-foreground/70">
+                <p className="text-xs text-foreground/80">
                   Total SP: {c.totalSp.toLocaleString()} – floor:{" "}
                   {c.nonExtractableSp.toLocaleString()} SP
                 </p>
@@ -87,10 +104,16 @@ function TrackingContent() {
 export default function SkillFarmTrackingPage() {
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-6 px-4 py-8">
+      <DynamicBreadcrumbs />
       <header className="flex flex-col gap-2">
-        <h1 className="text-2xl font-semibold tracking-tight">
-          Skill farm tracking
-        </h1>
+        <div className="flex items-center gap-3">
+          <h1 className="text-2xl font-semibold tracking-tight">
+            Skill farm tracking
+          </h1>
+          <Badge variant="secondary" className="text-xs">
+            Step 3 of 3
+          </Badge>
+        </div>
         <p className="max-w-3xl text-sm text-foreground/80">
           See extractable SP and queue risk for all active farm characters.
           Discord alerts will fire when extractors are ready or queues go low or

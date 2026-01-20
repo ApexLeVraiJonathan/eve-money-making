@@ -11,6 +11,8 @@ import { Button } from "@eve/ui/button";
 import { Input } from "@eve/ui/input";
 import { Label } from "@eve/ui/label";
 import { Checkbox } from "@eve/ui/checkbox";
+import { Badge } from "@eve/ui/badge";
+import { DynamicBreadcrumbs } from "@/components/dynamic-breadcrumbs";
 
 function NumberInput({
   id,
@@ -36,7 +38,7 @@ function NumberInput({
           onChange(e.target.value === "" ? null : Number(e.target.value))
         }
       />
-      {help && <p className="text-xs text-foreground/70">{help}</p>}
+      {help && <p className="text-xs text-foreground/80">{help}</p>}
     </div>
   );
 }
@@ -70,12 +72,12 @@ function MathContent() {
   }
 
   return (
-    <div className="grid gap-6 md:grid-cols-[1.5fr_1.2fr]">
+    <div className="grid gap-6 lg:grid-cols-[1fr_400px]">
       <Card className="bg-gradient-to-b from-background to-muted/5">
         <CardHeader>
           <CardTitle className="text-base">Economic assumptions</CardTitle>
         </CardHeader>
-        <CardContent className="grid gap-4 md:grid-cols-2">
+        <CardContent className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           <NumberInput
             id="plexPriceIsk"
             label="PLEX price (ISK per PLEX)"
@@ -156,7 +158,7 @@ function MathContent() {
             }
             help="Rough time spent managing the farm per cycle."
           />
-          <div className="col-span-2 flex items-center space-x-2 pt-1">
+          <div className="col-span-full flex items-center space-x-2 pt-1">
             <Checkbox
               id="soldViaContracts"
               checked={!!settings.soldViaContracts}
@@ -171,11 +173,12 @@ function MathContent() {
         </CardContent>
       </Card>
 
-      <Card className="bg-gradient-to-b from-background to-muted/5">
-        <CardHeader>
-          <CardTitle className="text-base">Farm shape</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4 text-sm text-foreground/80">
+      <div className="space-y-6">
+        <Card className="bg-gradient-to-b from-background to-muted/5">
+          <CardHeader>
+            <CardTitle className="text-base">Farm shape</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4 text-sm text-foreground/80">
           <div className="grid gap-3 md:grid-cols-2">
             <NumberInput
               id="accounts"
@@ -197,12 +200,18 @@ function MathContent() {
               help="Approximate SP/day with your attributes, +5s, and boosters."
             />
           </div>
-          <Button onClick={handleRecalculate} disabled={status === "pending"}>
-            {status === "pending" ? "Calculating…" : "Recalculate"}
-          </Button>
+            <Button onClick={handleRecalculate} disabled={status === "pending"}>
+              {status === "pending" ? "Calculating…" : "Recalculate"}
+            </Button>
+          </CardContent>
+        </Card>
 
-          {result && (
-            <div className="space-y-2 pt-3">
+        {result && (
+          <Card className="bg-gradient-to-b from-background to-muted/5 lg:sticky lg:top-4">
+            <CardHeader>
+              <CardTitle className="text-base">Results</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2 text-sm text-foreground/80">
               <p className="font-medium">Per character (per cycle)</p>
               <ul className="list-disc space-y-1 pl-5">
                 <li>
@@ -236,21 +245,27 @@ function MathContent() {
                   ISK/hour of your time: {result.iskPerHour.toFixed(0)} ISK/h
                 </li>
               </ul>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+            </CardContent>
+          </Card>
+        )}
+      </div>
     </div>
   );
 }
 
 export default function SkillFarmMathPage() {
   return (
-    <div className="mx-auto flex max-w-5xl flex-col gap-6 px-4 py-8">
+    <div className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-8">
+      <DynamicBreadcrumbs />
       <header className="flex flex-col gap-2">
-        <h1 className="text-2xl font-semibold tracking-tight">
-          Skill farm math &amp; planner
-        </h1>
+        <div className="flex items-center gap-3">
+          <h1 className="text-2xl font-semibold tracking-tight">
+            Skill farm math &amp; planner
+          </h1>
+          <Badge variant="secondary" className="text-xs">
+            Step 3 of 3
+          </Badge>
+        </div>
         <p className="max-w-3xl text-sm text-foreground/80">
           Configure your own PLEX prices, extractor/injector costs, and farm
           layout to estimate profit per character, per account, and for your

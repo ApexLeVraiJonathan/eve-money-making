@@ -9,7 +9,6 @@ import {
   CheckCircle2,
   TrendingUp,
   BarChart3,
-  ArrowRight,
   AlertTriangle,
 } from "lucide-react";
 import {
@@ -55,11 +54,17 @@ export default function SkillFarmsIntroPage() {
           <BarChart3 className="h-8 w-8 text-[#FDB813]" aria-hidden="true" />
         </div>
 
-        <h1 className="mx-auto max-w-3xl text-balance text-5xl font-bold tracking-[-0.02em] text-transparent [text-shadow:0_1px_0_rgba(255,255,255,0.06)] [background:linear-gradient(135deg,#FDB813_0%,#FF8C42_100%)] [-webkit-background-clip:text] [-webkit-text-fill-color:transparent] sm:text-6xl">
+        <h1 className="mx-auto max-w-3xl text-balance text-5xl font-bold tracking-[-0.02em] sm:text-6xl" style={{
+          background: 'linear-gradient(135deg, #FDB813 0%, #FF8C42 100%)',
+          WebkitBackgroundClip: 'text',
+          WebkitTextFillColor: 'transparent',
+          backgroundClip: 'text',
+          color: '#FDB813'
+        }}>
           Skill Farm Assistant
         </h1>
 
-        <div className="mx-auto mt-8 max-w-[680px] space-y-3 text-lg leading-[1.7] text-[#A1A1AA] sm:text-xl">
+        <div className="mx-auto mt-8 max-w-[680px] space-y-3 text-lg leading-[1.7] text-muted-foreground sm:text-xl">
           <p>
             Plan, evaluate, and track EVE Online skill farms across your
             characters.
@@ -79,14 +84,14 @@ export default function SkillFarmsIntroPage() {
           >
             Your 3-step setup
           </h2>
-          <p className="mx-auto mt-3 max-w-[680px] text-base leading-relaxed text-[#9CA3AF] sm:text-lg">
+          <p className="mx-auto mt-3 max-w-[680px] text-base leading-relaxed text-foreground/80 sm:text-lg">
             A guided flow from basics → readiness → profitability, with clear
             next actions.
           </p>
         </div>
 
-        <div className="relative grid gap-8 md:grid-cols-3">
-          <Card className="group h-full rounded-2xl border border-[#FDB813]/15 bg-[#2A2A2A] p-2 transition-all duration-300 hover:-translate-y-1 hover:border-[#FDB813]/30 hover:shadow-[0_12px_24px_rgba(0,0,0,0.30)]">
+        <div className="relative grid gap-8 md:grid-cols-3 md:items-stretch">
+          <Card className="group flex flex-col rounded-2xl border border-[#FDB813]/15 bg-[#2A2A2A] p-2 transition-all duration-300 hover:-translate-y-1 hover:border-[#FDB813]/30 hover:shadow-[0_12px_24px_rgba(0,0,0,0.30)]">
             <CardHeader className="pb-2">
               <div className="mb-4 inline-flex w-fit items-center rounded-full border border-[#FDB813]/30 bg-[#FDB813]/15 px-4 py-2 text-[13px] font-bold tracking-wide text-[#FDB813]">
                 Step 1 of 3
@@ -101,7 +106,7 @@ export default function SkillFarmsIntroPage() {
                 Learn the basics
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-3 text-[15px] leading-relaxed text-[#9CA3AF]">
+            <CardContent className="flex-1 space-y-3 pb-6 text-[15px] leading-relaxed text-foreground">
               <p>
                 Turn spare training alts into steady{" "}
                 <EveTerm tooltip="In-game currency: Interstellar Kredits">
@@ -128,14 +133,7 @@ export default function SkillFarmsIntroPage() {
             </CardContent>
           </Card>
 
-          <div className="pointer-events-none absolute left-1/3 top-1/2 hidden -translate-x-1/2 -translate-y-1/2 md:block">
-            <ArrowRight
-              className="h-7 w-7 text-[#FDB813]/50"
-              aria-hidden="true"
-            />
-          </div>
-
-          <Card className="group h-full rounded-2xl border border-[#FDB813]/15 bg-[#2A2A2A] p-2 transition-all duration-300 hover:-translate-y-1 hover:border-[#FDB813]/30 hover:shadow-[0_12px_24px_rgba(0,0,0,0.30)]">
+          <Card className="group flex flex-col rounded-2xl border border-[#FDB813]/15 bg-[#2A2A2A] p-2 transition-all duration-300 hover:-translate-y-1 hover:border-[#FDB813]/30 hover:shadow-[0_12px_24px_rgba(0,0,0,0.30)]">
             <CardHeader className="pb-2">
               <div className="mb-4 inline-flex w-fit items-center rounded-full border border-[#FDB813]/30 bg-[#FDB813]/15 px-4 py-2 text-[13px] font-bold tracking-wide text-[#FDB813]">
                 Step 2 of 3
@@ -150,7 +148,7 @@ export default function SkillFarmsIntroPage() {
                 Prepare characters
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-3 text-[15px] leading-relaxed text-[#9CA3AF]">
+            <CardContent className="flex-1 space-y-3 pb-6 text-[15px] leading-relaxed text-foreground">
               <p>
                 Use the checklist to verify SP, required skills, remaps, Omega,
                 and your training pod setup.
@@ -162,14 +160,7 @@ export default function SkillFarmsIntroPage() {
             </CardContent>
           </Card>
 
-          <div className="pointer-events-none absolute left-2/3 top-1/2 hidden -translate-x-1/2 -translate-y-1/2 md:block">
-            <ArrowRight
-              className="h-7 w-7 text-[#FDB813]/50"
-              aria-hidden="true"
-            />
-          </div>
-
-          <Card className="group h-full rounded-2xl border border-[#FDB813]/15 bg-[#2A2A2A] p-2 transition-all duration-300 hover:-translate-y-1 hover:border-[#FDB813]/30 hover:shadow-[0_12px_24px_rgba(0,0,0,0.30)]">
+          <Card className="group flex flex-col rounded-2xl border border-[#FDB813]/15 bg-[#2A2A2A] p-2 transition-all duration-300 hover:-translate-y-1 hover:border-[#FDB813]/30 hover:shadow-[0_12px_24px_rgba(0,0,0,0.30)]">
             <CardHeader className="pb-2">
               <div className="mb-4 inline-flex w-fit items-center rounded-full border border-[#FDB813]/30 bg-[#FDB813]/15 px-4 py-2 text-[13px] font-bold tracking-wide text-[#FDB813]">
                 Step 3 of 3
@@ -184,7 +175,7 @@ export default function SkillFarmsIntroPage() {
                 Run the numbers
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-3 text-[15px] leading-relaxed text-[#9CA3AF]">
+            <CardContent className="flex-1 space-y-3 pb-6 text-[15px] leading-relaxed text-foreground">
               <p>
                 Plug in your{" "}
                 <EveTerm tooltip="Pilot's License Extension - subscription currency">
@@ -208,7 +199,7 @@ export default function SkillFarmsIntroPage() {
           >
             Is skill farming for you?
           </h2>
-          <p className="mx-auto mt-3 max-w-[680px] text-sm leading-relaxed text-[#9CA3AF] sm:text-base">
+          <p className="mx-auto mt-3 max-w-[680px] text-sm leading-relaxed text-foreground/80 sm:text-base">
             Evaluate if skill farming matches your playstyle and goals.
           </p>
         </div>
@@ -218,8 +209,8 @@ export default function SkillFarmsIntroPage() {
             <div className="pointer-events-none absolute right-4 top-4 rounded-xl bg-[#16A34A] px-3 py-1.5 text-[11px] font-semibold tracking-wide text-black">
               Recommended
             </div>
-            <CardHeader className="pb-3">
-              <div className="mb-4 flex items-center gap-3">
+            <CardHeader className="pb-2">
+              <div className="flex items-center gap-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#22C55E]/15">
                   <CheckCircle2
                     className="h-5 w-5 text-[#22C55E]"
@@ -231,7 +222,7 @@ export default function SkillFarmsIntroPage() {
                 </CardTitle>
               </div>
             </CardHeader>
-            <CardContent className="text-[15px] leading-[1.8] text-[#D1D5DB]">
+            <CardContent className="pb-6 text-[15px] leading-[1.8] text-foreground/90">
               <ul className="space-y-4">
                 <li className="flex gap-3 border-l-2 border-[#22C55E]/20 pl-4">
                   <span className="mt-1 inline-flex h-5 w-5 items-center justify-center rounded-full bg-[#22C55E]/20 text-xs font-bold text-[#22C55E]">
@@ -264,8 +255,8 @@ export default function SkillFarmsIntroPage() {
           </Card>
 
           <Card className="group rounded-xl border-2 border-[#EAB308]/30 bg-[rgba(234,179,8,0.08)] p-2 transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_8px_24px_rgba(0,0,0,0.20)]">
-            <CardHeader className="pb-3">
-              <div className="mb-4 flex items-center gap-3">
+            <CardHeader className="pb-2">
+              <div className="flex items-center gap-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#EAB308]/15">
                   <AlertTriangle
                     className="h-5 w-5 text-[#EAB308]"
@@ -277,7 +268,7 @@ export default function SkillFarmsIntroPage() {
                 </CardTitle>
               </div>
             </CardHeader>
-            <CardContent className="text-[15px] leading-[1.8] text-[#D1D5DB]">
+            <CardContent className="pb-6 text-[15px] leading-[1.8] text-foreground/90">
               <ul className="space-y-4">
                 <li className="flex gap-3 border-l-2 border-[#EAB308]/20 pl-4">
                   <span className="mt-1 inline-flex h-5 w-5 items-center justify-center rounded-full bg-[#EAB308]/20 text-xs font-bold text-[#EAB308]">
@@ -317,7 +308,7 @@ export default function SkillFarmsIntroPage() {
             >
               Ready to get started?
             </CardTitle>
-            <p className="mx-auto mt-3 max-w-[680px] text-sm text-[#A1A1AA] sm:text-base">
+            <p className="mx-auto mt-3 max-w-[680px] text-sm text-muted-foreground sm:text-base">
               Follow these steps to set up your skill farm.
             </p>
           </CardHeader>
@@ -325,7 +316,7 @@ export default function SkillFarmsIntroPage() {
             <Link href="/characters/skill-farms/characters" className="w-full">
               <Button
                 size="lg"
-                className="sf-pulse-glow w-full justify-center rounded-xl bg-[linear-gradient(135deg,#FDB813_0%,#FF8C42_100%)] px-9 py-6 text-[17px] font-semibold text-black shadow-[0_4px_12px_rgba(253,184,19,0.30)] transition-all duration-300 hover:-translate-y-0.5 hover:brightness-110 hover:shadow-[0_8px_24px_rgba(253,184,19,0.40)] active:translate-y-0 active:shadow-[0_4px_12px_rgba(253,184,19,0.25)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FDB813] focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                className="sf-pulse-glow w-full justify-center rounded-xl bg-[linear-gradient(135deg,#FDB813_0%,#FF8C42_100%)] px-9 py-6 text-[17px] font-semibold text-[#0a0a0a] shadow-[0_4px_12px_rgba(253,184,19,0.30)] transition-all duration-300 hover:-translate-y-0.5 hover:brightness-110 hover:shadow-[0_8px_24px_rgba(253,184,19,0.40)] active:translate-y-0 active:shadow-[0_4px_12px_rgba(253,184,19,0.25)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FDB813] focus-visible:ring-offset-2 focus-visible:ring-offset-background [text-shadow:0_1px_2px_rgba(0,0,0,0.2)]"
               >
                 <UserCheck className="mr-2 h-5 w-5" aria-hidden="true" />
                 Assess My Characters
