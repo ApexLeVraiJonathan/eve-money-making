@@ -1,6 +1,10 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
+/* Tailwind v4: include class usage from workspace packages (e.g. @eve/ui). */
+@source "../../../packages/ui/src/**/*.ts";
+@source "../../../packages/ui/src/**/*.tsx";
+
 @custom-variant dark (&:is(.dark *));
 
 :root {
