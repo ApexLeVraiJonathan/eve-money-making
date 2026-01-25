@@ -159,7 +159,7 @@ export default function TradecraftOverviewPage() {
           </CardContent>
         </Card>
 
-      {/* How it works */}
+        {/* How it works */}
         <section className="space-y-4">
           <div>
             <h2 className="text-lg font-semibold">How it works</h2>
@@ -176,7 +176,7 @@ export default function TradecraftOverviewPage() {
                   </span>
                   Opt-in & contribute
                 </CardTitle>
-              <CardDescription className="text-foreground/80">
+                <CardDescription className="text-foreground/80">
                   Choose an amount and follow the transfer instructions.
                 </CardDescription>
               </CardHeader>
@@ -197,7 +197,7 @@ export default function TradecraftOverviewPage() {
                   </span>
                   Track progress
                 </CardTitle>
-              <CardDescription className="text-foreground/80">
+                <CardDescription className="text-foreground/80">
                   See the cycle evolve as trading happens.
                 </CardDescription>
               </CardHeader>
@@ -218,7 +218,7 @@ export default function TradecraftOverviewPage() {
                   </span>
                   Receive payout
                 </CardTitle>
-              <CardDescription className="text-foreground/80">
+                <CardDescription className="text-foreground/80">
                   Get your principal back plus your share.
                 </CardDescription>
               </CardHeader>
@@ -233,7 +233,7 @@ export default function TradecraftOverviewPage() {
           </div>
         </section>
 
-      {/* Features */}
+        {/* Features */}
         <section className="grid gap-4 md:grid-cols-2">
           <Card className="gap-3">
             <CardHeader className="pb-2">
@@ -302,8 +302,8 @@ export default function TradecraftOverviewPage() {
                 <li className="flex items-start gap-2">
                   <BarChart3 className="h-4 w-4 mt-0.5 text-muted-foreground flex-shrink-0" />
                   <span>
-                    <strong>Profit variability:</strong> returns depend on market
-                    conditions—profits are not guaranteed.
+                    <strong>Profit variability:</strong> returns depend on
+                    market conditions—profits are not guaranteed.
                   </span>
                 </li>
                 <li className="flex items-start gap-2">
@@ -336,7 +336,10 @@ export default function TradecraftOverviewPage() {
 
           <div className="grid gap-3">
             {FAQ_ITEMS.map((item) => (
-              <Collapsible key={item.question} className="rounded-lg border bg-card">
+              <Collapsible
+                key={item.question}
+                className="rounded-lg border bg-card"
+              >
                 <CollapsibleTrigger className="group w-full px-4 py-3 text-left hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 rounded-lg">
                   <div className="flex items-center justify-between gap-3">
                     <span className="text-sm font-medium">{item.question}</span>
@@ -351,7 +354,7 @@ export default function TradecraftOverviewPage() {
           </div>
         </section>
 
-      {/* Getting Started CTA */}
+        {/* Getting Started CTA */}
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-lg">Ready to get started?</CardTitle>
@@ -372,7 +375,9 @@ export default function TradecraftOverviewPage() {
                 <Link href="/tradecraft/my-investments">My investments</Link>
               </Button>
               <Button asChild variant="secondary">
-                <Link href="/tradecraft/cycles/opt-in">Opt-in to next cycle</Link>
+                <Link href="/tradecraft/cycles/opt-in">
+                  Opt-in to next cycle
+                </Link>
               </Button>
             </div>
           </CardContent>

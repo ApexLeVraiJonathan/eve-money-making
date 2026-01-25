@@ -20,6 +20,8 @@ import type {
   SkillFarmMathInputs,
   SkillFarmMathResult,
 } from '@eve/api-contracts';
+import { Public } from '@api/characters/decorators/public.decorator';
+import { SkillFarmMarketPricesService } from './skill-farm.market-prices.service';
 
 @ApiTags('skill-farm')
 @ApiBearerAuth()
@@ -28,6 +30,7 @@ export class SkillFarmController {
   constructor(
     private readonly skillFarm: SkillFarmService,
     private readonly math: SkillFarmMathService,
+    private readonly marketPrices: SkillFarmMarketPricesService,
   ) {}
 
   @Get('settings')
@@ -95,6 +98,16 @@ export class SkillFarmController {
       };
     }
     return await this.skillFarm.getTrackingSnapshot(userId);
+  }
+
+  @Public()
+  @Get('market-prices')
+  @ApiOperation({
+    summary:
+      'Fetch market prices for key skill-farm items (PLEX, extractor, injector) at the default hub station',
+  })
+  async getMarketPrices() {
+    return await this.marketPrices.getSnapshot();
   }
 
   @Post('math/preview')

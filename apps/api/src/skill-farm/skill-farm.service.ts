@@ -18,10 +18,18 @@ import {
   type AttributeSet,
   type SkillPrimaryAttribute,
 } from '@eve/shared/skills';
+import { SkillFarmMathService } from './skill-farm.math.service';
 
-const NON_EXTRACTABLE_SP = 5_500_000;
+// EVE extraction rule: you cannot extract below 5,000,000 SP.
+const NON_EXTRACTABLE_SP = 5_000_000;
 const EXTRACTOR_CHUNK_SP = 500_000;
 const MIN_START_FARM_SP = 5_000_000;
+
+// Default economic assumptions for new users.
+// These are editable in the Skill Farm Math page.
+const DEFAULT_CYCLE_DAYS = 30;
+const DEFAULT_SALES_TAX_PERCENT = 3.37;
+const DEFAULT_BROKER_FEE_PERCENT = 1.5;
 
 // Skill type IDs (EVE type_id) for prerequisite skills.
 // Sources: SDE / ESI ecosystems (e.g. everef).
@@ -285,12 +293,15 @@ export class SkillFarmService {
         plexPerMct: null,
         extractorPriceIsk: null,
         injectorPriceIsk: null,
+        // Null means "auto": booster cost is derived from PLEX price (180 PLEX / 26.4 days).
         boosterCostPerCycleIsk: null,
-        salesTaxPercent: null,
-        brokerFeePercent: null,
+        useBoosters: true,
+        salesTaxPercent: DEFAULT_SALES_TAX_PERCENT,
+        brokerFeePercent: DEFAULT_BROKER_FEE_PERCENT,
         soldViaContracts: false,
-        cycleDays: null,
+        cycleDays: DEFAULT_CYCLE_DAYS,
         managementMinutesPerCycle: null,
+        extractionTargetSkillIds: [],
         createdAt: nowIso,
         updatedAt: nowIso,
       };
@@ -309,13 +320,17 @@ export class SkillFarmService {
       boosterCostPerCycleIsk: row.boosterCostPerCycleIsk
         ? Number(row.boosterCostPerCycleIsk)
         : null,
-      salesTaxPercent: row.salesTaxPercent ? Number(row.salesTaxPercent) : null,
+      useBoosters: (row as any).useBoosters ?? true,
+      salesTaxPercent: row.salesTaxPercent
+        ? Number(row.salesTaxPercent)
+        : DEFAULT_SALES_TAX_PERCENT,
       brokerFeePercent: row.brokerFeePercent
         ? Number(row.brokerFeePercent)
-        : null,
+        : DEFAULT_BROKER_FEE_PERCENT,
       soldViaContracts: row.soldViaContracts,
-      cycleDays: row.cycleDays,
+      cycleDays: row.cycleDays ?? DEFAULT_CYCLE_DAYS,
       managementMinutesPerCycle: row.managementMinutesPerCycle,
+      extractionTargetSkillIds: row.extractionTargetSkillIds ?? [],
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
     };
@@ -330,22 +345,31 @@ export class SkillFarmService {
       select: { id: true },
     });
 
-    const data: any = {
-      plexPriceIsk: input.plexPriceIsk ?? null,
-      plexPerOmega: input.plexPerOmega ?? null,
-      plexPerMct: input.plexPerMct ?? null,
-      extractorPriceIsk: input.extractorPriceIsk ?? null,
-      injectorPriceIsk: input.injectorPriceIsk ?? null,
-      boosterCostPerCycleIsk: input.boosterCostPerCycleIsk ?? null,
-      salesTaxPercent: input.salesTaxPercent ?? null,
-      brokerFeePercent: input.brokerFeePercent ?? null,
-      soldViaContracts:
-        input.soldViaContracts !== undefined
-          ? input.soldViaContracts
-          : undefined,
-      cycleDays: input.cycleDays ?? null,
-      managementMinutesPerCycle: input.managementMinutesPerCycle ?? null,
-    };
+    // IMPORTANT: Only write fields the caller actually provided.
+    // Many UIs update one field at a time (e.g. { plexPriceIsk }), so we must not
+    // null-out all other columns on partial updates.
+    const data: any = {};
+    if ('plexPriceIsk' in input) data.plexPriceIsk = input.plexPriceIsk ?? null;
+    if ('plexPerOmega' in input) data.plexPerOmega = input.plexPerOmega ?? null;
+    if ('plexPerMct' in input) data.plexPerMct = input.plexPerMct ?? null;
+    if ('extractorPriceIsk' in input)
+      data.extractorPriceIsk = input.extractorPriceIsk ?? null;
+    if ('injectorPriceIsk' in input)
+      data.injectorPriceIsk = input.injectorPriceIsk ?? null;
+    if ('boosterCostPerCycleIsk' in input)
+      data.boosterCostPerCycleIsk = input.boosterCostPerCycleIsk ?? null;
+    if ('useBoosters' in input) data.useBoosters = input.useBoosters ?? true;
+    if ('salesTaxPercent' in input)
+      data.salesTaxPercent = input.salesTaxPercent ?? null;
+    if ('brokerFeePercent' in input)
+      data.brokerFeePercent = input.brokerFeePercent ?? null;
+    if ('soldViaContracts' in input)
+      data.soldViaContracts = input.soldViaContracts ?? false;
+    if ('cycleDays' in input) data.cycleDays = input.cycleDays ?? null;
+    if ('managementMinutesPerCycle' in input)
+      data.managementMinutesPerCycle = input.managementMinutesPerCycle ?? null;
+    if ('extractionTargetSkillIds' in input)
+      data.extractionTargetSkillIds = input.extractionTargetSkillIds ?? [];
 
     const row = existing
       ? await this.prisma.skillFarmSettings.update({
@@ -784,6 +808,11 @@ export class SkillFarmService {
   async getTrackingSnapshot(
     userId: string,
   ): Promise<SkillFarmTrackingSnapshot> {
+    const settings = await this.getSettingsForUser(userId);
+    const settingsTargets = (settings.extractionTargetSkillIds ?? []).filter(
+      (x) => Number.isFinite(x) && x > 0,
+    );
+
     const configs = await this.prisma.skillFarmCharacterConfig.findMany({
       where: { userId, isActiveFarm: true },
       include: {
@@ -809,8 +838,44 @@ export class SkillFarmService {
       const totalSp = skills.totalSp ?? 0;
       const nonExtractableSp = Math.min(totalSp, NON_EXTRACTABLE_SP);
 
-      // For V1, treat all SP above the floor as farm-plan SP.
-      const farmPlanSp = Math.max(0, totalSp - nonExtractableSp);
+      const availableAboveFloor = Math.max(0, totalSp - nonExtractableSp);
+
+      const activeEntry =
+        queue && !queue.isQueueEmpty && queue.activeEntry
+          ? queue.activeEntry
+          : null;
+      const activeTrainingSkillId = activeEntry?.skillId ?? null;
+      const activeTrainingSkillName = activeEntry?.skillName ?? null;
+      const activeTrainingEndsAt = activeEntry?.finishDate ?? null;
+
+      let targetSource: SkillFarmTrackingEntry['targetSource'] =
+        'ALL_ABOVE_FLOOR';
+      let targetSkillIds: number[] = [];
+
+      if (cfg.farmPlanId) {
+        // Only trust farm plans owned by the current user.
+        const plan = await this.prisma.skillPlan.findFirst({
+          where: { id: cfg.farmPlanId, userId },
+          select: { steps: { select: { skillId: true } } },
+        });
+        if (plan?.steps?.length) {
+          targetSource = 'PLAN';
+          targetSkillIds = plan.steps.map((s) => s.skillId);
+        }
+      }
+
+      if (targetSource !== 'PLAN' && settingsTargets.length > 0) {
+        targetSource = 'SETTINGS';
+        targetSkillIds = settingsTargets;
+      }
+
+      const farmPlanSp =
+        targetSource === 'ALL_ABOVE_FLOOR'
+          ? availableAboveFloor
+          : targetSkillIds.reduce((sum, skillId) => {
+              const row = skills.skills.find((s) => s.skillId === skillId);
+              return sum + (row?.skillpointsInSkill ?? 0);
+            }, 0);
 
       const { extractableSp, fullExtractors, remainder } =
         this.computeExtractable(totalSp, farmPlanSp);
@@ -845,6 +910,10 @@ export class SkillFarmService {
         extractableSp,
         fullExtractorsReady: fullExtractors,
         remainderSp: remainder,
+        targetSource,
+        activeTrainingSkillId,
+        activeTrainingSkillName,
+        activeTrainingEndsAt,
         etaToNextExtractorSeconds: etaSeconds,
         queueStatus,
         queueSecondsRemaining,
@@ -858,84 +927,9 @@ export class SkillFarmService {
   }
 
   computeMath(inputs: SkillFarmMathInputs): SkillFarmMathResult {
-    const cycleDays = inputs.settings.cycleDays ?? 30;
-    const cycleSeconds = cycleDays * 24 * 3600;
-    const spPerDay =
-      inputs.spPerDayPerCharacter && inputs.spPerDayPerCharacter > 0
-        ? inputs.spPerDayPerCharacter
-        : 0;
-    const spPerCycle = spPerDay * cycleDays;
-    const extractorsPerCycle = Math.max(
-      0,
-      Math.floor(spPerCycle / EXTRACTOR_CHUNK_SP),
-    );
-    const injectorsPerCycle = extractorsPerCycle;
-
-    const plexPrice = inputs.settings.plexPriceIsk ?? 0;
-    const plexPerOmega = inputs.settings.plexPerOmega ?? 0;
-    const plexPerMct = inputs.settings.plexPerMct ?? 0;
-    const extractorPrice = inputs.settings.extractorPriceIsk ?? 0;
-    const injectorPrice = inputs.settings.injectorPriceIsk ?? 0;
-    const boosterCost = inputs.settings.boosterCostPerCycleIsk ?? 0;
-    const salesTaxPct = (inputs.settings.salesTaxPercent ?? 0) / 100;
-    const brokerPct = (inputs.settings.brokerFeePercent ?? 0) / 100;
-
-    const accounts = inputs.accounts || 0;
-    const charsPerAccount = inputs.farmCharactersPerAccount || 0;
-    const totalCharacters = accounts * charsPerAccount;
-
-    const perCharacterCosts =
-      (plexPerOmega > 0 ? plexPerOmega * plexPrice : 0) +
-      boosterCost +
-      extractorPrice * extractorsPerCycle;
-
-    const grossRevenue = injectorPrice * injectorsPerCycle;
-    const feeMultiplier = inputs.settings.soldViaContracts
-      ? 1
-      : 1 - salesTaxPct - brokerPct;
-    const netRevenue = grossRevenue * feeMultiplier;
-
-    const perCharNet = netRevenue - perCharacterCosts;
-
-    const perCharacter: any = {
-      spPerDay,
-      spPerCycle,
-      extractorsPerCycle,
-      injectorsPerCycle,
-      totalCostsIsk: perCharacterCosts,
-      grossRevenueIsk: grossRevenue,
-      netProfitIsk: perCharNet,
-    };
-
-    const perAccount: any[] = [];
-    for (let i = 0; i < accounts; i++) {
-      perAccount.push({
-        ...perCharacter,
-        netProfitIsk: perCharNet * charsPerAccount,
-        totalCostsIsk: perCharacterCosts * charsPerAccount,
-        grossRevenueIsk: grossRevenue * charsPerAccount,
-      });
-    }
-
-    const total: any = {
-      ...perCharacter,
-      netProfitIsk: perCharNet * totalCharacters,
-      totalCostsIsk: perCharacterCosts * totalCharacters,
-      grossRevenueIsk: grossRevenue * totalCharacters,
-    };
-
-    const managementMinutes = inputs.settings.managementMinutesPerCycle ?? 0;
-    const hours =
-      managementMinutes > 0 ? managementMinutes / 60 : cycleSeconds / 3600;
-    const iskPerHour = hours > 0 ? total.netProfitIsk / hours : 0;
-
-    return {
-      inputs,
-      perCharacter,
-      perAccount,
-      total,
-      iskPerHour,
-    };
+    // Deprecated: this logic was moved into SkillFarmMathService.
+    // Keep this method as a thin wrapper to avoid duplicating business logic.
+    return new SkillFarmMathService().compute(inputs);
   }
 
   private computeExtractable(totalSp: number, farmPlanSp: number) {

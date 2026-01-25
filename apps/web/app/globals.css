@@ -167,11 +167,25 @@
 }
 
 @layer base {
+  html {
+    /* Prevent layout shift when vertical scrollbar appears/disappears */
+    scrollbar-gutter: stable;
+    /* Keep gutter stable even when body is scroll-locked (e.g. Radix Select) */
+    overflow-y: scroll;
+  }
   * {
     @apply border-border outline-ring/50;
   }
   body {
     @apply bg-background text-foreground;
+    /* Let html own the scrollbar; prevents Radix scroll-lock layout shifts */
+    overflow-y: auto;
+  }
+  /* If a scroll-lock lib adds padding-right, don't double-compensate */
+  body[data-scroll-locked] {
+    padding-right: 0 !important;
+    margin-right: 0 !important;
+    --removed-body-scroll-bar-size: 0px;
   }
   /* Keyboard focus indicators for accessibility */
   *:focus-visible {

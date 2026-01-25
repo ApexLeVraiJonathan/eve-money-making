@@ -10,6 +10,7 @@ import type {
   SkillFarmTrackingSnapshot,
   SkillFarmMathInputs,
   SkillFarmMathResult,
+  SkillFarmMarketPricesSnapshot,
 } from "@eve/api-contracts";
 
 export function useSkillFarmSettings() {
@@ -104,5 +105,20 @@ export function useSkillFarmMathPreview() {
         input,
       );
     },
+  });
+}
+
+export function useSkillFarmMarketPrices() {
+  const client = useApiClient();
+
+  return useAuthenticatedQuery({
+    queryKey: qk.skillFarm.marketPrices(),
+    queryFn: async () => {
+      return await client.get<SkillFarmMarketPricesSnapshot>(
+        "/skill-farm/market-prices",
+      );
+    },
+    retry: false,
+    staleTime: 5 * 60_000,
   });
 }

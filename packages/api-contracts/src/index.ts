@@ -493,7 +493,7 @@ export interface SkillFarmCharacterStatus {
    */
   totalSp: number;
   /**
-   * Non-extractable SP (e.g. the first 5.5M SP).
+   * Non-extractable SP (the first 5.0M SP).
    */
   nonExtractableSp: number;
   requirements: {
@@ -517,11 +517,21 @@ export interface SkillFarmSettings {
   extractorPriceIsk: number | null;
   injectorPriceIsk: number | null;
   boosterCostPerCycleIsk: number | null;
+  /**
+   * When true, include +12 training boosters in the math model.
+   * Boosters are priced in PLEX (NES store) and prorated by time.
+   */
+  useBoosters: boolean;
   salesTaxPercent: number | null;
   brokerFeePercent: number | null;
   soldViaContracts: boolean;
   cycleDays: number | null;
   managementMinutesPerCycle: number | null;
+  /**
+   * Skill IDs (EVE type IDs) that the user wants to consider "farmable/extractable".
+   * When empty, tracking treats all SP above the non-extractable floor as farmable.
+   */
+  extractionTargetSkillIds: number[];
   createdAt: string;
   updatedAt: string;
 }
@@ -540,6 +550,19 @@ export interface SkillFarmTrackingEntry {
   fullExtractorsReady: number;
   remainderSp: number;
   /**
+   * How the farmable skill set was derived for this character.
+   * - ALL_ABOVE_FLOOR: no explicit targets; treat all SP above floor as farmable
+   * - SETTINGS: global skill targets from SkillFarmSettings
+   * - PLAN: per-character farm plan (SkillPlan) steps
+   */
+  targetSource: "ALL_ABOVE_FLOOR" | "SETTINGS" | "PLAN";
+  /**
+   * Active training info from the character's queue.
+   */
+  activeTrainingSkillId: number | null;
+  activeTrainingSkillName: string | null;
+  activeTrainingEndsAt: string | null;
+  /**
    * Seconds until the next full extractor is expected, based on
    * current SP/hour. Null when already ready or cannot be estimated.
    */
@@ -556,6 +579,19 @@ export interface SkillFarmTrackingSnapshot {
 export interface SkillFarmMathInputs {
   settings: SkillFarmSettings;
   /**
+   * Total number of farm characters (across all accounts).
+   * Preferred input for the per-injector model.
+   */
+  totalCharacters?: number;
+  /**
+   * Number of Omega subscriptions required for the farm (30d periods).
+   */
+  omegaRequired?: number;
+  /**
+   * Number of MCT subscriptions required for the farm (30d periods).
+   */
+  mctRequired?: number;
+  /**
    * Number of EVE accounts participating in the farm.
    */
   accounts: number;
@@ -569,14 +605,27 @@ export interface SkillFarmMathInputs {
    */
   ignoreOmegaCostAccountIndexes: number[];
   /**
-   * Optional override for SP/day per character when not derived from
+   * Optional override for SP/minute per character when not derived from
    * actual characters.
+   */
+  spPerMinutePerCharacter?: number | null;
+  /**
+   * Deprecated: prefer `spPerMinutePerCharacter`.
+   * Kept temporarily for backward compatibility.
    */
   spPerDayPerCharacter?: number | null;
 }
 
 export interface SkillFarmMathResultPerCharacter {
+  /**
+   * Training speed used for calculations.
+   */
+  spPerMinute: number;
   spPerDay: number;
+  /**
+   * Time required to train 500k SP at the configured training speed.
+   */
+  daysPerInjector: number;
   spPerCycle: number;
   extractorsPerCycle: number;
   injectorsPerCycle: number;
@@ -587,6 +636,10 @@ export interface SkillFarmMathResultPerCharacter {
 
 export interface SkillFarmMathResult {
   inputs: SkillFarmMathInputs;
+  /**
+   * Injectors produced per 30 days for a single character at the configured training speed.
+   */
+  injectorsPer30DaysPerCharacter: number;
   /**
    * Per-character economics for a representative farm character.
    */
@@ -600,10 +653,32 @@ export interface SkillFarmMathResult {
    */
   total: SkillFarmMathResultPerCharacter;
   /**
-   * ISK/hour of player effort for the entire farm based on the
-   * configured management time per cycle.
+   * ISK/hour for the entire farm based on the training time required
+   * to produce 1 injector (500k SP) per character.
    */
   iskPerHour: number;
+}
+
+export type SkillFarmMarketPriceKey = "PLEX" | "EXTRACTOR" | "INJECTOR";
+
+export interface SkillFarmMarketPriceEntry {
+  key: SkillFarmMarketPriceKey;
+  itemName: string;
+  typeId: number | null;
+  /**
+   * Lowest sell order price at the selected hub/station.
+   */
+  lowestSell: number | null;
+}
+
+export interface SkillFarmMarketPricesSnapshot {
+  /**
+   * Station used for the market snapshot (defaults to the server's configured hub, e.g. Jita IV-4).
+   */
+  stationId: number;
+  regionId: number | null;
+  fetchedAt: string;
+  items: SkillFarmMarketPriceEntry[];
 }
 
 /**

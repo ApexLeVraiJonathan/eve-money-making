@@ -460,6 +460,8 @@ model SkillFarmSettings {
   injectorPriceIsk          Decimal? @map("injector_price_isk") @db.Decimal(28, 2)
   /// ISK cost per cycle for boosters (e.g., +12 Genius)
   boosterCostPerCycleIsk    Decimal? @map("booster_cost_per_cycle_isk") @db.Decimal(28, 2)
+  /// When true, include +12 training boosters in the math model
+  useBoosters               Boolean  @default(true) @map("use_boosters")
   /// Sales tax percentage (0–100)
   salesTaxPercent           Decimal? @map("sales_tax_percent") @db.Decimal(5, 2)
   /// Broker's fee percentage (0–100)
@@ -470,6 +472,8 @@ model SkillFarmSettings {
   cycleDays                 Int?     @map("cycle_days")
   /// Estimated management time per cycle in minutes
   managementMinutesPerCycle Int?     @map("management_minutes_per_cycle")
+  /// Optional list of skill IDs that should be considered extractable (when empty, treat all SP above the floor as extractable).
+  extractionTargetSkillIds  Int[]    @default([]) @map("extraction_target_skill_ids")
   createdAt                 DateTime @default(now()) @map("created_at")
   updatedAt                 DateTime @updatedAt @map("updated_at")
 

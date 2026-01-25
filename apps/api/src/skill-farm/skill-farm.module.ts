@@ -7,6 +7,8 @@ import { SkillFarmService } from './skill-farm.service';
 import { SkillFarmMathService } from './skill-farm.math.service';
 import { CharacterManagementModule } from '../character-management/character-management.module';
 import { SkillPlansModule } from '../skill-plans/skill-plans.module';
+import { GameDataModule } from '../game-data/game-data.module';
+import { SkillFarmMarketPricesService } from './skill-farm.market-prices.service';
 
 /**
  * SkillFarmModule
@@ -26,9 +28,15 @@ import { SkillPlansModule } from '../skill-plans/skill-plans.module';
     EsiModule,
     CharacterManagementModule,
     SkillPlansModule,
+    GameDataModule,
   ],
   controllers: [SkillFarmController],
-  providers: [Logger, SkillFarmService, SkillFarmMathService],
+  providers: [
+    Logger,
+    SkillFarmService,
+    SkillFarmMathService,
+    SkillFarmMarketPricesService,
+  ],
   exports: [SkillFarmService],
 })
 export class SkillFarmModule {}

@@ -203,6 +203,9 @@ export const qk = {
     tracking: () => ["skillFarm", "tracking"] as const,
     /** Optional server-side math preview */
     mathPreview: () => ["skillFarm", "mathPreview"] as const,
+    /** Market price snapshot for common skill farm items */
+    marketPrices: (stationId?: number) =>
+      ["skillFarm", "marketPrices", stationId ?? "default"] as const,
   },
 
   /** User-owned skill plans */

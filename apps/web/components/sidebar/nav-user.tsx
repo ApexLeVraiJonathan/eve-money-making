@@ -30,7 +30,9 @@ import { useMyCharacters } from "@/app/tradecraft/api/characters";
 export function NavUser() {
   const { isMobile } = useSidebar();
   const { data: me } = useCurrentUser();
-  const { data: characters, isLoading: loading } = useMyCharacters(!!me?.userId);
+  const { data: characters, isLoading: loading } = useMyCharacters(
+    !!me?.userId,
+  );
 
   const handleLogin = () => {
     const returnUrl =

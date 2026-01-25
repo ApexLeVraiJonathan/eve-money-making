@@ -1,5 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import {
+  IsArray,
   IsBoolean,
   IsIn,
   IsInt,
@@ -50,6 +51,15 @@ export class UpdateSkillFarmSettingsDto {
   boosterCostPerCycleIsk?: number | null;
 
   @ApiProperty({
+    description:
+      'When true, include +12 training boosters in the math model (priced in PLEX and prorated by time)',
+    required: false,
+  })
+  @IsOptional()
+  @IsBoolean()
+  useBoosters?: boolean;
+
+  @ApiProperty({
     description: 'Sales tax percentage (0–100)',
     required: false,
   })
@@ -89,6 +99,17 @@ export class UpdateSkillFarmSettingsDto {
   @IsOptional()
   @IsInt()
   managementMinutesPerCycle?: number | null;
+
+  @ApiProperty({
+    description:
+      'Optional list of skill IDs (EVE type IDs) that should be considered extractable.',
+    required: false,
+    type: [Number],
+  })
+  @IsOptional()
+  @IsArray()
+  @IsInt({ each: true })
+  extractionTargetSkillIds?: number[];
 }
 
 export class UpdateSkillFarmCharacterDto {
