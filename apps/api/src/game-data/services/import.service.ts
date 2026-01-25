@@ -1297,12 +1297,34 @@ export class ImportService {
   async getMissingMarketOrderTradeDates(daysBack = 15) {
     const dates = this.dataImportService.getLastNDates(daysBack);
     const missing: string[] = [];
+    // Consider a day "missing" if the daily aggregate is incomplete for our
+    // expected stations (tracked stations + arbitrage source station).
+    //
+    // This matters because partial imports (e.g. only Jita) will otherwise make
+    // `count(scanDate)= > 0` and the backfill job will skip the day entirely.
+    const tracked = await this.prisma.trackedStation.findMany({
+      select: { stationId: true },
+    });
+    const expectedStations = new Set(tracked.map((t) => t.stationId));
+    expectedStations.add(AppConfig.arbitrage().sourceStationId);
+    const expectedStationIds = Array.from(expectedStations);
+
     for (const date of dates) {
       const dayStart = new Date(`${date}T00:00:00.000Z`);
-      const count = await this.prisma.marketOrderTradeDaily.count({
-        where: { scanDate: dayStart },
+      const present = await this.prisma.marketOrderTradeDaily.findMany({
+        where: {
+          scanDate: dayStart,
+          locationId: { in: expectedStationIds },
+        },
+        distinct: ['locationId'],
+        select: { locationId: true },
       });
-      if (count === 0) missing.push(date);
+
+      // Mark missing if the day has no data at all for the expected stations,
+      // OR if it is only partially imported for a subset of them.
+      if (present.length < expectedStationIds.length) {
+        missing.push(date);
+      }
     }
     return missing;
   }
