@@ -49,7 +49,9 @@ export default function LiquidityPage() {
 
   // Station Liquidity Scan state
   const [stationId, setStationId] = useState<number | null>(null);
-  const [windowDays, setWindowDays] = useState<number>(30);
+  // Default to 7d because our market-trades ingestion is often recent-window only;
+  // 30d + coverage ratio can legitimately yield zero items when only ~7-15d exist.
+  const [windowDays, setWindowDays] = useState<number>(7);
   const [minCoverageRatio, setMinCoverageRatio] = useState<number>(0.57);
   const [minLiquidityThresholdISK, setMinLiquidityThresholdISK] =
     useState<number>(1000000);
@@ -88,7 +90,7 @@ export default function LiquidityPage() {
   const handleLoadProfile = (params: Record<string, unknown>) => {
     // Always set all values, including clearing optional ones if not in profile
     setStationId((params.stationId as number) || null);
-    setWindowDays((params.windowDays as number) || 30);
+    setWindowDays((params.windowDays as number) || 7);
     setMinCoverageRatio((params.minCoverageRatio as number) || 0.57);
     setMinLiquidityThresholdISK(
       (params.minLiquidityThresholdISK as number) || 1000000,

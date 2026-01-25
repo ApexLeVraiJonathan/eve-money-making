@@ -50,7 +50,7 @@ export class PrismaService
 
         if (duration > this.slowQueryThreshold) {
           this.logger.warn(
-            `[SLOW QUERY] ${duration}ms - ${this.sanitizeQuery(query)} - Params: ${params}`,
+            `[SLOW QUERY] ${duration}ms - ${this.sanitizeQuery(query)} - Params: ${this.sanitizeParams(params)}`,
           );
         }
       });
@@ -74,5 +74,19 @@ export class PrismaService
     const maxLength = 200;
     if (query.length <= maxLength) return query;
     return query.substring(0, maxLength) + '...';
+  }
+
+  /**
+   * Sanitize params for logging (truncate huge IN lists / JSON arrays)
+   */
+  private sanitizeParams(params: string): string {
+    const maxLength = 250;
+    if (!params) return '';
+    if (params.length <= maxLength) return params;
+
+    // Keep both ends so you can still recognize the shape.
+    const head = params.slice(0, 180);
+    const tail = params.slice(-50);
+    return `${head}… (${params.length} chars) …${tail}`;
   }
 }
