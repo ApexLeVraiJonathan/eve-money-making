@@ -22,6 +22,71 @@ export class ParticipationService {
   private static readonly DEFAULT_PRINCIPAL_CAP_ISK = 10_000_000_000;
   private static readonly DEFAULT_MAXIMUM_CAP_ISK = 20_000_000_000;
 
+  private async getUserDefaultCharacterName(userId: string): Promise<string | null> {
+    const rec = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        primaryCharacter: { select: { name: true } },
+        characters: {
+          select: { name: true },
+          orderBy: { updatedAt: 'desc' },
+          take: 1,
+        },
+      },
+    });
+
+    const primary = rec?.primaryCharacter?.name?.trim();
+    if (primary) return primary;
+    const anyLinked = rec?.characters?.[0]?.name?.trim();
+    return anyLinked || null;
+  }
+
+  /**
+   * Fixes a known historical bug where auto-rollover participations were created
+   * without a characterName and got a global fallback (some unrelated character).
+   *
+   * We repair only rollover-linked participations by copying the source
+   * participation's characterName (since it represents the user's actual payer).
+   */
+  private async maybeRepairRolloverCharacterName(p: {
+    id: string;
+    userId: string | null;
+    rolloverFromParticipationId: string | null;
+    rolloverType: string | null;
+    memo: string;
+    characterName: string;
+    rolloverFromParticipation?: { characterName: string } | null;
+  }): Promise<string> {
+    if (!p.userId) return p.characterName;
+    if (!p.rolloverFromParticipationId) return p.characterName;
+
+    const isRollover =
+      p.memo?.startsWith('ROLLOVER-') || p.rolloverType != null;
+    if (!isRollover) return p.characterName;
+
+    const sourceName = p.rolloverFromParticipation?.characterName?.trim();
+    if (!sourceName) return p.characterName;
+
+    if ((p.characterName ?? '').trim() === sourceName) return sourceName;
+
+    // Best-effort repair; do not block the request if update fails.
+    try {
+      await this.prisma.cycleParticipation.update({
+        where: { id: p.id },
+        data: { characterName: sourceName },
+      });
+    } catch (err: unknown) {
+      this.logger.warn(
+        `[maybeRepairRolloverCharacterName] Failed to repair participation ${p.id.substring(
+          0,
+          8,
+        )}: ${String(err)}`,
+      );
+    }
+
+    return sourceName;
+  }
+
   private async getUserTradecraftCaps(userId: string): Promise<{
     principalCapIsk: number;
     maximumCapIsk: number;
@@ -253,11 +318,17 @@ export class ParticipationService {
       throw new Error('Opt-in only allowed for planned cycles');
     }
 
-    let characterName = input.characterName;
-    if (!characterName) {
-      const anyChar = await this.characterService.getAnyCharacterName();
-      characterName = anyChar ?? 'Unknown';
-    }
+    // IMPORTANT:
+    // - User-triggered participations should come with a characterName (from session)
+    // - Auto-rollover historically created participations without characterName; we must
+    //   *never* fall back to some random/global character in that case.
+    //
+    // Defaulting strategy:
+    // - If provided explicitly → use it
+    // - If rollover → use the user's active/open-cycle participation characterName
+    // - Else if userId → use user's primary (or most recently updated) linked character
+    // - Else (anonymous) → global fallback
+    let characterName = input.characterName?.trim() || undefined;
 
     // Check for existing participation
     const existing = await this.prisma.cycleParticipation.findFirst({
@@ -339,6 +410,18 @@ export class ParticipationService {
       }
 
       const activeParticipation = openCycle.participations[0];
+      // If caller didn't provide a characterName (common for auto-rollover),
+      // derive it from the source participation instead of using a global fallback.
+      if (!characterName) {
+        characterName = activeParticipation.characterName?.trim() || undefined;
+      }
+      if (!characterName && input.userId) {
+        characterName = (await this.getUserDefaultCharacterName(input.userId)) ?? undefined;
+      }
+      if (!characterName) {
+        const anyChar = await this.characterService.getAnyCharacterName();
+        characterName = anyChar ?? 'Unknown';
+      }
 
       // Validate custom amount
       if (input.rollover.type === 'CUSTOM_AMOUNT') {
@@ -411,6 +494,14 @@ export class ParticipationService {
     }
 
     // Non-rollover participation
+    if (!characterName && input.userId) {
+      characterName = (await this.getUserDefaultCharacterName(input.userId)) ?? undefined;
+    }
+    if (!characterName) {
+      const anyChar = await this.characterService.getAnyCharacterName();
+      characterName = anyChar ?? 'Unknown';
+    }
+
     // Generate unique memo: ARB-{cycleId:8}-{userId:8}
     const userIdForMemo = input.userId || 'unknown';
     const uniqueMemo = `ARB-${cycle.id.substring(0, 8)}-${String(userIdForMemo).substring(0, 8)}`;
@@ -696,10 +787,33 @@ export class ParticipationService {
         ? { status: status as ParticipationStatus }
         : {}),
     };
-    return await this.prisma.cycleParticipation.findMany({
+    const rows = await this.prisma.cycleParticipation.findMany({
       where,
       orderBy: { createdAt: 'asc' },
+      include: {
+        rolloverFromParticipation: {
+          select: { characterName: true },
+        },
+      },
     });
+    // Best-effort auto-heal of the rollover characterName bug.
+    return await Promise.all(
+      rows.map(async (p) => {
+        const fixed = await this.maybeRepairRolloverCharacterName({
+          id: p.id,
+          userId: p.userId,
+          rolloverFromParticipationId: p.rolloverFromParticipationId ?? null,
+          rolloverType: p.rolloverType ?? null,
+          memo: p.memo,
+          characterName: p.characterName,
+          rolloverFromParticipation: p.rolloverFromParticipation,
+        });
+        const { rolloverFromParticipation: _rfp, ...rest } = p;
+        return fixed === p.characterName
+          ? rest
+          : { ...rest, characterName: fixed };
+      }),
+    );
   }
 
   /**
@@ -872,9 +986,27 @@ export class ParticipationService {
    * Get participation for a user in a cycle
    */
   async getMyParticipation(cycleId: string, userId: string) {
-    return await this.prisma.cycleParticipation.findFirst({
+    const p = await this.prisma.cycleParticipation.findFirst({
       where: { cycleId, userId },
+      include: {
+        rolloverFromParticipation: {
+          select: { characterName: true },
+        },
+      },
     });
+    if (!p) return null;
+
+    const fixed = await this.maybeRepairRolloverCharacterName({
+      id: p.id,
+      userId: p.userId,
+      rolloverFromParticipationId: p.rolloverFromParticipationId ?? null,
+      rolloverType: p.rolloverType ?? null,
+      memo: p.memo,
+      characterName: p.characterName,
+      rolloverFromParticipation: p.rolloverFromParticipation,
+    });
+    const { rolloverFromParticipation: _rfp, ...rest } = p;
+    return fixed === p.characterName ? rest : { ...rest, characterName: fixed };
   }
 
   /**
