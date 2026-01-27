@@ -69,6 +69,26 @@ export type MarketNpcGatherConfig = {
 
 export const AppConfig = {
   /**
+   * Parse a boolean-ish env value.
+   * Accepts: true/1/yes/y and false/0/no/n (case-insensitive).
+   */
+  boolEnv(value: string | undefined | null): boolean {
+    if (value === undefined || value === null) return false;
+    const s = String(value).toLowerCase().trim();
+    return s === 'true' || s === '1' || s === 'yes' || s === 'y';
+  },
+
+  /**
+   * Job-level feature flag with default fallback.
+   * Matches the legacy JobsService parsing (true/1/yes).
+   */
+  jobFlag(key: string, fallback: boolean): boolean {
+    const v = process.env[key];
+    if (v === undefined) return fallback;
+    return AppConfig.boolEnv(v);
+  },
+
+  /**
    * Resolve application environment. Accepts APP_ENV (dev|test|prod) or falls back to NODE_ENV.
    */
   env(): 'dev' | 'test' | 'prod' {
@@ -269,10 +289,7 @@ export const AppConfig = {
    * Self-gathered market data collection (structure market polling).
    */
   marketSelfGather(): MarketSelfGatherConfig {
-    const enabled =
-      (process.env.MARKET_SELF_GATHER_ENABLED ?? '').toLowerCase() === 'true' ||
-      process.env.MARKET_SELF_GATHER_ENABLED === '1' ||
-      process.env.MARKET_SELF_GATHER_ENABLED === 'yes';
+    const enabled = AppConfig.boolEnv(process.env.MARKET_SELF_GATHER_ENABLED);
 
     const structureIdRaw = process.env.MARKET_SELF_GATHER_STRUCTURE_ID ?? '';
     const structureId =
@@ -292,7 +309,7 @@ export const AppConfig = {
     const effectiveCharacterId = characterId ?? 2122151042;
 
     const pollMinutes = Number(
-      process.env.MARKET_SELF_GATHER_POLL_MINUTES ?? 10,
+      process.env.MARKET_SELF_GATHER_POLL_MINUTES ?? 15,
     );
     const expiryWindowMinutes = Number(
       process.env.MARKET_SELF_GATHER_EXPIRY_WINDOW_MINUTES ?? 360,
@@ -309,7 +326,7 @@ export const AppConfig = {
       structureId: effectiveStructureId,
       characterId: effectiveCharacterId,
       pollMinutes:
-        Number.isFinite(pollMinutes) && pollMinutes > 0 ? pollMinutes : 10,
+        Number.isFinite(pollMinutes) && pollMinutes > 0 ? pollMinutes : 15,
       expiryWindowMinutes:
         Number.isFinite(expiryWindowMinutes) && expiryWindowMinutes >= 0
           ? expiryWindowMinutes
@@ -324,10 +341,7 @@ export const AppConfig = {
    * Manual-first: cron wiring comes later once runtime is validated.
    */
   marketNpcGather(): MarketNpcGatherConfig {
-    const enabled =
-      (process.env.MARKET_NPC_GATHER_ENABLED ?? '').toLowerCase() === 'true' ||
-      process.env.MARKET_NPC_GATHER_ENABLED === '1' ||
-      process.env.MARKET_NPC_GATHER_ENABLED === 'yes';
+    const enabled = AppConfig.boolEnv(process.env.MARKET_NPC_GATHER_ENABLED);
 
     const stationIdRaw = process.env.MARKET_NPC_GATHER_STATION_ID ?? '';
     const stationId =
@@ -476,7 +490,7 @@ export const AppConfig = {
     const flag = process.env.ENABLE_JOBS;
     let enabled: boolean;
     if (flag !== undefined) {
-      enabled = flag === 'true' || flag === '1' || flag === 'yes';
+      enabled = AppConfig.boolEnv(flag);
     } else {
       enabled = process.env.NODE_ENV === 'production';
     }

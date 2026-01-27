@@ -16,6 +16,7 @@ import { RolesGuard } from '@api/characters/guards/roles.guard';
 import { PrismaService } from '@api/prisma/prisma.service';
 import { AppConfig } from '@api/common/config';
 import { SelfMarketCollectorService } from './self-market-collector.service';
+import { JobKeys, resolveJobEnabledFlag } from '../jobs/job-keys';
 import {
   SelfMarketDailyAggregatesQueryDto,
   SelfMarketSnapshotLatestQueryDto,
@@ -80,6 +81,12 @@ export class SelfMarketController {
   async status(@Query() q: SelfMarketStatusQueryDto) {
     const cfg = AppConfig.marketSelfGather();
     const structureId = this.resolveStructureId(q.structureId);
+    const jobsEnabled = AppConfig.jobs().enabled;
+    const appEnv = AppConfig.env();
+    const globalCronEnabled = appEnv === 'prod' && jobsEnabled;
+    const marketJobFlag = resolveJobEnabledFlag(JobKeys.marketGathering);
+    const cronEffectiveEnabled =
+      globalCronEnabled && marketJobFlag.enabled && cfg.enabled;
 
     const latestSnap = structureId
       ? await this.prisma.selfMarketSnapshotLatest.findUnique({
@@ -115,6 +122,13 @@ export class SelfMarketController {
         characterId: cfg.characterId ?? null,
         pollMinutes: cfg.pollMinutes,
         expiryWindowMinutes: cfg.expiryWindowMinutes,
+      },
+      cron: {
+        appEnv,
+        jobsEnabled,
+        jobEnabled: marketJobFlag.enabled,
+        jobEnabledSourceKey: marketJobFlag.sourceKey,
+        effectiveEnabled: cronEffectiveEnabled,
       },
       resolvedStructureId: structureId?.toString() ?? null,
       latestSnapshot: latestSnap
@@ -341,19 +355,21 @@ export class SelfMarketController {
       return { structureId: structureId.toString(), date, rows: [] };
     }
 
-    // Defensive parsing: depending on global ValidationPipe settings, query params
-    // may arrive as strings ("true"/"false"). Ensure "false" is treated correctly.
-    const rawHasGone = (q as unknown as { hasGone?: unknown }).hasGone;
-    const hasGone = parseBool(rawHasGone) ?? false;
+    // Defensive parsing: with global ValidationPipe `enableImplicitConversion`,
+    // query string `"false"` can be coerced into boolean `true` (because Boolean("false") === true).
+    // Prefer the raw req.query value to preserve the literal string.
+    const rawReqHasGone = (req.query as Record<string, unknown>)?.hasGone;
+    const rawDtoHasGone = (q as unknown as { hasGone?: unknown }).hasGone;
+    const hasGone =
+      parseBool(rawReqHasGone) ?? parseBool(rawDtoHasGone) ?? false;
     const side = q.side ?? 'SELL';
     const limit = q.limit ?? 500;
 
     if (AppConfig.env() !== 'prod') {
-      const rawReqHasGone = (req.query as Record<string, unknown>)?.hasGone;
       this.logger.debug(
         `Self market daily query: date=${date} hasGone=${String(
           hasGone,
-        )} (dtoRaw=${String(rawHasGone)} dtoType=${typeof rawHasGone} reqQueryHasGone=${String(
+        )} (dtoRaw=${String(rawDtoHasGone)} dtoType=${typeof rawDtoHasGone} reqQueryHasGone=${String(
           rawReqHasGone,
         )} reqQueryType=${typeof rawReqHasGone}) side=${side} typeId=${String(
           q.typeId ?? '',

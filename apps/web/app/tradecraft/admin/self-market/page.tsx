@@ -34,7 +34,6 @@ import {
   useSelfMarketSnapshotLatest,
   useSelfMarketSnapshotLatestTypeSummary,
   useSelfMarketStatus,
-  type SelfMarketOrder,
   useNpcMarketCollect,
   useNpcMarketDailyAggregates,
   useNpcMarketSnapshotLatest,
@@ -446,7 +445,7 @@ export default function SelfMarketPage() {
   });
 
   const status = statusQ.data;
-  const enabled = status?.config.enabled ?? false;
+  const enabled = status?.cron.effectiveEnabled ?? false;
   const resolvedStructureId = status?.resolvedStructureId ?? null;
   const snapshotAgeMins = minutesSince(
     status?.latestSnapshot?.observedAt ?? null,
@@ -653,6 +652,10 @@ export default function SelfMarketPage() {
                       >
                         {enabled ? "Yes" : "No"}
                       </span>
+                    </div>
+                    <div className="flex justify-between gap-2">
+                      <span className="text-muted-foreground">Config flag</span>
+                      <span>{status?.config.enabled ? "Yes" : "No"}</span>
                     </div>
                     <div className="flex justify-between gap-2">
                       <span className="text-muted-foreground">Structure</span>
@@ -1331,6 +1334,12 @@ export default function SelfMarketPage() {
                   <>
                     <div className="flex justify-between gap-2">
                       <span className="text-muted-foreground">Enabled</span>
+                      <span>
+                        {npcStatusQ.data.cron.effectiveEnabled ? "Yes" : "No"}
+                      </span>
+                    </div>
+                    <div className="flex justify-between gap-2">
+                      <span className="text-muted-foreground">Config flag</span>
                       <span>
                         {npcStatusQ.data.config.enabled ? "Yes" : "No"}
                       </span>

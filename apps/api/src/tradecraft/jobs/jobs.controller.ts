@@ -2,12 +2,12 @@ import { Controller, Get, Post, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { Roles } from '@api/characters/decorators/roles.decorator';
 import { RolesGuard } from '@api/characters/guards/roles.guard';
-import { JobsService } from './jobs.service';
+import { JobsFacadeService } from './jobs-facade.service';
 
 @ApiTags('jobs')
 @Controller('jobs')
 export class JobsController {
-  constructor(private readonly jobs: JobsService) {}
+  constructor(private readonly jobs: JobsFacadeService) {}
 
   @Get('esi-cache/cleanup')
   @Roles('ADMIN')

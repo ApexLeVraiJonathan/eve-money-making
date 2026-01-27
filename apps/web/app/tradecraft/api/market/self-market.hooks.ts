@@ -12,6 +12,13 @@ export type SelfMarketStatusResponse = {
     pollMinutes: number;
     expiryWindowMinutes: number;
   };
+  cron: {
+    appEnv: "dev" | "test" | "prod";
+    jobsEnabled: boolean;
+    jobEnabled: boolean;
+    jobEnabledSourceKey: string | null;
+    effectiveEnabled: boolean;
+  };
   resolvedStructureId: string | null;
   latestSnapshot: null | {
     observedAt: string;

@@ -14,6 +14,7 @@ import { PrismaService } from '@api/prisma/prisma.service';
 import { AppConfig } from '@api/common/config';
 import { NpcMarketCollectorService } from './npc-market-collector.service';
 import { Prisma } from '@eve/prisma';
+import { JobKeys, resolveJobEnabledFlag } from '../jobs/job-keys';
 
 function utcDayStartFromYyyyMmDd(date: string): Date | null {
   // Expect YYYY-MM-DD
@@ -50,6 +51,12 @@ export class NpcMarketController {
   async status(@Query() q: { stationId?: string }) {
     const cfg = AppConfig.marketNpcGather();
     const stationId = this.resolveStationId(q.stationId);
+    const jobsEnabled = AppConfig.jobs().enabled;
+    const appEnv = AppConfig.env();
+    const globalCronEnabled = appEnv === 'prod' && jobsEnabled;
+    const marketJobFlag = resolveJobEnabledFlag(JobKeys.marketGathering);
+    const cronEffectiveEnabled =
+      globalCronEnabled && marketJobFlag.enabled && cfg.enabled;
     const station = stationId
       ? await this.prisma.stationId.findUnique({
           where: { id: stationId },
@@ -133,6 +140,13 @@ export class NpcMarketController {
         stationId: cfg.stationId,
         pollMinutes: cfg.pollMinutes,
         expiryWindowMinutes: cfg.expiryWindowMinutes,
+      },
+      cron: {
+        appEnv,
+        jobsEnabled,
+        jobEnabled: marketJobFlag.enabled,
+        jobEnabledSourceKey: marketJobFlag.sourceKey,
+        effectiveEnabled: cronEffectiveEnabled,
       },
       resolvedStation: station
         ? {

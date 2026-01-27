@@ -108,12 +108,57 @@ These are still supported for local/dev or migration scenarios:
 
 - **ENABLE_JOBS**: Enable all cron jobs.
   - Default: enabled when `NODE_ENV === "production"`, disabled otherwise.
-- **JOB_SKILL_PLAN_NOTIFICATIONS_ENABLED**: Enable skill plan notification job. Default: `true`.
-- **JOB_CLEANUP_ENABLED**: Enable hourly ESI cache & OAuth-state cleanup. Default: `true`.
-- **JOB_DAILY_IMPORTS_ENABLED**: Enable daily market backfill check. Default: `true`.
-- **JOB_WALLETS_ENABLED**: Enable hourly wallet import + reconciliation. Default: `true`.
-- **JOB_CAPITAL_ENABLED**: Enable hourly capital recompute for open cycles. Default: `true`.
-- **JOB_SYSTEM_TOKENS_ENABLED**: Enable monthly refresh of SYSTEM character tokens. Default: `true`.
+
+Per-job flags (all default to **enabled** when the env var is **unset**):
+
+- **JOB_MARKET_GATHERING_ENABLED**: Market gatherer (structure + NPC) runner (every 15 minutes).
+  - Legacy alias: `JOB_MARKET_GATHER_ENABLED`
+- **JOB_WALLET_IMPORTS_ENABLED**: Wallet imports + allocation (hourly).
+  - Legacy alias: `JOB_WALLETS_ENABLED`
+- **JOB_CAPITAL_RECOMPUTE_ENABLED**: Capital recompute for open cycles (hourly).
+  - Legacy alias: `JOB_CAPITAL_ENABLED`
+- **JOB_DAILY_IMPORTS_ENABLED**: Daily market import checks (daily @ 10:00).
+- **JOB_SKILL_PLAN_NOTIFICATIONS_ENABLED**: Skill plan notifications (hourly).
+- **JOB_SKILL_FARM_NOTIFICATIONS_ENABLED**: Skill farm notifications (hourly).
+- **JOB_EXPIRY_NOTIFICATIONS_ENABLED**: PLEX/MCT/booster expiry summaries (daily @ 09:00).
+- **JOB_ESI_CACHE_CLEANUP_ENABLED**: ESI cache cleanup (hourly).
+  - Legacy alias: `JOB_CLEANUP_ENABLED`
+- **JOB_OAUTH_STATE_CLEANUP_ENABLED**: OAuth-state cleanup (hourly).
+  - Legacy alias: `JOB_CLEANUP_ENABLED`
+- **JOB_SYSTEM_TOKENS_REFRESH_ENABLED**: Refresh SYSTEM character tokens (monthly @ 02:00 on day 1).
+  - Legacy alias: `JOB_SYSTEM_TOKENS_ENABLED`
+
+#### Market gatherer (cron runner)
+
+The market gatherer cron is implemented in `apps/api` (NestJS Schedule). It is considered **active** only when all of these are true:
+
+- `APP_ENV=prod` (the runner is intentionally disabled in `dev/test`)
+- `ENABLE_JOBS=true` (or `NODE_ENV=production` when `ENABLE_JOBS` is not set)
+- `JOB_MARKET_GATHERING_ENABLED=true`
+
+Then each collector has its own enable flag:
+
+**Structure self-market (C-N):**
+
+- **MARKET_SELF_GATHER_ENABLED**: Master enable for structure collection.
+- **MARKET_SELF_GATHER_STRUCTURE_ID**: Structure ID (bigint).
+  - If unset, code currently defaults to `1045667241057` (C-N hub).
+- **MARKET_SELF_GATHER_CHARACTER_ID**: Character ID used to call the structure market endpoint (must have structure market access).
+  - If unset, code currently defaults to `2122151042`.
+- **MARKET_SELF_GATHER_POLL_MINUTES**: Intended poll interval in minutes (UI only for now). Default: `10`.
+- **MARKET_SELF_GATHER_POLL_MINUTES**: Intended poll interval in minutes (UI only for now). Default: `15`.
+- **MARKET_SELF_GATHER_EXPIRY_WINDOW_MINUTES**: Expiry window heuristic (upper-bound mode). Default: `360`.
+- **MARKET_SELF_GATHER_NOTIFY_USER_ID**: Optional Discord userId to DM after repeated failures.
+
+**NPC market (Rens, etc):**
+
+- **MARKET_NPC_GATHER_ENABLED**: Master enable for NPC station collection.
+- **MARKET_NPC_GATHER_STATION_ID**: Default stationId to collect (if not provided). Default: `60004588` (Rens).
+- **MARKET_NPC_GATHER_POLL_MINUTES**: Intended poll interval in minutes. Default: `15`.
+- **MARKET_NPC_GATHER_POLL_MINUTES**: Intended poll interval in minutes. Default: `15`.
+- **MARKET_NPC_GATHER_EXPIRY_WINDOW_MINUTES**: Expiry window heuristic (upper-bound mode). Default: `360`.
+- **MARKET_NPC_GATHER_NOTIFY_USER_ID**: Optional Discord userId to DM after repeated failures.
+- **MARKET_NPC_GATHER_TIMING_DEBUG**: Verbose timing logs (`true/false`). Default: `false`.
 
 #### Cycle Accounting (optional tuning)
 

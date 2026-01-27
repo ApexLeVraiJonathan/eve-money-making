@@ -11,6 +11,13 @@ export type NpcMarketStatusResponse = {
     pollMinutes: number;
     expiryWindowMinutes: number;
   };
+  cron: {
+    appEnv: "dev" | "test" | "prod";
+    jobsEnabled: boolean;
+    jobEnabled: boolean;
+    jobEnabledSourceKey: string | null;
+    effectiveEnabled: boolean;
+  };
   resolvedStation: null | {
     stationId: number;
     stationName: string;
