@@ -56,7 +56,8 @@ export class MarketDataService {
     amount: number;
   } | null> {
     const latest = await this.prisma.marketOrderTradeDaily.findFirst({
-      where: { typeId, locationId, isBuyOrder: false },
+      // Default to conservative mode for downstream heuristics.
+      where: { typeId, locationId, isBuyOrder: false, hasGone: false },
       orderBy: { scanDate: 'desc' },
       select: {
         scanDate: true,
@@ -97,7 +98,8 @@ export class MarketDataService {
       amount: number;
     }>
   > {
-    const whereClause: any = {};
+    // Default to conservative mode (hasGone=false).
+    const whereClause: any = { hasGone: false };
 
     if (params.typeIds && params.typeIds.length > 0) {
       whereClause.typeId = { in: params.typeIds };
@@ -208,6 +210,7 @@ export class MarketDataService {
     const rows = await this.prisma.marketOrderTradeDaily.findMany({
       where: {
         isBuyOrder: false,
+        hasGone: false,
         typeId: { in: typeIds },
         locationId: { in: locationIds },
       },

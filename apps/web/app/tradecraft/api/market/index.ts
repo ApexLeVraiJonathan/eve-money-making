@@ -7,4 +7,4 @@ export * from "./tracked-stations.hooks";
 export * from "./participations.hooks";
 export * from "./jingle-yield.hooks";
 export * from "./self-market.hooks";
-export * from "./self-market.hooks";
+export * from "./npc-market.hooks";

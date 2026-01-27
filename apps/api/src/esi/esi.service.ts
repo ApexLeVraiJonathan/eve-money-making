@@ -41,6 +41,10 @@ export class EsiService {
   private readonly baseUrl = this.config.baseUrl;
   private readonly userAgent = this.config.userAgent;
   private readonly defaultTimeoutMs = this.config.timeoutMs;
+  private readonly httpDebug =
+    (process.env.ESI_HTTP_DEBUG ?? '').toLowerCase() === 'true' ||
+    process.env.ESI_HTTP_DEBUG === '1' ||
+    process.env.ESI_HTTP_DEBUG === 'yes';
   private readonly slowDownRemainThreshold =
     this.config.errorSlowdownRemainThreshold;
   private readonly slowDownDelayMs = this.config.errorSlowdownDelayMs;
@@ -421,7 +425,7 @@ export class EsiService {
         while (true) {
           try {
             const res = await axios.request(config);
-            if (opts.reqId) {
+            if (this.httpDebug && opts.reqId) {
               this.logger.debug(
                 `[reqId=${opts.reqId}] ESI ${config.method?.toString().toUpperCase()} ${url} -> ${res.status}`,
               );
@@ -699,7 +703,7 @@ export class EsiService {
                     ...config,
                     headers: retryHeaders,
                   });
-                  if (opts.reqId) {
+                  if (this.httpDebug && opts.reqId) {
                     this.logger.debug(
                       `[reqId=${opts.reqId}] ESI RETRY ${config.method?.toString().toUpperCase()} ${url} -> ${retryRes.status}`,
                     );

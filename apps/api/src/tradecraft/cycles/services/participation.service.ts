@@ -22,7 +22,9 @@ export class ParticipationService {
   private static readonly DEFAULT_PRINCIPAL_CAP_ISK = 10_000_000_000;
   private static readonly DEFAULT_MAXIMUM_CAP_ISK = 20_000_000_000;
 
-  private async getUserDefaultCharacterName(userId: string): Promise<string | null> {
+  private async getUserDefaultCharacterName(
+    userId: string,
+  ): Promise<string | null> {
     const rec = await this.prisma.user.findUnique({
       where: { id: userId },
       select: {
@@ -416,7 +418,8 @@ export class ParticipationService {
         characterName = activeParticipation.characterName?.trim() || undefined;
       }
       if (!characterName && input.userId) {
-        characterName = (await this.getUserDefaultCharacterName(input.userId)) ?? undefined;
+        characterName =
+          (await this.getUserDefaultCharacterName(input.userId)) ?? undefined;
       }
       if (!characterName) {
         const anyChar = await this.characterService.getAnyCharacterName();
@@ -495,7 +498,8 @@ export class ParticipationService {
 
     // Non-rollover participation
     if (!characterName && input.userId) {
-      characterName = (await this.getUserDefaultCharacterName(input.userId)) ?? undefined;
+      characterName =
+        (await this.getUserDefaultCharacterName(input.userId)) ?? undefined;
     }
     if (!characterName) {
       const anyChar = await this.characterService.getAnyCharacterName();

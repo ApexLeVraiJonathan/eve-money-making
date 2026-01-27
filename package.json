@@ -4,7 +4,8 @@
   "description": "",
   "main": "index.js",
   "devDependencies": {
-    "cross-env": "^7.0.3"
+    "cross-env": "^7.0.3",
+    "typescript": "^5.9.3"
   },
   "scripts": {
     "build": "pnpm -r run build",
@@ -16,7 +17,7 @@
     "format": "pnpm -r run format",
     "lint": "pnpm -r run lint",
     "lint:fix": "pnpm -r run lint --fix",
-    "type-check": "pnpm -r exec tsc --noEmit",
+    "type-check": "pnpm -r --filter=!@eve/prisma exec tsc --noEmit",
     "test": "pnpm -r run test",
     "test:api": "pnpm --filter @eve-money-making/api run test",
     "test:web": "pnpm --filter @eve-money-making/web run test",

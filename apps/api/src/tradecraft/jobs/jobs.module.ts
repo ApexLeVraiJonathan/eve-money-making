@@ -12,6 +12,7 @@ import { SkillPlansModule } from '@api/skill-plans/skill-plans.module';
 import { SkillFarmModule } from '@api/skill-farm/skill-farm.module';
 import { EsiModule } from '@api/esi/esi.module';
 import { SelfMarketModule } from '@api/tradecraft/self-market/self-market.module';
+import { NpcMarketModule } from '@api/tradecraft/npc-market/npc-market.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { SelfMarketModule } from '@api/tradecraft/self-market/self-market.module
     SkillFarmModule,
     EsiModule,
     SelfMarketModule,
+    NpcMarketModule,
   ],
   providers: [JobsService, Logger],
   controllers: [JobsController],

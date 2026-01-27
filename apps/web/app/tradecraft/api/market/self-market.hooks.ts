@@ -179,7 +179,10 @@ export function useSelfMarketDailyAggregates(params: {
       client.get<SelfMarketDailyAggregatesResponse>(
         `/self-market/aggregates/daily?${qs.toString()}`,
       ),
-    staleTime: 10_000,
+    // Important: this query is frequently used for "what changed just now?" debugging.
+    // Also, earlier bugs could have populated the cache under the wrong key. Make it
+    // immediately stale so toggling filters always triggers a refetch.
+    staleTime: 0,
   });
 }
 

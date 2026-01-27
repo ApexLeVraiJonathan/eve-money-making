@@ -214,6 +214,7 @@ export class LiquidityService {
       where: {
         locationId: sId,
         isBuyOrder: false,
+        hasGone: false,
         scanDate: { in: dates.map((d) => new Date(`${d}T00:00:00.000Z`)) },
       },
       include: { type: { select: { name: true, volume: true } } },
@@ -410,6 +411,7 @@ export class LiquidityService {
           locationId: sId,
           typeId,
           isBuyOrder: isBuy,
+          hasGone: false,
           scanDate: { in: dates.map((d) => new Date(`${d}T00:00:00.000Z`)) },
         },
         orderBy: { scanDate: 'asc' },

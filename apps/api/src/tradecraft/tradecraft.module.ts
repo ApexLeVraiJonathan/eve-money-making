@@ -5,6 +5,7 @@ import { WalletModule } from './wallet/wallet.module';
 import { JobsModule } from './jobs/jobs.module';
 import { ParameterProfilesModule } from './parameter-profiles/parameter-profiles.module';
 import { StrategyLabModule } from './strategy-lab/strategy-lab.module';
+import { NpcMarketModule } from './npc-market/npc-market.module';
 
 /**
  * TradecraftModule
@@ -27,6 +28,7 @@ import { StrategyLabModule } from './strategy-lab/strategy-lab.module';
     JobsModule,
     ParameterProfilesModule,
     StrategyLabModule,
+    NpcMarketModule,
   ],
 })
 export class TradecraftModule {}

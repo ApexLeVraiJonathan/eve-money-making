@@ -12,11 +12,21 @@ import { CharacterService } from '@api/characters/services/character.service';
 import { NotificationService } from '@api/notifications/notification.service';
 import { SkillPlansService } from '@api/skill-plans/skill-plans.service';
 import { SkillFarmService } from '@api/skill-farm/skill-farm.service';
-import type { SkillFarmTrackingEntry } from '@eve/api-contracts';
 import { SelfMarketCollectorService } from '@api/tradecraft/self-market/self-market-collector.service';
+import { NpcMarketCollectorService } from '@api/tradecraft/npc-market/npc-market-collector.service';
+
+// Local minimal type to avoid importing ESM-only api-contracts from this CJS build.
+type SkillFarmTrackingEntry = {
+  characterId: number;
+  fullExtractorsReady: number;
+  queueSecondsRemaining: number;
+  queueStatus: 'OK' | 'WARNING' | 'URGENT' | 'EMPTY';
+};
 
 @Injectable()
 export class JobsService {
+  private marketGatherInProgress = false;
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly logger: Logger,
@@ -31,6 +41,7 @@ export class JobsService {
     private readonly skillPlans: SkillPlansService,
     private readonly skillFarm: SkillFarmService,
     private readonly selfMarket: SelfMarketCollectorService,
+    private readonly npcMarket: NpcMarketCollectorService,
   ) {}
 
   private jobsEnabled(): boolean {
@@ -157,8 +168,6 @@ export class JobsService {
         },
       });
 
-      const now = new Date();
-
       for (const cfg of configs) {
         const userId = cfg.userId;
         const characterId = cfg.characterId;
@@ -237,15 +246,66 @@ export class JobsService {
     }
   }
 
-  @Cron(CronExpression.EVERY_10_MINUTES)
-  async runSelfMarketGathering(): Promise<void> {
+  /**
+   * Market gathering runner (structure + NPC) should run sequentially so both
+   * collectors share ESI concurrency rather than competing with each other.
+   *
+   * Runs only in production (APP_ENV=prod/production).
+   */
+  @Cron('*/15 * * * *')
+  async runMarketGathering(): Promise<void> {
     if (
       !this.jobsEnabled() ||
-      !this.jobFlag('JOB_SELF_MARKET_GATHER_ENABLED', true)
+      !this.jobFlag('JOB_MARKET_GATHER_ENABLED', true)
     ) {
       return;
     }
 
+    if (AppConfig.env() !== 'prod') return;
+
+    if (this.marketGatherInProgress) {
+      this.logger.warn(
+        'Skipping market gathering (previous run still in progress)',
+      );
+      return;
+    }
+
+    const startedAt = Date.now();
+    this.marketGatherInProgress = true;
+    try {
+      const selfEnabled =
+        this.jobFlag('JOB_SELF_MARKET_GATHER_ENABLED', true) &&
+        AppConfig.marketSelfGather().enabled;
+      const npcEnabled =
+        this.jobFlag('JOB_NPC_MARKET_GATHER_ENABLED', true) &&
+        AppConfig.marketNpcGather().enabled;
+
+      this.logger.log(
+        `Market gathering runner starting (self=${selfEnabled ? 'on' : 'off'}, npc=${npcEnabled ? 'on' : 'off'})`,
+      );
+
+      // Structure first, then NPC.
+      await this.runSelfMarketGatheringOnce();
+      await this.runNpcMarketGatheringOnce();
+    } catch (e) {
+      // Individual collectors handle their own error logging/notifications;
+      // this catch is only to ensure the runner never crashes the scheduler.
+      this.logger.warn(
+        `Market gathering runner failed: ${
+          e instanceof Error ? e.message : String(e ?? 'unknown')
+        }`,
+      );
+    } finally {
+      this.marketGatherInProgress = false;
+      const durationMs = Date.now() - startedAt;
+      this.logger.log(
+        `Market gathering runner finished (durationMs=${durationMs})`,
+      );
+    }
+  }
+
+  private async runSelfMarketGatheringOnce(): Promise<void> {
+    if (!this.jobFlag('JOB_SELF_MARKET_GATHER_ENABLED', true)) return;
     const cfg = AppConfig.marketSelfGather();
     if (!cfg.enabled) return;
 
@@ -262,6 +322,27 @@ export class JobsService {
       if (this.selfMarket.shouldNotifyFailure(new Date())) {
         await this.notifySelfMarketFailure(msg).catch(() => undefined);
       }
+    }
+  }
+
+  private async runNpcMarketGatheringOnce(): Promise<void> {
+    if (!this.jobFlag('JOB_NPC_MARKET_GATHER_ENABLED', true)) return;
+    const cfg = AppConfig.marketNpcGather();
+    if (!cfg.enabled) return;
+
+    try {
+      const res = await this.npcMarket.collectStationOnce({
+        stationId: cfg.stationId,
+      });
+      this.npcMarket.markSuccess();
+      this.logger.debug(
+        `NPC market gather ok: station=${cfg.stationId} durationMs=${res.durationMs} keys=${res.aggregateKeys}`,
+      );
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e ?? 'unknown');
+      this.logger.warn(`NPC market gather failed: ${msg}`);
+      // NpcMarketCollectorService already handles its own DM notifications
+      // in its internal error path.
     }
   }
 
@@ -491,7 +572,8 @@ export class JobsService {
     for (const date of dates) {
       const dayStart = new Date(`${date}T00:00:00.000Z`);
       const count = await this.prisma.marketOrderTradeDaily.count({
-        where: { scanDate: dayStart },
+        // Treat a day as present if we have at least the conservative mode rows.
+        where: { scanDate: dayStart, hasGone: false },
       });
       if (count === 0) missing.push(date);
     }

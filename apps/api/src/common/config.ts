@@ -55,6 +55,18 @@ export type MarketSelfGatherConfig = {
   notifyUserId: string | null;
 };
 
+export type MarketNpcGatherConfig = {
+  enabled: boolean;
+  /// Default NPC stationId to collect (used when none is provided)
+  stationId: number;
+  /// Polling interval in minutes (used once cron is enabled)
+  pollMinutes: number;
+  /// Expiry heuristic window for disappeared orders (upper-bound mode)
+  expiryWindowMinutes: number;
+  /// Optional user to notify (system alert DM) on repeated failures
+  notifyUserId: string | null;
+};
+
 export const AppConfig = {
   /**
    * Resolve application environment. Accepts APP_ENV (dev|test|prod) or falls back to NODE_ENV.
@@ -298,6 +310,50 @@ export const AppConfig = {
       characterId: effectiveCharacterId,
       pollMinutes:
         Number.isFinite(pollMinutes) && pollMinutes > 0 ? pollMinutes : 10,
+      expiryWindowMinutes:
+        Number.isFinite(expiryWindowMinutes) && expiryWindowMinutes >= 0
+          ? expiryWindowMinutes
+          : 360,
+      notifyUserId,
+    };
+  },
+
+  /**
+   * Self-gathered market data collection for NPC stations (regional orders).
+   *
+   * Manual-first: cron wiring comes later once runtime is validated.
+   */
+  marketNpcGather(): MarketNpcGatherConfig {
+    const enabled =
+      (process.env.MARKET_NPC_GATHER_ENABLED ?? '').toLowerCase() === 'true' ||
+      process.env.MARKET_NPC_GATHER_ENABLED === '1' ||
+      process.env.MARKET_NPC_GATHER_ENABLED === 'yes';
+
+    const stationIdRaw = process.env.MARKET_NPC_GATHER_STATION_ID ?? '';
+    const stationId =
+      stationIdRaw && stationIdRaw.trim().length > 0
+        ? Number(stationIdRaw)
+        : 60004588; // Rens VI - Moon 8 - Brutor Tribe Treasury
+
+    const pollMinutes = Number(
+      process.env.MARKET_NPC_GATHER_POLL_MINUTES ?? 15,
+    );
+    const expiryWindowMinutes = Number(
+      process.env.MARKET_NPC_GATHER_EXPIRY_WINDOW_MINUTES ?? 360,
+    );
+
+    const notifyUserIdRaw = process.env.MARKET_NPC_GATHER_NOTIFY_USER_ID ?? '';
+    const notifyUserId =
+      notifyUserIdRaw && notifyUserIdRaw.trim().length > 0
+        ? notifyUserIdRaw.trim()
+        : null;
+
+    return {
+      enabled,
+      stationId:
+        Number.isFinite(stationId) && stationId > 0 ? stationId : 60004588,
+      pollMinutes:
+        Number.isFinite(pollMinutes) && pollMinutes > 0 ? pollMinutes : 15,
       expiryWindowMinutes:
         Number.isFinite(expiryWindowMinutes) && expiryWindowMinutes >= 0
           ? expiryWindowMinutes

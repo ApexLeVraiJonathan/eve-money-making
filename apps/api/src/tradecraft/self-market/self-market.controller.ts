@@ -3,11 +3,14 @@ import {
   Body,
   Controller,
   Get,
+  Logger,
   Post,
   Query,
+  Req,
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import type { Request } from 'express';
 import { Roles } from '@api/characters/decorators/roles.decorator';
 import { RolesGuard } from '@api/characters/guards/roles.guard';
 import { PrismaService } from '@api/prisma/prisma.service';
@@ -41,9 +44,20 @@ function utcDayStartFromYyyyMmDd(date: string): Date | null {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
+function parseBool(v: unknown): boolean | undefined {
+  if (v === undefined || v === null) return undefined;
+  if (typeof v === 'boolean') return v;
+  const s = String(v).toLowerCase().trim();
+  if (['true', '1', 'yes', 'y'].includes(s)) return true;
+  if (['false', '0', 'no', 'n'].includes(s)) return false;
+  return undefined;
+}
+
 @ApiTags('admin')
 @Controller('self-market')
 export class SelfMarketController {
+  private readonly logger = new Logger(SelfMarketController.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly collector: SelfMarketCollectorService,
@@ -314,7 +328,10 @@ export class SelfMarketController {
   @ApiOperation({
     summary: 'Fetch self-gathered daily aggregates for a structure + date',
   })
-  async daily(@Query() q: SelfMarketDailyAggregatesQueryDto) {
+  async daily(
+    @Query() q: SelfMarketDailyAggregatesQueryDto,
+    @Req() req: Request,
+  ) {
     const structureId = this.resolveStructureId(q.structureId);
     if (!structureId) return { structureId: null, date: null, rows: [] };
 
@@ -324,9 +341,25 @@ export class SelfMarketController {
       return { structureId: structureId.toString(), date, rows: [] };
     }
 
-    const hasGone = q.hasGone ?? false;
+    // Defensive parsing: depending on global ValidationPipe settings, query params
+    // may arrive as strings ("true"/"false"). Ensure "false" is treated correctly.
+    const rawHasGone = (q as unknown as { hasGone?: unknown }).hasGone;
+    const hasGone = parseBool(rawHasGone) ?? false;
     const side = q.side ?? 'SELL';
     const limit = q.limit ?? 500;
+
+    if (AppConfig.env() !== 'prod') {
+      const rawReqHasGone = (req.query as Record<string, unknown>)?.hasGone;
+      this.logger.debug(
+        `Self market daily query: date=${date} hasGone=${String(
+          hasGone,
+        )} (dtoRaw=${String(rawHasGone)} dtoType=${typeof rawHasGone} reqQueryHasGone=${String(
+          rawReqHasGone,
+        )} reqQueryType=${typeof rawReqHasGone}) side=${side} typeId=${String(
+          q.typeId ?? '',
+        )} limit=${String(limit)}`,
+      );
+    }
 
     const where: any = {
       locationId: structureId,

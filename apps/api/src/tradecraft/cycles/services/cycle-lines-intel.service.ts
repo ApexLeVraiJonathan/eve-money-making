@@ -561,6 +561,7 @@ export class CycleLinesIntelService {
         FROM unnest(${locationIds}::int[], ${typeIds}::int[]) AS t(location_id, type_id)
       ) p ON p.location_id = m.location_id AND p.type_id = m.type_id
       WHERE m.is_buy_order = false
+        AND m.has_gone = false
       ORDER BY m.location_id, m.type_id, m.scan_date DESC
     `;
 

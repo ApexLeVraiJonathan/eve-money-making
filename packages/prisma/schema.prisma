@@ -142,6 +142,8 @@ model TypeId {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   marketTrades    MarketOrderTradeDaily[]
+  npcMarketSnapshots NpcMarketSnapshot[]
+  npcMarketTradesDaily NpcMarketOrderTradeDaily[]
   strategyRunPositions TradeStrategyRunPosition[]
   SkillDefinition SkillDefinition[]
 
@@ -156,6 +158,10 @@ model RegionId {
   updatedAt DateTime        @updatedAt @map("updated_at")
 
   marketTrades MarketOrderTradeDaily[]
+  npcMarketBaselines NpcMarketStationBaseline[]
+  npcMarketRegionTypesSnapshots NpcMarketRegionTypesSnapshot[]
+  npcMarketSnapshots NpcMarketSnapshot[]
+  npcMarketRuns NpcMarketRun[]
 
   @@map("regions")
 }
@@ -183,6 +189,10 @@ model StationId {
   TrackedStation TrackedStation[]
 
   marketTrades MarketOrderTradeDaily[]
+  npcMarketBaselines NpcMarketStationBaseline[]
+  npcMarketSnapshots NpcMarketSnapshot[]
+  npcMarketTradesDaily NpcMarketOrderTradeDaily[]
+  npcMarketRuns NpcMarketRun[]
 
   @@index([solarSystemId])
   @@map("stations")
@@ -224,7 +234,7 @@ model MarketOrderTradeDaily {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  @@id([scanDate, locationId, typeId, isBuyOrder])
+  @@id([scanDate, locationId, typeId, isBuyOrder, hasGone])
   @@index([regionId])
   @@index([locationId])
   @@index([typeId])
@@ -291,6 +301,124 @@ model SelfMarketOrderTradeDaily {
   @@index([locationId])
   @@index([typeId])
   @@map("self_market_order_trades_daily")
+}
+
+/// NPC market station baseline pointer (used to avoid partially advancing snapshots).
+/// A run writes snapshots keyed by baselineId, and only after full success does this
+/// pointer advance to the new baselineId.
+model NpcMarketStationBaseline {
+  stationId  Int      @id @map("station_id")
+  regionId   Int      @map("region_id")
+  baselineId String   @map("baseline_id")
+  observedAt DateTime @map("observed_at")
+
+  station StationId @relation(fields: [stationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  region  RegionId  @relation(fields: [regionId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([baselineId])
+  @@index([regionId])
+  @@map("npc_market_station_baselines")
+}
+
+/// Snapshot of active type IDs for a region (ESI /markets/{region_id}/types).
+/// Stored per run baselineId for reproducibility.
+model NpcMarketRegionTypesSnapshot {
+  regionId   Int      @map("region_id")
+  baselineId String   @map("baseline_id")
+  observedAt DateTime @map("observed_at")
+  typeIds    Json     @map("type_ids")
+
+  region RegionId @relation(fields: [regionId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@id([regionId, baselineId])
+  @@index([observedAt])
+  @@map("npc_market_region_types_snapshots")
+}
+
+/// Latest station orders stored per type+side for a given baselineId.
+/// Note: we store only rows filtered to the station (not full region).
+model NpcMarketSnapshot {
+  stationId  Int      @map("station_id")
+  regionId   Int      @map("region_id")
+  typeId     Int      @map("type_id")
+  isBuyOrder Boolean  @map("is_buy_order")
+  baselineId String   @map("baseline_id")
+  observedAt DateTime @map("observed_at")
+  /// Number of active orders in this snapshot slice (orders.length).
+  orderCount Int      @map("order_count")
+  /// Best price for this side (SELL => min, BUY => max), null if no orders.
+  bestPrice  Decimal? @map("best_price") @db.Decimal(28, 2)
+  orders     Json     @map("orders")
+
+  station StationId @relation(fields: [stationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  region  RegionId  @relation(fields: [regionId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  type    TypeId    @relation(fields: [typeId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@id([stationId, typeId, isBuyOrder, baselineId])
+  @@index([stationId, baselineId])
+  @@index([regionId])
+  @@index([typeId])
+  @@map("npc_market_snapshots")
+}
+
+/// Self-gathered daily aggregated market order trades per NPC station and type.
+/// Uses BigInt for amount/orderNum to avoid clamping.
+model NpcMarketOrderTradeDaily {
+  scanDate   DateTime @map("scan_date") @db.Date
+  stationId  Int      @map("station_id")
+  typeId     Int      @map("type_id")
+  isBuyOrder Boolean  @map("is_buy_order")
+  hasGone    Boolean  @map("has_gone")
+
+  amount   BigInt  @map("amount") @db.BigInt
+  high     Decimal @map("high") @db.Decimal(28, 2)
+  low      Decimal @map("low") @db.Decimal(28, 2)
+  avg      Decimal @map("avg") @db.Decimal(28, 2)
+  orderNum BigInt  @map("order_num") @db.BigInt
+  iskValue Decimal @map("isk_value") @db.Decimal(28, 2)
+
+  station StationId @relation(fields: [stationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  type    TypeId    @relation(fields: [typeId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@id([scanDate, stationId, typeId, isBuyOrder, hasGone])
+  @@index([scanDate])
+  @@index([stationId])
+  @@index([typeId])
+  @@map("npc_market_order_trades_daily")
+}
+
+/// A record of a single NPC market collection run (manual or cron).
+model NpcMarketRun {
+  baselineId    String   @id @map("baseline_id")
+  stationId     Int      @map("station_id")
+  regionId      Int      @map("region_id")
+  startedAt     DateTime @map("started_at")
+  finishedAt    DateTime? @map("finished_at")
+  ok            Boolean  @default(false) @map("ok")
+  typeCount     Int?     @map("type_count")
+  errorMessage  String?  @map("error_message")
+
+  station StationId @relation(fields: [stationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  region  RegionId  @relation(fields: [regionId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([stationId, startedAt])
+  @@index([regionId, startedAt])
+  @@map("npc_market_runs")
 }
 
 /// Users of the application (can be single owner for now)

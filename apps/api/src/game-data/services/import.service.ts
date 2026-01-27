@@ -1315,6 +1315,8 @@ export class ImportService {
         where: {
           scanDate: dayStart,
           locationId: { in: expectedStationIds },
+          // Use conservative mode to determine completeness.
+          hasGone: false,
         },
         distinct: ['locationId'],
         select: { locationId: true },

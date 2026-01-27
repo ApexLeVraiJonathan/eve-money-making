@@ -262,6 +262,7 @@ export class StrategyLabService {
         MAX(scan_date)::date AS "maxDate"
       FROM market_order_trades_daily
       WHERE is_buy_order = false
+        AND has_gone = false
     `);
     const minDate = stats[0]?.minDate ?? null;
     const maxDate = stats[0]?.maxDate ?? null;
@@ -276,6 +277,7 @@ export class StrategyLabService {
         SELECT DISTINCT scan_date::date AS d
         FROM market_order_trades_daily
         WHERE is_buy_order = false
+          AND has_gone = false
           AND scan_date >= ${start}::date
           AND scan_date <= ${end}::date
       )
@@ -298,6 +300,7 @@ export class StrategyLabService {
           SELECT DISTINCT scan_date::date AS d
           FROM market_order_trades_daily
           WHERE is_buy_order = false
+            AND has_gone = false
             AND scan_date >= ${start}::date
             AND scan_date <= ${end}::date
         )
@@ -1219,6 +1222,7 @@ export class StrategyLabService {
       FROM market_order_trades_daily m
       WHERE m.location_id = ${params.locationId}
         AND m.is_buy_order = false
+        AND m.has_gone = false
         AND m.type_id = ANY(${params.typeIds}::int[])
         AND m.scan_date <= ${params.onOrBefore}::date
       ORDER BY m.type_id, m.scan_date DESC
@@ -1609,6 +1613,7 @@ export class StrategyLabService {
     const marketRows = await this.prisma.marketOrderTradeDaily.findMany({
       where: {
         isBuyOrder: false,
+        hasGone: false,
         locationId: { in: stationIds },
         typeId: { in: typeIds },
         scanDate: { gte: params.start, lte: params.end },
@@ -2419,6 +2424,7 @@ export class StrategyLabService {
       const rows = await this.prisma.marketOrderTradeDaily.findMany({
         where: {
           isBuyOrder: false,
+          hasGone: false,
           locationId: { in: stationIds },
           typeId: { in: typeIds },
           scanDate: { gte: p.start, lte: p.end },
@@ -3016,6 +3022,7 @@ export class StrategyLabService {
         SUM(amount)::bigint AS "amount"
       FROM market_order_trades_daily
       WHERE is_buy_order = false
+        AND has_gone = false
         AND location_id IN (${Prisma.join(stationIds)})
         AND type_id IN (${Prisma.join(typeIds)})
         AND scan_date >= ${windowStart}
