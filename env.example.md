@@ -145,16 +145,13 @@ Then each collector has its own enable flag:
   - If unset, code currently defaults to `1045667241057` (C-N hub).
 - **MARKET_SELF_GATHER_CHARACTER_ID**: Character ID used to call the structure market endpoint (must have structure market access).
   - If unset, code currently defaults to `2122151042`.
-- **MARKET_SELF_GATHER_POLL_MINUTES**: Intended poll interval in minutes (UI only for now). Default: `10`.
 - **MARKET_SELF_GATHER_POLL_MINUTES**: Intended poll interval in minutes (UI only for now). Default: `15`.
 - **MARKET_SELF_GATHER_EXPIRY_WINDOW_MINUTES**: Expiry window heuristic (upper-bound mode). Default: `360`.
 - **MARKET_SELF_GATHER_NOTIFY_USER_ID**: Optional Discord userId to DM after repeated failures.
 
 **NPC market (Rens, etc):**
 
-- **MARKET_NPC_GATHER_ENABLED**: Master enable for NPC station collection.
 - **MARKET_NPC_GATHER_STATION_ID**: Default stationId to collect (if not provided). Default: `60004588` (Rens).
-- **MARKET_NPC_GATHER_POLL_MINUTES**: Intended poll interval in minutes. Default: `15`.
 - **MARKET_NPC_GATHER_POLL_MINUTES**: Intended poll interval in minutes. Default: `15`.
 - **MARKET_NPC_GATHER_EXPIRY_WINDOW_MINUTES**: Expiry window heuristic (upper-bound mode). Default: `360`.
 - **MARKET_NPC_GATHER_NOTIFY_USER_ID**: Optional Discord userId to DM after repeated failures.

@@ -1339,12 +1339,6 @@ export default function SelfMarketPage() {
                       </span>
                     </div>
                     <div className="flex justify-between gap-2">
-                      <span className="text-muted-foreground">Config flag</span>
-                      <span>
-                        {npcStatusQ.data.config.enabled ? "Yes" : "No"}
-                      </span>
-                    </div>
-                    <div className="flex justify-between gap-2">
                       <span className="text-muted-foreground">Station</span>
                       <span className="font-mono">
                         {npcStatusQ.data.resolvedStation?.stationId ??
