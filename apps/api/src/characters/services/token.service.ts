@@ -16,6 +16,43 @@ export class TokenService {
     private readonly logger: Logger,
   ) {}
 
+  private async refreshWithClient(
+    refreshPlain: string,
+    client: {
+      clientId: string;
+      clientSecret: string;
+    },
+  ): Promise<{
+    access_token: string;
+    token_type: string;
+    expires_in: number;
+    refresh_token?: string;
+  }> {
+    const basic = Buffer.from(
+      `${client.clientId}:${client.clientSecret}`,
+    ).toString('base64');
+    const res = await axios.post<{
+      access_token: string;
+      token_type: string;
+      expires_in: number;
+      refresh_token?: string;
+    }>(
+      'https://login.eveonline.com/v2/oauth/token',
+      new URLSearchParams({
+        grant_type: 'refresh_token',
+        refresh_token: refreshPlain,
+      }),
+      {
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          Authorization: `Basic ${basic}`,
+          'User-Agent': this.userAgent,
+        },
+      },
+    );
+    return res.data;
+  }
+
   /**
    * Returns a usable access token for a character, refreshing if near expiry.
    */
@@ -45,32 +82,13 @@ export class TokenService {
     if (!needsRefresh) return token.accessToken ?? null;
 
     try {
-      const basic = Buffer.from(
-        `${this.clientId}:${this.clientSecret}`,
-      ).toString('base64');
       const refreshPlain = await CryptoUtil.decrypt(
         String(token.refreshTokenEnc ?? ''),
       );
-      const res = await axios.post<{
-        access_token: string;
-        token_type: string;
-        expires_in: number;
-        refresh_token?: string;
-      }>(
-        'https://login.eveonline.com/v2/oauth/token',
-        new URLSearchParams({
-          grant_type: 'refresh_token',
-          refresh_token: refreshPlain,
-        }),
-        {
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-            Authorization: `Basic ${basic}`,
-            'User-Agent': this.userAgent,
-          },
-        },
-      );
-      const data = res.data;
+      let data = await this.refreshWithClient(refreshPlain, {
+        clientId: this.clientId,
+        clientSecret: this.clientSecret,
+      });
       const newExp = new Date(Date.now() + Number(data.expires_in) * 1000);
       const newRefreshEnc = data.refresh_token
         ? await CryptoUtil.encrypt(data.refresh_token)
@@ -114,32 +132,13 @@ export class TokenService {
     if (!character?.token) return null;
 
     try {
-      const basic = Buffer.from(
-        `${this.clientId}:${this.clientSecret}`,
-      ).toString('base64');
       const refreshPlain = await CryptoUtil.decrypt(
         String(character.token.refreshTokenEnc ?? ''),
       );
-      const res = await axios.post<{
-        access_token: string;
-        token_type: string;
-        expires_in: number;
-        refresh_token?: string;
-      }>(
-        'https://login.eveonline.com/v2/oauth/token',
-        new URLSearchParams({
-          grant_type: 'refresh_token',
-          refresh_token: refreshPlain,
-        }),
-        {
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-            Authorization: `Basic ${basic}`,
-            'User-Agent': this.userAgent,
-          },
-        },
-      );
-      const data = res.data;
+      let data = await this.refreshWithClient(refreshPlain, {
+        clientId: this.clientId,
+        clientSecret: this.clientSecret,
+      });
       const newExp = new Date(Date.now() + Number(data.expires_in) * 1000);
       const newRefreshEnc = data.refresh_token
         ? await CryptoUtil.encrypt(data.refresh_token)

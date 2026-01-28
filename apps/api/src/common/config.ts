@@ -303,11 +303,6 @@ export const AppConfig = {
         ? Number(characterIdRaw)
         : null;
 
-    // Defaults (overridable via env). This makes deployments/dev environments
-    // "just work" for the primary alliance hub without extra configuration.
-    const effectiveStructureId = structureId ?? 1045667241057n;
-    const effectiveCharacterId = characterId ?? 2122151042;
-
     const pollMinutes = Number(
       process.env.MARKET_SELF_GATHER_POLL_MINUTES ?? 15,
     );
@@ -323,8 +318,10 @@ export const AppConfig = {
 
     return {
       enabled,
-      structureId: effectiveStructureId,
-      characterId: effectiveCharacterId,
+      // No hidden defaults: if enabled, callers must set these explicitly.
+      // This prevents silent drift when characters are recreated.
+      structureId,
+      characterId,
       pollMinutes:
         Number.isFinite(pollMinutes) && pollMinutes > 0 ? pollMinutes : 15,
       expiryWindowMinutes:

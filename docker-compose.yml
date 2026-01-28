@@ -1,0 +1,21 @@
+services:
+  db:
+    image: postgres:latest
+    container_name: eve-money-making-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: eve_money_dev
+    ports:
+      - "5433:5432"
+    volumes:
+      - eve_money_making_pg:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d eve_money_dev"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  eve_money_making_pg:

@@ -164,6 +164,35 @@ export class SelfMarketCollectorService {
     const observedAt = opts?.observedAt ?? new Date();
     const scanDate = utcDayStart(observedAt);
 
+    // Fail fast with a helpful message instead of an opaque ESI 401.
+    // Structure market requires a token that includes esi-markets.structure_markets.v1
+    const requiredScope = 'esi-markets.structure_markets.v1';
+    const token = await this.prisma.characterToken.findUnique({
+      where: { characterId: cfg.characterId },
+      select: { scopes: true, refreshTokenEnc: true },
+    });
+    if (!token) {
+      throw new Error(
+        `No token found for MARKET_SELF_GATHER_CHARACTER_ID=${cfg.characterId}. ` +
+          `Set MARKET_SELF_GATHER_CHARACTER_ID to a linked character with structure market access.`,
+      );
+    }
+    const scopes = (token.scopes ?? '')
+      .split(' ')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (!scopes.includes(requiredScope)) {
+      throw new Error(
+        `Character ${cfg.characterId} is missing required ESI scope "${requiredScope}" for structure market collection. ` +
+          `Re-link that character with the correct scopes (or choose another character).`,
+      );
+    }
+    if (!token.refreshTokenEnc || token.refreshTokenEnc.trim().length === 0) {
+      throw new Error(
+        `Character ${cfg.characterId} has no refresh token stored. Re-link the character so the API can refresh access tokens.`,
+      );
+    }
+
     const path = `/latest/markets/structures/${locationId.toString()}/`;
     const forceRefresh = Boolean(opts?.forceRefresh);
 

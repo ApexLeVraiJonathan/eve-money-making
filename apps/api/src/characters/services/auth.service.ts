@@ -181,10 +181,10 @@ export class AuthService {
 
   async refreshAccessToken(refreshTokenEnc: string): Promise<TokenResponse> {
     const tokenUrl = 'https://login.eveonline.com/v2/oauth/token';
+    const refreshToken = await CryptoUtil.decrypt(refreshTokenEnc);
     const basic = Buffer.from(`${this.clientId}:${this.clientSecret}`).toString(
       'base64',
     );
-    const refreshToken = await CryptoUtil.decrypt(refreshTokenEnc);
     const res = await axios.post<TokenResponse>(
       tokenUrl,
       new URLSearchParams({
