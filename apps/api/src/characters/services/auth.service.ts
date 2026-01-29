@@ -206,6 +206,7 @@ export class AuthService {
     idTokenJwt: string,
     token: TokenResponse,
     scopes: string[],
+    opts?: { scopeMode?: 'merge' | 'replace' },
   ): Promise<{ characterId: number; characterName: string }> {
     // CCP ID token is a JWT; payload contains character info
     const payload = JSON.parse(
@@ -222,24 +223,32 @@ export class AuthService {
     const refreshTokenEnc = await CryptoUtil.encrypt(token.refresh_token);
     const expiresAt = new Date(Date.now() + token.expires_in * 1000);
 
-    // Merge newly granted scopes with any existing scopes so we never
-    // accidentally drop permissions that were granted during character
-    // linking (e.g. skills/wallet scopes). Logging in with a minimal
-    // scope set like "publicData" should not overwrite the richer
-    // character-management scopes that are required elsewhere.
+    const scopeMode = opts?.scopeMode ?? 'merge';
+
     const existingToken = await this.prisma.characterToken.findUnique({
       where: { characterId },
-      select: { scopes: true },
+      select: { scopes: true, refreshTokenEnc: true },
     });
-    const existingScopes = (existingToken?.scopes ?? '')
-      .split(' ')
-      .map((s) => s.trim())
-      .filter(Boolean);
-    const nextScopes = scopes ?? [];
-    const mergedScopes = Array.from(
-      new Set<string>([...existingScopes, ...nextScopes]),
-    );
-    const mergedScopesStr = mergedScopes.join(' ');
+    const existingScopes = normalizeScopes(existingToken?.scopes);
+    const nextScopes = normalizeScopes((scopes ?? []).join(' '));
+
+    // When in "merge" mode, protect against accidentally overwriting a
+    // wide-scope refresh token with a narrow-scope token (e.g. from a
+    // login flow that only requested publicData).
+    const existingSet = new Set(existingScopes);
+    const nextSet = new Set(nextScopes);
+    const wouldLoseImportantScope =
+      scopeMode === 'merge' &&
+      existingToken &&
+      Array.from(existingSet).some(
+        (s) => IMPORTANT_ESI_SCOPES.has(s) && !nextSet.has(s),
+      );
+
+    const scopesToStore =
+      scopeMode === 'replace'
+        ? Array.from(new Set(nextScopes))
+        : Array.from(new Set<string>([...existingScopes, ...nextScopes]));
+    const scopesToStoreStr = scopesToStore.join(' ');
 
     await this.prisma.$transaction(async (tx) => {
       await tx.eveCharacter.upsert({
@@ -247,6 +256,15 @@ export class AuthService {
         update: { name: characterName, ownerHash },
         create: { id: characterId, name: characterName, ownerHash },
       });
+
+      if (wouldLoseImportantScope) {
+        this.logger.warn(
+          `Skipping token overwrite for character ${characterId} to avoid dropping important ESI scopes. ` +
+            `Existing="${existingScopes.join(' ')}", incoming="${nextScopes.join(' ')}"`,
+        );
+        return;
+      }
+
       await tx.characterToken.upsert({
         where: { characterId },
         update: {
@@ -254,7 +272,7 @@ export class AuthService {
           accessToken: token.access_token,
           accessTokenExpiresAt: expiresAt,
           refreshTokenEnc,
-          scopes: mergedScopesStr,
+          scopes: scopesToStoreStr,
         },
         create: {
           characterId,
@@ -262,7 +280,7 @@ export class AuthService {
           accessToken: token.access_token,
           accessTokenExpiresAt: expiresAt,
           refreshTokenEnc,
-          scopes: mergedScopesStr,
+          scopes: scopesToStoreStr,
         },
       });
     });

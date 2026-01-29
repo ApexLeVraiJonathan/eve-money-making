@@ -100,6 +100,9 @@ export class TokenService {
           accessTokenExpiresAt: newExp,
           refreshTokenEnc: newRefreshEnc,
           tokenType: data.token_type,
+          lastRefreshAt: new Date(),
+          refreshFailAt: null,
+          refreshFailMsg: null,
         },
       });
       return data.access_token;
@@ -109,7 +112,17 @@ export class TokenService {
       this.logger.warn(
         `Token refresh failed for character ${characterId}: ${JSON.stringify(details)}`,
       );
-      return token.accessToken ?? null;
+      // Record failure and return null so callers can handle auth errors explicitly.
+      await this.prisma.characterToken
+        .update({
+          where: { characterId },
+          data: {
+            refreshFailAt: new Date(),
+            refreshFailMsg: String(details).slice(0, 500),
+          },
+        })
+        .catch(() => undefined);
+      return null;
     }
   }
 
@@ -150,6 +163,9 @@ export class TokenService {
           accessTokenExpiresAt: newExp,
           refreshTokenEnc: newRefreshEnc,
           tokenType: data.token_type,
+          lastRefreshAt: new Date(),
+          refreshFailAt: null,
+          refreshFailMsg: null,
         },
       });
       return data.access_token;
@@ -159,6 +175,15 @@ export class TokenService {
       this.logger.warn(
         `Force token refresh failed for character ${characterId}: ${JSON.stringify(details)}`,
       );
+      await this.prisma.characterToken
+        .update({
+          where: { characterId },
+          data: {
+            refreshFailAt: new Date(),
+            refreshFailMsg: String(details).slice(0, 500),
+          },
+        })
+        .catch(() => undefined);
       return null;
     }
   }

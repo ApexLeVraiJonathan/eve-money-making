@@ -231,6 +231,7 @@ export class AuthController {
         fakeJwt,
         token,
         scopes,
+        { scopeMode: 'replace' },
       );
 
       // Link to user
@@ -415,6 +416,7 @@ export class AuthController {
             fakeJwt,
             token,
             scopes,
+            { scopeMode: 'replace' },
           );
 
           // Link to user
