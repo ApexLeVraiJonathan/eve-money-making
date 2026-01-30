@@ -338,9 +338,13 @@ export const AppConfig = {
    * Manual-first: cron wiring comes later once runtime is validated.
    */
   marketNpcGather(): MarketNpcGatherConfig {
-    // Option A: NPC gather is controlled by jobs gating + job flag only.
-    // The collector itself is always considered enabled when the runner is active.
-    const enabled = true;
+    // NPC gather is controlled by:
+    // - global jobs gating (APP_ENV=prod + ENABLE_JOBS)
+    // - the market gathering cron job flag (JOB_MARKET_GATHERING_ENABLED)
+    // - this per-collector flag (defaults to enabled for backwards compatibility)
+    const enabledRaw = process.env.MARKET_NPC_GATHER_ENABLED;
+    const enabled =
+      enabledRaw === undefined ? true : AppConfig.boolEnv(enabledRaw);
 
     const stationIdRaw = process.env.MARKET_NPC_GATHER_STATION_ID ?? '';
     const stationId =

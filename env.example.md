@@ -150,6 +150,8 @@ Then each collector has its own enable flag:
 
 **NPC market (Rens, etc):**
 
+- **MARKET_NPC_GATHER_ENABLED**: Master enable for NPC market collection (station/regional orders).
+  - Default: `true`
 - **MARKET_NPC_GATHER_STATION_ID**: Default stationId to collect (if not provided). Default: `60004588` (Rens).
 - **MARKET_NPC_GATHER_POLL_MINUTES**: Intended poll interval in minutes. Default: `15`.
 - **MARKET_NPC_GATHER_EXPIRY_WINDOW_MINUTES**: Expiry window heuristic (upper-bound mode). Default: `360`.
