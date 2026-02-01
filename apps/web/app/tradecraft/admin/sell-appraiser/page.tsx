@@ -1,7 +1,6 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@eve/ui";
-import { formatIsk } from "@/lib/utils";
 import { Textarea } from "@eve/ui";
 import { Label } from "@eve/ui";
 import {

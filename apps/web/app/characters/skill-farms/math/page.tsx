@@ -74,11 +74,7 @@ function MathContent() {
   const { data: settings, isLoading: settingsLoading } = useSkillFarmSettings();
   const updateSettings = useUpdateSkillFarmSettings();
   const market = useSkillFarmMarketPrices();
-  const {
-    mutate: runPreview,
-    data: result,
-    status,
-  } = useSkillFarmMathPreview();
+  const { mutate: runPreview, status } = useSkillFarmMathPreview();
 
   const marketPlex = getMarketPrice(market.data, "PLEX");
   const marketExtractor = getMarketPrice(market.data, "EXTRACTOR");
@@ -212,14 +208,10 @@ function MathContent() {
     const totalCosts = nonSubCosts + subscriptionPerCharacter;
     const netProfit = netRevenue - totalCosts;
 
-    const plexCoeffPerCharacter =
-      units > 0 ? (omega * plexPerOmega + mct * plexPerMct) / units : 0;
-    const plexCoeffPerInjector = plexCoeffPerCharacter * subscriptionProration;
-    const boosterPlexCoeff =
-      draft.useBoosters !== false && daysPerInjector > 0
-        ? 180 * (daysPerInjector / 26.4)
-        : 0;
-    const totalPlexCoeffPerInjector = plexCoeffPerInjector + boosterPlexCoeff;
+    // These are useful for diagnostics, but not currently displayed in UI.
+    // const plexCoeffPerCharacter =
+    //   units > 0 ? (omega * plexPerOmega + mct * plexPerMct) / units : 0;
+    // const plexCoeffPerInjector = plexCoeffPerCharacter * subscriptionProration;
 
     return {
       spPerMinute: spm,
