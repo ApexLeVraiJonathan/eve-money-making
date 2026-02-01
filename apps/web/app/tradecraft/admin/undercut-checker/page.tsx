@@ -1,8 +1,7 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@eve/ui";
 import { Label } from "@eve/ui";
-import { formatIsk } from "@/lib/utils";
 import {
   Card,
   CardContent,
@@ -26,12 +25,9 @@ import {
   AlertCircle,
   Loader2,
   Store,
-  AlertTriangle,
-  Copy,
-  Check,
-  Clock,
 } from "lucide-react";
 import { Alert, AlertDescription } from "@eve/ui";
+import { UndercutResultsTable } from "./undercut-results-table";
 import {
   useTrackedStations,
   useArbitrageCommits,
@@ -42,19 +38,75 @@ import {
 } from "../../api";
 import type { UndercutCheckGroup } from "@eve/shared/types";
 
+type ProfitCategory = "red" | "yellow" | "normal";
+
+function getProfitCategory(
+  marginPercent: number | undefined,
+): ProfitCategory {
+  if (marginPercent === undefined) return "normal";
+  if (marginPercent <= -10) return "red";
+  if (marginPercent < 0) return "yellow";
+  return "normal";
+}
+
+type SelectionStore = {
+  subscribe: (listener: () => void) => () => void;
+  getVersion: () => number;
+  get: (key: string) => boolean;
+  toggle: (key: string) => void;
+  setMany: (keys: string[], checked: boolean) => void;
+  replaceAll: (next: Record<string, boolean>) => void;
+};
+
 export default function UndercutCheckerPage() {
   const [selectedStations, setSelectedStations] = useState<number[]>([]);
   const [result, setResult] = useState<UndercutCheckGroup[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [useCommit, setUseCommit] = useState<boolean>(true);
   const [cycleId, setCycleId] = useState<string>("");
-  const [selected, setSelected] = useState<Record<string, boolean>>({});
   const [groupingMode, setGroupingMode] = useState<
     "perOrder" | "perCharacter" | "global"
   >("perCharacter");
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [showNegativeProfit, setShowNegativeProfit] = useState<boolean>(false);
   const RELIST_PCT = Number(process.env.NEXT_PUBLIC_BROKER_RELIST_PCT ?? 0.3);
+
+  // Selection store:
+  // - Avoids cloning a huge object on each click
+  // - Uses subscriptions so only the checkbox + footer need to update (not the whole table)
+  const selectionStoreRef = useRef<SelectionStore | null>(null);
+  if (!selectionStoreRef.current) {
+    const state: { selected: Record<string, boolean> } = { selected: {} };
+    const listeners = new Set<() => void>();
+    let version = 0;
+    const notify = () => {
+      version += 1;
+      for (const l of Array.from(listeners)) l();
+    };
+
+    selectionStoreRef.current = {
+      subscribe: (listener) => {
+        listeners.add(listener);
+        return () => listeners.delete(listener);
+      },
+      getVersion: () => version,
+      get: (key) => !!state.selected[key],
+      toggle: (key) => {
+        state.selected[key] = !state.selected[key];
+        notify();
+      },
+      setMany: (keys, checked) => {
+        for (const k of keys) state.selected[k] = checked;
+        notify();
+      },
+      replaceAll: (next) => {
+        state.selected = next;
+        notify();
+      },
+    };
+  }
+
+  const selectionStore = selectionStoreRef.current;
 
   // React Query hooks
   const { data: stations = [] } = useTrackedStations();
@@ -79,14 +131,29 @@ export default function UndercutCheckerPage() {
     }
   }, [useCommit, latestCycles]);
 
-  const getProfitCategory = (
-    marginPercent: number | undefined,
-  ): "red" | "yellow" | "normal" => {
-    if (marginPercent === undefined) return "normal";
-    if (marginPercent <= -10) return "red";
-    if (marginPercent < 0) return "yellow";
-    return "normal";
-  };
+  const groupsToRender = useMemo(() => {
+    if (!Array.isArray(result) || result.length === 0) return [];
+
+    return result.map((group) => {
+      const updates = group.updates
+        .filter((u) => {
+          const category = getProfitCategory(u.estimatedMarginPercentAfter);
+          return showNegativeProfit || category !== "red";
+        })
+        // EVE client typically shows larger remaining stacks first; the API can return
+        // "consolidation-friendly" ordering (smallest first), which looks reversed in UI.
+        .toSorted((a, b) => {
+          const byItem = a.itemName.localeCompare(b.itemName);
+          if (byItem !== 0) return byItem;
+          if (a.remaining !== b.remaining) return b.remaining - a.remaining;
+          if (a.currentPrice !== b.currentPrice)
+            return b.currentPrice - a.currentPrice;
+          return b.orderId - a.orderId;
+        });
+
+      return { group, updates };
+    });
+  }, [result, showNegativeProfit]);
 
   const onRun = async () => {
     setError(null);
@@ -101,8 +168,6 @@ export default function UndercutCheckerPage() {
         cycleId: useCommit && cycleId ? cycleId : undefined,
         groupingMode,
       });
-      // API returns array directly (UndercutCheckResponse)
-      setResult(data);
       // Default select based on profit category
       const initial: Record<string, boolean> = {};
       for (const g of data) {
@@ -115,14 +180,14 @@ export default function UndercutCheckerPage() {
           initial[key] = category !== "red";
         }
       }
-      setSelected(initial);
+      selectionStore.replaceAll(initial);
+
+      // API returns array directly (UndercutCheckResponse)
+      setResult(data);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Request failed");
     }
   };
-
-  const toggle = (key: string) =>
-    setSelected((prev) => ({ ...prev, [key]: !prev[key] }));
 
   const copyPrice = async (price: number, key: string) => {
     try {
@@ -149,7 +214,7 @@ export default function UndercutCheckerPage() {
     for (const g of result) {
       for (const u of g.updates) {
         const key = `${g.characterId}:${g.stationId}:${u.orderId}`;
-        if (!selected[key]) continue;
+        if (!selectionStore.get(key)) continue;
 
         // Find matching cycle line by typeId and stationId
         const line = cycleLines.find(
@@ -393,26 +458,7 @@ export default function UndercutCheckerPage() {
             </Button>
           </div>
 
-          {result.map((group, gi) => {
-            const visibleUpdates = group.updates
-              .filter((u) => {
-                const category = getProfitCategory(
-                  u.estimatedMarginPercentAfter,
-                );
-                return showNegativeProfit || category !== "red";
-              })
-              // EVE client typically shows larger remaining stacks first; the API can return
-              // "consolidation-friendly" ordering (smallest first), which looks reversed in UI.
-              .toSorted((a, b) => {
-                const byItem = a.itemName.localeCompare(b.itemName);
-                if (byItem !== 0) return byItem;
-                if (a.remaining !== b.remaining)
-                  return b.remaining - a.remaining;
-                if (a.currentPrice !== b.currentPrice)
-                  return b.currentPrice - a.currentPrice;
-                return b.orderId - a.orderId;
-              });
-
+          {groupsToRender.map(({ group, updates: visibleUpdates }, gi) => {
             return (
               <Card key={gi}>
                 <CardHeader>
@@ -425,172 +471,14 @@ export default function UndercutCheckerPage() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b">
-                          <th className="py-2 px-3">
-                            <input
-                              type="checkbox"
-                              checked={
-                                visibleUpdates.every(
-                                  (u) =>
-                                    selected[
-                                      `${group.characterId}:${group.stationId}:${u.orderId}`
-                                    ],
-                                ) && visibleUpdates.length > 0
-                              }
-                              onChange={(e) => {
-                                const keys = visibleUpdates.map(
-                                  (u) =>
-                                    `${group.characterId}:${group.stationId}:${u.orderId}`,
-                                );
-                                setSelected((prev) => {
-                                  const next = { ...prev };
-                                  for (const k of keys)
-                                    next[k] = e.target.checked;
-                                  return next;
-                                });
-                              }}
-                            />
-                          </th>
-                          <th
-                            className="py-2 px-3 whitespace-nowrap text-center"
-                            title="Warning"
-                          >
-                            ⚠️
-                          </th>
-                          <th className="py-2 px-3 whitespace-nowrap text-left">
-                            Item
-                          </th>
-                          <th className="py-2 px-3 whitespace-nowrap text-right">
-                            Current
-                          </th>
-                          <th className="py-2 px-3 whitespace-nowrap text-right">
-                            Suggested
-                          </th>
-                          <th className="py-2 px-3 whitespace-nowrap text-right">
-                            Remain
-                          </th>
-                          <th className="py-2 px-3 whitespace-nowrap text-right">
-                            Relist Fee ({RELIST_PCT}%)
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {visibleUpdates.map((u, ui) => {
-                          const key = `${group.characterId}:${group.stationId}:${u.orderId}`;
-                          const category = getProfitCategory(
-                            u.estimatedMarginPercentAfter,
-                          );
-                          const rowBgClass =
-                            category === "red"
-                              ? "bg-red-100 dark:bg-red-950/30"
-                              : category === "yellow"
-                                ? "bg-yellow-100 dark:bg-yellow-950/30"
-                                : "";
-                          const expiryNote =
-                            u.isExpiringSoon &&
-                            typeof u.expiresInHours === "number"
-                              ? `Expires in ${u.expiresInHours.toFixed(1)}h`
-                              : undefined;
-                          return (
-                            <tr
-                              key={ui}
-                              className={`border-b ${rowBgClass}`}
-                              title={
-                                u.estimatedMarginPercentAfter !== undefined
-                                  ? `Margin: ${u.estimatedMarginPercentAfter.toFixed(1)}%, Profit: ${formatIsk(u.estimatedProfitIskAfter ?? 0)}${expiryNote ? `, ${expiryNote}` : ""}`
-                                  : undefined
-                              }
-                            >
-                              <td className="py-2 px-3">
-                                <input
-                                  type="checkbox"
-                                  checked={!!selected[key]}
-                                  onChange={() => toggle(key)}
-                                />
-                              </td>
-                              <td className="py-2 px-3 text-center">
-                                {category === "red" && (
-                                  <AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400 inline" />
-                                )}
-                                {category === "yellow" && (
-                                  <AlertTriangle className="h-4 w-4 text-yellow-600 dark:text-yellow-400 inline" />
-                                )}
-                                {u.isExpiringSoon && (
-                                  <span title={expiryNote ?? "Expiring soon"}>
-                                    <Clock className="h-4 w-4 text-blue-600 dark:text-blue-400 inline ml-1" />
-                                  </span>
-                                )}
-                              </td>
-                              <td className="py-2 px-3 text-left whitespace-nowrap">
-                                {u.itemName}
-                              </td>
-                              <td className="py-2 px-3 text-right">
-                                <div className="flex items-center justify-end gap-2">
-                                  <span>{formatIsk(u.currentPrice)}</span>
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      copyPrice(u.suggestedNewPriceTicked, key)
-                                    }
-                                    className="inline-flex items-center justify-center h-6 w-6 rounded hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                                    title="Copy suggested price"
-                                    aria-label="Copy suggested price"
-                                  >
-                                    {copiedKey === key ? (
-                                      <Check className="h-3.5 w-3.5 text-green-600" />
-                                    ) : (
-                                      <Copy className="h-3.5 w-3.5" />
-                                    )}
-                                  </button>
-                                </div>
-                              </td>
-                              <td className="py-2 px-3 font-medium text-right">
-                                {formatIsk(u.suggestedNewPriceTicked)}
-                              </td>
-                              <td className="py-2 px-3 text-right">
-                                {u.remaining}
-                              </td>
-                              <td className="py-2 px-3 font-medium text-right">
-                                {formatIsk(
-                                  u.remaining *
-                                    u.suggestedNewPriceTicked *
-                                    (RELIST_PCT / 100),
-                                )}
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                      <tfoot>
-                        <tr className="border-t">
-                          <td className="py-2 px-3"></td>
-                          <td className="py-2 px-3"></td>
-                          <td className="py-2 px-3" colSpan={3}></td>
-                          <td className="py-2 px-3 text-right font-medium">
-                            Total relist fee (selected):
-                          </td>
-                          <td className="py-2 px-3 font-semibold text-right">
-                            {formatIsk(
-                              visibleUpdates.reduce((s, u) => {
-                                const key = `${group.characterId}:${group.stationId}:${u.orderId}`;
-                                return (
-                                  s +
-                                  (selected[key]
-                                    ? u.remaining *
-                                      u.suggestedNewPriceTicked *
-                                      (RELIST_PCT / 100)
-                                    : 0)
-                                );
-                              }, 0),
-                            )}
-                          </td>
-                        </tr>
-                      </tfoot>
-                    </table>
-                  </div>
+                  <UndercutResultsTable
+                    group={group}
+                    updates={visibleUpdates}
+                    selectionStore={selectionStore}
+                    copiedKey={copiedKey}
+                    onCopyPrice={copyPrice}
+                    relistPct={RELIST_PCT}
+                  />
                 </CardContent>
               </Card>
             );

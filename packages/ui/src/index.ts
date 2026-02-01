@@ -19,6 +19,7 @@ export * from "./chart";
 export * from "./checkbox";
 export * from "./collapsible";
 export * from "./data-table";
+export * from "./components/data-table";
 export * from "./dialog";
 export * from "./dropdown-menu";
 export * from "./empty";
@@ -39,3 +40,6 @@ export * from "./textarea";
 export * from "./toast";
 export * from "./tooltip";
 export * from "./popover";
+
+// Table typing helpers (for feature tables that build TanStack columns)
+export type { ColumnDef, Row } from "@tanstack/react-table";

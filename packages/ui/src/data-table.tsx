@@ -23,7 +23,7 @@ import {
 } from "./table";
 import { Skeleton } from "./skeleton";
 
-export interface DataTableProps<TData, TValue> {
+export interface PaginatedDataTableProps<TData, TValue> {
   columns: ColumnDef<TData, TValue>[];
   data: TData[];
   isLoading?: boolean;
@@ -59,7 +59,7 @@ export interface DataTableProps<TData, TValue> {
  *   { accessorKey: "email", header: "Email" },
  * ];
  * 
- * <DataTable
+ * <PaginatedDataTable
  *   columns={columns}
  *   data={users}
  *   isLoading={isLoading}
@@ -68,7 +68,7 @@ export interface DataTableProps<TData, TValue> {
  * />
  * ```
  */
-export function DataTable<TData, TValue>({
+export function PaginatedDataTable<TData, TValue>({
   columns,
   data,
   isLoading = false,
@@ -76,7 +76,7 @@ export function DataTable<TData, TValue>({
   onRowClick,
   pagination,
   sorting,
-}: DataTableProps<TData, TValue>) {
+}: PaginatedDataTableProps<TData, TValue>) {
   const [internalSorting, setInternalSorting] = React.useState<SortingState>([]);
   const [internalPagination, setInternalPagination] =
     React.useState<PaginationState>({
