@@ -1,0 +1,29 @@
+---
+description: Prevent the agent from starting/stopping dev servers or long-running processes
+alwaysApply: true
+---
+
+# No process management without explicit user request
+
+The agent **must not** start, stop, restart, kill, or otherwise manage long-running processes unless the user explicitly asks.
+
+This includes (but is not limited to):
+
+- `pnpm run dev:*`, `npm run dev`, `nest start --watch`, `next dev`
+- Docker containers / compose stacks
+- Backgrounded shells, watchers, schedulers, etc.
+
+## Required behavior
+
+- **Do not start** new dev servers/watchers if one appears to already be running.
+- **Do not stop/kill** any existing dev server/watch process.
+- If a change requires a restart to take effect, **tell the user** what command to run and why, but **do not execute it**.
+- If a port conflict or stuck process is suspected, **ask the user** to restart/stop it (provide exact command), but **do not terminate it yourself**.
+
+## Exceptions
+
+Only allowed if the user explicitly requests it in the current conversation, e.g.:
+
+- “Restart the API server”
+- “Stop the dev server and start it again”
+- “Kill the process on port 3000”

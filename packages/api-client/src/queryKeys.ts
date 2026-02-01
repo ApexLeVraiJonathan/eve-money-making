@@ -34,6 +34,8 @@ export const qk = {
     list: () => ["users", "list"] as const,
     tradecraft: (pagination?: { limit?: number; offset?: number }) =>
       ["users", "tradecraft", pagination] as const,
+    searchPrimary: (query: string) =>
+      ["users", "searchPrimary", query] as const,
   },
 
   /** EVE characters & linking */
@@ -94,7 +96,7 @@ export const qk = {
     overview: () => ["cycles", "overview"] as const,
     entries: (
       cycleId: string,
-      pagination?: { limit?: number; offset?: number }
+      pagination?: { limit?: number; offset?: number },
     ) => ["cycles", "entries", cycleId, pagination] as const,
     capital: (cycleId: string, force?: boolean) =>
       ["cycles", "capital", cycleId, force] as const,
@@ -125,6 +127,8 @@ export const qk = {
     byId: (id: string) => ["participations", "byId", id] as const,
     me: (cycleId: string) => ["participations", "me", cycleId] as const,
     unmatchedDonations: () => ["participations", "unmatchedDonations"] as const,
+    adminCaps: (userId: string) =>
+      ["participations", "adminCaps", userId] as const,
     autoRolloverSettings: () =>
       ["participations", "autoRolloverSettings"] as const,
   },

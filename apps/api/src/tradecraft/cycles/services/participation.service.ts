@@ -169,6 +169,161 @@ export class ParticipationService {
   }
 
   /**
+   * Admin-only: create a standard (non-rollover) participation for a cycle that
+   * is already OPEN, targeting a user by their primary character ID.
+   *
+   * This exists because the public opt-in flow intentionally only allows PLANNED cycles.
+   */
+  async adminCreateParticipationForOpenCycleByPrimaryCharacterId(input: {
+    cycleId: string;
+    primaryCharacterId: number;
+    amountIsk: string;
+    markPaid?: boolean;
+  }) {
+    const user = await this.prisma.user.findUnique({
+      where: { primaryCharacterId: input.primaryCharacterId },
+      select: {
+        id: true,
+        primaryCharacter: { select: { name: true } },
+      },
+    });
+    if (!user) {
+      throw new BadRequestException(
+        'No user found for that primary character ID',
+      );
+    }
+
+    const primaryName = user.primaryCharacter?.name?.trim() || undefined;
+    return await this.adminCreateParticipationForOpenCycle({
+      cycleId: input.cycleId,
+      userId: user.id,
+      amountIsk: input.amountIsk,
+      characterName: primaryName,
+      markPaid: input.markPaid,
+    });
+  }
+
+  /**
+   * Admin-only: create a standard (non-rollover) participation for an OPEN cycle.
+   * Reuses the same cap validation rules as user opt-in, but without the PLANNED-cycle restriction.
+   */
+  async adminCreateParticipationForOpenCycle(input: {
+    cycleId: string;
+    userId: string;
+    amountIsk: string;
+    characterName?: string;
+    markPaid?: boolean;
+  }) {
+    const cycle = await this.prisma.cycle.findUnique({
+      where: { id: input.cycleId },
+    });
+    if (!cycle) throw new BadRequestException('Cycle not found');
+    if (cycle.status !== 'OPEN') {
+      throw new BadRequestException(
+        'Admin manual participation is only allowed for OPEN cycles',
+      );
+    }
+
+    const existing = await this.prisma.cycleParticipation.findFirst({
+      where: {
+        cycleId: input.cycleId,
+        userId: input.userId,
+      },
+    });
+    if (existing) return existing;
+
+    const requestedAmount = Number(input.amountIsk);
+    if (!Number.isFinite(requestedAmount) || requestedAmount <= 0) {
+      throw new BadRequestException('Invalid participation amount');
+    }
+
+    const caps = await this.getUserTradecraftCaps(input.userId);
+    const maximumCapIsk = caps.maximumCapIsk;
+    const principalCapIsk = await this.getEffectivePrincipalCapForUser(
+      input.userId,
+      caps.principalCapIsk,
+    );
+
+    if (requestedAmount > maximumCapIsk) {
+      throw new BadRequestException(
+        `Participation amount exceeds maximum allowed (${(
+          maximumCapIsk / 1_000_000_000
+        ).toFixed(0)}B ISK)`,
+      );
+    }
+    if (requestedAmount > principalCapIsk) {
+      throw new BadRequestException(
+        `Participation principal exceeds maximum allowed (${(
+          principalCapIsk / 1_000_000_000
+        ).toFixed(0)}B ISK)`,
+      );
+    }
+
+    let characterName = input.characterName?.trim() || undefined;
+    if (!characterName) {
+      characterName =
+        (await this.getUserDefaultCharacterName(input.userId)) ?? undefined;
+    }
+    if (!characterName) {
+      const anyChar = await this.characterService.getAnyCharacterName();
+      characterName = anyChar ?? 'Unknown';
+    }
+
+    const uniqueMemo = `ARB-${cycle.id.substring(0, 8)}-${input.userId.substring(
+      0,
+      8,
+    )}`;
+    return await this.prisma.$transaction(async (tx) => {
+      const shouldMarkPaid = input.markPaid !== false;
+      const occurredAt = new Date();
+
+      const created = await tx.cycleParticipation.create({
+        data: {
+          cycleId: input.cycleId,
+          userId: input.userId,
+          characterName,
+          amountIsk: Number(requestedAmount).toFixed(2),
+          userPrincipalIsk: Number(requestedAmount).toFixed(2),
+          memo: uniqueMemo,
+          status: shouldMarkPaid ? 'OPTED_IN' : 'AWAITING_INVESTMENT',
+          validatedAt: shouldMarkPaid ? occurredAt : null,
+        },
+      });
+
+      if (shouldMarkPaid) {
+        // Create a matching deposit entry (no wallet journal link).
+        await tx.cycleLedgerEntry.create({
+          data: {
+            cycleId: input.cycleId,
+            entryType: 'deposit',
+            amount: Number(requestedAmount).toFixed(2),
+            occurredAt,
+            memo: `Participation deposit ${created.characterName}`,
+            participationId: created.id,
+          },
+        });
+
+        // Keep ROI/profit baselines consistent by increasing the cycle's initial capital
+        // only once the participation is actually considered paid/confirmed.
+        const current = await tx.cycle.findUnique({
+          where: { id: input.cycleId },
+          select: { initialCapitalIsk: true },
+        });
+        const cur = current?.initialCapitalIsk
+          ? Number(current.initialCapitalIsk)
+          : 0;
+        const next = cur + requestedAmount;
+        await tx.cycle.update({
+          where: { id: input.cycleId },
+          data: { initialCapitalIsk: next.toFixed(2) },
+        });
+      }
+
+      return created;
+    });
+  }
+
+  /**
    * Determine maximum allowed participation for a user (history-based, ignores admin overrides).
    * Returns 10B for first-time or users who fully cashed out
    * Returns 20B for users with active rollover history
@@ -927,6 +1082,21 @@ export class ParticipationService {
       participationId: updated.id,
       planCommitId: null,
     });
+
+    // If the cycle is already OPEN, confirmed deposits should increase the
+    // cycle's initial capital baseline (used for ROI/profit metrics).
+    const cycle = await this.prisma.cycle.findUnique({
+      where: { id: updated.cycleId },
+      select: { status: true, initialCapitalIsk: true },
+    });
+    if (cycle?.status === 'OPEN') {
+      const cur = cycle.initialCapitalIsk ? Number(cycle.initialCapitalIsk) : 0;
+      const next = cur + deltaAmount;
+      await this.prisma.cycle.update({
+        where: { id: updated.cycleId },
+        data: { initialCapitalIsk: next.toFixed(2) },
+      });
+    }
 
     return updated;
   }

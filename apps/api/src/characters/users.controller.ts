@@ -8,6 +8,7 @@ import {
   Query,
   Delete,
   UseGuards,
+  BadRequestException,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -47,6 +48,29 @@ export class UsersController {
     const take = Math.min(Math.max(Number(limit ?? '50'), 1), 200);
     const skip = Math.max(Number(offset ?? '0'), 0);
     return await this.users.listUsers(take, skip);
+  }
+
+  @Get('admin/users/search-primary')
+  @Roles('ADMIN')
+  @UseGuards(RolesGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Search users by primary (main) character (admin only)',
+  })
+  @ApiQuery({
+    name: 'q',
+    type: String,
+    description: 'Primary character name (partial) or character ID',
+  })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  async searchUsersByPrimaryCharacter(
+    @Query('q') q?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const query = (q ?? '').trim();
+    if (!query) throw new BadRequestException('q is required');
+    const take = Math.min(Math.max(Number(limit ?? '20'), 1), 50);
+    return await this.users.searchUsersByPrimaryCharacter(query, take);
   }
 
   // Admin: list users that have used Tradecraft (participations / auto-rollover / JingleYield)

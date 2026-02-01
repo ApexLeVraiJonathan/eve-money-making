@@ -29,6 +29,7 @@ import {
   useMarkPayoutSent,
 } from "../../api";
 import type { CycleParticipation } from "@eve/shared";
+import { ManualCreateParticipationCard } from "./manual-create-participation-card";
 
 type ParticipationWithCycle = CycleParticipation & {
   cycle?: {
@@ -93,6 +94,28 @@ export default function ParticipationsPage() {
     } catch (error) {
       const msg =
         error instanceof Error ? error.message : "Failed to match payment";
+      toast.error(msg);
+    }
+  };
+
+  const handleManualConfirmPaid = async () => {
+    if (!selectedParticipation) {
+      toast.error("Please select a participation");
+      return;
+    }
+
+    try {
+      await validatePayment.mutateAsync({
+        participationId: selectedParticipation,
+        // No walletJournal: this marks as OPTED_IN without linking a journal entry
+      });
+      toast.success("Participation confirmed (no journal link).");
+      setSelectedParticipation(null);
+    } catch (error) {
+      const msg =
+        error instanceof Error
+          ? error.message
+          : "Failed to confirm participation";
       toast.error(msg);
     }
   };
@@ -277,6 +300,8 @@ export default function ParticipationsPage() {
           </p>
         </div>
       </div>
+
+      <ManualCreateParticipationCard />
 
       {/* Summary Stats */}
       <div className="grid gap-4 md:grid-cols-4">
@@ -668,28 +693,39 @@ export default function ParticipationsPage() {
           </div>
 
           <div className="mt-6 flex items-center justify-center">
-            <Button
-              onClick={handleManualMatch}
-              disabled={
-                !selectedParticipation ||
-                !selectedDonation ||
-                validatePayment.isPending
-              }
-              size="lg"
-              className="gap-2"
-            >
-              {validatePayment.isPending ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Matching...
-                </>
-              ) : (
-                <>
-                  <ArrowLeftRight className="h-4 w-4" />
-                  Link Selected Payment
-                </>
-              )}
-            </Button>
+            <div className="flex flex-col items-center gap-2 sm:flex-row">
+              <Button
+                onClick={handleManualMatch}
+                disabled={
+                  !selectedParticipation ||
+                  !selectedDonation ||
+                  validatePayment.isPending
+                }
+                size="lg"
+                className="gap-2"
+              >
+                {validatePayment.isPending ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Matching...
+                  </>
+                ) : (
+                  <>
+                    <ArrowLeftRight className="h-4 w-4" />
+                    Link Selected Payment
+                  </>
+                )}
+              </Button>
+
+              <Button
+                variant="outline"
+                onClick={handleManualConfirmPaid}
+                disabled={!selectedParticipation || validatePayment.isPending}
+                size="lg"
+              >
+                Mark Selected as Paid (no link)
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>

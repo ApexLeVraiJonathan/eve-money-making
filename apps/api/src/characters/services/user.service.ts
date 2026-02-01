@@ -22,6 +22,34 @@ export class UserService {
     });
   }
 
+  async searchUsersByPrimaryCharacter(query: string, take: number) {
+    const q = query.trim();
+    const numeric = /^\d+$/.test(q) ? Number(q) : null;
+
+    return await this.prisma.user.findMany({
+      take,
+      orderBy: { createdAt: 'desc' },
+      where: {
+        primaryCharacter: {
+          ...(numeric != null
+            ? {
+                OR: [
+                  { id: numeric },
+                  { name: { contains: q, mode: 'insensitive' } },
+                ],
+              }
+            : { name: { contains: q, mode: 'insensitive' } }),
+        },
+      },
+      select: {
+        id: true,
+        email: true,
+        role: true,
+        primaryCharacter: { select: { id: true, name: true } },
+      },
+    });
+  }
+
   async listTradecraftUsers(take: number, skip: number) {
     // Collect distinct user IDs that have interacted with Tradecraft.
     const ids = new Set<string>();

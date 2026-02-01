@@ -15,12 +15,12 @@ test.describe("Tradecraft user caps (UI)", () => {
       "..",
       "..",
       ".playwright",
-      "storageState.json"
+      "storageState.json",
     );
     if (!fs.existsSync(storageStatePath)) {
       test.skip(
         true,
-        "No UI storageState found. Run:\n  pnpm -C apps/e2e test:setup"
+        "No UI storageState found. Run:\n  pnpm -C apps/e2e test:setup",
       );
     }
 
@@ -34,18 +34,18 @@ test.describe("Tradecraft user caps (UI)", () => {
         (c) =>
           c?.name === "session" &&
           typeof c?.value === "string" &&
-          c.value.length > 0
+          c.value.length > 0,
       );
-      if (!session || session.value.includes("%")) {
+      if (!session || (session.value ?? "").includes("%")) {
         test.skip(
           true,
-          "UI storageState is missing a usable `session` cookie. Recreate it with:\n  pnpm -C apps/e2e test:setup"
+          "UI storageState is missing a usable `session` cookie. Recreate it with:\n  pnpm -C apps/e2e test:setup",
         );
       }
     } catch {
       test.skip(
         true,
-        "UI storageState is invalid JSON. Recreate it with:\n  pnpm -C apps/e2e test:setup"
+        "UI storageState is invalid JSON. Recreate it with:\n  pnpm -C apps/e2e test:setup",
       );
     }
   });
@@ -53,7 +53,7 @@ test.describe("Tradecraft user caps (UI)", () => {
   test("loads Tradecraft users page and shows cap editor", async ({ page }) => {
     test.skip(
       !process.env.ENCRYPTION_KEY,
-      "ENCRYPTION_KEY is required for UI tests (session cookie auth). Add it to apps/e2e/.env to enable this test."
+      "ENCRYPTION_KEY is required for UI tests (session cookie auth). Add it to apps/e2e/.env to enable this test.",
     );
 
     const prisma = createPrisma();
@@ -88,23 +88,23 @@ test.describe("Tradecraft user caps (UI)", () => {
 
       await page.goto("/tradecraft/admin/users", { waitUntil: "networkidle" });
       await expect(
-        page.getByRole("heading", { name: "Tradecraft Users" })
+        page.getByRole("heading", { name: "Tradecraft Users" }),
       ).toBeVisible();
       await expect(page.getByPlaceholder(/Filter by email/i)).toBeVisible();
 
       // Row should include our user id and cap editor.
       // userId appears twice (name + monospace detail), so target the primary cell.
       await expect(
-        page.locator("div.font-medium", { hasText: userId })
+        page.locator("div.font-medium", { hasText: userId }),
       ).toBeVisible();
       await expect(
-        page.getByRole("button", { name: "Save" }).first()
+        page.getByRole("button", { name: "Save" }).first(),
       ).toBeVisible();
       await expect(
-        page.getByRole("button", { name: "10B" }).first()
+        page.getByRole("button", { name: "10B" }).first(),
       ).toBeVisible();
       await expect(
-        page.getByRole("button", { name: "20B" }).first()
+        page.getByRole("button", { name: "20B" }).first(),
       ).toBeVisible();
     } finally {
       await prisma.$disconnect();

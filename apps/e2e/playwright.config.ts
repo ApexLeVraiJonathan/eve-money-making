@@ -3,17 +3,28 @@ import { defineConfig } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
 
-const storageStatePath = path.join(__dirname, ".playwright", "storageState.json");
+const storageStatePath = path.join(
+  __dirname,
+  ".playwright",
+  "storageState.json",
+);
 function hasUsableStorageState(): boolean {
   if (!fs.existsSync(storageStatePath)) return false;
   try {
     const raw = fs.readFileSync(storageStatePath, "utf8");
-    const parsed = JSON.parse(raw) as { cookies?: Array<{ name?: string; value?: string }> };
+    const parsed = JSON.parse(raw) as {
+      cookies?: Array<{ name?: string; value?: string }>;
+    };
     const cookies = Array.isArray(parsed.cookies) ? parsed.cookies : [];
-    const session = cookies.find((c) => c?.name === "session" && typeof c?.value === "string" && c.value.length > 0);
+    const session = cookies.find(
+      (c) =>
+        c?.name === "session" &&
+        typeof c?.value === "string" &&
+        c.value.length > 0,
+    );
     if (!session) return false;
     // If it looks percent-encoded, treat as invalid (can lead to double-encoding on restore).
-    if (session.value.includes("%")) return false;
+    if ((session.value ?? "").includes("%")) return false;
     return true;
   } catch {
     return false;
@@ -52,5 +63,3 @@ export default defineConfig({
     },
   ],
 });
-
-

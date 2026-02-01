@@ -72,6 +72,38 @@ export function useTradecraftUsers(pagination?: {
   });
 }
 
+export type PrimaryUserSearchRow = {
+  id: string;
+  email: string | null;
+  role: "USER" | "ADMIN";
+  primaryCharacter: { id: number; name: string };
+};
+
+/**
+ * Search users by primary (main) character name or character id (admin only).
+ */
+export function useSearchUsersByPrimaryCharacter(query?: string, limit = 20) {
+  const client = useApiClient();
+  const q = (query ?? "").trim();
+  return useAuthenticatedQuery({
+    queryKey:
+      q.length >= 2
+        ? qk.users.searchPrimary(q)
+        : (["users", "searchPrimary", "empty"] as const),
+    queryFn: async () => {
+      if (q.length < 2) return [];
+      const params = new URLSearchParams({
+        q,
+        limit: String(limit),
+      });
+      return await client.get<PrimaryUserSearchRow[]>(
+        `/admin/users/search-primary?${params.toString()}`,
+      );
+    },
+    enabled: q.length >= 2,
+  });
+}
+
 /**
  * Update a user's Tradecraft caps (admin only).
  * - principalCapIsk: user-funded principal limit

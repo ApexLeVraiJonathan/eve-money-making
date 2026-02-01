@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   Logger,
+  BadRequestException,
   NotFoundException,
   Param,
   Post,
@@ -45,6 +46,7 @@ import { UpdateCycleRequest } from './dto/update-cycle.dto';
 import { AppendEntryRequest } from './dto/append-entry.dto';
 import { GetEntriesQuery } from './dto/get-entries-query.dto';
 import { CreateParticipationManualRequest } from './dto/create-participation-manual.dto';
+import { CreateParticipationAdminRequest } from './dto/create-participation-admin.dto';
 import { RefundParticipationRequest } from './dto/refund-participation.dto';
 import { ValidatePaymentRequest } from './dto/validate-payment.dto';
 import { GetCommitSummaryQuery } from './dto/get-commit-summary-query.dto';
@@ -325,6 +327,38 @@ export class CyclesController {
     };
   }
 
+  @Get('participations/admin/caps')
+  @Roles('ADMIN')
+  @UseGuards(RolesGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary:
+      'Admin: get Tradecraft caps for a specific user (principal + effective principal + maximum)',
+  })
+  @ApiQuery({ name: 'userId', type: String, description: 'Target user ID' })
+  async getCapsForUserAdmin(@Query('userId') userId?: string): Promise<{
+    principalCapIsk: string;
+    principalCapB: number;
+    effectivePrincipalCapIsk: string;
+    effectivePrincipalCapB: number;
+    maximumCapIsk: string;
+    maximumCapB: number;
+  }> {
+    if (!userId) {
+      throw new BadRequestException('userId is required');
+    }
+    const caps =
+      await this.participationService.getTradecraftCapsForUser(userId);
+    return {
+      principalCapIsk: caps.principalCapIsk.toFixed(2),
+      principalCapB: caps.principalCapIsk / 1_000_000_000,
+      effectivePrincipalCapIsk: caps.effectivePrincipalCapIsk.toFixed(2),
+      effectivePrincipalCapB: caps.effectivePrincipalCapIsk / 1_000_000_000,
+      maximumCapIsk: caps.maximumCapIsk.toFixed(2),
+      maximumCapB: caps.maximumCapIsk / 1_000_000_000,
+    };
+  }
+
   // ===== Automatic rollover settings (per-user) =====
 
   @Get('participations/auto-rollover-settings')
@@ -396,6 +430,29 @@ export class CyclesController {
       userId,
       rollover: body.rollover,
     });
+  }
+
+  @Post('cycles/:cycleId/participations/admin')
+  @Roles('ADMIN')
+  @UseGuards(RolesGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary:
+      'Admin: manually create a standard participation for an OPEN cycle by main character',
+  })
+  @ApiParam({ name: 'cycleId', description: 'Cycle ID (must be OPEN)' })
+  async adminCreateParticipationForOpenCycle(
+    @Param('cycleId') cycleId: string,
+    @Body() body: CreateParticipationAdminRequest,
+  ): Promise<unknown> {
+    return await this.participationService.adminCreateParticipationForOpenCycleByPrimaryCharacterId(
+      {
+        cycleId,
+        primaryCharacterId: body.primaryCharacterId,
+        amountIsk: body.amountIsk,
+        markPaid: body.markPaid,
+      },
+    );
   }
 
   @Post('participations/:id/increase')

@@ -95,6 +95,34 @@ export function useMaxParticipation() {
   });
 }
 
+export type TradecraftCaps = {
+  principalCapIsk: string;
+  principalCapB: number;
+  effectivePrincipalCapIsk: string;
+  effectivePrincipalCapB: number;
+  maximumCapIsk: string;
+  maximumCapB: number;
+};
+
+/**
+ * Admin-only: get Tradecraft caps for a specific user.
+ */
+export function useAdminTradecraftCaps(userId?: string) {
+  const client = useApiClient();
+  return useAuthenticatedQuery({
+    queryKey: userId
+      ? qk.participations.adminCaps(userId)
+      : (["participations", "adminCaps", "none"] as const),
+    queryFn: async () => {
+      if (!userId) return null;
+      return await client.get<TradecraftCaps>(
+        `/ledger/participations/admin/caps?userId=${encodeURIComponent(userId)}`,
+      );
+    },
+    enabled: Boolean(userId),
+  });
+}
+
 /**
  * Get current user's participation for a cycle
  */
@@ -191,6 +219,36 @@ export function useCreateParticipation() {
     // This prevents the parent component from re-rendering and closing dialogs
     onSuccess: () => {
       // Queries will be invalidated when the dialog closes
+    },
+  });
+}
+
+/**
+ * Admin-only: manually create a standard participation for an OPEN cycle
+ * by selecting the user's main character ID.
+ */
+export function useAdminCreateParticipationForOpenCycle() {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      cycleId,
+      data,
+    }: {
+      cycleId: string;
+      data: {
+        primaryCharacterId: number;
+        amountIsk: string;
+        markPaid?: boolean;
+      };
+    }) =>
+      client.post<CycleParticipation>(
+        `/ledger/cycles/${cycleId}/participations/admin`,
+        data,
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: qk.participations._root });
     },
   });
 }

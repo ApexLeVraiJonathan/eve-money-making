@@ -1,13 +1,12 @@
-import { PrismaClient } from "@eve/prisma";
+import { CharacterManagedBy, CharacterRole, PrismaClient } from "@eve/prisma";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { envOr } from "./env";
 
 export function createPrisma() {
-  const dbUrl =
-    envOr(
-      "DATABASE_URL",
-      "postgresql://postgres:postgres@localhost:5433/eve_money_dev?schema=public",
-    );
+  const dbUrl = envOr(
+    "DATABASE_URL",
+    "postgresql://postgres:postgres@localhost:5433/eve_money_dev?schema=public",
+  );
 
   return new PrismaClient({
     adapter: new PrismaPg({ connectionString: dbUrl }),
@@ -46,24 +45,27 @@ export async function ensureE2eAdmin(prisma: PrismaClient) {
   const userId = "e2e-admin-user";
   const characterId = 99000001;
 
+  // Create in 3 steps to avoid mixing unchecked FK fields with nested writes.
   await prisma.user.create({
     data: {
       id: userId,
       role: "ADMIN",
-      primaryCharacterId: characterId,
-      primaryCharacter: {
-        create: {
-          id: characterId,
-          name: "E2E Admin",
-          ownerHash: "e2e-owner-hash",
-          role: "USER",
-          managedBy: "SYSTEM",
-        },
-      },
     },
+  });
+  await prisma.eveCharacter.create({
+    data: {
+      id: characterId,
+      name: "E2E Admin",
+      ownerHash: "e2e-owner-hash",
+      role: CharacterRole.USER,
+      managedBy: CharacterManagedBy.SYSTEM,
+      userId,
+    },
+  });
+  await prisma.user.update({
+    where: { id: userId },
+    data: { primaryCharacterId: characterId },
   });
 
   return userId;
 }
-
-
