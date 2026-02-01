@@ -159,177 +159,183 @@ export function SellAppraiserResultsTable({
 
   const rowKeys = React.useMemo(() => rows.map((r) => r.__key), [rows]);
 
-  const columns = React.useMemo<ColumnDef<TableRowData, unknown>[]>(
-    () => {
-      const cols: Array<ColumnDef<TableRowData, unknown>> = [
-        {
-          id: "select",
-          header: () => (
-            <div className="flex items-center justify-center w-10">
-              <HeaderSelectAllCheckbox
-                selectionStore={selectionStore}
-                rowKeys={rowKeys}
-              />
-            </div>
-          ),
-          cell: ({ row }) => (
-            <div className="flex items-center justify-center w-10">
-              <RowSelectCheckbox
-                selectionStore={selectionStore}
-                rowKey={row.original.__key}
-              />
-            </div>
-          ),
-          enableSorting: false,
-          meta: {
-            headerClassName: "w-12",
-            cellClassName: "w-12",
-          },
-        },
-        {
-          id: "suggested",
-          header: ({ column }) => (
-            <DataTableColumnHeader
-              column={column}
-              title="Suggested"
-              className="w-full justify-start"
+  const columns = React.useMemo<ColumnDef<TableRowData, unknown>[]>(() => {
+    const cols: Array<ColumnDef<TableRowData, unknown>> = [
+      {
+        id: "select",
+        header: () => (
+          <div className="flex items-center justify-center w-10">
+            <HeaderSelectAllCheckbox
+              selectionStore={selectionStore}
+              rowKeys={rowKeys}
             />
-          ),
-          accessorFn: (r) => r.suggestedSellPriceTicked,
-          cell: ({ row }) => {
-            const suggested = row.original.suggestedSellPriceTicked;
-            const key = row.original.__key;
-            return (
-              <div className="flex items-center gap-2">
-                {suggested !== null ? (
-                  <button
-                    type="button"
-                    onClick={() => onCopySuggestedPrice(suggested, key)}
-                    className="inline-flex items-center justify-center h-7 w-7 rounded-md hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    title="Copy suggested price"
-                    aria-label="Copy suggested price"
-                  >
-                    {copiedKey === key ? (
-                      <Check className="h-3.5 w-3.5 text-green-600" />
-                    ) : (
-                      <Copy className="h-3.5 w-3.5" />
-                    )}
-                  </button>
-                ) : null}
-                <span className="font-medium tabular-nums whitespace-nowrap">
-                  {formatIsk(suggested)}
-                </span>
-              </div>
-            );
-          },
-          enableSorting: true,
-          meta: {
-            headerClassName: "w-[220px]",
-            cellClassName: "w-[220px]",
-          },
-        },
-        {
-          accessorKey: "itemName",
-          header: ({ column }) => (
-            <DataTableColumnHeader
-              column={column}
-              title="Item"
-              className="w-full justify-start"
+          </div>
+        ),
+        cell: ({ row }) => (
+          <div className="flex items-center justify-center w-10">
+            <RowSelectCheckbox
+              selectionStore={selectionStore}
+              rowKey={row.original.__key}
             />
-          ),
-          cell: ({ row }) => (
-            <div className="min-w-0 font-medium truncate">
-              {row.original.itemName}
-            </div>
-          ),
-          enableSorting: true,
-          meta: {
-            headerClassName: "w-[420px] min-w-0",
-            cellClassName: "w-[420px] min-w-0",
-          },
+          </div>
+        ),
+        enableSorting: false,
+        meta: {
+          headerClassName: "w-12",
+          cellClassName: "w-12",
         },
-        {
-          id: "qty",
-          header: ({ column }) => (
-            <DataTableColumnHeader
-              column={column}
-              title="Qty"
-              className="w-full justify-start"
-            />
-          ),
-          accessorFn: (r) => r.__qty,
-          cell: ({ row }) => (
-            <div className="text-left tabular-nums whitespace-nowrap">
-              {row.original.__qty}
+      },
+      {
+        id: "suggested",
+        header: ({ column }) => (
+          <DataTableColumnHeader
+            column={column}
+            title="Suggested"
+            className="w-full justify-start"
+          />
+        ),
+        accessorFn: (r) => r.suggestedSellPriceTicked,
+        cell: ({ row }) => {
+          const suggested = row.original.suggestedSellPriceTicked;
+          const key = row.original.__key;
+          return (
+            <div className="flex items-center gap-2">
+              {suggested !== null ? (
+                <button
+                  type="button"
+                  onClick={() => onCopySuggestedPrice(suggested, key)}
+                  className="inline-flex items-center justify-center h-7 w-7 rounded-md hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  title="Copy suggested price"
+                  aria-label="Copy suggested price"
+                >
+                  {copiedKey === key ? (
+                    <Check className="h-3.5 w-3.5 text-green-600" />
+                  ) : (
+                    <Copy className="h-3.5 w-3.5" />
+                  )}
+                </button>
+              ) : null}
+              <span className="font-medium tabular-nums whitespace-nowrap">
+                {formatIsk(suggested)}
+              </span>
             </div>
-          ),
-          enableSorting: true,
-          meta: {
-            headerClassName: "w-[90px]",
-            cellClassName: "w-[90px]",
-          },
+          );
         },
-        {
-          id: "lowestSell",
-          header: ({ column }) => (
-            <DataTableColumnHeader
-              column={column}
-              title="Lowest Sell"
-              className="w-full justify-start"
-            />
-          ),
-          accessorFn: (r) => r.lowestSell,
-          cell: ({ row }) => (
-            <div className="text-left tabular-nums whitespace-nowrap">
-              {formatIsk(row.original.lowestSell)}
-            </div>
-          ),
-          enableSorting: true,
-          meta: {
-            headerClassName: "w-[160px]",
-            cellClassName: "w-[160px]",
-          },
+        enableSorting: true,
+        meta: {
+          headerClassName: "w-[220px]",
+          cellClassName: "w-[220px]",
         },
-      ];
+      },
+      {
+        accessorKey: "itemName",
+        header: ({ column }) => (
+          <DataTableColumnHeader
+            column={column}
+            title="Item"
+            className="w-full justify-start"
+          />
+        ),
+        cell: ({ row }) => (
+          <div className="min-w-0 font-medium truncate">
+            {row.original.itemName}
+          </div>
+        ),
+        enableSorting: true,
+        meta: {
+          headerClassName: "w-[420px] min-w-0",
+          cellClassName: "w-[420px] min-w-0",
+        },
+      },
+      {
+        id: "qty",
+        header: ({ column }) => (
+          <DataTableColumnHeader
+            column={column}
+            title="Qty"
+            className="w-full justify-start"
+          />
+        ),
+        accessorFn: (r) => r.__qty,
+        cell: ({ row }) => (
+          <div className="text-left tabular-nums whitespace-nowrap">
+            {row.original.__qty}
+          </div>
+        ),
+        enableSorting: true,
+        meta: {
+          headerClassName: "w-[90px]",
+          cellClassName: "w-[90px]",
+        },
+      },
+      {
+        id: "lowestSell",
+        header: ({ column }) => (
+          <DataTableColumnHeader
+            column={column}
+            title="Lowest Sell"
+            className="w-full justify-start"
+          />
+        ),
+        accessorFn: (r) => r.lowestSell,
+        cell: ({ row }) => (
+          <div className="text-left tabular-nums whitespace-nowrap">
+            {formatIsk(row.original.lowestSell)}
+          </div>
+        ),
+        enableSorting: true,
+        meta: {
+          headerClassName: "w-[160px]",
+          cellClassName: "w-[160px]",
+        },
+      },
+    ];
 
-      if (isCommitMode) {
-        cols.push({
-          id: "brokerFee",
-          header: ({ column }) => (
-            <DataTableColumnHeader
-              column={column}
-              title={`Broker Fee (${brokerFeePct}%)`}
-              className="w-full justify-start"
-            />
-          ),
-          accessorFn: (r) => {
-            if (!isCommitRow(r)) return null;
-            if (r.suggestedSellPriceTicked === null) return null;
-            return r.__qty * r.suggestedSellPriceTicked * (brokerFeePct / 100);
-          },
-          cell: ({ row }) => {
-            const r = row.original;
-            if (!isCommitRow(r)) return <div className="text-left">-</div>;
-            if (r.suggestedSellPriceTicked === null)
-              return <div className="text-left">-</div>;
-            return (
-              <div className="font-medium text-left tabular-nums whitespace-nowrap">
-                {formatIsk(r.__qty * r.suggestedSellPriceTicked * (brokerFeePct / 100))}
-              </div>
-            );
-          },
-          enableSorting: true,
-          meta: {
-            headerClassName: "w-[200px]",
-            cellClassName: "w-[200px]",
-          },
-        });
-      }
+    if (isCommitMode) {
+      cols.push({
+        id: "brokerFee",
+        header: ({ column }) => (
+          <DataTableColumnHeader
+            column={column}
+            title={`Broker Fee (${brokerFeePct}%)`}
+            className="w-full justify-start"
+          />
+        ),
+        accessorFn: (r) => {
+          if (!isCommitRow(r)) return null;
+          if (r.suggestedSellPriceTicked === null) return null;
+          return r.__qty * r.suggestedSellPriceTicked * (brokerFeePct / 100);
+        },
+        cell: ({ row }) => {
+          const r = row.original;
+          if (!isCommitRow(r)) return <div className="text-left">-</div>;
+          if (r.suggestedSellPriceTicked === null)
+            return <div className="text-left">-</div>;
+          return (
+            <div className="font-medium text-left tabular-nums whitespace-nowrap">
+              {formatIsk(
+                r.__qty * r.suggestedSellPriceTicked * (brokerFeePct / 100),
+              )}
+            </div>
+          );
+        },
+        enableSorting: true,
+        meta: {
+          headerClassName: "w-[200px]",
+          cellClassName: "w-[200px]",
+        },
+      });
+    }
 
-      return cols;
-    },
-    [brokerFeePct, copiedKey, isCommitMode, onCopySuggestedPrice, rowKeys, selectionStore],
-  );
+    return cols;
+  }, [
+    brokerFeePct,
+    copiedKey,
+    isCommitMode,
+    onCopySuggestedPrice,
+    rowKeys,
+    selectionStore,
+  ]);
 
   return (
     <DataTable
@@ -352,4 +358,3 @@ export function SellAppraiserResultsTable({
     />
   );
 }
-

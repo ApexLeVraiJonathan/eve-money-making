@@ -40,9 +40,7 @@ import type { UndercutCheckGroup } from "@eve/shared/types";
 
 type ProfitCategory = "red" | "yellow" | "normal";
 
-function getProfitCategory(
-  marginPercent: number | undefined,
-): ProfitCategory {
+function getProfitCategory(marginPercent: number | undefined): ProfitCategory {
   if (marginPercent === undefined) return "normal";
   if (marginPercent <= -10) return "red";
   if (marginPercent < 0) return "yellow";

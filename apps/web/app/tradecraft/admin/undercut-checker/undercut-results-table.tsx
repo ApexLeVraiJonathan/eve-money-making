@@ -312,14 +312,7 @@ export function UndercutResultsTable({
         },
       },
     ],
-    [
-      copiedKey,
-      onCopyPrice,
-      relistPct,
-      rowKeys,
-      rows,
-      selectionStore,
-    ],
+    [copiedKey, onCopyPrice, relistPct, rowKeys, rows, selectionStore],
   );
 
   const getRowClassName = React.useCallback((row: Row<UpdateRow>) => {
