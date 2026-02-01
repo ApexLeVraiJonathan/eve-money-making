@@ -28,6 +28,18 @@ type UpdateRow = UndercutCheckGroup["updates"][number] & {
   __key: string;
 };
 
+const itemNameCollator = new Intl.Collator(undefined, {
+  numeric: true,
+  sensitivity: "base",
+});
+
+function itemNameSortKey(name: string): string {
+  return name
+    .replace(/\u00A0/g, " ")
+    .trim()
+    .replace(/^[^0-9A-Za-z]+/u, "");
+}
+
 type SelectionStore = {
   subscribe: (listener: () => void) => () => void;
   getVersion: () => number;
@@ -236,6 +248,14 @@ export function UndercutResultsTable({
           </div>
         ),
         enableSorting: true,
+        sortingFn: (rowA, rowB, columnId) => {
+          const a = String(rowA.getValue(columnId) ?? "");
+          const b = String(rowB.getValue(columnId) ?? "");
+          return itemNameCollator.compare(
+            itemNameSortKey(a),
+            itemNameSortKey(b),
+          );
+        },
         meta: {
           headerClassName: "w-[420px] min-w-0",
           cellClassName: "w-[420px] min-w-0",

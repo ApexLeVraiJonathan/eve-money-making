@@ -56,6 +56,18 @@ type GroupedResult = {
   items: Array<PasteRow | CommitRow>;
 };
 
+const itemNameCollator = new Intl.Collator("en", {
+  numeric: true,
+  sensitivity: "base",
+});
+
+function itemNameSortKey(name: string): string {
+  return name
+    .replace(/\u00A0/g, " ")
+    .trim()
+    .replace(/^[^0-9A-Za-z]+/u, "");
+}
+
 function isCommitRow(row: PasteRow | CommitRow): row is CommitRow {
   return (row as CommitRow).typeId !== undefined && "quantityRemaining" in row;
 }
@@ -120,9 +132,10 @@ export default function SellAppraiserPage() {
   // Sort items alphabetically: 0-9, A-Z (lexicographic/string order)
   const sortItems = (items: Array<PasteRow | CommitRow>) => {
     return items.sort((a, b) => {
-      return a.itemName.localeCompare(b.itemName, "en", {
-        sensitivity: "base",
-      });
+      return itemNameCollator.compare(
+        itemNameSortKey(a.itemName),
+        itemNameSortKey(b.itemName),
+      );
     });
   };
 

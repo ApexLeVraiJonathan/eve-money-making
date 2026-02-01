@@ -39,6 +39,18 @@ type TableRowData = SellAppraiserRow & {
   __qty: number;
 };
 
+const itemNameCollator = new Intl.Collator(undefined, {
+  numeric: true,
+  sensitivity: "base",
+});
+
+function itemNameSortKey(name: string): string {
+  return name
+    .replace(/\u00A0/g, " ")
+    .trim()
+    .replace(/^[^0-9A-Za-z]+/u, "");
+}
+
 const RowSelectCheckbox = React.memo(function RowSelectCheckbox({
   selectionStore,
   rowKey,
@@ -242,6 +254,14 @@ export function SellAppraiserResultsTable({
           </div>
         ),
         enableSorting: true,
+        sortingFn: (rowA, rowB, columnId) => {
+          const a = String(rowA.getValue(columnId) ?? "");
+          const b = String(rowB.getValue(columnId) ?? "");
+          return itemNameCollator.compare(
+            itemNameSortKey(a),
+            itemNameSortKey(b),
+          );
+        },
         meta: {
           headerClassName: "w-[420px] min-w-0",
           cellClassName: "w-[420px] min-w-0",

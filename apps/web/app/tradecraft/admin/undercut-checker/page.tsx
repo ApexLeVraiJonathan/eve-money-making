@@ -40,6 +40,21 @@ import type { UndercutCheckGroup } from "@eve/shared/types";
 
 type ProfitCategory = "red" | "yellow" | "normal";
 
+const itemNameCollator = new Intl.Collator(undefined, {
+  numeric: true,
+  sensitivity: "base",
+});
+
+function itemNameSortKey(name: string): string {
+  return (
+    name
+      .replace(/\u00A0/g, " ")
+      .trim()
+      // strip leading punctuation like quotes so "'Augmented' X" sorts under A
+      .replace(/^[^0-9A-Za-z]+/u, "")
+  );
+}
+
 function getProfitCategory(marginPercent: number | undefined): ProfitCategory {
   if (marginPercent === undefined) return "normal";
   if (marginPercent <= -10) return "red";
@@ -141,7 +156,10 @@ export default function UndercutCheckerPage() {
         // EVE client typically shows larger remaining stacks first; the API can return
         // "consolidation-friendly" ordering (smallest first), which looks reversed in UI.
         .toSorted((a, b) => {
-          const byItem = a.itemName.localeCompare(b.itemName);
+          const byItem = itemNameCollator.compare(
+            itemNameSortKey(a.itemName),
+            itemNameSortKey(b.itemName),
+          );
           if (byItem !== 0) return byItem;
           if (a.remaining !== b.remaining) return b.remaining - a.remaining;
           if (a.currentPrice !== b.currentPrice)
