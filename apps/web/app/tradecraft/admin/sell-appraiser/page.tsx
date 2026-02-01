@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@eve/ui";
 import { formatIsk } from "@/lib/utils";
 import { Textarea } from "@eve/ui";
@@ -20,8 +20,6 @@ import {
   Loader2,
   FileText,
   Store,
-  Copy,
-  Check,
 } from "lucide-react";
 import { Alert, AlertDescription } from "@eve/ui";
 import {
@@ -44,6 +42,10 @@ import type {
   SellAppraiseItem,
   SellAppraiseByCommitItem,
 } from "@eve/shared/types";
+import {
+  SellAppraiserResultsTable,
+  type SelectionStore,
+} from "./sell-appraiser-results-table";
 
 // Use shared types from @eve/shared/types
 type PasteRow = SellAppraiseItem;
@@ -68,11 +70,41 @@ export default function SellAppraiserPage() {
     null,
   );
   const [error, setError] = useState<string | null>(null);
-  const [selected, setSelected] = useState<Record<string, boolean>>({});
   const [isConfirming, setIsConfirming] = useState(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
   const BROKER_FEE_PCT = Number(process.env.NEXT_PUBLIC_BROKER_FEE_PCT ?? 1.5);
+
+  // Selection store:
+  // - Selection can be large
+  // - Only checkboxes + footer need to update on toggle
+  const selectionStoreRef = useRef<SelectionStore | null>(null);
+  if (!selectionStoreRef.current) {
+    const state: { selected: Record<string, boolean> } = { selected: {} };
+    const listeners = new Set<() => void>();
+    let version = 0;
+    const notify = () => {
+      version += 1;
+      for (const l of Array.from(listeners)) l();
+    };
+    selectionStoreRef.current = {
+      subscribe: (listener) => {
+        listeners.add(listener);
+        return () => listeners.delete(listener);
+      },
+      getVersion: () => version,
+      get: (key) => !!state.selected[key],
+      toggle: (key) => {
+        state.selected[key] = !state.selected[key];
+        notify();
+      },
+      setMany: (keys, checked) => {
+        for (const k of keys) state.selected[k] = checked;
+        notify();
+      },
+    };
+  }
+  const selectionStore = selectionStoreRef.current;
 
   // React Query hooks
   const { data: stations = [] } = useTrackedStations();
@@ -172,13 +204,12 @@ export default function SellAppraiserPage() {
         });
         // API returns array directly (SellAppraiseByCommitResponse)
         setResult(data);
-        // Default select all
-        const allKeys = data.map(
-          (r) => `${r.destinationStationId}:${r.itemName}`,
-        );
+        // Default select all (stable key: stationId:typeId)
         const initial: Record<string, boolean> = {};
-        for (const k of allKeys) initial[k] = true;
-        setSelected(initial);
+        for (const r of data) {
+          initial[`${r.destinationStationId}:${r.typeId}`] = true;
+        }
+        selectionStore.setMany(Object.keys(initial), true);
       } else {
         if (!destinationId) return;
         const data = await sellAppraiseMutation.mutateAsync({
@@ -187,21 +218,17 @@ export default function SellAppraiserPage() {
         });
         // API returns array directly (SellAppraiseResponse)
         setResult(data);
-        // Default select all
-        const allKeys = data.map(
-          (r) => `${r.destinationStationId}:${r.itemName}`,
-        );
+        // Default select all (stable key: stationId:itemName)
         const initial: Record<string, boolean> = {};
-        for (const k of allKeys) initial[k] = true;
-        setSelected(initial);
+        for (const r of data) {
+          initial[`${r.destinationStationId}:${r.itemName}`] = true;
+        }
+        selectionStore.setMany(Object.keys(initial), true);
       }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Request failed");
     }
   };
-
-  const toggle = (key: string) =>
-    setSelected((prev) => ({ ...prev, [key]: !prev[key] }));
 
   const copySuggestedPrice = async (price: number, key: string) => {
     try {
@@ -210,18 +237,6 @@ export default function SellAppraiserPage() {
     } catch (err) {
       console.error("Failed to copy suggested price:", err);
     }
-  };
-
-  const toggleGroup = (group: GroupedResult, check: boolean) => {
-    const keys = group.items.map(
-      (r) =>
-        `${r.destinationStationId}:${isCommitRow(r) ? r.typeId : r.itemName}`,
-    );
-    setSelected((prev) => {
-      const next = { ...prev };
-      for (const k of keys) next[k] = check;
-      return next;
-    });
   };
 
   const onConfirmListed = async () => {
@@ -240,7 +255,7 @@ export default function SellAppraiserPage() {
 
     for (const r of result) {
       const key = `${r.destinationStationId}:${isCommitRow(r) ? r.typeId : r.itemName}`;
-      if (!selected[key]) continue;
+      if (!selectionStore.get(key)) continue;
       if (!isCommitRow(r)) continue; // Skip paste rows
       if (r.suggestedSellPriceTicked === null) {
         errors.push(`${r.itemName}: No suggested price available (skipped)`);
@@ -478,139 +493,14 @@ export default function SellAppraiserPage() {
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b">
-                        <th className="py-2 px-3">
-                          <input
-                            type="checkbox"
-                            checked={
-                              group.items.every((r) => {
-                                const key = `${r.destinationStationId}:${isCommitRow(r) ? r.typeId : r.itemName}`;
-                                return selected[key];
-                              }) && group.items.length > 0
-                            }
-                            onChange={(e) =>
-                              toggleGroup(group, e.target.checked)
-                            }
-                          />
-                        </th>
-                        <th className="py-2 px-3 whitespace-nowrap text-left">
-                          Item
-                        </th>
-                        <th className="py-2 px-3 whitespace-nowrap text-right">
-                          Qty
-                        </th>
-                        <th className="py-2 px-3 whitespace-nowrap text-right">
-                          Lowest Sell
-                        </th>
-                        <th className="py-2 px-3 whitespace-nowrap text-right">
-                          Suggested (ticked)
-                        </th>
-                        {useCommit && (
-                          <th className="py-2 px-3 whitespace-nowrap text-right">
-                            Broker Fee ({BROKER_FEE_PCT}%)
-                          </th>
-                        )}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {group.items.map((r, idx) => {
-                        const key = `${r.destinationStationId}:${isCommitRow(r) ? r.typeId : r.itemName}`;
-                        const qty = isCommitRow(r)
-                          ? r.quantityRemaining
-                          : r.quantity;
-                        const suggested = r.suggestedSellPriceTicked;
-                        const brokerFee =
-                          r.suggestedSellPriceTicked !== null
-                            ? qty *
-                              r.suggestedSellPriceTicked *
-                              (BROKER_FEE_PCT / 100)
-                            : 0;
-                        return (
-                          <tr
-                            key={idx}
-                            className="border-b hover:bg-muted/50 transition-colors"
-                          >
-                            <td className="py-2 px-3">
-                              <input
-                                type="checkbox"
-                                checked={!!selected[key]}
-                                onChange={() => toggle(key)}
-                              />
-                            </td>
-                            <td className="py-2 px-3 text-left whitespace-nowrap">
-                              {r.itemName}
-                            </td>
-                            <td className="py-2 px-3 text-right tabular-nums">
-                              {qty}
-                            </td>
-                            <td className="py-2 px-3 text-right tabular-nums">
-                              {formatIsk(r.lowestSell)}
-                            </td>
-                            <td className="py-2 px-3 text-right font-medium tabular-nums">
-                              <div className="flex items-center justify-end gap-2">
-                                <span>{formatIsk(suggested)}</span>
-                                {suggested !== null ? (
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      copySuggestedPrice(suggested, key)
-                                    }
-                                    className="inline-flex h-6 w-6 items-center justify-center rounded hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                                    title="Copy suggested price"
-                                    aria-label="Copy suggested price"
-                                  >
-                                    {copiedKey === key ? (
-                                      <Check className="h-3.5 w-3.5 text-green-600" />
-                                    ) : (
-                                      <Copy className="h-3.5 w-3.5" />
-                                    )}
-                                  </button>
-                                ) : null}
-                              </div>
-                            </td>
-                            {useCommit && (
-                              <td className="py-2 px-3 text-right font-medium tabular-nums">
-                                {formatIsk(brokerFee)}
-                              </td>
-                            )}
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                    {useCommit && (
-                      <tfoot>
-                        <tr className="border-t">
-                          <td className="py-2 px-3"></td>
-                          <td className="py-2 px-3" colSpan={3}></td>
-                          <td className="py-2 px-3 text-right font-medium">
-                            Total broker fee (selected):
-                          </td>
-                          <td className="py-2 px-3 font-semibold text-right">
-                            {formatIsk(
-                              group.items.reduce((s, r) => {
-                                const key = `${r.destinationStationId}:${isCommitRow(r) ? r.typeId : r.itemName}`;
-                                if (!selected[key]) return s;
-                                const qty = isCommitRow(r)
-                                  ? r.quantityRemaining
-                                  : r.quantity;
-                                const fee =
-                                  r.suggestedSellPriceTicked !== null
-                                    ? qty *
-                                      r.suggestedSellPriceTicked *
-                                      (BROKER_FEE_PCT / 100)
-                                    : 0;
-                                return s + fee;
-                              }, 0),
-                            )}
-                          </td>
-                        </tr>
-                      </tfoot>
-                    )}
-                  </table>
-                </div>
+                <SellAppraiserResultsTable
+                  items={group.items}
+                  selectionStore={selectionStore}
+                  copiedKey={copiedKey}
+                  onCopySuggestedPrice={copySuggestedPrice}
+                  isCommitMode={useCommit}
+                  brokerFeePct={BROKER_FEE_PCT}
+                />
               </CardContent>
             </Card>
           ))}
