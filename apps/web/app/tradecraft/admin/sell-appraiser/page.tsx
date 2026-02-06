@@ -45,6 +45,7 @@ import {
   SellAppraiserResultsTable,
   type SelectionStore,
 } from "./sell-appraiser-results-table";
+import { eveClientStringCompare } from "@/lib/eve-sort";
 
 // Use shared types from @eve/shared/types
 type PasteRow = SellAppraiseItem;
@@ -55,18 +56,6 @@ type GroupedResult = {
   stationName: string;
   items: Array<PasteRow | CommitRow>;
 };
-
-const itemNameCollator = new Intl.Collator("en", {
-  numeric: true,
-  sensitivity: "base",
-});
-
-function itemNameSortKey(name: string): string {
-  return name
-    .replace(/\u00A0/g, " ")
-    .trim()
-    .replace(/^[^0-9A-Za-z]+/u, "");
-}
 
 function isCommitRow(row: PasteRow | CommitRow): row is CommitRow {
   return (row as CommitRow).typeId !== undefined && "quantityRemaining" in row;
@@ -129,13 +118,10 @@ export default function SellAppraiserPage() {
   const addBulkBrokerFeesMutation = useAddBulkBrokerFees();
   const updateBulkSellPricesMutation = useUpdateBulkSellPrices();
 
-  // Sort items alphabetically: 0-9, A-Z (lexicographic/string order)
+  // Sort items using the same order as the EVE client (symbols, numbers, alphabet).
   const sortItems = (items: Array<PasteRow | CommitRow>) => {
     return items.sort((a, b) => {
-      return itemNameCollator.compare(
-        itemNameSortKey(a.itemName),
-        itemNameSortKey(b.itemName),
-      );
+      return eveClientStringCompare(a.itemName, b.itemName);
     });
   };
 

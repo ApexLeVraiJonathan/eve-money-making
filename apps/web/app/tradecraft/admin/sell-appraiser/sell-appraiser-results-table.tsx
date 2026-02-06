@@ -13,6 +13,7 @@ import {
   TableRow,
 } from "@eve/ui";
 import { formatIsk } from "@/lib/utils";
+import { eveClientStringCompare } from "@/lib/eve-sort";
 import type {
   SellAppraiseItem,
   SellAppraiseByCommitItem,
@@ -38,18 +39,6 @@ type TableRowData = SellAppraiserRow & {
   __key: string;
   __qty: number;
 };
-
-const itemNameCollator = new Intl.Collator(undefined, {
-  numeric: true,
-  sensitivity: "base",
-});
-
-function itemNameSortKey(name: string): string {
-  return name
-    .replace(/\u00A0/g, " ")
-    .trim()
-    .replace(/^[^0-9A-Za-z]+/u, "");
-}
 
 const RowSelectCheckbox = React.memo(function RowSelectCheckbox({
   selectionStore,
@@ -257,10 +246,7 @@ export function SellAppraiserResultsTable({
         sortingFn: (rowA, rowB, columnId) => {
           const a = String(rowA.getValue(columnId) ?? "");
           const b = String(rowB.getValue(columnId) ?? "");
-          return itemNameCollator.compare(
-            itemNameSortKey(a),
-            itemNameSortKey(b),
-          );
+          return eveClientStringCompare(a, b);
         },
         meta: {
           headerClassName: "w-[420px] min-w-0",

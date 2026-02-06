@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import { Alert, AlertDescription } from "@eve/ui";
 import { UndercutResultsTable } from "./undercut-results-table";
+import { eveClientStringCompare } from "@/lib/eve-sort";
 import {
   useTrackedStations,
   useArbitrageCommits,
@@ -39,21 +40,6 @@ import {
 import type { UndercutCheckGroup } from "@eve/shared/types";
 
 type ProfitCategory = "red" | "yellow" | "normal";
-
-const itemNameCollator = new Intl.Collator(undefined, {
-  numeric: true,
-  sensitivity: "base",
-});
-
-function itemNameSortKey(name: string): string {
-  return (
-    name
-      .replace(/\u00A0/g, " ")
-      .trim()
-      // strip leading punctuation like quotes so "'Augmented' X" sorts under A
-      .replace(/^[^0-9A-Za-z]+/u, "")
-  );
-}
 
 function getProfitCategory(marginPercent: number | undefined): ProfitCategory {
   if (marginPercent === undefined) return "normal";
@@ -156,10 +142,7 @@ export default function UndercutCheckerPage() {
         // EVE client typically shows larger remaining stacks first; the API can return
         // "consolidation-friendly" ordering (smallest first), which looks reversed in UI.
         .toSorted((a, b) => {
-          const byItem = itemNameCollator.compare(
-            itemNameSortKey(a.itemName),
-            itemNameSortKey(b.itemName),
-          );
+          const byItem = eveClientStringCompare(a.itemName, b.itemName);
           if (byItem !== 0) return byItem;
           if (a.remaining !== b.remaining) return b.remaining - a.remaining;
           if (a.currentPrice !== b.currentPrice)
