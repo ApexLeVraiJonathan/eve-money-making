@@ -65,4 +65,3 @@ function toAsciiLower(ch: string): string {
   if (cp >= 65 && cp <= 90) return String.fromCodePoint(cp + 32);
   return ch;
 }
-
