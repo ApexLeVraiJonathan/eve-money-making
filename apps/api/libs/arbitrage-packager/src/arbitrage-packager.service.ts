@@ -264,7 +264,7 @@ export class ArbitragePackagerService {
       return (b.cand?.netProfitISK ?? 0) - (a.cand?.netProfitISK ?? 0);
     });
 
-    const bestOverall = candidates[0]!;
+    const bestOverall = candidates[0];
 
     // Courier preference rule (safety-first):
     // If the best overall package would fit inside the *first* courier preset,
@@ -284,7 +284,7 @@ export class ArbitragePackagerService {
           : bestOverall;
 
     return {
-      ...(chosen.cand as NonNullable<typeof chosen.cand>),
+      ...chosen.cand,
       courierContractId: chosen.courier.id,
       courierContractLabel: chosen.courier.label,
       courierMaxVolumeM3: chosen.courier.maxVolumeM3,

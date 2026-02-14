@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@eve/ui";
 import { Textarea } from "@eve/ui";
 import { Label } from "@eve/ui";
@@ -36,6 +36,7 @@ import {
   useCycleLines,
   useAddBulkBrokerFees,
   useUpdateBulkSellPrices,
+  useSelfMarketStatus,
 } from "../../api";
 import type {
   SellAppraiseItem,
@@ -108,6 +109,7 @@ export default function SellAppraiserPage() {
 
   // React Query hooks
   const { data: stations = [] } = useTrackedStations();
+  const selfMarketStatusQ = useSelfMarketStatus();
   const { data: latestCycles = [] } = useArbitrageCommits(
     { limit: 5 },
     { enabled: useCommit }, // Only fetch cycles when using cycle mode
@@ -118,15 +120,37 @@ export default function SellAppraiserPage() {
   const addBulkBrokerFeesMutation = useAddBulkBrokerFees();
   const updateBulkSellPricesMutation = useUpdateBulkSellPrices();
 
+  const selfMarketStructureId = useMemo(() => {
+    const raw = selfMarketStatusQ.data?.resolvedStructureId;
+    if (!raw) return null;
+    const n = Number(raw);
+    if (!Number.isFinite(n) || !Number.isSafeInteger(n) || n <= 0) return null;
+    return n;
+  }, [selfMarketStatusQ.data?.resolvedStructureId]);
+
+  const destinationLabel = useCallback(
+    (stationId: number) => {
+      if (
+        selfMarketStructureId !== null &&
+        stationId === selfMarketStructureId
+      ) {
+        return "C-N (Structure)";
+      }
+      const s = stations.find((x) => x.stationId === stationId);
+      return s?.station?.name ?? `Station ${stationId}`;
+    },
+    [selfMarketStructureId, stations],
+  );
+
   // Sort items using the same order as the EVE client (symbols, numbers, alphabet).
-  const sortItems = (items: Array<PasteRow | CommitRow>) => {
+  const sortItems = useCallback((items: Array<PasteRow | CommitRow>) => {
     return items.sort((a, b) => {
       return eveClientStringCompare(a.itemName, b.itemName);
     });
-  };
+  }, []);
 
   // Sort destinations by specified order
-  const sortDestinations = (groups: GroupedResult[]) => {
+  const sortDestinations = useCallback((groups: GroupedResult[]) => {
     const stationOrder = ["Dodixie", "Hek", "Rens", "Amarr"];
 
     return groups.sort((a, b) => {
@@ -147,7 +171,7 @@ export default function SellAppraiserPage() {
       // If neither is in the list, sort alphabetically
       return a.stationName.localeCompare(b.stationName);
     });
-  };
+  }, []);
 
   // Group results by destination
   const groupedResults = useMemo<GroupedResult[]>(() => {
@@ -160,22 +184,24 @@ export default function SellAppraiserPage() {
     }
     const groups: GroupedResult[] = [];
     for (const [destId, items] of groupMap) {
-      const station = stations.find((s) => s.stationId === destId);
       groups.push({
         destinationStationId: destId,
-        stationName: station?.station?.name ?? `Station ${destId}`,
+        stationName: destinationLabel(destId),
         items: sortItems(items),
       });
     }
     return sortDestinations(groups);
-  }, [result, stations]);
+  }, [result, destinationLabel, sortDestinations, sortItems]);
 
   // Auto-set destination ID when stations load
   useEffect(() => {
-    if (stations.length > 0 && destinationId === null) {
-      setDestinationId(stations[0].stationId);
+    if (destinationId !== null) return;
+    if (selfMarketStructureId !== null) {
+      setDestinationId(selfMarketStructureId);
+      return;
     }
-  }, [stations, destinationId]);
+    if (stations.length > 0) setDestinationId(stations[0].stationId);
+  }, [stations, destinationId, selfMarketStructureId]);
 
   // Auto-set cycle ID from latest cycles
   useEffect(() => {
@@ -190,6 +216,10 @@ export default function SellAppraiserPage() {
   }, [useCommit, latestCycles]);
 
   const lines = useMemo(() => paste.split(/\r?\n/).filter(Boolean), [paste]);
+  const isCnDestination =
+    !useCommit &&
+    selfMarketStructureId !== null &&
+    destinationId === selfMarketStructureId;
 
   const onSubmit = async () => {
     setError(null);
@@ -365,7 +395,7 @@ export default function SellAppraiserPage() {
             </Label>
           </div>
 
-          {!useCommit && (
+          {useCommit && (
             <div className="space-y-2">
               <Label>Cycle ID</Label>
               <Input
@@ -395,11 +425,25 @@ export default function SellAppraiserPage() {
                     <SelectValue placeholder="Select a station" />
                   </SelectTrigger>
                   <SelectContent>
-                    {stations.map((s) => (
-                      <SelectItem key={s.id} value={s.stationId.toString()}>
-                        {s.station?.name ?? s.stationId}
+                    {selfMarketStructureId !== null && (
+                      <SelectItem
+                        key="self-market-cn"
+                        value={selfMarketStructureId.toString()}
+                      >
+                        C-N (Structure)
                       </SelectItem>
-                    ))}
+                    )}
+                    {stations
+                      .filter(
+                        (s) =>
+                          selfMarketStructureId === null ||
+                          s.stationId !== selfMarketStructureId,
+                      )
+                      .map((s) => (
+                        <SelectItem key={s.id} value={s.stationId.toString()}>
+                          {s.station?.name ?? s.stationId}
+                        </SelectItem>
+                      ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -441,6 +485,12 @@ export default function SellAppraiserPage() {
               </>
             )}
           </Button>
+          {isCnDestination && sellAppraiseMutation.isPending ? (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              Fetching C-N market data…
+            </div>
+          ) : null}
         </CardContent>
       </Card>
 

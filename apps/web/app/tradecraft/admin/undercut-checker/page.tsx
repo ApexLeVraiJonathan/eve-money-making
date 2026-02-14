@@ -36,6 +36,7 @@ import {
   useCycleLines,
   useAddBulkRelistFees,
   useUpdateBulkSellPrices,
+  useSelfMarketStatus,
 } from "../../api";
 import type { UndercutCheckGroup } from "@eve/shared/types";
 
@@ -109,6 +110,7 @@ export default function UndercutCheckerPage() {
 
   // React Query hooks
   const { data: stations = [] } = useTrackedStations();
+  const selfMarketStatusQ = useSelfMarketStatus();
   const { data: latestCycles = [] } = useArbitrageCommits(
     { limit: 5 },
     { enabled: useCommit }, // Only fetch cycles when using cycle mode
@@ -117,6 +119,14 @@ export default function UndercutCheckerPage() {
   const { data: cycleLines = [] } = useCycleLines(cycleId);
   const addBulkRelistFeesMutation = useAddBulkRelistFees();
   const updateBulkSellPricesMutation = useUpdateBulkSellPrices();
+
+  const selfMarketStructureId = useMemo(() => {
+    const raw = selfMarketStatusQ.data?.resolvedStructureId;
+    if (!raw) return null;
+    const n = Number(raw);
+    if (!Number.isFinite(n) || !Number.isSafeInteger(n) || n <= 0) return null;
+    return n;
+  }, [selfMarketStatusQ.data?.resolvedStructureId]);
 
   // Auto-set cycle ID from latest cycles
   useEffect(() => {
@@ -129,6 +139,14 @@ export default function UndercutCheckerPage() {
       }
     }
   }, [useCommit, latestCycles]);
+
+  // Default to the self-market structure when using station mode.
+  useEffect(() => {
+    if (useCommit) return;
+    if (selfMarketStructureId === null) return;
+    if (selectedStations.length > 0) return;
+    setSelectedStations([selfMarketStructureId]);
+  }, [useCommit, selfMarketStructureId, selectedStations.length]);
 
   const groupsToRender = useMemo(() => {
     if (!Array.isArray(result) || result.length === 0) return [];
@@ -153,6 +171,11 @@ export default function UndercutCheckerPage() {
       return { group, updates };
     });
   }, [result, showNegativeProfit]);
+
+  const isCnSelected =
+    !useCommit &&
+    selfMarketStructureId !== null &&
+    selectedStations.includes(selfMarketStructureId);
 
   const onRun = async () => {
     setError(null);
@@ -361,7 +384,7 @@ export default function UndercutCheckerPage() {
             </Label>
           </div>
 
-          {!useCommit && (
+          {useCommit && (
             <div className="space-y-2">
               <Label>Cycle ID</Label>
               <Input
@@ -383,7 +406,35 @@ export default function UndercutCheckerPage() {
             <div className="space-y-2">
               <Label>Stations</Label>
               <div className="flex flex-wrap gap-2">
+                {selfMarketStructureId !== null && (
+                  <label
+                    key="self-market-cn"
+                    className={`flex items-center gap-2 border rounded-md px-3 py-2 cursor-pointer transition-colors ${
+                      selectedStations.includes(selfMarketStructureId)
+                        ? "bg-primary/10 border-primary"
+                        : "hover:bg-muted/50"
+                    }`}
+                  >
+                    <Checkbox
+                      checked={selectedStations.includes(selfMarketStructureId)}
+                      onCheckedChange={(isChecked) => {
+                        setSelectedStations((prev) =>
+                          isChecked
+                            ? [...prev, selfMarketStructureId]
+                            : prev.filter((id) => id !== selfMarketStructureId),
+                        );
+                      }}
+                    />
+                    <span className="text-sm">C-N (Structure)</span>
+                  </label>
+                )}
                 {stations.map((s) => {
+                  if (
+                    selfMarketStructureId !== null &&
+                    s.stationId === selfMarketStructureId
+                  ) {
+                    return null;
+                  }
                   const checked = selectedStations.includes(s.stationId);
                   return (
                     <label
@@ -433,6 +484,12 @@ export default function UndercutCheckerPage() {
               </>
             )}
           </Button>
+          {isCnSelected && undercutCheckMutation.isPending ? (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              Fetching C-N market data…
+            </div>
+          ) : null}
         </CardContent>
       </Card>
 

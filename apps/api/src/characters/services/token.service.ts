@@ -85,7 +85,7 @@ export class TokenService {
       const refreshPlain = await CryptoUtil.decrypt(
         String(token.refreshTokenEnc ?? ''),
       );
-      let data = await this.refreshWithClient(refreshPlain, {
+      const data = await this.refreshWithClient(refreshPlain, {
         clientId: this.clientId,
         clientSecret: this.clientSecret,
       });
@@ -148,7 +148,7 @@ export class TokenService {
       const refreshPlain = await CryptoUtil.decrypt(
         String(character.token.refreshTokenEnc ?? ''),
       );
-      let data = await this.refreshWithClient(refreshPlain, {
+      const data = await this.refreshWithClient(refreshPlain, {
         clientId: this.clientId,
         clientSecret: this.clientSecret,
       });

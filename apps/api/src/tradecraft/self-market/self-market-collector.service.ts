@@ -152,6 +152,7 @@ export class SelfMarketCollectorService {
     orderCount: number;
     tradesKeys: number;
   }> {
+    const t0 = Date.now();
     const cfg = AppConfig.marketSelfGather();
     if (!cfg.structureId) {
       throw new Error('MARKET_SELF_GATHER_STRUCTURE_ID is not configured');
@@ -167,10 +168,12 @@ export class SelfMarketCollectorService {
     // Fail fast with a helpful message instead of an opaque ESI 401.
     // Structure market requires a token that includes esi-markets.structure_markets.v1
     const requiredScope = 'esi-markets.structure_markets.v1';
+    const tTokenStart = Date.now();
     const token = await this.prisma.characterToken.findUnique({
       where: { characterId: cfg.characterId },
       select: { scopes: true, refreshTokenEnc: true },
     });
+    const tTokenEnd = Date.now();
     if (!token) {
       throw new Error(
         `No token found for MARKET_SELF_GATHER_CHARACTER_ID=${cfg.characterId}. ` +
@@ -198,6 +201,7 @@ export class SelfMarketCollectorService {
 
     // Structure orders are paginated (1000/page). Fetch all pages so "totalOrders"
     // in the UI reflects the real snapshot size.
+    const tFetchStart = Date.now();
     const first = await this.esi.fetchPaged<StructureMarketOrder[]>(path, {
       characterId: cfg.characterId,
       forceRefresh,
@@ -208,23 +212,36 @@ export class SelfMarketCollectorService {
       : [];
 
     const totalPages = first.totalPages ?? 1;
-    for (let page = 2; page <= totalPages; page++) {
-      const { data } = await this.esi.fetchJson<StructureMarketOrder[]>(path, {
-        characterId: cfg.characterId,
-        forceRefresh,
-        query: { page },
-      });
-      if (Array.isArray(data) && data.length) currentOrders.push(...data);
+    if (totalPages > 1) {
+      // Full parallelization: allow EsiService to do concurrency/rate-budget control.
+      const pages = Array.from({ length: totalPages - 1 }, (_, i) => i + 2);
+      const results = await Promise.all(
+        pages.map((page) =>
+          this.esi.fetchJson<StructureMarketOrder[]>(path, {
+            characterId: cfg.characterId ?? undefined,
+            forceRefresh,
+            query: { page },
+          }),
+        ),
+      );
+      for (const r of results) {
+        if (Array.isArray(r.data) && r.data.length)
+          currentOrders.push(...r.data);
+      }
     }
+    const tFetchEnd = Date.now();
+    const tPrevStart = Date.now();
     const prevSnap = await this.prisma.selfMarketSnapshotLatest.findUnique({
       where: { locationId },
       select: { observedAt: true, orders: true },
     });
+    const tPrevEnd = Date.now();
 
     const prevObservedAt = prevSnap?.observedAt ?? observedAt;
     const prevOrders = (prevSnap?.orders ??
       []) as unknown as StructureMarketOrder[];
 
+    const tDiffStart = Date.now();
     const prevById = new Map<number, StructureMarketOrder>();
     for (const o of prevOrders) {
       if (o && typeof o.order_id === 'number') prevById.set(o.order_id, o);
@@ -237,162 +254,197 @@ export class SelfMarketCollectorService {
 
     const aggs = new Map<AggKey, Agg>();
 
-    // Deltas (contribute to both lower and upper bounds)
-    for (const [orderId, curr] of currById.entries()) {
-      const prev = prevById.get(orderId);
-      if (!prev) continue;
-      const delta = Number(prev.volume_remain) - Number(curr.volume_remain);
-      if (!Number.isFinite(delta) || delta <= 0) continue;
-      const typeId = Number(curr.type_id);
-      const isBuyOrder = Boolean(curr.is_buy_order);
-      const price = toDecimal(prev.price ?? curr.price);
-      const amountDelta = BigInt(Math.floor(delta));
-
-      // lower-bound
-      this.addToAgg(aggs, {
-        scanDate,
-        locationId,
-        typeId,
-        isBuyOrder,
-        hasGone: false,
-        amountDelta,
-        orderNumDelta: 1n,
-        price,
-      });
-      // upper-bound
-      this.addToAgg(aggs, {
-        scanDate,
-        locationId,
-        typeId,
-        isBuyOrder,
-        hasGone: true,
-        amountDelta,
-        orderNumDelta: 1n,
-        price,
-      });
+    // Fast path: if the snapshot is bitwise-equivalent (for our purposes), skip
+    // aggregate computation and avoid rewriting the large JSONB `orders` payload.
+    let snapshotUnchanged = Boolean(prevSnap) && prevById.size === currById.size;
+    if (snapshotUnchanged) {
+      for (const [orderId, prev] of prevById.entries()) {
+        const curr = currById.get(orderId);
+        if (!curr) {
+          snapshotUnchanged = false;
+          break;
+        }
+        // Compare only the fields that matter for diff/trade deduction.
+        if (
+          prev.volume_remain !== curr.volume_remain ||
+          prev.volume_total !== curr.volume_total ||
+          prev.price !== curr.price ||
+          prev.is_buy_order !== curr.is_buy_order ||
+          prev.type_id !== curr.type_id
+        ) {
+          snapshotUnchanged = false;
+          break;
+        }
+      }
     }
 
-    // Disappeared orders (upper-bound only; exclude likely-expired)
-    for (const [orderId, prev] of prevById.entries()) {
-      if (currById.has(orderId)) continue;
-      const issued = new Date(prev.issued);
-      if (Number.isNaN(issued.getTime())) continue;
-      const durationDays = Number(prev.duration);
-      if (!Number.isFinite(durationDays) || durationDays <= 0) continue;
+    if (!snapshotUnchanged) {
+      // Deltas (contribute to both lower and upper bounds)
+      for (const [orderId, curr] of currById.entries()) {
+        const prev = prevById.get(orderId);
+        if (!prev) continue;
+        const delta = Number(prev.volume_remain) - Number(curr.volume_remain);
+        if (!Number.isFinite(delta) || delta <= 0) continue;
+        const typeId = Number(curr.type_id);
+        const isBuyOrder = Boolean(curr.is_buy_order);
+        const price = toDecimal(prev.price ?? curr.price);
+        const amountDelta = BigInt(Math.floor(delta));
 
-      const expired = this.likelyExpired({
-        issued,
-        durationDays,
-        prevObservedAt,
-        observedAt,
-        expiryWindowMinutes: cfg.expiryWindowMinutes,
-      });
-      if (expired) continue;
+        // lower-bound
+        this.addToAgg(aggs, {
+          scanDate,
+          locationId,
+          typeId,
+          isBuyOrder,
+          hasGone: false,
+          amountDelta,
+          orderNumDelta: 1n,
+          price,
+        });
+        // upper-bound
+        this.addToAgg(aggs, {
+          scanDate,
+          locationId,
+          typeId,
+          isBuyOrder,
+          hasGone: true,
+          amountDelta,
+          orderNumDelta: 1n,
+          price,
+        });
+      }
 
-      const remaining = Number(prev.volume_remain);
-      if (!Number.isFinite(remaining) || remaining <= 0) continue;
+      // Disappeared orders (upper-bound only; exclude likely-expired)
+      for (const [orderId, prev] of prevById.entries()) {
+        if (currById.has(orderId)) continue;
+        const issued = new Date(prev.issued);
+        if (Number.isNaN(issued.getTime())) continue;
+        const durationDays = Number(prev.duration);
+        if (!Number.isFinite(durationDays) || durationDays <= 0) continue;
 
-      const typeId = Number(prev.type_id);
-      const isBuyOrder = Boolean(prev.is_buy_order);
-      const price = toDecimal(prev.price);
-      const amountDelta = BigInt(Math.floor(remaining));
+        const expired = this.likelyExpired({
+          issued,
+          durationDays,
+          prevObservedAt,
+          observedAt,
+          expiryWindowMinutes: cfg.expiryWindowMinutes,
+        });
+        if (expired) continue;
 
-      this.addToAgg(aggs, {
-        scanDate,
-        locationId,
-        typeId,
-        isBuyOrder,
-        hasGone: true,
-        amountDelta,
-        orderNumDelta: 1n,
-        price,
-      });
+        const remaining = Number(prev.volume_remain);
+        if (!Number.isFinite(remaining) || remaining <= 0) continue;
+
+        const typeId = Number(prev.type_id);
+        const isBuyOrder = Boolean(prev.is_buy_order);
+        const price = toDecimal(prev.price);
+        const amountDelta = BigInt(Math.floor(remaining));
+
+        this.addToAgg(aggs, {
+          scanDate,
+          locationId,
+          typeId,
+          isBuyOrder,
+          hasGone: true,
+          amountDelta,
+          orderNumDelta: 1n,
+          price,
+        });
+      }
     }
+    const tDiffEnd = Date.now();
 
     // Now that we fetch full paginated snapshots, the aggregate merge can take
     // >5s on larger structures. Increase interactive transaction timeout to
     // avoid "expired transaction" errors.
+    const tDbStart = Date.now();
+    let dbSnapMs = 0;
+    let dbAggMs = 0;
     await this.prisma.$transaction(
       async (tx) => {
-        await tx.selfMarketSnapshotLatest.upsert({
-          where: { locationId },
-          create: {
-            locationId,
-            observedAt,
-            orders: currentOrders as unknown as object,
-          },
-          update: { observedAt, orders: currentOrders as unknown as object },
-        });
-
-        for (const agg of aggs.values()) {
-          const where = {
-            scanDate_locationId_typeId_isBuyOrder_hasGone: {
-              scanDate: agg.scanDate,
-              locationId: agg.locationId,
-              typeId: agg.typeId,
-              isBuyOrder: agg.isBuyOrder,
-              hasGone: agg.hasGone,
-            },
-          } as const;
-
-          const existing = await tx.selfMarketOrderTradeDaily.findUnique({
-            where,
-            select: {
-              amount: true,
-              iskValue: true,
-              high: true,
-              low: true,
-              orderNum: true,
-            },
+        const tSnapStart = Date.now();
+        if (snapshotUnchanged && prevSnap) {
+          await tx.selfMarketSnapshotLatest.update({
+            where: { locationId },
+            data: { observedAt },
           });
+        } else {
+          await tx.selfMarketSnapshotLatest.upsert({
+            where: { locationId },
+            create: {
+              locationId,
+              observedAt,
+              orders: currentOrders as unknown as object,
+            },
+            update: { observedAt, orders: currentOrders as unknown as object },
+          });
+        }
+        dbSnapMs = Date.now() - tSnapStart;
 
-          if (!existing) {
+        const tAggStart = Date.now();
+        const aggRows = Array.from(aggs.values());
+        const chunkSize = 500;
+        for (let i = 0; i < aggRows.length; i += chunkSize) {
+          const chunk = aggRows.slice(i, i + chunkSize);
+          if (chunk.length === 0) continue;
+
+          const values = chunk.map((agg) => {
             const avg =
               agg.amount > 0n
                 ? agg.iskValue.div(new Prisma.Decimal(agg.amount.toString()))
                 : new Prisma.Decimal('0');
-            await tx.selfMarketOrderTradeDaily.create({
-              data: {
-                scanDate: agg.scanDate,
-                locationId: agg.locationId,
-                typeId: agg.typeId,
-                isBuyOrder: agg.isBuyOrder,
-                hasGone: agg.hasGone,
-                amount: agg.amount,
-                orderNum: agg.orderNum,
-                iskValue: agg.iskValue,
-                high: agg.high,
-                low: agg.low,
-                avg,
-              },
-            });
-            continue;
-          }
-
-          const newAmount = existing.amount + agg.amount;
-          const newIsk = existing.iskValue.add(agg.iskValue);
-          const newOrderNum = existing.orderNum + agg.orderNum;
-          const newHigh = maxDec(existing.high, agg.high);
-          const newLow = minDec(existing.low, agg.low);
-          const newAvg =
-            newAmount > 0n
-              ? newIsk.div(new Prisma.Decimal(newAmount.toString()))
-              : new Prisma.Decimal('0');
-
-          await tx.selfMarketOrderTradeDaily.update({
-            where,
-            data: {
-              amount: newAmount,
-              iskValue: newIsk,
-              orderNum: newOrderNum,
-              high: newHigh,
-              low: newLow,
-              avg: newAvg,
-            },
+            return Prisma.sql`(
+              ${agg.scanDate},
+              ${agg.locationId},
+              ${agg.typeId},
+              ${agg.isBuyOrder},
+              ${agg.hasGone},
+              ${agg.amount},
+              ${agg.orderNum},
+              ${agg.iskValue},
+              ${agg.high},
+              ${agg.low},
+              ${avg},
+              NOW()
+            )`;
           });
+
+          await tx.$executeRaw(
+            Prisma.sql`
+              INSERT INTO self_market_order_trades_daily
+                (scan_date, location_id, type_id, is_buy_order, has_gone, amount, order_num, isk_value, high, low, avg, updated_at)
+              VALUES
+                ${Prisma.join(values)}
+              ON CONFLICT (scan_date, location_id, type_id, is_buy_order, has_gone)
+              DO UPDATE SET
+                amount = self_market_order_trades_daily.amount + EXCLUDED.amount,
+                order_num = self_market_order_trades_daily.order_num + EXCLUDED.order_num,
+                isk_value = self_market_order_trades_daily.isk_value + EXCLUDED.isk_value,
+                high = GREATEST(self_market_order_trades_daily.high, EXCLUDED.high),
+                low = LEAST(self_market_order_trades_daily.low, EXCLUDED.low),
+                avg = CASE
+                  WHEN (self_market_order_trades_daily.amount + EXCLUDED.amount) > 0
+                    THEN (self_market_order_trades_daily.isk_value + EXCLUDED.isk_value)
+                      / (self_market_order_trades_daily.amount + EXCLUDED.amount)
+                  ELSE 0
+                END,
+                updated_at = NOW()
+            `,
+          );
         }
+        dbAggMs = Date.now() - tAggStart;
       },
       { timeout: 60_000, maxWait: 10_000 },
+    );
+    const tDbEnd = Date.now();
+
+    this.logger.debug(
+      `SelfMarket collect timings: token=${tTokenEnd - tTokenStart}ms ` +
+        `fetch=${tFetchEnd - tFetchStart}ms ` +
+        `prevSnap=${tPrevEnd - tPrevStart}ms ` +
+        `diff=${tDiffEnd - tDiffStart}ms ` +
+        `db=${tDbEnd - tDbStart}ms (dbSnap=${dbSnapMs}ms dbAgg=${dbAggMs}ms) ` +
+        `total=${tDbEnd - t0}ms ` +
+        `pages=${first.totalPages ?? 1} orders=${currentOrders.length} aggs=${aggs.size} unchanged=${String(snapshotUnchanged)} forceRefresh=${String(forceRefresh)}`,
     );
 
     return {

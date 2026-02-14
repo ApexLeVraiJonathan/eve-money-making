@@ -442,7 +442,7 @@ export class StrategyLabService {
       const effectiveParams = {
         ...(strategy.params as any),
         liquidityOptions: {
-          ...(((strategy.params as any)?.liquidityOptions ?? {}) as any),
+          ...((strategy.params as any)?.liquidityOptions ?? {}),
           windowDays: dto.trainWindowDays,
         },
       } as unknown as PlanPackagesRequest;
@@ -553,7 +553,7 @@ export class StrategyLabService {
     // Aggregate report
     const roi = runs
       .map((r) => {
-        const v = (r.summary as any)?.roiPercent;
+        const v = r.summary?.roiPercent;
         const n =
           typeof v === 'number' ? v : typeof v === 'string' ? Number(v) : NaN;
         return Number.isFinite(n) ? n : null;
@@ -562,7 +562,7 @@ export class StrategyLabService {
 
     const dd = runs
       .map((r) => {
-        const v = (r.summary as any)?.maxDrawdownPct;
+        const v = r.summary?.maxDrawdownPct;
         const n =
           typeof v === 'number' ? v : typeof v === 'string' ? Number(v) : NaN;
         return Number.isFinite(n) ? n : null;
@@ -571,7 +571,7 @@ export class StrategyLabService {
 
     const profits = runs
       .map((r) => {
-        const v = (r.summary as any)?.totalProfitIsk;
+        const v = r.summary?.totalProfitIsk;
         const n =
           typeof v === 'number' ? v : typeof v === 'string' ? Number(v) : NaN;
         return Number.isFinite(n) ? n : null;
@@ -580,7 +580,7 @@ export class StrategyLabService {
 
     const relistFees = runs
       .map((r) => {
-        const v = (r.summary as any)?.totalRelistFeesIsk;
+        const v = r.summary?.totalRelistFeesIsk;
         const n =
           typeof v === 'number' ? v : typeof v === 'string' ? Number(v) : NaN;
         return Number.isFinite(n) ? n : null;
@@ -765,8 +765,8 @@ export class StrategyLabService {
 
     // Sort for convenience: highest median ROI first (nulls last)
     results.sort((a, b) => {
-      const am = Number((a.report as any)?.aggregates?.roiMedian);
-      const bm = Number((b.report as any)?.aggregates?.roiMedian);
+      const am = Number(a.report?.aggregates?.roiMedian);
+      const bm = Number(b.report?.aggregates?.roiMedian);
       const aOk = Number.isFinite(am);
       const bOk = Number.isFinite(bm);
       if (aOk && bOk) return bm - am;
