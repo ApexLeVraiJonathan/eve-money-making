@@ -165,124 +165,73 @@ export class NpcMarketCollectorService {
     return expiresAtMs >= prevMs - w && expiresAtMs <= nowMs + w;
   }
 
-  private async fetchAllRegionTypes(params: {
-    regionId: number;
-    forceRefresh: boolean;
-    reqId: string;
-  }): Promise<number[]> {
-    const path = `/latest/markets/${params.regionId}/types/`;
-    const first = await this.esi.fetchPaged<number[]>(path, {
-      page: 1,
-      forceRefresh: params.forceRefresh,
-      reqId: params.reqId,
-    });
-    const out: number[] = Array.isArray(first.data) ? [...first.data] : [];
-    const totalPages = first.totalPages ?? 1;
-    for (let page = 2; page <= totalPages; page++) {
-      const { data } = await this.esi.fetchJson<number[]>(path, {
-        forceRefresh: params.forceRefresh,
-        reqId: params.reqId,
-        query: { page },
-      });
-      if (Array.isArray(data) && data.length) out.push(...data);
-    }
-    return Array.from(new Set(out.filter((n) => Number.isFinite(n) && n > 0)));
-  }
-
-  private async fetchStationOrdersForType(params: {
+  /**
+   * Fetch all regional market orders (paged), filter to the given station, and group by type + side.
+   *
+   * We fetch page 1 to obtain X-Pages, then fetch remaining pages concurrently.
+   * Concurrency/rate-budget are centrally handled by EsiService.
+   */
+  private async fetchStationOrdersSnapshotFromRegion(params: {
     regionId: number;
     stationId: number;
-    typeId: number;
-    side: 'buy' | 'sell';
     forceRefresh: boolean;
     reqId: string;
-  }): Promise<RegionMarketOrder[]> {
+  }): Promise<{
+    byType: Map<
+      number,
+      { sell: RegionMarketOrder[]; buy: RegionMarketOrder[] }
+    >;
+    totalPages: number;
+  }> {
     const path = `/latest/markets/${params.regionId}/orders/`;
+    const byType = new Map<
+      number,
+      { sell: RegionMarketOrder[]; buy: RegionMarketOrder[] }
+    >();
+
+    const ingest = (data: unknown) => {
+      if (!Array.isArray(data)) return;
+      for (const o of data as RegionMarketOrder[]) {
+        if (!o) continue;
+        if (o.location_id !== params.stationId) continue;
+        if (!Number.isFinite(o.volume_remain) || o.volume_remain <= 0) continue;
+        const typeId = Number(o.type_id);
+        if (!Number.isFinite(typeId) || typeId <= 0) continue;
+
+        let bucket = byType.get(typeId);
+        if (!bucket) {
+          bucket = { sell: [], buy: [] };
+          byType.set(typeId, bucket);
+        }
+        if (o.is_buy_order) bucket.buy.push(o);
+        else bucket.sell.push(o);
+      }
+    };
+
     const first = await this.esi.fetchPaged<RegionMarketOrder[]>(path, {
       page: 1,
       forceRefresh: params.forceRefresh,
       reqId: params.reqId,
-      query: { order_type: params.side, type_id: params.typeId },
+      query: { order_type: 'all' },
     });
-    const pages = first.totalPages ?? 1;
-    const all: RegionMarketOrder[] = Array.isArray(first.data)
-      ? [...first.data]
-      : [];
-    for (let page = 2; page <= pages; page++) {
-      const { data } = await this.esi.fetchJson<RegionMarketOrder[]>(path, {
-        forceRefresh: params.forceRefresh,
-        reqId: params.reqId,
-        query: { order_type: params.side, type_id: params.typeId, page },
-      });
-      if (Array.isArray(data) && data.length) all.push(...data);
-    }
-    return all.filter((o) => o && o.location_id === params.stationId);
-  }
+    ingest(first.data);
 
-  private async fetchStationOrdersForTypeAllSides(params: {
-    regionId: number;
-    stationId: number;
-    typeId: number;
-    forceRefresh: boolean;
-    reqId: string;
-  }): Promise<{ sell: RegionMarketOrder[]; buy: RegionMarketOrder[] }> {
-    const path = `/latest/markets/${params.regionId}/orders/`;
-
-    try {
-      const baseQuery = { order_type: 'all', type_id: params.typeId } as const;
-      const first = await this.esi.fetchPaged<RegionMarketOrder[]>(path, {
-        page: 1,
-        forceRefresh: params.forceRefresh,
-        reqId: params.reqId,
-        query: baseQuery,
-      });
-      const pages = first.totalPages ?? 1;
-      const all: RegionMarketOrder[] = Array.isArray(first.data)
-        ? [...first.data]
-        : [];
-      for (let page = 2; page <= pages; page++) {
-        const { data } = await this.esi.fetchJson<RegionMarketOrder[]>(path, {
-          forceRefresh: params.forceRefresh,
-          reqId: params.reqId,
-          query: { ...baseQuery, page },
-        });
-        if (Array.isArray(data) && data.length) all.push(...data);
-      }
-
-      const sell: RegionMarketOrder[] = [];
-      const buy: RegionMarketOrder[] = [];
-      for (const o of all) {
-        if (!o || o.location_id !== params.stationId) continue;
-        if (o.is_buy_order) buy.push(o);
-        else sell.push(o);
-      }
-      return { sell, buy };
-    } catch (e) {
-      // Safety fallback: some ESI/CDN combinations may not accept order_type=all with type_id.
-      // If that happens, revert to explicit buy/sell calls.
-      this.logger.warn(
-        `NPC market: order_type=all failed for type=${params.typeId}; falling back to buy/sell. Err=${(e as Error)?.message ?? e}`,
+    const totalPages = first.totalPages ?? 1;
+    if (totalPages > 1) {
+      const pages = Array.from({ length: totalPages - 1 }, (_, i) => i + 2);
+      await Promise.all(
+        pages.map(async (page) => {
+          const { data } = await this.esi.fetchJson<RegionMarketOrder[]>(path, {
+            forceRefresh: params.forceRefresh,
+            reqId: params.reqId,
+            query: { order_type: 'all', page },
+          });
+          ingest(data);
+        }),
       );
-      const [sell, buy] = await Promise.all([
-        this.fetchStationOrdersForType({
-          regionId: params.regionId,
-          stationId: params.stationId,
-          typeId: params.typeId,
-          side: 'sell',
-          forceRefresh: params.forceRefresh,
-          reqId: params.reqId,
-        }),
-        this.fetchStationOrdersForType({
-          regionId: params.regionId,
-          stationId: params.stationId,
-          typeId: params.typeId,
-          side: 'buy',
-          forceRefresh: params.forceRefresh,
-          reqId: params.reqId,
-        }),
-      ]);
-      return { sell, buy };
     }
+
+    return { byType, totalPages };
   }
 
   shouldNotifyFailure(now: Date): boolean {
@@ -318,7 +267,8 @@ export class NpcMarketCollectorService {
     aggregateKeys: number;
     hadPreviousBaseline: boolean;
   }> {
-    const startedAt = Date.now();
+    const t0 = Date.now();
+    const startedAt = t0;
     const cfg = AppConfig.marketNpcGather();
     const stationId = opts.stationId;
     const forceRefresh = Boolean(opts.forceRefresh);
@@ -402,29 +352,61 @@ export class NpcMarketCollectorService {
       const prevObservedAt = prevBaseline?.observedAt ?? observedAt;
       const prevBaselineId = prevBaseline?.baselineId ?? null;
 
-      const typeIds = await timed('esi.regionTypes', async () => {
-        return await this.fetchAllRegionTypes({
-          regionId,
-          forceRefresh,
-          reqId,
-        });
-      });
+      let tFetchMs = 0;
+      let tPrevMs = 0;
+      let tProcessMs = 0;
+      let tFlushFinalizeMs = 0;
+      let tFinalizeTxMs = 0;
 
-      // Load previous snapshots in one DB query (keyed by type+side) to avoid N queries.
+      const stationSnap = await timed('esi.regionOrdersAllPages', async () => {
+        const s = Date.now();
+        try {
+          return await this.fetchStationOrdersSnapshotFromRegion({
+            regionId,
+            stationId,
+            forceRefresh,
+            reqId,
+          });
+        } finally {
+          tFetchMs = Date.now() - s;
+        }
+      });
+      const currentByType = stationSnap.byType;
+
+      // Load previous snapshots in one DB query (keyed by type+side).
+      // Optimization: load only non-empty snapshots (orderCount>0); empty prev snapshots carry no diff signal.
       const prevSnapByKey = new Map<string, RegionMarketOrder[]>();
       if (prevBaselineId) {
+        const s = Date.now();
         const prevSnaps = await timed('db.loadPrevSnapshots', async () => {
           return await this.prisma.npcMarketSnapshot.findMany({
-            where: { stationId, baselineId: prevBaselineId },
+            where: {
+              stationId,
+              baselineId: prevBaselineId,
+              orderCount: { gt: 0 },
+            },
             select: { typeId: true, isBuyOrder: true, orders: true },
           });
         });
+        tPrevMs = Date.now() - s;
         for (const s of prevSnaps) {
           const key = `${s.typeId}:${s.isBuyOrder ? 'B' : 'S'}`;
           const orders = (s.orders ?? []) as unknown as RegionMarketOrder[];
           prevSnapByKey.set(key, Array.isArray(orders) ? orders : []);
         }
       }
+
+      // Process the union of:
+      // - types present in current station orders
+      // - types present in the previous non-empty baseline snapshots
+      // so "gone" deltas are still detected.
+      const typeIdsSet = new Set<number>();
+      for (const typeId of currentByType.keys()) typeIdsSet.add(typeId);
+      for (const k of prevSnapByKey.keys()) {
+        const t = Number(k.split(':')[0] ?? '');
+        if (Number.isFinite(t) && t > 0) typeIdsSet.add(t);
+      }
+      const typeIds = Array.from(typeIdsSet.values()).sort((a, b) => a - b);
 
       const aggs = new Map<AggKey, Agg>();
 
@@ -445,7 +427,6 @@ export class NpcMarketCollectorService {
         bestPrice: Prisma.Decimal | null;
         orders: object;
       }> = [];
-      let snapshotFlushChain: Promise<void> = Promise.resolve();
       let snapshotFlushes = 0;
       let snapshotRowsWritten = 0;
       let totalSellOrders = 0;
@@ -461,51 +442,30 @@ export class NpcMarketCollectorService {
         snapshotRowsWritten += batch.length;
       };
 
-      const enqueueSnapshots = async (
-        rows: Array<{
-          stationId: number;
-          regionId: number;
-          baselineId: string;
-          observedAt: Date;
-          typeId: number;
-          isBuyOrder: boolean;
-          orderCount: number;
-          bestPrice: Prisma.Decimal | null;
-          orders: object;
-        }>,
-      ): Promise<void> => {
-        // Serialize buffer mutation + flush decisions to keep it safe with concurrent processType.
-        snapshotFlushChain = snapshotFlushChain.then(async () => {
-          snapshotBuffer.push(...rows);
-          if (snapshotBuffer.length >= snapshotBatchSize) {
-            await flushSnapshotBuffer();
-          }
-        });
-        await snapshotFlushChain;
-      };
-
-      // Fire off per-type work concurrently; EsiService already enforces global request concurrency.
       const processType = async (typeId: number): Promise<void> => {
-        const { sell, buy } = await timed('esi.orders', async () => {
-          return await this.fetchStationOrdersForTypeAllSides({
-            regionId,
-            stationId,
-            typeId,
-            forceRefresh,
-            reqId,
-          });
-        });
+        const bucket = currentByType.get(typeId);
+        const sell = bucket?.sell ?? [];
+        const buy = bucket?.buy ?? [];
 
         const sellStats = computeSnapshotStats(sell, false);
         const buyStats = computeSnapshotStats(buy, true);
         totalSellOrders += sellStats.orderCount;
         totalBuyOrders += buyStats.orderCount;
 
-        // Persist snapshots immediately (keyed by baselineId). The baseline pointer is only
-        // advanced after the full run completes successfully, so partial failures won't corrupt
-        // the active baseline.
-        await enqueueSnapshots([
-          {
+        // Persist snapshots (keyed by baselineId). Skip empty slices to reduce DB pressure.
+        // We still persist an empty slice if the previous baseline had data for that slice,
+        // so diffs/"gone" debugging remains possible.
+        const prevSellKey = `${typeId}:S`;
+        const prevBuyKey = `${typeId}:B`;
+        const shouldWriteSell =
+          sellStats.orderCount > 0 ||
+          (prevBaselineId && (prevSnapByKey.get(prevSellKey) ?? []).length > 0);
+        const shouldWriteBuy =
+          buyStats.orderCount > 0 ||
+          (prevBaselineId && (prevSnapByKey.get(prevBuyKey) ?? []).length > 0);
+
+        if (shouldWriteSell) {
+          snapshotBuffer.push({
             stationId,
             regionId,
             baselineId,
@@ -515,8 +475,10 @@ export class NpcMarketCollectorService {
             orderCount: sellStats.orderCount,
             bestPrice: sellStats.bestPrice,
             orders: sell as unknown as object,
-          },
-          {
+          });
+        }
+        if (shouldWriteBuy) {
+          snapshotBuffer.push({
             stationId,
             regionId,
             baselineId,
@@ -526,8 +488,9 @@ export class NpcMarketCollectorService {
             orderCount: buyStats.orderCount,
             bestPrice: buyStats.bestPrice,
             orders: buy as unknown as object,
-          },
-        ]);
+          });
+        }
+        if (snapshotBuffer.length >= snapshotBatchSize) await flushSnapshotBuffer();
 
         if (!prevBaselineId) return; // first baseline: no diffs/aggregates
 
@@ -618,16 +581,23 @@ export class NpcMarketCollectorService {
       };
 
       await timed('run.processAllTypes', async () => {
-        await Promise.all(typeIds.map((t) => processType(t)));
+        const s = Date.now();
+        // Local CPU + DB buffering only (network already done); keep predictable memory usage.
+        for (const t of typeIds) {
+          await processType(t);
+        }
+        tProcessMs = Date.now() - s;
       });
       // Flush any remaining snapshot rows.
       await timed('db.snapshotFlushFinalize', async () => {
-        await snapshotFlushChain;
+        const s = Date.now();
         await flushSnapshotBuffer();
+        tFlushFinalizeMs = Date.now() - s;
       });
 
       // Persist only after we have completed the full type list.
       await timed('db.finalizeTransaction', async () => {
+        const s = Date.now();
         await this.prisma.$transaction(
           async (tx) => {
             await tx.npcMarketRegionTypesSnapshot.create({
@@ -635,80 +605,66 @@ export class NpcMarketCollectorService {
                 regionId,
                 baselineId,
                 observedAt,
+                // Historically this stored ESI /markets/{region}/types, which created a per-type request explosion.
+                // Now it stores the set of typeIds we processed for this station baseline (current station orders + prev baseline non-empty types),
+                // for reproducibility and to help debug diffs.
                 typeIds: typeIds as unknown as object,
               },
             });
 
             // Merge daily aggregates (if we had a previous baseline; otherwise we collected baseline only)
             if (hadPreviousBaseline) {
-              for (const agg of aggs.values()) {
-                const where = {
-                  scanDate_stationId_typeId_isBuyOrder_hasGone: {
-                    scanDate: agg.scanDate,
-                    stationId: agg.stationId,
-                    typeId: agg.typeId,
-                    isBuyOrder: agg.isBuyOrder,
-                    hasGone: agg.hasGone,
-                  },
-                } as const;
+              const aggRows = Array.from(aggs.values());
+              const chunkSize = 500;
+              for (let i = 0; i < aggRows.length; i += chunkSize) {
+                const chunk = aggRows.slice(i, i + chunkSize);
+                if (chunk.length === 0) continue;
 
-                const existing = await tx.npcMarketOrderTradeDaily.findUnique({
-                  where,
-                  select: {
-                    amount: true,
-                    iskValue: true,
-                    high: true,
-                    low: true,
-                    orderNum: true,
-                  },
-                });
-
-                if (!existing) {
+                const values = chunk.map((agg) => {
                   const avg =
                     agg.amount > 0n
                       ? agg.iskValue.div(
                           new Prisma.Decimal(agg.amount.toString()),
                         )
                       : new Prisma.Decimal('0');
-                  await tx.npcMarketOrderTradeDaily.create({
-                    data: {
-                      scanDate: agg.scanDate,
-                      stationId: agg.stationId,
-                      typeId: agg.typeId,
-                      isBuyOrder: agg.isBuyOrder,
-                      hasGone: agg.hasGone,
-                      amount: agg.amount,
-                      orderNum: agg.orderNum,
-                      iskValue: agg.iskValue,
-                      high: agg.high,
-                      low: agg.low,
-                      avg,
-                    },
-                  });
-                  continue;
-                }
-
-                const newAmount = existing.amount + agg.amount;
-                const newIsk = existing.iskValue.add(agg.iskValue);
-                const newOrderNum = existing.orderNum + agg.orderNum;
-                const newHigh = maxDec(existing.high, agg.high);
-                const newLow = minDec(existing.low, agg.low);
-                const newAvg =
-                  newAmount > 0n
-                    ? newIsk.div(new Prisma.Decimal(newAmount.toString()))
-                    : new Prisma.Decimal('0');
-
-                await tx.npcMarketOrderTradeDaily.update({
-                  where,
-                  data: {
-                    amount: newAmount,
-                    iskValue: newIsk,
-                    orderNum: newOrderNum,
-                    high: newHigh,
-                    low: newLow,
-                    avg: newAvg,
-                  },
+                  return Prisma.sql`(
+                    ${agg.scanDate},
+                    ${agg.stationId},
+                    ${agg.typeId},
+                    ${agg.isBuyOrder},
+                    ${agg.hasGone},
+                    ${agg.amount},
+                    ${agg.high},
+                    ${agg.low},
+                    ${avg},
+                    ${agg.orderNum},
+                    ${agg.iskValue},
+                    NOW()
+                  )`;
                 });
+
+                await tx.$executeRaw(
+                  Prisma.sql`
+                    INSERT INTO npc_market_order_trades_daily
+                      (scan_date, station_id, type_id, is_buy_order, has_gone, amount, high, low, avg, order_num, isk_value, updated_at)
+                    VALUES
+                      ${Prisma.join(values)}
+                    ON CONFLICT (scan_date, station_id, type_id, is_buy_order, has_gone)
+                    DO UPDATE SET
+                      amount = npc_market_order_trades_daily.amount + EXCLUDED.amount,
+                      order_num = npc_market_order_trades_daily.order_num + EXCLUDED.order_num,
+                      isk_value = npc_market_order_trades_daily.isk_value + EXCLUDED.isk_value,
+                      high = GREATEST(npc_market_order_trades_daily.high, EXCLUDED.high),
+                      low = LEAST(npc_market_order_trades_daily.low, EXCLUDED.low),
+                      avg = CASE
+                        WHEN (npc_market_order_trades_daily.amount + EXCLUDED.amount) > 0
+                          THEN (npc_market_order_trades_daily.isk_value + EXCLUDED.isk_value)
+                            / (npc_market_order_trades_daily.amount + EXCLUDED.amount)
+                        ELSE 0
+                      END,
+                      updated_at = NOW()
+                  `,
+                );
               }
             }
 
@@ -729,6 +685,7 @@ export class NpcMarketCollectorService {
           },
           { timeout: 120_000, maxWait: 10_000 },
         );
+        tFinalizeTxMs = Date.now() - s;
       });
 
       this.markSuccess();
@@ -747,6 +704,21 @@ export class NpcMarketCollectorService {
         `NPC market collect ok: station=${stationId} (${station.name}) region=${regionId} types=${typeIds.length} durationMs=${durationMs} keys=${aggs.size} baseline=${baselineId}`,
       );
 
+      this.logger.debug(
+        `NPC market collect timings: ` +
+          `fetch=${tFetchMs}ms ` +
+          `prevSnap=${tPrevMs}ms ` +
+          `process=${tProcessMs}ms ` +
+          `flushFinalize=${tFlushFinalizeMs}ms ` +
+          `finalizeTx=${tFinalizeTxMs}ms ` +
+          `total=${Date.now() - t0}ms ` +
+          `pages=${stationSnap.totalPages} ` +
+          `stationOrders=${totalSellOrders + totalBuyOrders} ` +
+          `types=${typeIds.length} ` +
+          `aggs=${aggs.size} ` +
+          `forceRefresh=${String(forceRefresh)}`,
+      );
+
       const timingSummary = Object.fromEntries(
         Object.entries(timings).map(([k, v]) => [
           k,
@@ -762,7 +734,7 @@ export class NpcMarketCollectorService {
       this.logger.log(
         `NPC market timings: totalMs=${durationMs} steps=${JSON.stringify(
           timingSummary,
-        )} snapshotsWritten=${snapshotRowsWritten} snapshotFlushes=${snapshotFlushes} stationOrdersSell=${totalSellOrders} stationOrdersBuy=${totalBuyOrders} esiDelta=${JSON.stringify(
+        )} snapshotsWritten=${snapshotRowsWritten} snapshotFlushes=${snapshotFlushes} stationOrdersSell=${totalSellOrders} stationOrdersBuy=${totalBuyOrders} esiPages=${stationSnap.totalPages} esiDelta=${JSON.stringify(
           esiDelta,
         )}`,
       );
