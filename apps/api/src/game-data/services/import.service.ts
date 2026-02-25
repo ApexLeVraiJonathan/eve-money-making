@@ -343,13 +343,19 @@ export class ImportService {
         size: batchSize,
         flush: async (items) => {
           await this.prisma.$transaction(
-            items.map((item) =>
-              this.prisma.regionId.upsert({
-                where: { id: item.id },
-                create: item,
-                update: { name: item.name },
-              }),
-            ),
+            async (tx) => {
+              for (const item of items) {
+                await tx.regionId.upsert({
+                  where: { id: item.id },
+                  create: item,
+                  update: { name: item.name },
+                });
+              }
+            },
+            {
+              timeout: 60_000,
+              maxWait: 10_000,
+            },
           );
           inserted += items.length;
           this.logger.log(`Upserted ${items.length} regions`, context);
@@ -427,13 +433,19 @@ export class ImportService {
         size: batchSize,
         flush: async (items) => {
           await this.prisma.$transaction(
-            items.map((item) =>
-              this.prisma.solarSystemId.upsert({
-                where: { id: item.id },
-                create: item,
-                update: { regionId: item.regionId, name: item.name },
-              }),
-            ),
+            async (tx) => {
+              for (const item of items) {
+                await tx.solarSystemId.upsert({
+                  where: { id: item.id },
+                  create: item,
+                  update: { regionId: item.regionId, name: item.name },
+                });
+              }
+            },
+            {
+              timeout: 60_000,
+              maxWait: 10_000,
+            },
           );
           inserted += items.length;
           this.logger.log(`Upserted ${items.length} solar systems`, context);
@@ -593,13 +605,19 @@ export class ImportService {
         size: batchSize,
         flush: async (items) => {
           await this.prisma.$transaction(
-            items.map((item) =>
-              this.prisma.stationId.upsert({
-                where: { id: item.id },
-                create: item,
-                update: { solarSystemId: item.solarSystemId, name: item.name },
-              }),
-            ),
+            async (tx) => {
+              for (const item of items) {
+                await tx.stationId.upsert({
+                  where: { id: item.id },
+                  create: item,
+                  update: { solarSystemId: item.solarSystemId, name: item.name },
+                });
+              }
+            },
+            {
+              timeout: 60_000,
+              maxWait: 10_000,
+            },
           );
           upserted += items.length;
           this.logger.log(`Upserted ${items.length} stations`, context);
