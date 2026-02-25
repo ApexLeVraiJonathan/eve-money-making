@@ -21,7 +21,7 @@ export class ImportController {
   @ApiOperation({
     summary: 'Import EVE type IDs',
     description:
-      'Imports type IDs from Adam4Eve CSV. Creates missing types and updates names/published flags for existing ones. Safe to re-run to fix incorrect item names.',
+      'Imports type IDs from local CCP SDE JSONL (types.jsonl). Creates missing types and updates names/published flags for existing ones.',
   })
   async importTypeIds(@Body() body?: BatchSizeDto) {
     return this.importService.importTypeIds(body?.batchSize);
@@ -31,7 +31,10 @@ export class ImportController {
   @Roles('ADMIN')
   @UseGuards(RolesGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Import EVE region IDs' })
+  @ApiOperation({
+    summary: 'Import EVE region IDs',
+    description: 'Imports regions from local CCP SDE JSONL (mapRegions.jsonl).',
+  })
   async importRegionIds(@Body() body?: BatchSizeDto) {
     return this.importService.importRegionIds(body?.batchSize);
   }
@@ -40,7 +43,11 @@ export class ImportController {
   @Roles('ADMIN')
   @UseGuards(RolesGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Import EVE solar system IDs' })
+  @ApiOperation({
+    summary: 'Import EVE solar system IDs',
+    description:
+      'Imports solar systems from local CCP SDE JSONL (mapSolarSystems.jsonl).',
+  })
   async importSolarSystemIds(@Body() body?: BatchSizeDto) {
     return this.importService.importSolarSystemIds(body?.batchSize);
   }
@@ -49,7 +56,11 @@ export class ImportController {
   @Roles('ADMIN')
   @UseGuards(RolesGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Import EVE NPC station IDs' })
+  @ApiOperation({
+    summary: 'Import EVE NPC station IDs',
+    description:
+      'Imports station IDs/system IDs from local CCP SDE JSONL (npcStations.jsonl), then resolves missing station names via ESI.',
+  })
   async importNpcStationIds(@Body() body?: BatchSizeDto) {
     return this.importService.importNpcStationIds(body?.batchSize);
   }

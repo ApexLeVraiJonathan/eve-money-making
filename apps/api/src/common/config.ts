@@ -67,6 +67,10 @@ export type MarketNpcGatherConfig = {
   notifyUserId: string | null;
 };
 
+export type SdeImportConfig = {
+  freshnessWindowMs: number;
+};
+
 export const AppConfig = {
   /**
    * Parse a boolean-ish env value.
@@ -500,6 +504,17 @@ export const AppConfig = {
     return {
       enabled,
     } as const;
+  },
+
+  /**
+   * SDE import refresh controls.
+   */
+  sdeImport(): SdeImportConfig {
+    const minutes = Number(process.env.SDE_REFRESH_WINDOW_MINUTES ?? 120);
+    const safeMinutes = Number.isFinite(minutes) && minutes >= 0 ? minutes : 120;
+    return {
+      freshnessWindowMs: safeMinutes * 60_000,
+    };
   },
 
   /**

@@ -19,6 +19,11 @@ import type {
 export class ImportService {
   private readonly BASE_URL_ADAM4EVE = 'https://static.adam4eve.eu/';
   private readonly PG_INT_MAX = 2147483647;
+  private readonly sdeFreshnessWindowMs = AppConfig.sdeImport().freshnessWindowMs;
+  private sdeEnsurePromise: Promise<{ sdeDir: string; basePath: string }> | null =
+    null;
+  private readonly sdeZipUrl =
+    'https://developers.eveonline.com/static-data/eve-online-static-data-latest-jsonl.zip';
 
   constructor(
     private readonly logger: Logger,
@@ -50,11 +55,169 @@ export class ImportService {
     return path.resolve(__dirname, '../sde-jsonl');
   }
 
-  async importTypeIds(batchSize = 5000) {
+  private async resolveActiveSdeBasePath(
+    sdeDir: string,
+  ): Promise<{ sdeDir: string; basePath: string }> {
+    // Prefer nested eve-online-static-data-*-jsonl folder when present,
+    // otherwise fall back to sdeDir itself.
+    const entries = await fsp.readdir(sdeDir, { withFileTypes: true });
+    const candidateDir = entries.find(
+      (e) =>
+        e.isDirectory() &&
+        e.name.startsWith('eve-online-static-data-') &&
+        e.name.endsWith('-jsonl'),
+    );
+    const basePath = candidateDir ? path.resolve(sdeDir, candidateDir.name) : sdeDir;
+    return { sdeDir, basePath };
+  }
+
+  private async downloadLatestSdeJsonl(): Promise<{
+    sdeDir: string;
+    basePath: string;
+  }> {
+    const context = ImportService.name;
+    const sdeDir = this.getDefaultSdeDir();
+    this.logger.log(
+      `Downloading latest SDE JSONL from ${this.sdeZipUrl} into ${sdeDir}`,
+      context,
+    );
+    await fsp.mkdir(sdeDir, { recursive: true });
+    try {
+      const res = await axios.get<Readable>(this.sdeZipUrl, {
+        responseType: 'stream',
+      });
+      await new Promise<void>((resolve, reject) => {
+        const stream = (res.data as unknown as Readable)
+          .pipe(unzipper.Extract({ path: sdeDir }))
+          .on('error', (err: unknown) => reject(err))
+          .on('close', () => resolve());
+        stream.on('finish', () => resolve());
+      });
+    } catch (error) {
+      if (error instanceof Error) {
+        this.logger.error(
+          `Failed to download or extract latest SDE JSONL from ${this.sdeZipUrl}`,
+          error.stack,
+          context,
+        );
+      } else {
+        this.logger.error(
+          `Failed to download or extract latest SDE JSONL from ${this.sdeZipUrl}: ${String(
+            error,
+          )}`,
+          undefined,
+          context,
+        );
+      }
+      throw error;
+    }
+    return await this.resolveActiveSdeBasePath(sdeDir);
+  }
+
+  private async fileExists(filePath: string): Promise<boolean> {
+    try {
+      await fsp.access(filePath);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private async getSdeReferenceMtimeMs(params: {
+    sdeDir: string;
+    basePath: string;
+  }): Promise<number | null> {
+    const candidates = [
+      path.resolve(params.basePath, '_sde.jsonl'),
+      path.resolve(params.sdeDir, '_sde.jsonl'),
+      path.resolve(params.basePath, 'types.jsonl'),
+      path.resolve(params.sdeDir, 'types.jsonl'),
+    ];
+    for (const candidate of candidates) {
+      try {
+        const stat = await fsp.stat(candidate);
+        if (stat.isFile()) return stat.mtimeMs;
+      } catch {
+        // Continue to next candidate.
+      }
+    }
+    return null;
+  }
+
+  private async getReusableLocalSdeWithinWindow(): Promise<{
+    sdeDir: string;
+    basePath: string;
+    ageMs: number;
+  } | null> {
+    if (this.sdeFreshnessWindowMs <= 0) return null;
+    try {
+      const resolved = await this.resolveActiveSdeBasePath(this.getDefaultSdeDir());
+      const requiredFiles = [
+        'types.jsonl',
+        'mapRegions.jsonl',
+        'mapSolarSystems.jsonl',
+        'npcStations.jsonl',
+      ];
+      for (const file of requiredFiles) {
+        const exists = await this.fileExists(path.resolve(resolved.basePath, file));
+        if (!exists) return null;
+      }
+      const refMtimeMs = await this.getSdeReferenceMtimeMs(resolved);
+      if (!refMtimeMs) return null;
+      const ageMs = Math.max(0, Date.now() - refMtimeMs);
+      if (ageMs <= this.sdeFreshnessWindowMs) {
+        return { ...resolved, ageMs };
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  private async ensureLatestSdeDownloaded(): Promise<{
+    sdeDir: string;
+    basePath: string;
+  }> {
+    if (!this.sdeEnsurePromise) {
+      this.sdeEnsurePromise = (async () => {
+        const reusable = await this.getReusableLocalSdeWithinWindow();
+        if (reusable) {
+          const ageMinutes = Math.round(reusable.ageMs / 60_000);
+          const windowMinutes = Math.round(this.sdeFreshnessWindowMs / 60_000);
+          this.logger.log(
+            `Using local SDE snapshot from ${reusable.basePath} (age=${ageMinutes}m <= freshnessWindow=${windowMinutes}m)`,
+            ImportService.name,
+          );
+          return { sdeDir: reusable.sdeDir, basePath: reusable.basePath };
+        }
+        return await this.downloadLatestSdeJsonl();
+      })().finally(() => {
+        this.sdeEnsurePromise = null;
+      });
+    }
+    return await this.sdeEnsurePromise;
+  }
+
+  private getSdeNameEn(value: unknown): string | null {
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      return trimmed.length > 0 ? trimmed : null;
+    }
+    if (value && typeof value === 'object') {
+      const maybeEn = (value as { en?: unknown }).en;
+      if (typeof maybeEn === 'string') {
+        const trimmed = maybeEn.trim();
+        return trimmed.length > 0 ? trimmed : null;
+      }
+    }
+    return null;
+  }
+
+  async importTypeIds(batchSize = 5000, ensureLatestSde = true) {
     const context = ImportService.name;
     const startedAt = Date.now();
     this.logger.log(
-      `Starting import of type_ids.csv (batchSize=${batchSize})`,
+      `Starting import of type IDs from SDE (types.jsonl, batchSize=${batchSize})`,
       context,
     );
 
@@ -63,13 +226,10 @@ export class ImportService {
       totalRows = 0;
 
     try {
-      const res = await axios.get(
-        `${this.BASE_URL_ADAM4EVE}/IDs/type_ids.csv`,
-        {
-          responseType: 'stream',
-        },
-      );
-      const input = res.data as Readable;
+      const basePath = ensureLatestSde
+        ? (await this.ensureLatestSdeDownloaded()).basePath
+        : (await this.resolveActiveSdeBasePath(this.getDefaultSdeDir())).basePath;
+      const typesPath = path.resolve(basePath, 'types.jsonl');
 
       const batcher = this.dataImportService.createBatcher<{
         id: number;
@@ -107,31 +267,41 @@ export class ImportService {
         },
       });
 
-      await this.dataImportService.streamCsv<Record<string, string>>(
-        input,
-        async (row) => {
-          totalRows++;
-          const id = Number(row.typeID);
-          const name = row.typeName?.trim();
-          if (!Number.isInteger(id) || !name) {
-            skipped++;
-            return;
-          }
-          await batcher.push({ id, published: row.published === '1', name });
-        },
-      );
+      await this.streamJsonLines(typesPath, async (row) => {
+        totalRows++;
+        const rec = row as {
+          _key?: unknown;
+          published?: unknown;
+          name?: unknown;
+        };
+        const idRaw = rec._key;
+        const id =
+          typeof idRaw === 'number'
+            ? idRaw
+            : typeof idRaw === 'string'
+              ? Number(idRaw)
+              : NaN;
+        if (!Number.isInteger(id)) {
+          skipped++;
+          return;
+        }
+
+        const name = this.getSdeNameEn(rec.name) ?? `Unknown Type ${id}`;
+        const published = rec.published === true;
+        await batcher.push({ id, published, name });
+      });
 
       await batcher.finish();
     } catch (error) {
       if (error instanceof Error) {
         this.logger.error(
-          'Failed during import of type_ids.csv',
+          'Failed during import of type IDs from SDE types.jsonl',
           error.stack,
           context,
         );
       } else {
         this.logger.error(
-          `Failed during import of type_ids.csv: ${String(error)}`,
+          `Failed during import of type IDs from SDE types.jsonl: ${String(error)}`,
           undefined,
           context,
         );
@@ -148,11 +318,11 @@ export class ImportService {
     return { upserted, skipped, totalRows, batchSize };
   }
 
-  async importRegionIds(batchSize = 5000) {
+  async importRegionIds(batchSize = 5000, ensureLatestSde = true) {
     const context = ImportService.name;
     const startedAt = Date.now();
     this.logger.log(
-      `Starting import of region_ids.csv (batchSize=${batchSize})`,
+      `Starting import of region IDs from SDE (mapRegions.jsonl, batchSize=${batchSize})`,
       context,
     );
 
@@ -161,13 +331,10 @@ export class ImportService {
       totalRows = 0;
 
     try {
-      const res = await axios.get(
-        `${this.BASE_URL_ADAM4EVE}/IDs/region_ids.csv`,
-        {
-          responseType: 'stream',
-        },
-      );
-      const input = res.data as Readable;
+      const basePath = ensureLatestSde
+        ? (await this.ensureLatestSdeDownloaded()).basePath
+        : (await this.resolveActiveSdeBasePath(this.getDefaultSdeDir())).basePath;
+      const regionsPath = path.resolve(basePath, 'mapRegions.jsonl');
 
       const batcher = this.dataImportService.createBatcher<{
         id: number;
@@ -175,40 +342,49 @@ export class ImportService {
       }>({
         size: batchSize,
         flush: async (items) => {
-          const { count } = await this.prisma.regionId.createMany({
-            data: items,
-            skipDuplicates: true,
-          });
-          inserted += count;
-          this.logger.log(`Inserted ${count} regions`, context);
+          await this.prisma.$transaction(
+            items.map((item) =>
+              this.prisma.regionId.upsert({
+                where: { id: item.id },
+                create: item,
+                update: { name: item.name },
+              }),
+            ),
+          );
+          inserted += items.length;
+          this.logger.log(`Upserted ${items.length} regions`, context);
         },
       });
 
-      await this.dataImportService.streamCsv<Record<string, string>>(
-        input,
-        async (row) => {
-          totalRows++;
-          const id = Number(row.regionID);
-          const name = row.regionName?.trim();
-          if (!Number.isInteger(id) || !name) {
-            skipped++;
-            return;
-          }
-          await batcher.push({ id, name });
-        },
-      );
+      await this.streamJsonLines(regionsPath, async (row) => {
+        totalRows++;
+        const rec = row as { _key?: unknown; name?: unknown };
+        const idRaw = rec._key;
+        const id =
+          typeof idRaw === 'number'
+            ? idRaw
+            : typeof idRaw === 'string'
+              ? Number(idRaw)
+              : NaN;
+        const name = this.getSdeNameEn(rec.name);
+        if (!Number.isInteger(id) || !name) {
+          skipped++;
+          return;
+        }
+        await batcher.push({ id, name });
+      });
 
       await batcher.finish();
     } catch (error) {
       if (error instanceof Error) {
         this.logger.error(
-          'Failed during import of region_ids.csv',
+          'Failed during import of region IDs from SDE mapRegions.jsonl',
           error.stack,
           context,
         );
       } else {
         this.logger.error(
-          `Failed during import of region_ids.csv: ${String(error)}`,
+          `Failed during import of region IDs from SDE mapRegions.jsonl: ${String(error)}`,
           undefined,
           context,
         );
@@ -225,11 +401,11 @@ export class ImportService {
     return { inserted, skipped, totalRows, batchSize };
   }
 
-  async importSolarSystemIds(batchSize = 5000) {
+  async importSolarSystemIds(batchSize = 5000, ensureLatestSde = true) {
     const context = ImportService.name;
     const startedAt = Date.now();
     this.logger.log(
-      `Starting import of solarSystem_ids.csv (batchSize=${batchSize})`,
+      `Starting import of solar system IDs from SDE (mapSolarSystems.jsonl, batchSize=${batchSize})`,
       context,
     );
 
@@ -238,13 +414,10 @@ export class ImportService {
       totalRows = 0;
 
     try {
-      const res = await axios.get(
-        `${this.BASE_URL_ADAM4EVE}/IDs/solarSystem_ids.csv`,
-        {
-          responseType: 'stream',
-        },
-      );
-      const input = res.data as Readable;
+      const basePath = ensureLatestSde
+        ? (await this.ensureLatestSdeDownloaded()).basePath
+        : (await this.resolveActiveSdeBasePath(this.getDefaultSdeDir())).basePath;
+      const systemsPath = path.resolve(basePath, 'mapSolarSystems.jsonl');
 
       const batcher = this.dataImportService.createBatcher<{
         id: number;
@@ -253,41 +426,60 @@ export class ImportService {
       }>({
         size: batchSize,
         flush: async (items) => {
-          const { count } = await this.prisma.solarSystemId.createMany({
-            data: items,
-            skipDuplicates: true,
-          });
-          inserted += count;
-          this.logger.log(`Inserted ${count} solar systems`, context);
+          await this.prisma.$transaction(
+            items.map((item) =>
+              this.prisma.solarSystemId.upsert({
+                where: { id: item.id },
+                create: item,
+                update: { regionId: item.regionId, name: item.name },
+              }),
+            ),
+          );
+          inserted += items.length;
+          this.logger.log(`Upserted ${items.length} solar systems`, context);
         },
       });
 
-      await this.dataImportService.streamCsv<Record<string, string>>(
-        input,
-        async (row) => {
-          totalRows++;
-          const id = Number(row.solarSystemID);
-          const regionId = Number(row.regionID);
-          const name = row.solarSystemName?.trim();
-          if (!Number.isInteger(id) || !Number.isInteger(regionId) || !name) {
-            skipped++;
-            return;
-          }
-          await batcher.push({ id, regionId, name });
-        },
-      );
+      await this.streamJsonLines(systemsPath, async (row) => {
+        totalRows++;
+        const rec = row as {
+          _key?: unknown;
+          regionID?: unknown;
+          name?: unknown;
+        };
+        const idRaw = rec._key;
+        const regionRaw = rec.regionID;
+        const id =
+          typeof idRaw === 'number'
+            ? idRaw
+            : typeof idRaw === 'string'
+              ? Number(idRaw)
+              : NaN;
+        const regionId =
+          typeof regionRaw === 'number'
+            ? regionRaw
+            : typeof regionRaw === 'string'
+              ? Number(regionRaw)
+              : NaN;
+        const name = this.getSdeNameEn(rec.name);
+        if (!Number.isInteger(id) || !Number.isInteger(regionId) || !name) {
+          skipped++;
+          return;
+        }
+        await batcher.push({ id, regionId, name });
+      });
 
       await batcher.finish();
     } catch (error) {
       if (error instanceof Error) {
         this.logger.error(
-          'Failed during import of solarSystem_ids.csv',
+          'Failed during import of solar system IDs from SDE mapSolarSystems.jsonl',
           error.stack,
           context,
         );
       } else {
         this.logger.error(
-          `Failed during import of solarSystem_ids.csv: ${String(error)}`,
+          `Failed during import of solar system IDs from SDE mapSolarSystems.jsonl: ${String(error)}`,
           undefined,
           context,
         );
@@ -304,26 +496,94 @@ export class ImportService {
     return { inserted, skipped, totalRows, batchSize };
   }
 
-  async importNpcStationIds(batchSize = 5000) {
+  async importNpcStationIds(batchSize = 5000, ensureLatestSde = true) {
     const context = ImportService.name;
     const startedAt = Date.now();
     this.logger.log(
-      `Starting import of npcStation_ids.txt (batchSize=${batchSize})`,
+      `Starting import of NPC station IDs from SDE (npcStations.jsonl, batchSize=${batchSize})`,
       context,
     );
 
-    let inserted = 0,
+    let upserted = 0,
       skipped = 0,
-      totalRows = 0;
+      totalRows = 0,
+      nameLookups = 0;
 
     try {
-      const res = await axios.get(
-        `${this.BASE_URL_ADAM4EVE}/IDs/npcStation_ids.txt`,
-        {
-          responseType: 'stream',
-        },
+      const basePath = ensureLatestSde
+        ? (await this.ensureLatestSdeDownloaded()).basePath
+        : (await this.resolveActiveSdeBasePath(this.getDefaultSdeDir())).basePath;
+      const stationsPath = path.resolve(basePath, 'npcStations.jsonl');
+      const stations = new Map<number, { id: number; solarSystemId: number }>();
+
+      await this.streamJsonLines(stationsPath, async (row) => {
+        totalRows++;
+        const rec = row as { _key?: unknown; solarSystemID?: unknown };
+        const idRaw = rec._key;
+        const solarRaw = rec.solarSystemID;
+        const id =
+          typeof idRaw === 'number'
+            ? idRaw
+            : typeof idRaw === 'string'
+              ? Number(idRaw)
+              : NaN;
+        const solarSystemId =
+          typeof solarRaw === 'number'
+            ? solarRaw
+            : typeof solarRaw === 'string'
+              ? Number(solarRaw)
+              : NaN;
+        if (!Number.isInteger(id) || !Number.isInteger(solarSystemId)) {
+          skipped++;
+          return;
+        }
+        stations.set(id, { id, solarSystemId });
+      });
+
+      const stationIds = Array.from(stations.keys());
+      const existingStations = await this.prisma.stationId.findMany({
+        where: { id: { in: stationIds } },
+        select: { id: true, name: true },
+      });
+      const existingNameById = new Map(
+        existingStations.map((station) => [station.id, station.name]),
       );
-      const input = res.data as Readable;
+      const unresolved = stationIds.filter((id) => !existingNameById.has(id));
+
+      const resolvedNameById = new Map<number, string>();
+      await this.esi.withMaxConcurrency(20, async () => {
+        let idx = 0;
+        const worker = async () => {
+          for (;;) {
+            const i = idx++;
+            if (i >= unresolved.length) break;
+            const stationId = unresolved[i];
+            try {
+              const { data } = await this.esi.fetchJson<{ name?: string }>(
+                `/latest/universe/stations/${stationId}/`,
+              );
+              const name = data.name?.trim();
+              if (name) {
+                resolvedNameById.set(stationId, name);
+                nameLookups++;
+                continue;
+              }
+              this.logger.warn(
+                `Skipping station ${stationId}: ESI returned no name`,
+                context,
+              );
+            } catch (error) {
+              const msg =
+                error instanceof Error ? error.message : String(error);
+              this.logger.warn(
+                `Skipping station ${stationId}: failed ESI name lookup (${msg})`,
+                context,
+              );
+            }
+          }
+        };
+        await Promise.all(Array.from({ length: 20 }, () => worker()));
+      });
 
       const batcher = this.dataImportService.createBatcher<{
         id: number;
@@ -332,51 +592,44 @@ export class ImportService {
       }>({
         size: batchSize,
         flush: async (items) => {
-          const { count } = await this.prisma.stationId.createMany({
-            data: items,
-            skipDuplicates: true,
-          });
-          inserted += count;
-          this.logger.log(`Inserted ${count} stations`, context);
+          await this.prisma.$transaction(
+            items.map((item) =>
+              this.prisma.stationId.upsert({
+                where: { id: item.id },
+                create: item,
+                update: { solarSystemId: item.solarSystemId, name: item.name },
+              }),
+            ),
+          );
+          upserted += items.length;
+          this.logger.log(`Upserted ${items.length} stations`, context);
         },
       });
 
-      await this.dataImportService.streamCsv<Record<string, string>>(
-        input,
-        async (row) => {
-          totalRows++;
-          const id = Number(row['Station_ID']);
-          const solarSystemId = Number(row['SolarSystem_ID']);
-          const name = row['Station_Name']?.trim();
-          if (
-            !Number.isInteger(id) ||
-            !Number.isInteger(solarSystemId) ||
-            !name
-          ) {
-            skipped++;
-            return;
-          }
-          await batcher.push({ id, solarSystemId, name });
-        },
-        {
-          delimiter: '\t',
-          from_line: 2,
-          relax_column_count: true,
-          trim: true,
-        },
-      );
-
+      for (const [stationId, station] of stations.entries()) {
+        const name =
+          existingNameById.get(stationId) ?? resolvedNameById.get(stationId);
+        if (!name) {
+          skipped++;
+          continue;
+        }
+        await batcher.push({
+          id: station.id,
+          solarSystemId: station.solarSystemId,
+          name,
+        });
+      }
       await batcher.finish();
     } catch (error) {
       if (error instanceof Error) {
         this.logger.error(
-          'Failed during import of npcStation_ids.txt',
+          'Failed during import of NPC station IDs from SDE npcStations.jsonl',
           error.stack,
           context,
         );
       } else {
         this.logger.error(
-          `Failed during import of npcStation_ids.txt: ${String(error)}`,
+          `Failed during import of NPC station IDs from SDE npcStations.jsonl: ${String(error)}`,
           undefined,
           context,
         );
@@ -385,12 +638,12 @@ export class ImportService {
     } finally {
       const durationMs = Date.now() - startedAt;
       this.logger.log(
-        `Finished import:npcStation_ids in ${durationMs}ms (inserted=${inserted}, skipped=${skipped}, totalRows=${totalRows}, batchSize=${batchSize})`,
+        `Finished import:npcStation_ids in ${durationMs}ms (upserted=${upserted}, skipped=${skipped}, lookedUpNames=${nameLookups}, totalRows=${totalRows}, batchSize=${batchSize})`,
         context,
       );
     }
 
-    return { inserted, skipped, totalRows, batchSize };
+    return { upserted, skipped, nameLookups, totalRows, batchSize };
   }
 
   /**
@@ -787,64 +1040,7 @@ export class ImportService {
   async downloadLatestSdeAndImportSkills(batchSize = 5000) {
     const context = ImportService.name;
     const startedAt = Date.now();
-    const sdeDir = this.getDefaultSdeDir();
-    const zipUrl =
-      'https://developers.eveonline.com/static-data/eve-online-static-data-latest-jsonl.zip';
-
-    this.logger.log(
-      `Downloading latest SDE JSONL from ${zipUrl} into ${sdeDir}`,
-      context,
-    );
-
-    await fsp.mkdir(sdeDir, { recursive: true });
-
-    // Download and extract zip into sdeDir
-    try {
-      const res = await axios.get<Readable>(zipUrl, {
-        responseType: 'stream',
-      });
-
-      await new Promise<void>((resolve, reject) => {
-        const stream = (res.data as unknown as Readable)
-          .pipe(unzipper.Extract({ path: sdeDir }))
-          .on('error', (err: unknown) => reject(err))
-          .on('close', () => resolve());
-        // In case the stream is already flowing, ensure listeners are attached
-        stream.on('finish', () => resolve());
-      });
-    } catch (error) {
-      if (error instanceof Error) {
-        this.logger.error(
-          `Failed to download or extract latest SDE JSONL from ${zipUrl}`,
-          error.stack,
-          context,
-        );
-      } else {
-        this.logger.error(
-          `Failed to download or extract latest SDE JSONL from ${zipUrl}: ${String(
-            error,
-          )}`,
-          undefined,
-          context,
-        );
-      }
-      throw error;
-    }
-
-    // After extraction, prefer a nested eve-online-static-data-*-jsonl folder
-    // when present (older SDE zips), otherwise fall back to sdeDir itself
-    // (when the zip extracts files directly, as in your current layout).
-    const entries = await fsp.readdir(sdeDir, { withFileTypes: true });
-    const candidateDir = entries.find(
-      (e) =>
-        e.isDirectory() &&
-        e.name.startsWith('eve-online-static-data-') &&
-        e.name.endsWith('-jsonl'),
-    );
-
-    const basePath = candidateDir
-      ? path.resolve(sdeDir, candidateDir.name)
-      : sdeDir;
+    const { sdeDir, basePath } = await this.downloadLatestSdeJsonl();
     this.logger.log(
       `Using extracted SDE folder ${basePath} for skill import`,
       context,
@@ -875,17 +1071,18 @@ export class ImportService {
 
     const results: Record<string, unknown> = {};
     try {
+      await this.ensureLatestSdeDownloaded();
       const [typeIdsResult, regionIdsResult] = await Promise.all([
-        this.importTypeIds(batchSize),
-        this.importRegionIds(batchSize),
+        this.importTypeIds(batchSize, false),
+        this.importRegionIds(batchSize, false),
       ]);
       results.typeIds = typeIdsResult;
       results.regionIds = regionIdsResult;
 
-      const solarSystemsResult = await this.importSolarSystemIds(batchSize);
+      const solarSystemsResult = await this.importSolarSystemIds(batchSize, false);
       results.solarSystems = solarSystemsResult;
 
-      const stationsResult = await this.importNpcStationIds(batchSize);
+      const stationsResult = await this.importNpcStationIds(batchSize, false);
       const volumesResult = await this.importTypeVolumes();
       results.stations = stationsResult;
       results.typeVolumes = volumesResult;
@@ -1336,6 +1533,7 @@ export class ImportService {
     batchSize = 5000,
   ): Promise<ImportMissingMarketTradesResponse> {
     const context = ImportService.name;
+    await this.ensureLatestSdeDownloaded();
     const missing = await this.getMissingMarketOrderTradeDates(daysBack);
     const results: ImportMissingMarketTradesResponse['results'] = {};
 
@@ -1366,7 +1564,7 @@ export class ImportService {
 
           try {
             if (!typeIdsImported) {
-              await this.importTypeIds();
+              await this.importTypeIds(batchSize, false);
               typeIdsImported = true;
             }
 
