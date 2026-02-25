@@ -1,0 +1,51 @@
+---
+description: Next.js (apps/web) conventions: pages, components, BFF routes, mutations
+globs: apps/web/**/*
+alwaysApply: false
+---
+
+# Next.js Rule (apps/web)
+
+## Pages are composition-only
+- Keep `page.tsx` files **small**: they compose components and pass props.
+- Do **not** define components inside `page.tsx` (no big JSX blocks, no local component definitions).
+- Route-specific UI belongs in `src/app/<route>/_components/*`.
+
+## Component reuse-first (shadcn + composites)
+- Always check for reusable components before creating new ones.
+- **shadcn primitives** live in `packages/ui` (generated via `shadcn add` from `apps/web`, but output belongs in `packages/ui`).
+- **Reusable composite components** (used in multiple routes/features) live in `packages/ui`.
+- **Route-specific composite components** live in the route folder: `src/app/<route>/_components/*`.
+
+## Server-first components
+- Default to **Server Components**.
+- Use **Client Components** only when needed (state, effects, browser-only APIs, imperative UI).
+
+## Data fetching: Option A “Next as BFF” (recommended)
+- The browser should call **Next Route Handlers**, not Nest directly.
+- Nest API base URL stays **server-only** (no `NEXT_PUBLIC_*` for the backend URL).
+- Keep outbound calls centralized (avoid ad-hoc fetch in random components):
+  - Client side: call `/api/*` via a small fetch wrapper.
+  - Server side (route handlers): forward to Nest via a server-only wrapper with timeouts + error mapping.
+
+### Route handler mapping (1 backend controller ↔ 1 frontend route file)
+- For each Nest controller/feature, create **one** route handler file:
+  - `src/app/api/<feature>/[[...path]]/route.ts`
+- This single file proxies all subpaths for that feature (e.g., `/api/users`, `/api/users/123`, `/api/users/search`).
+- Keep the mapping obvious: `<feature>` matches the controller route prefix whenever possible.
+
+## Mutations (UX-heavy)
+- Prefer client-side mutations with a dedicated mutation layer (recommended: **TanStack Query** `useMutation`) calling `/api/<feature>/*`.
+- Keep mutation functions out of pages; put them in route-scoped components or a small feature API module.
+- Optimistic updates are allowed when safe; otherwise, invalidate/refetch the relevant queries.
+
+## Loading / error boundaries
+- Use `loading.tsx`, `error.tsx`, and `not-found.tsx` for route-level UX rather than try/catch soup in pages.
+
+## Env usage
+- Only `NEXT_PUBLIC_*` vars are allowed in Client Components.
+- Any new env var must be added to `.env.example`.
+
+## Avoid over-engineering (Next-specific)
+- Avoid adding global state libraries or complex caching strategies unless there is a clear need and the user approves.
+
