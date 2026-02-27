@@ -14,7 +14,8 @@ import type {
   SkillPlanOptimizationPreviewResponse,
   SkillPlanProgress,
   SkillPlanAssignment,
-} from "@eve/api-contracts";
+} from "@eve/shared/skill-contracts";
+import type { OkResponse } from "@eve/shared/tradecraft-ops";
 
 export function useSkillPlans() {
   const client = useApiClient();
@@ -89,7 +90,7 @@ export function useDeleteSkillPlan() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (planId: string) =>
-      client.delete<{ ok: boolean }>(`/skill-plans/${planId}`),
+      client.delete<OkResponse>(`/skill-plans/${planId}`),
     onSuccess: (_, planId) => {
       qc.invalidateQueries({ queryKey: qk.skillPlans._root });
       qc.invalidateQueries({ queryKey: qk.skillPlans.byId(planId) });
@@ -273,7 +274,7 @@ export function useUnassignSkillPlan() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (params: { planId: string; characterId: number }) => {
-      return await client.delete<{ ok: boolean }>(
+      return await client.delete<OkResponse>(
         `/skill-plans/${params.planId}/assign/${params.characterId}`,
       );
     },

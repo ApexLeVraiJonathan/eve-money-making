@@ -7,7 +7,7 @@ import type {
   SkillFarmMarketPriceEntry,
   SkillFarmMarketPriceKey,
   SkillFarmMarketPricesSnapshot,
-} from '@eve/api-contracts';
+} from '@eve/shared/skill-contracts';
 
 const SKILL_FARM_PRICE_ITEMS: Array<{
   key: SkillFarmMarketPriceKey;

@@ -25,6 +25,9 @@ Copy this file to `.env` and fill in the values you need. Only the **required** 
 - **NODE_ENV**: Node environment (`development | production | test`). Affects logging and job defaults.
 - **PORT**: Port for the API application. Default: `3000`.
   - Example: `PORT=3000`
+- **SWAGGER_ENABLED**: Enable Swagger/OpenAPI docs endpoint.
+  - Default when unset: enabled in `dev/test`, disabled in `prod`
+  - Example overrides: `SWAGGER_ENABLED=true` or `SWAGGER_ENABLED=false`
 - **API_BASE_URL**: Base URL of the API, used to construct OAuth callback URLs.
   - Dev: `API_BASE_URL=http://localhost:3000`
   - Prod: `API_BASE_URL=https://your-api-domain.railway.app`

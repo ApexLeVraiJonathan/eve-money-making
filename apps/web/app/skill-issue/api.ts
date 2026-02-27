@@ -5,7 +5,7 @@ import { qk } from "@eve/api-client/queryKeys";
 import type {
   SkillIssueAnalyzeRequest,
   SkillIssueAnalyzeResponse,
-} from "@eve/api-contracts";
+} from "@eve/shared/skill-contracts";
 import { useApiClient } from "@/app/api-hooks/useApiClient";
 
 export function useSkillIssueAnalyze() {

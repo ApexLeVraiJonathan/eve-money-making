@@ -28,13 +28,13 @@ import { SkillDetailModal } from "./browser/components/skill-detail-modal";
 import type {
   SkillEncyclopediaEntry,
   SkillEncyclopediaResponse,
-} from "@eve/api-contracts";
+} from "@eve/shared/skill-contracts";
 import { qk } from "@eve/api-client/queryKeys";
 import type {
   CharacterTrainingQueueSummary,
   CharacterSkillsResponse,
   CharacterAttributesResponse,
-} from "@eve/api-contracts";
+} from "@eve/shared/skill-contracts";
 import { useMyCharacters } from "@/app/tradecraft/api/characters/users.hooks";
 import { useSkillEncyclopedia } from "./browser/api";
 import {

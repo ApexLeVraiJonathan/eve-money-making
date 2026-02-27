@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '@api/prisma/prisma.service';
 import { EsiService } from '@api/esi/esi.service';
 import { EsiCharactersService } from '@api/esi/esi-characters.service';
@@ -22,6 +22,8 @@ type StructureMarketOrder = {
 
 @Injectable()
 export class PricingService {
+  private readonly logger = new Logger(PricingService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly esi: EsiService,
@@ -433,7 +435,7 @@ export class PricingService {
           });
         }
       } else {
-        console.warn(
+        this.logger.warn(
           `Orders fetch failed for character ${characters[idx].id}: ${String(result.reason)}`,
         );
       }
@@ -443,7 +445,7 @@ export class PricingService {
 
     // Early exit if no orders to check
     if (ourOrders.length === 0) {
-      console.log(
+      this.logger.debug(
         `UndercutCheck: No orders to check (setup=${setupTime - startTime}ms, fetchOrders=${fetchOrdersTime - setupTime}ms)`,
       );
       return [];
@@ -490,7 +492,7 @@ export class PricingService {
 
     // Early exit after cycle filtering
     if (ourOrders.length === 0) {
-      console.log(
+      this.logger.debug(
         `UndercutCheck: No orders after cycle filter (setup=${setupTime - startTime}ms, fetchOrders=${fetchOrdersTime - setupTime}ms, filter=${filterTime - fetchOrdersTime}ms)`,
       );
       return [];
@@ -949,7 +951,7 @@ export class PricingService {
     );
 
     const totalTime = Date.now();
-    console.log(
+    this.logger.debug(
       `UndercutCheck completed (mode=${groupingMode}): ${results.length} groups | ` +
         `Times: setup=${setupTime - startTime}ms, fetchOrders=${fetchOrdersTime - setupTime}ms, ` +
         `filter=${filterTime - fetchOrdersTime}ms, fetchCompetitors=${fetchCompetitorsTime - fetchCompetitorsStart}ms, ` +

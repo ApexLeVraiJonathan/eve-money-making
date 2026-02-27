@@ -11,7 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@eve/ui";
-import type { CharacterSkillsResponse } from "@eve/api-contracts";
+import type { CharacterSkillsResponse } from "@eve/shared/skill-contracts";
 import { SkillCategoryView } from "./components/skill-category-view";
 import { SkillTreeView } from "./components/skill-tree-view";
 import {

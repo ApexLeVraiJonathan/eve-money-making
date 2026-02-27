@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import type {
   SkillFarmMathInputs,
   SkillFarmMathResult,
-} from '@eve/api-contracts';
+} from '@eve/shared/skill-contracts';
 
 const EXTRACTOR_CHUNK_SP = 500_000;
 const BOOSTER_PLEX_COST = 180;

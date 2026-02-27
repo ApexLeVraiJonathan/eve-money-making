@@ -61,7 +61,7 @@ import { useSkillIssueAnalyze } from "./api";
 import type {
   SkillIssueInfluencingSkill,
   SkillIssueSkillRequirement,
-} from "@eve/api-contracts";
+} from "@eve/shared/skill-contracts";
 
 type InfluenceCategory =
   | "Capacitor"

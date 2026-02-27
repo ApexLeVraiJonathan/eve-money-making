@@ -3,26 +3,14 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useApiClient } from "@/app/api-hooks/useApiClient";
 import { useAuthenticatedQuery } from "@/app/api-hooks/useAuthenticatedQuery";
+import type { TrackedStation } from "@eve/shared/tradecraft-market";
+export type { TrackedStation } from "@eve/shared/tradecraft-market";
 
 /**
  * API hooks for tracked station management
  *
  * Backend: apps/api/src/market/tracked-stations.controller.ts
  */
-
-// ============================================================================
-// Types
-// ============================================================================
-
-export type TrackedStation = {
-  id: string;
-  stationId: number;
-  station: {
-    id: number;
-    name: string;
-  };
-  createdAt: string;
-};
 
 // ============================================================================
 // Queries

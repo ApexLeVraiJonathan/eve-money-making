@@ -104,31 +104,34 @@ async function bootstrap() {
     }),
   );
 
-  // Swagger/OpenAPI documentation
-  const config = new DocumentBuilder()
-    .setTitle('EVE Money Making API')
-    .setDescription(
-      'API for EVE Online arbitrage tracking and profit optimization',
-    )
-    .setVersion('1.0')
-    .addBearerAuth()
-    .addTag('arbitrage', 'Arbitrage cycle and commitment endpoints')
-    .addTag('ledger', 'Financial ledger and participation tracking')
-    .addTag('liquidity', 'Liquidity management')
-    .addTag('packages', 'Package tracking and management')
-    .addTag('pricing', 'Market pricing and appraisal')
-    .addTag('auth', 'Authentication and user management')
-    .addTag('wallet', 'Wallet import and transaction tracking')
-    .addTag('admin', 'Administrative endpoints')
-    .build();
-  const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('docs', app, document);
+  const swaggerEnabled = AppConfig.swaggerEnabled();
+  if (swaggerEnabled) {
+    // Swagger/OpenAPI documentation
+    const config = new DocumentBuilder()
+      .setTitle('EVE Money Making API')
+      .setDescription(
+        'API for EVE Online arbitrage tracking and profit optimization',
+      )
+      .setVersion('1.0')
+      .addBearerAuth()
+      .addTag('arbitrage', 'Arbitrage cycle and commitment endpoints')
+      .addTag('ledger', 'Financial ledger and participation tracking')
+      .addTag('liquidity', 'Liquidity management')
+      .addTag('packages', 'Package tracking and management')
+      .addTag('pricing', 'Market pricing and appraisal')
+      .addTag('auth', 'Authentication and user management')
+      .addTag('wallet', 'Wallet import and transaction tracking')
+      .addTag('admin', 'Administrative endpoints')
+      .build();
+    const document = SwaggerModule.createDocument(app, config);
+    SwaggerModule.setup('docs', app, document);
+  }
 
   const port = AppConfig.port();
   await app.listen(port);
   logger.log(`API listening on port ${port}`);
-  logger.log(
-    `Swagger documentation available at http://localhost:${port}/docs`,
-  );
+  if (swaggerEnabled) {
+    logger.log(`Swagger documentation available at http://localhost:${port}/docs`);
+  }
 }
 void bootstrap();

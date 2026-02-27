@@ -3,38 +3,18 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useApiClient } from "@/app/api-hooks/useApiClient";
 import { useAuthenticatedQuery } from "@/app/api-hooks/useAuthenticatedQuery";
-
-/**
- * API hooks for parameter profiles
- *
- * Backend: apps/api/src/parameter-profiles/parameter-profiles.controller.ts
- */
-
-export type ParameterProfileScope = "LIQUIDITY" | "ARBITRAGE" | "PLANNER";
-
-export interface ParameterProfile {
-  id: string;
-  name: string;
-  description?: string;
-  scope: ParameterProfileScope;
-  params: Record<string, unknown>;
-  createdAt: string;
-  updatedAt: string;
-  createdBy?: string;
-}
-
-export interface CreateParameterProfileDto {
-  name: string;
-  description?: string;
-  scope: ParameterProfileScope;
-  params: Record<string, unknown>;
-}
-
-export interface UpdateParameterProfileDto {
-  name?: string;
-  description?: string;
-  params?: Record<string, unknown>;
-}
+import type {
+  CreateParameterProfileDto,
+  ParameterProfile,
+  ParameterProfileScope,
+  UpdateParameterProfileDto,
+} from "@eve/shared/parameter-profiles";
+export type {
+  CreateParameterProfileDto,
+  ParameterProfile,
+  ParameterProfileScope,
+  UpdateParameterProfileDto,
+} from "@eve/shared/parameter-profiles";
 
 // ============================================================================
 // Queries

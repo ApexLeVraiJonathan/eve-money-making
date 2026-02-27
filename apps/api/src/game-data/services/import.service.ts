@@ -13,7 +13,7 @@ import { AppConfig } from '@api/common/config';
 import type {
   ImportMissingMarketTradesResponse,
   ImportMarketTradesDayResult,
-} from '@eve/api-contracts';
+} from '@eve/shared/tradecraft-data-ops';
 
 @Injectable()
 export class ImportService {

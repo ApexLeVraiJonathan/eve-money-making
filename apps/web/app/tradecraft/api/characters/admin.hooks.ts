@@ -4,6 +4,24 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { qk } from "@eve/api-client/queryKeys";
 import { useApiClient } from "@/app/api-hooks/useApiClient";
 import { useAuthenticatedQuery } from "@/app/api-hooks/useAuthenticatedQuery";
+import type {
+  AdminCharacterRow,
+  AdminUserCharacterLinkInput,
+  AdminUserListItem,
+  PrimaryUserSearchRow,
+  SetUserRoleInput,
+  SystemCharacterLinkUrlResponse,
+  TradecraftUserAdminRow,
+  UpdateCharacterProfileInput,
+  UpdateTradecraftUserCapsInput,
+  UpdateTradecraftUserCapsResponse,
+} from "@eve/shared/tradecraft-characters";
+export type {
+  AdminCharacterRow,
+  AdminUserListItem,
+  PrimaryUserSearchRow,
+  TradecraftUserAdminRow,
+} from "@eve/shared/tradecraft-characters";
 
 /**
  * API hooks for character and user administration
@@ -23,30 +41,9 @@ export function useAllUsers() {
   const client = useApiClient();
   return useAuthenticatedQuery({
     queryKey: qk.users.list(),
-    queryFn: () =>
-      client.get<
-        Array<{
-          id: string;
-          role: "USER" | "ADMIN";
-          email: string | null;
-          primaryCharacterId: number | null;
-          characters: Array<{ id: number; name: string }>;
-        }>
-      >("/admin/users"),
+    queryFn: () => client.get<AdminUserListItem[]>("/admin/users"),
   });
 }
-
-export type TradecraftUserAdminRow = {
-  id: string;
-  email: string | null;
-  role: string;
-  primaryCharacter: { id: number; name: string } | null;
-  participationCount: number;
-  lastParticipationAt: string | null;
-  tradecraftPrincipalCapIsk: string | null;
-  tradecraftMaximumCapIsk: string | null;
-  createdAt: string;
-};
 
 /**
  * List users that have used Tradecraft (admin only).
@@ -71,13 +68,6 @@ export function useTradecraftUsers(pagination?: {
     },
   });
 }
-
-export type PrimaryUserSearchRow = {
-  id: string;
-  email: string | null;
-  role: "USER" | "ADMIN";
-  primaryCharacter: { id: number; name: string };
-};
 
 /**
  * Search users by primary (main) character name or character id (admin only).
@@ -119,19 +109,14 @@ export function useUpdateTradecraftUserMaxParticipation() {
       userId,
       principalCapIsk,
       maximumCapIsk,
-    }: {
-      userId: string;
-      principalCapIsk: string | null;
-      maximumCapIsk: string | null;
-    }) =>
-      client.patch<{
-        id: string;
-        tradecraftPrincipalCapIsk: string | null;
-        tradecraftMaximumCapIsk: string | null;
-      }>(`/admin/users/${userId}/tradecraft-caps`, {
+    }: UpdateTradecraftUserCapsInput) =>
+      client.patch<UpdateTradecraftUserCapsResponse>(
+        `/admin/users/${userId}/tradecraft-caps`,
+        {
         principalCapIsk,
         maximumCapIsk,
-      }),
+        },
+      ),
     onSuccess: (_data, vars) => {
       queryClient.invalidateQueries({ queryKey: qk.users.tradecraft() });
       queryClient.invalidateQueries({ queryKey: qk.users.byId(vars.userId) });
@@ -147,22 +132,7 @@ export function useAdminCharacters() {
   const client = useApiClient();
   return useAuthenticatedQuery({
     queryKey: ["admin", "characters"],
-    queryFn: () =>
-      client.get<
-        Array<{
-          characterId: number;
-          characterName: string;
-          ownerHash: string;
-          userId: string | null;
-          accessTokenExpiresAt: string | null;
-          scopes: string | null;
-          role?: string;
-          function?: string | null;
-          location?: string | null;
-          managedBy?: string;
-          notes?: string | null;
-        }>
-      >("/auth/admin/characters"),
+    queryFn: () => client.get<AdminCharacterRow[]>("/auth/admin/characters"),
   });
 }
 
@@ -216,13 +186,8 @@ export function useUpdateCharacterProfile() {
     mutationFn: ({
       characterId,
       ...data
-    }: {
-      characterId: number;
-      role?: string;
-      function?: string;
-      location?: string;
-      notes?: string;
-    }) => client.patch<void>(`/auth/characters/${characterId}`, data),
+    }: UpdateCharacterProfileInput) =>
+      client.patch<void>(`/auth/characters/${characterId}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin", "characters"] });
       queryClient.invalidateQueries({ queryKey: qk.characters.list() });
@@ -241,10 +206,8 @@ export function useSetUserRole() {
     mutationFn: ({
       userId,
       role,
-    }: {
-      userId: string;
-      role: "USER" | "ADMIN";
-    }) => client.patch<void>(`/admin/users/${userId}/role`, { role }),
+    }: SetUserRoleInput) =>
+      client.patch<void>(`/admin/users/${userId}/role`, { role }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: qk.users.list() });
     },
@@ -262,10 +225,7 @@ export function useLinkCharacterToUser() {
     mutationFn: ({
       userId,
       characterId,
-    }: {
-      userId: string;
-      characterId: number;
-    }) =>
+    }: AdminUserCharacterLinkInput) =>
       client.post<void>(`/admin/users/${userId}/link-character`, {
         characterId,
       }),
@@ -287,10 +247,7 @@ export function useAdminSetPrimaryCharacter() {
     mutationFn: ({
       userId,
       characterId,
-    }: {
-      userId: string;
-      characterId: number;
-    }) =>
+    }: AdminUserCharacterLinkInput) =>
       client.patch<void>(`/admin/users/${userId}/primary-character`, {
         characterId,
       }),
@@ -311,10 +268,7 @@ export function useAdminUnlinkCharacter() {
     mutationFn: ({
       userId,
       characterId,
-    }: {
-      userId: string;
-      characterId: number;
-    }) =>
+    }: AdminUserCharacterLinkInput) =>
       client.delete<void>(`/admin/users/${userId}/characters/${characterId}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: qk.users.list() });
@@ -341,7 +295,7 @@ export function useGetSystemCharacterLinkUrl() {
       if (notes) params.set("notes", notes);
       if (returnUrl) params.set("returnUrl", returnUrl);
       const query = params.toString() ? `?${params.toString()}` : "";
-      return client.get<{ url: string }>(
+      return client.get<SystemCharacterLinkUrlResponse>(
         `/auth/admin/system-characters/link/url${query}`,
       );
     },

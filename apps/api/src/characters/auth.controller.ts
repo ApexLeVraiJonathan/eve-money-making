@@ -1,5 +1,6 @@
 import {
   Controller,
+  Logger,
   Get,
   Query,
   Res,
@@ -44,6 +45,8 @@ import {
 @ApiTags('auth')
 @Controller('auth')
 export class AuthController {
+  private readonly logger = new Logger(AuthController.name);
+
   constructor(
     private readonly auth: AuthService,
     private readonly characterService: CharacterService,
@@ -256,7 +259,10 @@ export class AuthController {
         </html>
       `);
     } catch (error) {
-      console.error('Error linking character:', error);
+      this.logger.error(
+        `Error linking character: ${error instanceof Error ? error.message : String(error)}`,
+        error instanceof Error ? error.stack : undefined,
+      );
       res.status(500).send('Failed to link character. Please try again.');
     }
   }
@@ -441,7 +447,10 @@ export class AuthController {
           `);
           return;
         } catch (error) {
-          console.error('Error linking character:', error);
+          this.logger.error(
+            `Error linking character: ${error instanceof Error ? error.message : String(error)}`,
+            error instanceof Error ? error.stack : undefined,
+          );
           res.status(500).send('Failed to link character. Please try again.');
           return;
         }
@@ -551,7 +560,10 @@ export class AuthController {
         }
         return;
       } catch (e) {
-        console.error('Error linking system character:', e);
+        this.logger.error(
+          `Error linking system character: ${e instanceof Error ? e.message : String(e)}`,
+          e instanceof Error ? e.stack : undefined,
+        );
         res
           .status(500)
           .send(
@@ -1095,7 +1107,10 @@ export class AuthController {
 
       res.json({ success: true, characterId, characterName });
     } catch (e) {
-      console.error('Error linking additional character:', e);
+      this.logger.error(
+        `Error linking additional character: ${e instanceof Error ? e.message : String(e)}`,
+        e instanceof Error ? e.stack : undefined,
+      );
       res.status(500).json({
         error: e instanceof Error ? e.message : String(e),
         stack: e instanceof Error ? e.stack : undefined,
@@ -1147,7 +1162,10 @@ export class AuthController {
 
       res.json(result);
     } catch (e) {
-      console.error('Error linking character:', e);
+      this.logger.error(
+        `Error linking character: ${e instanceof Error ? e.message : String(e)}`,
+        e instanceof Error ? e.stack : undefined,
+      );
       res.status(500).json({
         error: e instanceof Error ? e.message : String(e),
         stack: e instanceof Error ? e.stack : undefined,
@@ -1432,7 +1450,10 @@ export class AuthController {
         res.redirect(redirectUrl.toString());
       }
     } catch (e) {
-      console.error('Error linking system character:', e);
+      this.logger.error(
+        `Error linking system character: ${e instanceof Error ? e.message : String(e)}`,
+        e instanceof Error ? e.stack : undefined,
+      );
       res
         .status(500)
         .send(

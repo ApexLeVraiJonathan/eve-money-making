@@ -19,7 +19,7 @@ import type {
   CharacterSkillsResponse,
   SkillPrerequisite,
   SkillPlanImportFormat,
-} from '@eve/api-contracts';
+} from '@eve/shared/skill-contracts';
 import { EsiCharactersService } from '../esi/esi-characters.service';
 import { CharacterManagementService } from '../character-management/character-management.service';
 import { previewImportEveFormat } from './domain/skill-plan-parser';

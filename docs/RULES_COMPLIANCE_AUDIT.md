@@ -100,9 +100,9 @@ This is a living audit for tracking where the codebase breaks project rules and 
 
 ### Finding T-002
 
-- **Status:** `open`
+- **Status:** `resolved`
 - **Severity:** `P1`
-- **Issue:** App tsconfig aliases point to `packages/shared/src/*` internals instead of stable package exports.
+- **Issue:** App tsconfig deep aliases to `packages/shared/src/*` were removed; apps now resolve shared imports through package dependencies/exports.
 - **Evidence files:**
   - `apps/api/tsconfig.json`
   - `apps/web/tsconfig.json`
@@ -117,9 +117,9 @@ This is a living audit for tracking where the codebase breaks project rules and 
 
 ### Finding T-004
 
-- **Status:** `open`
+- **Status:** `resolved`
 - **Severity:** `P1`
-- **Issue:** Shared export surface is inconsistent: consumers import `@eve/shared/skills`, but `packages/shared` does not publish `./skills` in package `exports`.
+- **Issue:** Shared export surface mismatch fixed by publishing `./skills` in `packages/shared` package `exports`.
 - **Evidence files:**
   - `packages/shared/package.json`
   - `apps/api/src/skill-farm/skill-farm.service.ts`
@@ -170,9 +170,9 @@ This is a living audit for tracking where the codebase breaks project rules and 
 
 ### Finding C-004
 
-- **Status:** `open`
+- **Status:** `resolved`
 - **Severity:** `P1`
-- **Issue:** Workspace package boundaries are bypassed by tsconfig path aliases pointing directly at package `src/*` internals across multiple packages, weakening the package-export contract boundary.
+- **Issue:** Deep `@eve/* -> packages/*/src/*` tsconfig aliases were removed from app tsconfigs and replaced with explicit workspace package dependencies.
 - **Evidence files:**
   - `apps/api/tsconfig.json`
   - `apps/web/tsconfig.json`
@@ -194,7 +194,7 @@ This is a living audit for tracking where the codebase breaks project rules and 
 
 ### Finding N-002
 
-- **Status:** `open`
+- **Status:** `resolved`
 - **Severity:** `P1`
 - **Issue:** API code uses `console.*` rather than Nest `Logger`.
 - **Evidence files:**
@@ -222,7 +222,7 @@ This is a living audit for tracking where the codebase breaks project rules and 
 
 ### Finding N-005
 
-- **Status:** `open`
+- **Status:** `resolved`
 - **Severity:** `P2`
 - **Issue:** Swagger is mounted unconditionally instead of being dev-only by default.
 - **Evidence files:**
@@ -323,7 +323,7 @@ This is a living audit for tracking where the codebase breaks project rules and 
 
 ### Finding X-007
 
-- **Status:** `open`
+- **Status:** `resolved`
 - **Severity:** `P2`
 - **Issue:** Route-level UX boundary files are missing (`loading.tsx`, `error.tsx`, `not-found.tsx`), indicating route error/loading handling is not using Next boundary conventions.
 - **Evidence files:**
@@ -344,11 +344,14 @@ This is a living audit for tracking where the codebase breaks project rules and 
 
 ### Finding A-002
 
-- **Status:** `open`
+- **Status:** `resolved`
 - **Severity:** `P2`
-- **Issue:** App-local API request/response types still exist where centralized contracts are expected.
+- **Issue:** App-local API request/response contract shapes in active API hook/client layers were consolidated into `packages/shared` modules (`character-management`, `notifications`, `tradecraft-market`, `parameter-profiles`, `tradecraft-ops`, `tradecraft-participations`, `tradecraft-strategy-lab`, `tradecraft-data-ops`, `tradecraft-cycles`, `tradecraft-arbitrage`, `skill-contracts`, and `support-feedback`).
 - **Evidence files (sample):**
-  - `apps/web/app/characters/api.ts`
+  - `apps/web/app/tradecraft/api/cycles/cycles.hooks.ts`
+  - `apps/web/app/tradecraft/api/market/arbitrage.hooks.ts`
+  - `apps/web/app/characters/skills/api.ts`
+  - `packages/shared/src/skill-contracts.ts`
 
 ### Finding A-003
 
@@ -362,21 +365,22 @@ This is a living audit for tracking where the codebase breaks project rules and 
 
 ### Finding A-004
 
-- **Status:** `open`
+- **Status:** `resolved`
 - **Severity:** `P1`
-- **Issue:** Same contract names are defined in multiple places with divergent shapes (example: `CharacterOverviewResponse`), creating silent drift risk.
+- **Issue:** Same contract names were defined in multiple places with divergent shapes (example: `CharacterOverviewResponse`), creating silent drift risk.
 - **Evidence files:**
+  - `packages/shared/src/character-management.ts`
   - `packages/api-contracts/src/index.ts`
   - `apps/web/app/characters/api.ts`
 
 ### Finding A-005
 
-- **Status:** `open`
+- **Status:** `resolved`
 - **Severity:** `P1`
-- **Issue:** Contract source usage is mixed by feature: some flows use `@eve/shared`, others use `@eve/api-contracts`, and others define local response types. This prevents a clear API boundary contract model.
+- **Issue:** Contract source usage was unified so app code (`apps/web` and `apps/api`) now consumes shared contracts from `@eve/shared/*` subpath exports; local inline response contracts were removed from API client calls.
 - **Evidence files (sample):**
-  - `apps/web/app/tradecraft/api/cycles/cycles.hooks.ts`
   - `apps/web/app/characters/api.ts`
+  - `apps/web/app/characters/skills/page.tsx`
   - `apps/api/src/skill-farm/skill-farm.service.ts`
   - `apps/api/src/skill-plans/skill-plans.service.ts`
 
@@ -395,9 +399,9 @@ This is a living audit for tracking where the codebase breaks project rules and 
 
 ### Finding P-001
 
-- **Status:** `open`
+- **Status:** `resolved`
 - **Severity:** `P3`
-- **Issue:** Rule target path (`packages/db/**`) does not match current repo structure (`packages/prisma/**`), reducing enforcement clarity.
+- **Issue:** Rule path alignment was fixed to target `packages/prisma/**` and matching doc references.
 - **Evidence files:**
   - `.cursor/rules/prisma-db.mdc`
   - `packages/prisma/prisma.config.ts`

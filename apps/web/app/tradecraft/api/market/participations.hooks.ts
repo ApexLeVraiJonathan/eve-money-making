@@ -6,6 +6,18 @@ import { useAuthenticatedQuery } from "@/app/api-hooks/useAuthenticatedQuery";
 import { qk } from "@eve/api-client/queryKeys";
 import type { CycleParticipation } from "@eve/shared";
 import { ApiError } from "@eve/api-client";
+import type {
+  AutoRolloverSettings,
+  IncreaseParticipationResponse,
+  MatchParticipationPaymentsResponse,
+  ParticipationHistoryItem,
+  TradecraftCaps,
+  UnmatchedDonation,
+} from "@eve/shared/tradecraft-participations";
+export type {
+  AutoRolloverSettings,
+  TradecraftCaps,
+} from "@eve/shared/tradecraft-participations";
 
 /**
  * API hooks for cycle participations (investor investments)
@@ -13,11 +25,6 @@ import { ApiError } from "@eve/api-client";
  * These hooks are related to the cycles domain but live in the API structure
  * Backend: apps/api/src/cycles/cycles.controller.ts (participations endpoints)
  */
-
-export type AutoRolloverSettings = {
-  enabled: boolean;
-  defaultRolloverType: "FULL_PAYOUT" | "INITIAL_ONLY";
-};
 
 // ============================================================================
 // Queries
@@ -43,19 +50,7 @@ export function useMyParticipationHistory() {
   return useAuthenticatedQuery({
     queryKey: ["myParticipationHistory"],
     queryFn: () =>
-      client.get<
-        Array<
-          CycleParticipation & {
-            cycle: {
-              id: string;
-              name: string | null;
-              startedAt: string;
-              closedAt: string | null;
-              status: string;
-            };
-          }
-        >
-      >("/ledger/participations/my-history"),
+      client.get<ParticipationHistoryItem[]>("/ledger/participations/my-history"),
   });
 }
 
@@ -83,26 +78,9 @@ export function useMaxParticipation() {
   const client = useApiClient();
   return useAuthenticatedQuery({
     queryKey: ["maxParticipation"],
-    queryFn: () =>
-      client.get<{
-        principalCapIsk: string;
-        principalCapB: number;
-        effectivePrincipalCapIsk: string;
-        effectivePrincipalCapB: number;
-        maximumCapIsk: string;
-        maximumCapB: number;
-      }>("/ledger/participations/max-amount"),
+    queryFn: () => client.get<TradecraftCaps>("/ledger/participations/max-amount"),
   });
 }
-
-export type TradecraftCaps = {
-  principalCapIsk: string;
-  principalCapB: number;
-  effectivePrincipalCapIsk: string;
-  effectivePrincipalCapB: number;
-  maximumCapIsk: string;
-  maximumCapB: number;
-};
 
 /**
  * Admin-only: get Tradecraft caps for a specific user.
@@ -146,17 +124,7 @@ export function useUnmatchedDonations() {
   return useAuthenticatedQuery({
     queryKey: qk.participations.unmatchedDonations(),
     queryFn: () =>
-      client.get<
-        Array<{
-          journalId: string;
-          characterId: number;
-          characterName: string;
-          amount: string;
-          description: string | null;
-          reason: string | null;
-          date: string;
-        }>
-      >("/ledger/participations/unmatched-donations"),
+      client.get<UnmatchedDonation[]>("/ledger/participations/unmatched-donations"),
   });
 }
 
@@ -307,11 +275,10 @@ export function useMatchParticipationPayments() {
   return useMutation({
     mutationFn: (cycleId?: string) => {
       const params = cycleId ? `?cycleId=${cycleId}` : "";
-      return client.post<{
-        matched: number;
-        partial: number;
-        unmatched: unknown[];
-      }>(`/ledger/participations/match${params}`, {});
+      return client.post<MatchParticipationPaymentsResponse>(
+        `/ledger/participations/match${params}`,
+        {},
+      );
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: qk.participations._root });
@@ -378,14 +345,12 @@ export function useIncreaseParticipation() {
       participationId: string;
       deltaAmountIsk: string;
     }) =>
-      client.post<{
-        participation: CycleParticipation;
-        previousAmountIsk: string;
-        deltaAmountIsk: string;
-        newAmountIsk: string;
-      }>(`/ledger/participations/${participationId}/increase`, {
-        deltaAmountIsk,
-      }),
+      client.post<IncreaseParticipationResponse>(
+        `/ledger/participations/${participationId}/increase`,
+        {
+          deltaAmountIsk,
+        },
+      ),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: qk.participations._root });
     },

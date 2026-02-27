@@ -4,6 +4,11 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useApiClient } from "@/app/api-hooks/useApiClient";
 import { useAuthenticatedQuery } from "@/app/api-hooks/useAuthenticatedQuery";
 import { qk } from "@eve/api-client/queryKeys";
+import type {
+  WalletImportAllResponse,
+  WalletReconcileResponse,
+  WalletTransactionRow,
+} from "@eve/shared/tradecraft-data-ops";
 
 /**
  * API hooks for wallet operations
@@ -24,21 +29,7 @@ export function useWalletTransactions(characterId?: number) {
     queryKey: qk.wallet.transactions(characterId),
     queryFn: () => {
       const params = characterId ? `?characterId=${characterId}` : "";
-      return client.get<
-        Array<{
-          characterId: number;
-          characterName: string | null;
-          transactionId: string;
-          date: string;
-          isBuy: boolean;
-          locationId: number;
-          stationName: string | null;
-          typeId: number;
-          typeName: string | null;
-          quantity: number;
-          unitPrice: string;
-        }>
-      >(`/wallet-import/transactions${params}`);
+      return client.get<WalletTransactionRow[]>(`/wallet-import/transactions${params}`);
     },
   });
 }
@@ -56,11 +47,7 @@ export function useImportWallet() {
 
   return useMutation({
     mutationFn: () =>
-      client.post<{
-        imported: number;
-        skipped: number;
-        charactersProcessed: number;
-      }>("/wallet-import/all", {}),
+      client.post<WalletImportAllResponse>("/wallet-import/all", {}),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: qk.wallet._root });
     },
@@ -77,12 +64,7 @@ export function useReconcileWallet() {
   return useMutation({
     mutationFn: (cycleId?: string) => {
       const params = cycleId ? `?cycleId=${cycleId}` : "";
-      return client.post<{
-        buysAllocated: number;
-        sellsAllocated: number;
-        unmatchedBuys: number;
-        unmatchedSells: number;
-      }>(`/recon/reconcile${params}`, {});
+      return client.post<WalletReconcileResponse>(`/recon/reconcile${params}`, {});
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: qk.wallet._root });

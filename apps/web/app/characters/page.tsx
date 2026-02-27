@@ -78,7 +78,7 @@ import type {
   EveAccountMct,
   CharacterBooster,
 } from "./api";
-import type { CharacterTrainingQueueSummary } from "@eve/api-contracts";
+import type { CharacterTrainingQueueSummary } from "@eve/shared/skill-contracts";
 import { toast } from "@eve/ui";
 import { cn } from "@/lib/utils";
 

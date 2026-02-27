@@ -16,6 +16,15 @@ import type {
   CycleFeeEvent,
   CycleLinesIntelResponse,
 } from "@eve/shared";
+import type {
+  CycleAllocateResponse,
+  CycleEstimatedProfitResponse,
+  CycleHistoryItem,
+  CycleNavResponse,
+  CyclePortfolioValueResponse,
+  CycleProfitBreakdown,
+  FinalizePayoutsResponse,
+} from "@eve/shared/tradecraft-cycles";
 
 /**
  * API hooks for cycle management
@@ -59,21 +68,7 @@ export function useCycleHistory() {
   const client = useApiClient();
   return useQuery({
     queryKey: ["cycleHistory"],
-    queryFn: () =>
-      client.get<
-        Array<{
-          id: string;
-          name: string | null;
-          startedAt: string;
-          closedAt: string | null;
-          status: string;
-          initialCapitalIsk: string;
-          profitIsk: string;
-          roiPercent: string;
-          participantCount: number;
-          durationDays: number | null;
-        }>
-      >("/ledger/cycles/history"),
+    queryFn: () => client.get<CycleHistoryItem[]>("/ledger/cycles/history"),
   });
 }
 
@@ -126,31 +121,9 @@ export function useProfitBreakdown(cycleId: string) {
   return useAuthenticatedQuery({
     queryKey: [...qk.cycles.profit(cycleId), "breakdown"],
     queryFn: () =>
-      client.get<{
-        revenue: {
-          grossSales: string;
-          salesTax: string;
-          netSales: string;
-        };
-        cogs: {
-          totalCogs: string;
-          unitsSold: number;
-          avgCostPerUnit: string;
-        };
-        grossProfit: string;
-        expenses: {
-          transportFees: string;
-          brokerFees: string;
-          relistFees: string;
-          collateralRecovery: string;
-          totalExpenses: string;
-        };
-        netProfit: string;
-        roi: {
-          percentage: string;
-          initialCapital: string;
-        };
-      }>(`/ledger/cycles/${cycleId}/profit/breakdown`),
+      client.get<CycleProfitBreakdown>(
+        `/ledger/cycles/${cycleId}/profit/breakdown`,
+      ),
     enabled: !!cycleId,
   });
 }
@@ -163,7 +136,7 @@ export function useCycleEstimatedProfit(cycleId: string) {
   return useAuthenticatedQuery({
     queryKey: qk.cycles.estimatedProfit(cycleId),
     queryFn: () =>
-      client.get<{ estimatedTotalProfit: string; breakdown: unknown[] }>(
+      client.get<CycleEstimatedProfitResponse>(
         `/ledger/cycles/${cycleId}/profit/estimated`,
       ),
     enabled: !!cycleId,
@@ -178,7 +151,7 @@ export function useCyclePortfolioValue(cycleId: string) {
   return useAuthenticatedQuery({
     queryKey: qk.cycles.portfolioValue(cycleId),
     queryFn: () =>
-      client.get<{ totalValue: string; items: unknown[] }>(
+      client.get<CyclePortfolioValueResponse>(
         `/ledger/cycles/${cycleId}/profit/portfolio`,
       ),
     enabled: !!cycleId,
@@ -207,14 +180,7 @@ export function useCycleNav(cycleId: string) {
   const client = useApiClient();
   return useAuthenticatedQuery({
     queryKey: qk.cycles.nav(cycleId),
-    queryFn: () =>
-      client.get<{
-        deposits: string;
-        withdrawals: string;
-        fees: string;
-        executions: string;
-        net: string;
-      }>(`/ledger/nav/${cycleId}`),
+    queryFn: () => client.get<CycleNavResponse>(`/ledger/nav/${cycleId}`),
     enabled: !!cycleId,
   });
 }
@@ -425,7 +391,7 @@ export function useAllocateCycleTransactions() {
 
   return useMutation({
     mutationFn: (cycleId: string) =>
-      client.post<{ buysAllocated: number; sellsAllocated: number }>(
+      client.post<CycleAllocateResponse>(
         `/ledger/cycles/${cycleId}/allocate`,
         {},
       ),
@@ -581,7 +547,7 @@ export function useFinalizePayouts() {
       cycleId: string;
       profitSharePct?: number;
     }) =>
-      client.post<{ created: number }>(
+      client.post<FinalizePayoutsResponse>(
         `/ledger/cycles/${cycleId}/payouts/finalize`,
         { profitSharePct: profitSharePct ?? 0.5 },
       ),

@@ -10,7 +10,7 @@ import type {
   SkillFarmSettings,
   SkillFarmTrackingSnapshot,
   SkillFarmTrackingEntry,
-} from '@eve/api-contracts';
+} from '@eve/shared/skill-contracts';
 import { CharacterManagementService } from '../character-management/character-management.service';
 import { SkillPlansService } from '../skill-plans/skill-plans.service';
 import {

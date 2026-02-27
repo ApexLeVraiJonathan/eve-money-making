@@ -3,6 +3,12 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useApiClient } from "@/app/api-hooks/useApiClient";
 import { useAuthenticatedQuery } from "@/app/api-hooks/useAuthenticatedQuery";
+import type {
+  GameDataImportAllResult,
+  GameDataImportCountResult,
+  GameDataImportResult,
+  GameDataImportSummary,
+} from "@eve/shared/tradecraft-data-ops";
 
 /**
  * API hooks for game data import operations
@@ -21,14 +27,7 @@ export function useImportSummary() {
   const client = useApiClient();
   return useAuthenticatedQuery({
     queryKey: ["gameData", "importSummary"],
-    queryFn: () =>
-      client.get<{
-        types: number;
-        stations: number;
-        systems: number;
-        regions: number;
-        lastImport: string | null;
-      }>("/import/summary"),
+    queryFn: () => client.get<GameDataImportSummary>("/import/summary"),
   });
 }
 
@@ -46,7 +45,7 @@ export function useImportTypes() {
   return useMutation({
     mutationFn: (batchSize?: number) => {
       const params = batchSize ? `?batchSize=${batchSize}` : "";
-      return client.post<{ imported: number; updated: number; failed: number }>(
+      return client.post<GameDataImportResult>(
         `/import/types${params}`,
         {},
       );
@@ -68,7 +67,7 @@ export function useImportStations() {
 
   return useMutation({
     mutationFn: () =>
-      client.post<{ imported: number; updated: number; failed: number }>(
+      client.post<GameDataImportResult>(
         "/import/stations",
         {},
       ),
@@ -89,7 +88,7 @@ export function useImportSystems() {
 
   return useMutation({
     mutationFn: () =>
-      client.post<{ imported: number; updated: number; failed: number }>(
+      client.post<GameDataImportResult>(
         "/import/systems",
         {},
       ),
@@ -110,7 +109,7 @@ export function useImportRegions() {
 
   return useMutation({
     mutationFn: () =>
-      client.post<{ imported: number; updated: number; failed: number }>(
+      client.post<GameDataImportResult>(
         "/import/regions",
         {},
       ),
@@ -131,12 +130,7 @@ export function useImportAll() {
 
   return useMutation({
     mutationFn: () =>
-      client.post<{
-        types: { imported: number; updated: number };
-        stations: { imported: number; updated: number };
-        systems: { imported: number; updated: number };
-        regions: { imported: number; updated: number };
-      }>("/import/all", {}),
+      client.post<GameDataImportAllResult>("/import/all", {}),
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: ["gameData", "importSummary"],
@@ -154,7 +148,7 @@ export function useImportDay() {
 
   return useMutation({
     mutationFn: (day: string) =>
-      client.post<{ imported: number }>("/import/day", { day }),
+      client.post<GameDataImportCountResult>("/import/day", { day }),
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: ["gameData", "importSummary"],
@@ -171,7 +165,7 @@ export function useImportMissing() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: () => client.post<{ imported: number }>("/import/missing", {}),
+    mutationFn: () => client.post<GameDataImportCountResult>("/import/missing", {}),
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: ["gameData", "importSummary"],

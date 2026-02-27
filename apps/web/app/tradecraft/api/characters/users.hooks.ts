@@ -5,6 +5,13 @@ import { ApiError, clientForApp } from "@eve/api-client";
 import { qk } from "@eve/api-client/queryKeys";
 import { useApiClient } from "@/app/api-hooks/useApiClient";
 import { useAuthenticatedQuery } from "@/app/api-hooks/useAuthenticatedQuery";
+import type {
+  CurrentUserResponse,
+  MyCharacterSummary,
+  UserFeaturesResponse,
+} from "@eve/shared/tradecraft-characters";
+import type { OkResponse } from "@eve/shared/tradecraft-ops";
+export type { UserFeaturesResponse } from "@eve/shared/tradecraft-characters";
 
 /**
  * API hooks for user and character management
@@ -27,12 +34,7 @@ export function useCurrentUser() {
     queryKey: qk.users.me(),
     queryFn: async () => {
       try {
-        return await client.get<{
-          userId: string | null;
-          role: string;
-          characterId: number;
-          characterName: string;
-        }>("/auth/me");
+        return await client.get<CurrentUserResponse>("/auth/me");
       } catch (e) {
         // Gracefully handle unauthenticated state - return null (not undefined)
         if (e instanceof ApiError && (e.status === 401 || e.status === 403)) {
@@ -44,10 +46,6 @@ export function useCurrentUser() {
     retry: false, // Don't retry on 401
   });
 }
-
-export type UserFeaturesResponse = {
-  enabledFeatures: string[];
-};
 
 export function useUserFeatures() {
   const client = useApiClient();
@@ -80,9 +78,7 @@ export function useMyCharacters(enabled = true) {
     enabled,
     queryFn: async () => {
       try {
-        return await client.get<
-          Array<{ id: number; name: string; isPrimary: boolean }>
-        >("/users/me/characters");
+        return await client.get<MyCharacterSummary[]>("/users/me/characters");
       } catch (e) {
         // Return empty list when unauthenticated
         if (e instanceof ApiError && (e.status === 401 || e.status === 403)) {
@@ -160,7 +156,7 @@ export async function logout() {
   // the correct session cookie, then navigate back to home.
   const client = clientForApp("api");
   try {
-    await client.get<{ ok: boolean }>("/auth/logout");
+    await client.get<OkResponse>("/auth/logout");
   } catch {
     // Ignore errors – even if the API call fails, we still redirect locally.
   }

@@ -4,7 +4,7 @@ import type {
   SkillPlanImportIssue,
   SkillPlanImportResult,
   SkillPlanStep as SkillPlanStepContract,
-} from '@eve/api-contracts';
+} from '@eve/shared/skill-contracts';
 
 /**
  * Utility for parsing and normalising skill plan text formats.

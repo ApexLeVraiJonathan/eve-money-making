@@ -11,7 +11,7 @@ import type {
   SkillFarmMathInputs,
   SkillFarmMathResult,
   SkillFarmMarketPricesSnapshot,
-} from "@eve/api-contracts";
+} from "@eve/shared/skill-contracts";
 
 export function useSkillFarmSettings() {
   const client = useApiClient();

@@ -33,27 +33,10 @@ export interface SupportFeedbackResponse {
 
 // Character Management & Skill Farm (planned)
 
-/**
- * High-level summary of a linked EVE character for dashboards.
- */
-export interface CharacterSummary {
-  id: number;
-  name: string;
-  corporationName?: string;
-  allianceName?: string;
-  role?: string | null;
-  location?: string | null;
-  skillPoints?: number;
-  walletBalanceIsk?: number;
-}
-
-/**
- * Response shape for the character management overview endpoint.
- */
-export interface CharacterOverviewResponse {
-  characters: CharacterSummary[];
-  updatedAt: string;
-}
+export type {
+  CharacterOverview as CharacterSummary,
+  CharacterOverviewResponse,
+} from '@eve/shared/character-management';
 
 /**
  * One entry in a character's training queue.

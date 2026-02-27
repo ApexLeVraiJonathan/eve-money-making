@@ -8,94 +8,45 @@ import { useAuthenticatedQuery } from "@/app/api-hooks/useAuthenticatedQuery";
 import type {
   CharacterSkillsResponse,
   CharacterTrainingQueueSummary,
-} from "@eve/api-contracts";
-
-export type CharacterOverview = {
-  id: number;
-  name: string;
-  ownerHash: string;
-  role: string;
-  function: string | null;
-  location: string | null;
-  managedBy: string;
-  isPrimary: boolean;
-  tokenStatus: "missing" | "valid" | "expired";
-  tokenExpiresAt: string | null;
-  walletBalanceIsk: number | null;
-  securityStatus: number | null;
-  corporationId: number | null;
-  allianceId: number | null;
-  corporationName: string | null;
-  allianceName: string | null;
-  skillPoints?: number;
-};
-
-export type CharacterOverviewResponse = {
-  characters: CharacterOverview[];
-};
-
-export type AccountCharacterSummary = {
-  id: number;
-  name: string;
-  role: string;
-  function: string | null;
-  location: string | null;
-  managedBy: string;
-  tokenStatus: "missing" | "valid" | "expired";
-  tokenExpiresAt: string | null;
-};
-
-export type AccountPlexSummary = {
-  subscriptionId: string;
-  type: "PLEX";
-  startsAt: string | null;
-  expiresAt: string;
-  renewalCycleDays: number | null;
-  expectedCostIsk: string | null;
-  isActive: boolean;
-  status: "none" | "active" | "expired" | "upcoming";
-  daysRemaining: number | null;
-};
-
-export type EveAccountSummary = {
-  id: string;
-  label: string | null;
-  notes: string | null;
-  plex: AccountPlexSummary | null;
-  characters: AccountCharacterSummary[];
-};
-
-export type AccountsResponse = {
-  accounts: EveAccountSummary[];
-  unassignedCharacters: AccountCharacterSummary[];
-};
-
-export type EveAccountPlex = {
-  id: string;
-  type: "PLEX";
-  startsAt: string | null;
-  expiresAt: string;
-  renewalCycleDays: number | null;
-  expectedCostIsk: string | null;
-  isActive: boolean;
-  notes: string | null;
-};
-
-export type CharacterBooster = {
-  id: string;
-  boosterName: string;
-  source: string | null;
-  startsAt: string;
-  expiresAt: string;
-  notes: string | null;
-  status: "active" | "expired" | "upcoming";
-};
-
-export type EveAccountMct = {
-  id: string;
-  expiresAt: string;
-  notes: string | null;
-};
+} from "@eve/shared/skill-contracts";
+import type {
+  AccountsResponse,
+  AssignCharacterToAccountInput,
+  CharacterManagementActionResult,
+  CharacterBooster,
+  CharacterOverview,
+  CharacterOverviewResponse,
+  CreateAccountInput,
+  CreateBoosterInput,
+  CreateMctInput,
+  CreatePlexSubscriptionInput,
+  EveAccountMct,
+  EveAccountPlex,
+  UnassignCharacterFromAccountInput,
+  UpdateAccountMetadataInput,
+  UpdateBoosterInput,
+  UpdateMctInput,
+  UpdatePlexSubscriptionInput,
+} from "@eve/shared/character-management";
+export type {
+  AccountsResponse,
+  AssignCharacterToAccountInput,
+  CharacterManagementActionResult,
+  CharacterBooster,
+  CharacterOverview,
+  CharacterOverviewResponse,
+  CreateAccountInput,
+  CreateBoosterInput,
+  CreateMctInput,
+  CreatePlexSubscriptionInput,
+  EveAccountMct,
+  EveAccountPlex,
+  UnassignCharacterFromAccountInput,
+  UpdateAccountMetadataInput,
+  UpdateBoosterInput,
+  UpdateMctInput,
+  UpdatePlexSubscriptionInput,
+} from "@eve/shared/character-management";
 
 export function useCharacterOverview() {
   const client = useApiClient();
@@ -213,11 +164,7 @@ export function useUpdateAccountMetadata() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (params: {
-      accountId: string;
-      label?: string;
-      notes?: string;
-    }) =>
+    mutationFn: (params: UpdateAccountMetadataInput) =>
       client.patch(`/character-management/me/accounts/${params.accountId}`, {
         label: params.label,
         notes: params.notes,
@@ -235,7 +182,7 @@ export function useCreateAccount() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (input: { label?: string; notes?: string }) =>
+    mutationFn: (input: CreateAccountInput) =>
       client.post("/character-management/me/accounts", input),
     onSuccess: () => {
       queryClient.invalidateQueries({
@@ -250,7 +197,7 @@ export function useAssignCharacterToAccount() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (params: { accountId: string; characterId: number }) =>
+    mutationFn: (params: AssignCharacterToAccountInput) =>
       client.post(
         `/character-management/me/accounts/${params.accountId}/characters`,
         { characterId: params.characterId },
@@ -268,7 +215,7 @@ export function useUnassignCharacterFromAccount() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (params: { accountId: string; characterId: number }) =>
+    mutationFn: (params: UnassignCharacterFromAccountInput) =>
       client.delete(
         `/character-management/me/accounts/${params.accountId}/characters/${params.characterId}`,
       ),
@@ -285,13 +232,7 @@ export function useCreatePlexSubscription(accountId: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (input: {
-      startsAt?: string;
-      expiresAt: string;
-      renewalCycleDays?: number;
-      expectedCostIsk?: string;
-      notes?: string;
-    }) =>
+    mutationFn: (input: CreatePlexSubscriptionInput) =>
       client.post(`/character-management/me/accounts/${accountId}/plex`, input),
     onSuccess: () => {
       queryClient.invalidateQueries({
@@ -309,15 +250,7 @@ export function useUpdatePlexSubscription(accountId: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (params: {
-      subscriptionId: string;
-      startsAt?: string | null;
-      expiresAt?: string | null;
-      renewalCycleDays?: number | null;
-      expectedCostIsk?: string | null;
-      isActive?: boolean | null;
-      notes?: string | null;
-    }) =>
+    mutationFn: (params: UpdatePlexSubscriptionInput) =>
       client.patch(
         `/character-management/me/accounts/${accountId}/plex/${params.subscriptionId}`,
         {
@@ -349,7 +282,7 @@ export function useDeletePlexSubscription(accountId: string) {
 
   return useMutation({
     mutationFn: (subscriptionId: string) =>
-      client.delete(
+      client.delete<CharacterManagementActionResult>(
         `/character-management/me/accounts/${accountId}/plex/${subscriptionId}`,
       ),
     onSuccess: () => {
@@ -368,7 +301,7 @@ export function useCreateMct(accountId: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (input: { expiresAt: string; notes?: string }) =>
+    mutationFn: (input: CreateMctInput) =>
       client.post(`/character-management/me/accounts/${accountId}/mct`, input),
     onSuccess: () => {
       queryClient.invalidateQueries({
@@ -383,11 +316,7 @@ export function useUpdateMct(accountId: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (params: {
-      slotId: string;
-      expiresAt?: string;
-      notes?: string | null;
-    }) =>
+    mutationFn: (params: UpdateMctInput) =>
       client.patch(
         `/character-management/me/accounts/${accountId}/mct/${params.slotId}`,
         {
@@ -409,7 +338,7 @@ export function useDeleteMct(accountId: string) {
 
   return useMutation({
     mutationFn: (slotId: string) =>
-      client.delete(
+      client.delete<CharacterManagementActionResult>(
         `/character-management/me/accounts/${accountId}/mct/${slotId}`,
       ),
     onSuccess: () => {
@@ -425,13 +354,7 @@ export function useCreateBooster(characterId: number) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (input: {
-      boosterName: string;
-      startsAt?: string;
-      expiresAt: string;
-      source?: string;
-      notes?: string;
-    }) =>
+    mutationFn: (input: CreateBoosterInput) =>
       client.post(
         `/character-management/me/characters/${characterId}/boosters`,
         input,
@@ -449,14 +372,7 @@ export function useUpdateBooster(characterId: number) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (params: {
-      boosterId: string;
-      boosterName?: string | null;
-      startsAt?: string | null;
-      expiresAt?: string | null;
-      source?: string | null;
-      notes?: string | null;
-    }) =>
+    mutationFn: (params: UpdateBoosterInput) =>
       client.patch(
         `/character-management/me/characters/${characterId}/boosters/${params.boosterId}`,
         {
@@ -486,7 +402,7 @@ export function useDeleteBooster(characterId: number) {
 
   return useMutation({
     mutationFn: (boosterId: string) =>
-      client.delete(
+      client.delete<CharacterManagementActionResult>(
         `/character-management/me/characters/${characterId}/boosters/${boosterId}`,
       ),
     onSuccess: () => {
@@ -551,7 +467,9 @@ export function useDeleteAccount() {
 
   return useMutation({
     mutationFn: (accountId: string) =>
-      client.delete(`/character-management/me/accounts/${accountId}`),
+      client.delete<CharacterManagementActionResult>(
+        `/character-management/me/accounts/${accountId}`,
+      ),
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: qk.characterManagement.accounts(),

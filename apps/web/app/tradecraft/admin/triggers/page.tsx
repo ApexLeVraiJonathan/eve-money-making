@@ -8,7 +8,8 @@ import { useApiClient } from "@/app/api-hooks/useApiClient";
 import type {
   ImportMissingMarketTradesResponse,
   ImportMarketTradesDayResult,
-} from "@eve/api-contracts";
+} from "@eve/shared/tradecraft-data-ops";
+import type { MessageResponse } from "@eve/shared/tradecraft-ops";
 import type {
   TriggerState,
   TrackedStation,
@@ -95,7 +96,7 @@ export default function TriggersPage() {
           "Missing day imports completed. See note below for details.",
         );
       } else {
-        const data = await client.post<{ message?: string }>(
+        const data = await client.post<MessageResponse>(
           `/import/${endpoint}`,
           body,
         );

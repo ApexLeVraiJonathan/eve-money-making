@@ -19,7 +19,7 @@ import { SkillFarmMathService } from './skill-farm.math.service';
 import type {
   SkillFarmMathInputs,
   SkillFarmMathResult,
-} from '@eve/api-contracts';
+} from '@eve/shared/skill-contracts';
 import { Public } from '@api/characters/decorators/public.decorator';
 import { SkillFarmMarketPricesService } from './skill-farm.market-prices.service';
 

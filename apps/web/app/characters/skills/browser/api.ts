@@ -8,8 +8,10 @@ import type {
   CharacterSkillsResponse,
   CharacterTrainingQueueSummary,
   SkillEncyclopediaResponse,
-} from "@eve/api-contracts";
+} from "@eve/shared/skill-contracts";
 import { useMyCharacters } from "@/app/tradecraft/api/characters/users.hooks";
+import type { MyCharacterSummary as SkillBrowserCharacter } from "@eve/shared/tradecraft-characters";
+export type { SkillBrowserCharacter };
 
 export function useSkillEncyclopedia() {
   const client = useApiClient();
@@ -25,12 +27,6 @@ export function useSkillEncyclopedia() {
     staleTime: 5 * 60 * 1000,
   });
 }
-
-export type SkillBrowserCharacter = {
-  id: number;
-  name: string;
-  isPrimary: boolean;
-};
 
 export function useSkillBrowserCharacters(): SkillBrowserCharacter[] {
   const { data: chars = [] } = useMyCharacters();
