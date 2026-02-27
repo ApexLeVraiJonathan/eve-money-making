@@ -59,7 +59,9 @@ export async function computeCostBasisPositions(
   const key = (stationId: number, typeId: number) => `${stationId}:${typeId}`;
 
   for (const t of txs) {
-    const k = key(t.locationId, t.typeId);
+    const stationId = Number(t.locationId);
+    if (!Number.isSafeInteger(stationId)) continue;
+    const k = key(stationId, t.typeId);
     const pos = byTypeStation.get(k) ?? { quantity: 0, totalCost: 0 };
 
     if (t.isBuy) {

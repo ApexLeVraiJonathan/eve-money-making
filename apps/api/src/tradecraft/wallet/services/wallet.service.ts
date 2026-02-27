@@ -40,7 +40,7 @@ export class WalletService {
             transactionId: BigInt(t.transaction_id),
             date: new Date(t.date),
             isBuy: t.is_buy,
-            locationId: t.location_id,
+            locationId: BigInt(t.location_id),
             typeId: t.type_id,
             clientId: t.client_id ?? null,
             quantity: t.quantity,
@@ -158,7 +158,7 @@ export class WalletService {
       transactionId: string;
       date: Date;
       isBuy: boolean;
-      locationId: number;
+      locationId: string;
       stationName: string | null;
       typeId: number;
       typeName: string | null;
@@ -186,7 +186,13 @@ export class WalletService {
       },
     });
     const typeIds = Array.from(new Set(rows.map((r) => r.typeId)));
-    const stationIds = Array.from(new Set(rows.map((r) => r.locationId)));
+    const stationIds = Array.from(
+      new Set(
+        rows
+          .map((r) => Number(r.locationId))
+          .filter((id) => Number.isSafeInteger(id)),
+      ),
+    );
     const charIds = Array.from(new Set(rows.map((r) => r.characterId)));
 
     const typesPromise: Promise<Map<number, string>> = typeIds.length
@@ -216,19 +222,25 @@ export class WalletService {
       charList.map((c) => [c.id, c.name] as [number, string]),
     );
 
-    return rows.map((r) => ({
-      characterId: r.characterId,
-      characterName: charNameById.get(r.characterId) ?? null,
-      transactionId: r.transactionId.toString(),
-      date: r.date,
-      isBuy: r.isBuy,
-      locationId: r.locationId,
-      stationName: stationNameById.get(r.locationId) ?? null,
-      typeId: r.typeId,
-      typeName: typeNameById.get(r.typeId) ?? null,
-      quantity: r.quantity,
-      unitPrice: r.unitPrice.toString(),
-    }));
+    return rows.map((r) => {
+      const locationId = r.locationId.toString();
+      const locationIdNum = Number(r.locationId);
+      return {
+        characterId: r.characterId,
+        characterName: charNameById.get(r.characterId) ?? null,
+        transactionId: r.transactionId.toString(),
+        date: r.date,
+        isBuy: r.isBuy,
+        locationId,
+        stationName: Number.isSafeInteger(locationIdNum)
+          ? stationNameById.get(locationIdNum) ?? null
+          : null,
+        typeId: r.typeId,
+        typeName: typeNameById.get(r.typeId) ?? null,
+        quantity: r.quantity,
+        unitPrice: r.unitPrice.toString(),
+      };
+    });
   }
 
   async listJournal(

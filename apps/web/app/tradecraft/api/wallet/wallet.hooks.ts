@@ -31,7 +31,7 @@ export function useWalletTransactions(characterId?: number) {
           transactionId: string;
           date: string;
           isBuy: boolean;
-          locationId: number;
+          locationId: string;
           stationName: string | null;
           typeId: number;
           typeName: string | null;

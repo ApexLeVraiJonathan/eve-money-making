@@ -14,6 +14,7 @@ const LOCATION_TO_STATION: Record<CharacterLocation, number> = {
   RENS: 60004588,
   CN: 60003760, // fallback to Jita for now
 };
+const INT4_MAX = 2147483647;
 
 @Injectable()
 export class AllocationService {
@@ -303,8 +304,15 @@ export class AllocationService {
 
       // Resolve destination from character location, fallback to transaction locationId
       let destStation = charToStation.get(tx.characterId);
-      if (!destStation && tx.locationId) {
-        destStation = tx.locationId; // Use transaction's locationId directly
+      if (!destStation) {
+        const txLocationIdNum = Number(tx.locationId);
+        if (
+          Number.isInteger(txLocationIdNum) &&
+          txLocationIdNum > 0 &&
+          txLocationIdNum <= INT4_MAX
+        ) {
+          destStation = txLocationIdNum; // Use transaction location when it is a station id
+        }
       }
       if (!destStation) {
         unmatched++;

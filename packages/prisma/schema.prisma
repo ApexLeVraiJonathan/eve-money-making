@@ -781,7 +781,7 @@ model WalletTransaction {
   transactionId BigInt   @map("transaction_id")
   date          DateTime @map("date")
   isBuy         Boolean  @map("is_buy")
-  locationId    Int      @map("location_id")
+  locationId    BigInt   @map("location_id")
   typeId        Int      @map("type_id")
   clientId      Int?     @map("client_id")
   quantity      Int      @map("quantity")
