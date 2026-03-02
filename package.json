@@ -17,7 +17,7 @@
     "format": "pnpm -r run format",
     "lint": "pnpm -r run lint",
     "lint:fix": "pnpm -r run lint --fix",
-    "type-check": "pnpm -r --filter=!@eve/prisma exec tsc --noEmit",
+    "type-check": "pnpm --filter @eve/shared exec tsc --noEmit && pnpm --filter @eve-money-making/api run type-check && pnpm --filter @eve-money-making/web exec tsc --noEmit",
     "test": "pnpm -r run test",
     "test:api": "pnpm --filter @eve-money-making/api run test",
     "test:web": "pnpm --filter @eve-money-making/web run test",

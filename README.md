@@ -206,7 +206,7 @@ CORS_ORIGINS="http://localhost:3001"
 
 ### Frontend (.env.local)
 ```bash
-NEXT_PUBLIC_API_URL="http://localhost:3000"
+API_URL="http://localhost:3000"
 NEXTAUTH_URL="http://localhost:3001"
 NEXTAUTH_SECRET="..."
 EVE_CLIENT_ID="..." # Same as backend

@@ -9,17 +9,44 @@ alwaysApply: false
 ## Pages are composition-only
 - Keep `page.tsx` files **small**: they compose components and pass props.
 - Do **not** define components inside `page.tsx` (no big JSX blocks, no local component definitions).
-- Route-specific UI belongs in `src/app/<route>/_components/*`.
+- Route-specific UI belongs in `app/<route>/_components/*`.
+- `page.tsx` should normally stay under ~100 lines.
+
+## Avoid giant page-client files
+- Do **not** move an entire page into one `_components/*-page-client.tsx` file as the only extraction.
+- If a route needs client interactivity, use a **small client shell** plus focused subcomponents.
+- Split by concern: sections, UI parts, hooks/state, and pure helpers.
+- Any hand-written file approaching ~300 lines should be split further (hard cap guidance remains ~500 lines from core rule).
+
+## Route component architecture (default)
+- `app/<route>/page.tsx` -> server composition wrapper.
+- `app/<route>/_components/<route>-client-shell.tsx` -> minimal client coordinator only when needed.
+- `app/<route>/_components/sections/*` -> major page sections (cards/panels/tables/forms).
+- `app/<route>/_components/ui/*` -> route-local presentational components.
+- `app/<route>/_components/hooks/*` -> route-local UI hooks/state helpers.
+- `app/<route>/_components/lib/*` -> route-local pure helpers/formatters/mappers.
+- Keep imports explicit; avoid barrel files unless user explicitly approves.
+
+## Split heuristics (practical)
+- Split when a component has 2+ distinct responsibilities (for example: form state + table rendering + dialogs).
+- Split when JSX has multiple named sections that can become separate components.
+- Split when logic is reusable within the same route (extract to `ui/*`, `sections/*`, `hooks/*`, or `lib/*`).
+- Prefer extracting pure logic/helpers before adding more hooks/effects in a single component.
 
 ## Component reuse-first (shadcn + composites)
 - Always check for reusable components before creating new ones.
 - **shadcn primitives** live in `packages/ui` (generated via `shadcn add` from `apps/web`, but output belongs in `packages/ui`).
 - **Reusable composite components** (used in multiple routes/features) live in `packages/ui`.
-- **Route-specific composite components** live in the route folder: `src/app/<route>/_components/*`.
+- **Route-specific composite components** live in the route folder: `app/<route>/_components/*`.
+- Promotion rule:
+  - Start route-local by default.
+  - Move to `packages/ui` only after clear reuse across multiple routes/features.
 
 ## Server-first components
 - Default to **Server Components**.
 - Use **Client Components** only when needed (state, effects, browser-only APIs, imperative UI).
+- Keep `'use client'` boundaries as small as practical to avoid unnecessary client bundles.
+- Server Components should fetch/prepare data and pass serializable props to Client Components.
 
 ## Data fetching: Option A “Next as BFF” (recommended)
 - The browser should call **Next Route Handlers**, not Nest directly.

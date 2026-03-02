@@ -32,7 +32,7 @@ Single Prisma schema and migrations for the entire monorepo.
 - `@eve/prisma` - Prisma Client instance
 
 ### [@eve/api-contracts](./api-contracts/)
-🚧 **Future** - OpenAPI/Zod contracts (Phase 2)
+🚧 **Runtime tooling** - OpenAPI/Zod/schema artifacts (app TypeScript contracts live in `@eve/shared/*`)
 
 ## Usage Guidelines
 

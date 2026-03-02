@@ -17,9 +17,6 @@ importers:
 
   apps/api:
     dependencies:
-      '@eve/api-contracts':
-        specifier: workspace:*
-        version: link:../../packages/api-contracts
       '@eve/eve-core':
         specifier: workspace:*
         version: link:../../packages/eve-core
@@ -232,9 +229,6 @@ importers:
       '@eve/api-client':
         specifier: workspace:*
         version: link:../../packages/api-client
-      '@eve/api-contracts':
-        specifier: workspace:*
-        version: link:../../packages/api-contracts
       '@eve/shared':
         specifier: workspace:*
         version: link:../../packages/shared

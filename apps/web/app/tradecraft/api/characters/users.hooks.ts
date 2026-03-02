@@ -154,7 +154,7 @@ export function startCharacterLink(returnUrl?: string) {
 export async function logout() {
   // Call the API directly from the browser so the API domain receives
   // the correct session cookie, then navigate back to home.
-  const client = clientForApp("api");
+  const client = clientForApp("tradecraft");
   try {
     await client.get<OkResponse>("/auth/logout");
   } catch {

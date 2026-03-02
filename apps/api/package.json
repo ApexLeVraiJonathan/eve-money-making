@@ -18,6 +18,7 @@
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
+    "type-check": "tsc -p tsconfig.build.json --noEmit",
     "db:generate": "pnpm --filter @eve/prisma prisma:generate",
     "db:push": "pnpm --filter @eve/prisma run prisma db push",
     "db:migrate": "pnpm --filter @eve/prisma run prisma migrate dev",
@@ -29,7 +30,6 @@
     "seed:strategy-lab:clear": "node scripts/seed-strategy-lab.cjs --clear"
   },
   "dependencies": {
-    "@eve/api-contracts": "workspace:*",
     "@eve/eve-core": "workspace:*",
     "@eve/eve-esi": "workspace:*",
     "@eve/prisma": "workspace:*",

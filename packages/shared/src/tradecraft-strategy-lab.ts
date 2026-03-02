@@ -4,6 +4,12 @@ import type {
   TradeStrategyRunDay,
   TradeStrategyRunPosition,
 } from "./types";
+export type {
+  TradeStrategy,
+  TradeStrategyRun,
+  TradeStrategyRunDay,
+  TradeStrategyRunPosition,
+} from "./types";
 
 export type TradeStrategyRunDetail = TradeStrategyRun & {
   strategy: TradeStrategy;

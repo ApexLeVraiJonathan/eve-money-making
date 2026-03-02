@@ -206,10 +206,10 @@ The web app reads most of its configuration from the same `.env`, but only `NEXT
   - Dev: `NEXTAUTH_URL=http://localhost:3001`
   - Prod: `NEXTAUTH_URL=https://yourdomain.com`
 - **NEXTAUTH_SECRET**: Same value as the backend; used by NextAuth.
-- **NEXT_PUBLIC_API_URL**: Public URL of your NestJS API (used by browser and shared client).
-  - Dev: `NEXT_PUBLIC_API_URL=http://localhost:3000`
-  - Prod: `NEXT_PUBLIC_API_URL=https://your-api-domain.railway.app`
-  - **Note**: Do **not** include `/api` suffix.
+- **API_URL**: Internal URL where the NestJS API is accessible from Next.js route handlers and NextAuth server code.
+  - Dev: `API_URL=http://localhost:3000`
+  - Prod: `API_URL=https://your-api-domain.railway.app`
+  - Browser-side API calls use app-scoped Next.js BFF routes (`/api/tradecraft/*`, `/api/characters/*`, `/api/core/*`) and do not require a public API origin variable.
 - **NEXT_PUBLIC_WEB_BASE_URL**: Public URL of your Next.js web application.
   - Dev: `NEXT_PUBLIC_WEB_BASE_URL=http://localhost:3001`
   - Prod: `NEXT_PUBLIC_WEB_BASE_URL=https://yourdomain.com`
@@ -221,13 +221,7 @@ The web app reads most of its configuration from the same `.env`, but only `NEXT
 - **NEXT_PUBLIC_APP_ENV**: Exposed environment label for client-side code (normally derived from `APP_ENV`).
 - **NEXT_PUBLIC_ADMIN_API_URL**: Base URL for any separate admin API, if used.
   - Default: `http://localhost:3002`
-- **API_URL**: Internal URL where the NestJS API is accessible from Next.js API routes and NextAuth server code.
-  - Dev: `API_URL=http://localhost:3000`
-  - Prod: `API_URL=https://your-api-domain.railway.app`
-  - Used by:
-    - `apps/web/lib/auth.ts` (NextAuth → API)
-    - `apps/web/app/api/*` proxy routes
-- **API_BASE_URL** / **NEXT_PUBLIC_API_BASE**: Legacy/auxiliary base URLs used in `apps/web/app/auth/login/route.ts` (optional; can usually reuse `API_URL` / `NEXT_PUBLIC_API_URL`).
+- **API_BASE_URL** / **NEXT_PUBLIC_API_BASE**: Legacy/auxiliary base URLs used in `apps/web/app/auth/login/route.ts` (optional; can usually reuse `API_URL`).
 
 #### Frontend ESI / trading tweaks (optional)
 
@@ -242,7 +236,6 @@ These mirror backend defaults but are only used in specific UI helpers:
 
 `packages/shared/src/env.ts` exposes:
 
-- `NEXT_PUBLIC_API_URL`
 - `NEXT_PUBLIC_ADMIN_API_URL`
 - `NEXT_PUBLIC_WEB_BASE_URL`
 - `NEXTAUTH_URL`

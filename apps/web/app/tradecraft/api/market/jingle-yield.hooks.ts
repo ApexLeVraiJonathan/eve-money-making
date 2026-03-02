@@ -3,7 +3,10 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useApiClient } from "@/app/api-hooks/useApiClient";
 import { useAuthenticatedQuery } from "@/app/api-hooks/useAuthenticatedQuery";
-import type { JingleYieldProgramSummary, JingleYieldStatus } from "@eve/shared";
+import type {
+  JingleYieldProgramSummary,
+  JingleYieldStatus,
+} from "@eve/shared/tradecraft-market";
 import { qk } from "@eve/api-client/queryKeys";
 
 // ============================================================================

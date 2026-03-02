@@ -6,16 +6,16 @@ import { useApiClient } from "@/app/api-hooks/useApiClient";
 import { useAuthenticatedQuery } from "@/app/api-hooks/useAuthenticatedQuery";
 import type {
   Cycle,
-  CycleOverview,
   CycleLine,
-  CycleSnapshot,
-  CycleProfit,
-  CapitalResponse,
   CycleLedgerEntry,
-  PayoutSuggestion,
   CycleFeeEvent,
   CycleLinesIntelResponse,
-} from "@eve/shared";
+  CycleOverview,
+  CycleProfit,
+  CycleSnapshot,
+  CapitalResponse,
+  PayoutSuggestion,
+} from "@eve/shared/tradecraft-cycles";
 import type {
   CycleAllocateResponse,
   CycleEstimatedProfitResponse,

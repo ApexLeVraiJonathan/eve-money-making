@@ -8,7 +8,7 @@ import type {
   TradeStrategyRun,
   TradeStrategyRunDay,
   TradeStrategyRunPosition,
-} from "@eve/shared";
+} from "@eve/shared/tradecraft-strategy-lab";
 import type {
   StrategyLabMarketDataCoverage,
   TradeStrategyClearResponse,

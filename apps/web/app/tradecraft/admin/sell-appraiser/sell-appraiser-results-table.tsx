@@ -14,26 +14,8 @@ import {
 } from "@eve/ui";
 import { formatIsk } from "@/lib/utils";
 import { eveClientStringCompare } from "@/lib/eve-sort";
-import type {
-  SellAppraiseItem,
-  SellAppraiseByCommitItem,
-} from "@eve/shared/types";
-
-type PasteRow = SellAppraiseItem;
-type CommitRow = SellAppraiseByCommitItem;
-type SellAppraiserRow = PasteRow | CommitRow;
-
-function isCommitRow(row: SellAppraiserRow): row is CommitRow {
-  return (row as CommitRow).typeId !== undefined && "quantityRemaining" in row;
-}
-
-export type SelectionStore = {
-  subscribe: (listener: () => void) => () => void;
-  getVersion: () => number;
-  get: (key: string) => boolean;
-  toggle: (key: string) => void;
-  setMany: (keys: string[], checked: boolean) => void;
-};
+import { isCommitRow, type SellAppraiserRow } from "./_components/lib/row-types";
+import type { SelectionStore } from "./_components/lib/selection-store";
 
 type TableRowData = SellAppraiserRow & {
   __key: string;

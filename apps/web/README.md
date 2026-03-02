@@ -68,9 +68,8 @@ pnpm install
 Create `.env.local` file:
 
 ```bash
-# API URLs (no /api suffix)
-NEXT_PUBLIC_API_URL="http://localhost:3000"  # API is on port 3000
-API_URL="http://localhost:3000"              # Server-side only
+# API URLs
+API_URL="http://localhost:3000"              # Server-side only (used by Next route handlers)
 NEXT_PUBLIC_WEB_BASE_URL="http://localhost:3001"  # Web is on port 3001
 
 # NextAuth
@@ -82,7 +81,7 @@ EVE_CLIENT_ID="your_client_id"
 EVE_CLIENT_SECRET="your_client_secret"
 ```
 
-**Important:** Do NOT include `/api` suffix in `NEXT_PUBLIC_API_URL` - the backend routes handle the full path.
+Browser API calls go through app-scoped Next.js BFF routes (`/api/tradecraft/*`, `/api/characters/*`, `/api/core/*`) and do not require a public backend URL variable.
 
 See [../../env.example.md](../../env.example.md) for complete configuration guide.
 
@@ -297,7 +296,7 @@ This repo intentionally separates Next.js output folders to avoid file-lock/race
 ### Environment Variables
 
 Set all production environment variables:
-- `NEXT_PUBLIC_API_URL` - Backend API URL
+- `API_URL` - Backend API URL for Next.js server-side routes
 - `NEXTAUTH_URL` - Frontend URL
 - `NEXTAUTH_SECRET` - Session secret
 - EVE SSO credentials

@@ -56,7 +56,7 @@ export async function computeCostBasisPositions(
     orderBy: { date: 'asc' },
   });
 
-  const key = (stationId: number, typeId: number) => `${stationId}:${typeId}`;
+  const key = (stationId: bigint, typeId: number) => `${stationId}:${typeId}`;
 
   for (const t of txs) {
     const k = key(t.locationId, t.typeId);

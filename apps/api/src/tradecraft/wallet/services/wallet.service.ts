@@ -186,7 +186,9 @@ export class WalletService {
       },
     });
     const typeIds = Array.from(new Set(rows.map((r) => r.typeId)));
-    const stationIds = Array.from(new Set(rows.map((r) => r.locationId)));
+    const stationIds = Array.from(
+      new Set(rows.map((r) => Number(r.locationId))),
+    );
     const charIds = Array.from(new Set(rows.map((r) => r.characterId)));
 
     const typesPromise: Promise<Map<number, string>> = typeIds.length
@@ -222,8 +224,8 @@ export class WalletService {
       transactionId: r.transactionId.toString(),
       date: r.date,
       isBuy: r.isBuy,
-      locationId: r.locationId,
-      stationName: stationNameById.get(r.locationId) ?? null,
+      locationId: Number(r.locationId),
+      stationName: stationNameById.get(Number(r.locationId)) ?? null,
       typeId: r.typeId,
       typeName: typeNameById.get(r.typeId) ?? null,
       quantity: r.quantity,

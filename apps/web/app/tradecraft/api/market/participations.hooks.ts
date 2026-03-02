@@ -4,9 +4,9 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useApiClient } from "@/app/api-hooks/useApiClient";
 import { useAuthenticatedQuery } from "@/app/api-hooks/useAuthenticatedQuery";
 import { qk } from "@eve/api-client/queryKeys";
-import type { CycleParticipation } from "@eve/shared";
 import { ApiError } from "@eve/api-client";
 import type {
+  CycleParticipation,
   AutoRolloverSettings,
   IncreaseParticipationResponse,
   MatchParticipationPaymentsResponse,

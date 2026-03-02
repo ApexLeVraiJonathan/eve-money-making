@@ -89,3 +89,5 @@ export type AdminUserCharacterLinkInput = {
 };
 
 export type SystemCharacterLinkUrlResponse = { url: string };
+
+export type { EveCharacter } from "./types";

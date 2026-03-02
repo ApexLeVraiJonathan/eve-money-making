@@ -3,7 +3,7 @@
 import { useApiClient } from "@/app/api-hooks/useApiClient";
 import { useAuthenticatedQuery } from "@/app/api-hooks/useAuthenticatedQuery";
 import { qk } from "@eve/api-client/queryKeys";
-import type { EveCharacter } from "@eve/shared";
+import type { EveCharacter } from "@eve/shared/tradecraft-characters";
 
 /**
  * API hooks for authentication

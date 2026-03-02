@@ -1,4 +1,5 @@
 import type { CycleParticipation } from "./types";
+export type { CycleParticipation } from "./types";
 
 export type AutoRolloverSettings = {
   enabled: boolean;

@@ -109,11 +109,14 @@ This is a living audit for tracking where the codebase breaks project rules and 
 
 ### Finding T-003
 
-- **Status:** `open`
+- **Status:** `resolved`
 - **Severity:** `P2`
-- **Issue:** Shared contracts are concentrated in a very large single file, making ownership and evolution harder.
+- **Issue:** Shared contracts were decomposed from a monolithic `types/index.ts` into focused domain files under `packages/shared/src/types/` with `index.ts` reduced to a compatibility re-export surface.
 - **Evidence files:**
   - `packages/shared/src/types/index.ts`
+  - `packages/shared/src/types/cycles.ts`
+  - `packages/shared/src/types/market-arbitrage.ts`
+  - `packages/shared/src/types/strategy-lab.ts`
 
 ### Finding T-004
 
@@ -127,9 +130,9 @@ This is a living audit for tracking where the codebase breaks project rules and 
 
 ### Finding T-005
 
-- **Status:** `open`
+- **Status:** `resolved`
 - **Severity:** `P2`
-- **Issue:** Shared type usage is imbalanced: API app barely consumes `@eve/shared` types (except skill helpers), while web consumes most shared contracts. This weakens the “both apps use canonical shared contracts” intent.
+- **Issue:** Shared contract usage is now balanced in app source: both `apps/api` and `apps/web` consume `@eve/shared/*` contracts directly for feature request/response types.
 - **Evidence files (sample):**
   - `apps/api/src/skill-farm/skill-farm.service.ts`
   - `apps/api/src/skill-plans/skill-plans.service.ts`
@@ -263,63 +266,227 @@ This is a living audit for tracking where the codebase breaks project rules and 
 
 ### Finding X-001
 
-- **Status:** `open`
+- **Status:** `in-progress`
 - **Severity:** `P1`
-- **Issue:** Many `page.tsx` files are not composition-only and include local component declarations and heavy UI logic.
+- **Issue:** Many `page.tsx` files are not yet composition-only. Initial migration pattern is in place: `page.tsx` as server wrapper and client-heavy UI moved to route `_components`.
 - **Evidence files (sample):**
-  - `apps/web/app/characters/page.tsx`
-  - `apps/web/app/characters/skills/plans/page.tsx`
+  - `apps/web/app/account-settings/page.tsx`
+  - `apps/web/app/account-settings/_components/account-settings-page-client.tsx`
+  - `apps/web/app/tradecraft/cycles/page.tsx`
+  - `apps/web/app/tradecraft/cycles/_components/cycles-overview-page-client.tsx`
+  - `apps/web/app/tradecraft/admin/arbitrage/page.tsx`
+  - `apps/web/app/tradecraft/admin/arbitrage/_components/arbitrage-page-client.tsx`
+  - `apps/web/app/tradecraft/admin/arbitrage/_components/sections/arbitrage-parameters-card.tsx`
+  - `apps/web/app/tradecraft/admin/arbitrage/_components/sections/arbitrage-results-section.tsx`
+  - `apps/web/app/tradecraft/admin/undercut-checker/page.tsx`
+  - `apps/web/app/tradecraft/admin/undercut-checker/_components/undercut-checker-page-client.tsx`
+  - `apps/web/app/tradecraft/admin/undercut-checker/_components/sections/undercut-config-card.tsx`
+  - `apps/web/app/tradecraft/admin/undercut-checker/_components/sections/undercut-results-section.tsx`
+  - `apps/web/app/tradecraft/admin/profit/page.tsx`
+  - `apps/web/app/tradecraft/admin/profit/_components/cycle-profit-page-client.tsx`
+  - `apps/web/app/tradecraft/admin/profit/_components/sections/profit-statement-section.tsx`
+  - `apps/web/app/tradecraft/admin/sell-appraiser/page.tsx`
+  - `apps/web/app/tradecraft/admin/sell-appraiser/_components/sell-appraiser-page-client.tsx`
+  - `apps/web/app/tradecraft/admin/sell-appraiser/_components/sections/sell-appraiser-config-card.tsx`
+  - `apps/web/app/tradecraft/admin/sell-appraiser/_components/sections/sell-appraiser-results-section.tsx`
+  - `apps/web/app/tradecraft/admin/cycleintel/page.tsx`
+  - `apps/web/app/tradecraft/admin/cycleintel/_components/cycle-intel-page-client.tsx`
+  - `apps/web/app/tradecraft/admin/cycleintel/_components/sections/intel-sections.tsx`
+  - `apps/web/app/tradecraft/admin/cycleintel/_components/tables/intel-tables.tsx`
+  - `apps/web/app/tradecraft/admin/packages/page.tsx`
+  - `apps/web/app/tradecraft/admin/packages/_components/packages-page-client.tsx`
+  - `apps/web/app/tradecraft/admin/packages/_components/sections/packages-list-section.tsx`
+  - `apps/web/app/tradecraft/admin/packages/_components/sections/mark-failed-dialog.tsx`
+  - `apps/web/app/tradecraft/admin/participations/page.tsx`
+  - `apps/web/app/tradecraft/admin/participations/_components/participations-page-client.tsx`
+  - `apps/web/app/tradecraft/admin/participations/_components/sections/participants-overview-card.tsx`
+  - `apps/web/app/tradecraft/admin/participations/_components/sections/manual-matching-card.tsx`
+  - `apps/web/app/tradecraft/admin/participations/_components/sections/refunds-card.tsx`
+  - `apps/web/app/tradecraft/admin/participations/_components/sections/payouts-card.tsx`
+  - `apps/web/app/tradecraft/admin/users/page.tsx`
+  - `apps/web/app/tradecraft/admin/users/_components/tradecraft-users-admin-page-client.tsx`
+  - `apps/web/app/tradecraft/admin/users/_components/sections/manage-caps-card.tsx`
+  - `apps/web/app/tradecraft/admin/triggers/page.tsx`
+  - `apps/web/app/tradecraft/admin/triggers/_components/triggers-page-client.tsx`
+  - `apps/web/app/tradecraft/admin/cycles/page.tsx`
+  - `apps/web/app/tradecraft/admin/cycles/_components/cycles-page-client.tsx`
+  - `apps/web/app/tradecraft/admin/cycles/_components/sections/cycles-list-card.tsx`
+  - `apps/web/app/tradecraft/admin/cycles/_components/sections/cycle-creation-card.tsx`
+  - `apps/web/app/tradecraft/admin/cycles/_components/sections/capital-card.tsx`
+  - `apps/web/app/tradecraft/admin/jingle-yield/page.tsx`
+  - `apps/web/app/tradecraft/admin/jingle-yield/_components/jingle-yield-admin-page-client.tsx`
+  - `apps/web/app/tradecraft/admin/jingle-yield/_components/sections/jingle-yield-create-card.tsx`
+  - `apps/web/app/tradecraft/admin/jingle-yield/_components/sections/jingle-yield-programs-card.tsx`
+  - `apps/web/app/tradecraft/admin/self-market/page.tsx`
+  - `apps/web/app/tradecraft/admin/self-market/_components/sections/type-orders-expanded.tsx`
+  - `apps/web/app/tradecraft/admin/self-market/_components/sections/npc-type-orders-expanded.tsx`
+  - `apps/web/app/tradecraft/admin/self-market/_components/self-market-page-client.tsx`
+  - `apps/web/app/tradecraft/admin/self-market/_components/sections/cn-market-tab.tsx`
+  - `apps/web/app/tradecraft/admin/self-market/_components/sections/rens-market-tab.tsx`
+  - `apps/web/app/tradecraft/admin/strategy-lab/[runId]/page.tsx`
+  - `apps/web/app/tradecraft/admin/strategy-lab/[runId]/_components/strategy-run-detail-page-client.tsx`
+  - `apps/web/app/tradecraft/admin/strategy-lab/page.tsx`
+  - `apps/web/app/tradecraft/admin/strategy-lab/_components/strategy-lab-page-client.tsx`
+  - `apps/web/app/tradecraft/admin/strategy-lab/_components/sections/strategy-params-dialog.tsx`
+  - `apps/web/app/tradecraft/admin/planner/page.tsx`
+  - `apps/web/app/tradecraft/admin/planner/_components/planner-page-client.tsx`
+  - `apps/web/app/tradecraft/admin/planner/_components/sections/planner-results-section.tsx`
+  - `apps/web/app/tradecraft/admin/liquidity/page.tsx`
+  - `apps/web/app/tradecraft/admin/liquidity/_components/liquidity-page-client.tsx`
+  - `apps/web/app/tradecraft/admin/liquidity/_components/sections/station-liquidity-tab.tsx`
+  - `apps/web/app/tradecraft/admin/liquidity/_components/sections/item-liquidity-stats-tab.tsx`
   - `apps/web/app/settings/notifications/page.tsx`
+  - `apps/web/app/settings/notifications/_components/notification-settings-page-client.tsx`
+  - `apps/web/app/settings/notifications/_components/sections/preferences-group-card.tsx`
+  - `apps/web/app/tradecraft/lib/station-sorting.ts`
+  - `apps/web/app/characters/page.tsx`
+  - `apps/web/app/characters/skills/page.tsx`
+  - `apps/web/app/characters/skills/browser/page.tsx`
+  - `apps/web/app/characters/skills/browser/_components/skill-browser-page-client.tsx`
+  - `apps/web/app/characters/skills/plans/page.tsx`
+  - `apps/web/app/characters/skills/plans/_components/skill-plans-page-client.tsx`
+  - `apps/web/app/characters/skill-farms/characters/page.tsx`
+  - `apps/web/app/characters/skill-farms/characters/_components/skill-farm-characters-page-client.tsx`
+  - `apps/web/app/characters/skill-farms/tracking/page.tsx`
+  - `apps/web/app/characters/skill-farms/tracking/_components/skill-farm-tracking-page-client.tsx`
+  - `apps/web/app/characters/skill-farms/math/page.tsx`
+  - `apps/web/app/characters/skill-farms/math/_components/skill-farm-math-page-client.tsx`
+  - `apps/web/app/tradecraft/cycle-history/page.tsx`
+  - `apps/web/app/tradecraft/cycle-history/_components/cycle-history-page-client.tsx`
+  - `apps/web/app/tradecraft/cycle-details/page.tsx`
+  - `apps/web/app/tradecraft/cycle-details/_components/cycle-details-page-client.tsx`
+  - `apps/web/app/tradecraft/my-investments/page.tsx`
+  - `apps/web/app/tradecraft/my-investments/_components/my-investments-page-client.tsx`
+  - `apps/web/app/tradecraft/cycles/[cycleId]/lines/page.tsx`
+  - `apps/web/app/tradecraft/cycles/[cycleId]/lines/_components/cycle-lines-page-client.tsx`
+  - `apps/web/app/tradecraft/cycles/[cycleId]/profit/page.tsx`
+  - `apps/web/app/tradecraft/cycles/[cycleId]/profit/_components/cycle-profit-page-client.tsx`
+  - `apps/web/app/skill-issue/page.tsx`
+  - `apps/web/app/skill-issue/_components/skill-issue-page-client.tsx`
+  - `apps/web/app/brokerage/consignments/page.tsx`
+  - `apps/web/app/brokerage/consignments/_components/consignments-page-client.tsx`
+  - `apps/web/app/brokerage/consignments/new/page.tsx`
+  - `apps/web/app/brokerage/consignments/new/_components/new-consignment-page-client.tsx`
+  - `apps/web/app/brokerage/consignments/details/page.tsx`
+  - `apps/web/app/brokerage/consignments/details/_components/consignment-details-page-client.tsx`
 
 ### Finding X-002
 
-- **Status:** `open`
+- **Status:** `in-progress`
 - **Severity:** `P2`
-- **Issue:** Route-level `_components` structure is not currently used.
+- **Issue:** Route-level `_components` structure was introduced and is now used in migrated routes; adoption is still partial across the app tree.
 - **Evidence files:**
-  - No matches under `apps/web/app/**/_components/**/*.tsx` during baseline scan
+  - `apps/web/app/account-settings/_components/account-settings-page-client.tsx`
+  - `apps/web/app/tradecraft/cycles/_components/cycles-overview-page-client.tsx`
+  - `apps/web/app/tradecraft/admin/arbitrage/_components/arbitrage-page-client.tsx`
+  - `apps/web/app/tradecraft/admin/liquidity/_components/liquidity-page-client.tsx`
+  - `apps/web/app/tradecraft/admin/undercut-checker/_components/undercut-checker-page-client.tsx`
+  - `apps/web/app/tradecraft/admin/profit/_components/cycle-profit-page-client.tsx`
+  - `apps/web/app/tradecraft/admin/sell-appraiser/_components/sell-appraiser-page-client.tsx`
+  - `apps/web/app/tradecraft/admin/cycleintel/_components/cycle-intel-page-client.tsx`
+  - `apps/web/app/tradecraft/admin/packages/_components/packages-page-client.tsx`
+  - `apps/web/app/tradecraft/admin/participations/_components/participations-page-client.tsx`
+  - `apps/web/app/tradecraft/admin/users/_components/tradecraft-users-admin-page-client.tsx`
+  - `apps/web/app/tradecraft/admin/triggers/_components/triggers-page-client.tsx`
+  - `apps/web/app/tradecraft/admin/cycles/_components/cycles-page-client.tsx`
+  - `apps/web/app/tradecraft/admin/jingle-yield/_components/jingle-yield-admin-page-client.tsx`
+  - `apps/web/app/tradecraft/admin/self-market/_components/sections/type-orders-expanded.tsx`
+  - `apps/web/app/tradecraft/admin/strategy-lab/[runId]/_components/strategy-run-detail-page-client.tsx`
+  - `apps/web/app/tradecraft/admin/self-market/_components/self-market-page-client.tsx`
+  - `apps/web/app/tradecraft/admin/strategy-lab/_components/strategy-lab-page-client.tsx`
+  - `apps/web/app/tradecraft/admin/planner/_components/planner-page-client.tsx`
+  - `apps/web/app/settings/notifications/_components/notification-settings-page-client.tsx`
+  - `apps/web/app/characters/skills/browser/_components/skill-browser-page-client.tsx`
+  - `apps/web/app/characters/skills/plans/_components/skill-plans-page-client.tsx`
+  - `apps/web/app/characters/skill-farms/characters/_components/skill-farm-characters-page-client.tsx`
+  - `apps/web/app/characters/skill-farms/tracking/_components/skill-farm-tracking-page-client.tsx`
+  - `apps/web/app/characters/skill-farms/math/_components/skill-farm-math-page-client.tsx`
+  - `apps/web/app/tradecraft/cycle-history/_components/cycle-history-page-client.tsx`
+  - `apps/web/app/tradecraft/cycle-details/_components/cycle-details-page-client.tsx`
+  - `apps/web/app/tradecraft/my-investments/_components/my-investments-page-client.tsx`
+  - `apps/web/app/tradecraft/cycles/[cycleId]/lines/_components/cycle-lines-page-client.tsx`
+  - `apps/web/app/tradecraft/cycles/[cycleId]/profit/_components/cycle-profit-page-client.tsx`
+  - `apps/web/app/skill-issue/_components/skill-issue-page-client.tsx`
+  - `apps/web/app/characters/_components/characters-page-client.tsx`
+  - `apps/web/app/characters/skills/_components/skills-page-client.tsx`
+  - `apps/web/app/brokerage/consignments/_components/consignments-page-client.tsx`
+  - `apps/web/app/brokerage/consignments/new/_components/new-consignment-page-client.tsx`
+  - `apps/web/app/brokerage/consignments/details/_components/consignment-details-page-client.tsx`
 
 ### Finding X-003
 
-- **Status:** `open`
+- **Status:** `resolved`
 - **Severity:** `P1`
-- **Issue:** Server-first default is not followed broadly (`"use client"` appears in many pages).
+- **Issue:** Server-first wrappers are now applied across `apps/web/app/**/page.tsx`; route client logic lives in route-local `_components` files.
 - **Evidence files (sample):**
-  - `apps/web/app/characters/page.tsx`
-  - `apps/web/app/tradecraft/admin/strategy-lab/page.tsx`
+  - `apps/web/app/account-settings/page.tsx`
+  - `apps/web/app/tradecraft/cycles/page.tsx`
+  - `apps/web/app/tradecraft/admin/arbitrage/page.tsx`
+  - `apps/web/app/tradecraft/admin/undercut-checker/page.tsx`
+  - `apps/web/app/tradecraft/admin/profit/page.tsx`
+  - `apps/web/app/tradecraft/admin/sell-appraiser/page.tsx`
+  - `apps/web/app/tradecraft/admin/cycleintel/page.tsx`
+  - `apps/web/app/tradecraft/admin/packages/page.tsx`
+  - `apps/web/app/tradecraft/admin/participations/page.tsx`
+  - `apps/web/app/tradecraft/admin/users/page.tsx`
+  - `apps/web/app/tradecraft/admin/triggers/page.tsx`
   - `apps/web/app/tradecraft/admin/cycles/page.tsx`
+  - `apps/web/app/tradecraft/admin/jingle-yield/page.tsx`
+  - `apps/web/app/tradecraft/admin/self-market/page.tsx`
+  - `apps/web/app/tradecraft/admin/strategy-lab/[runId]/page.tsx`
+  - `apps/web/app/tradecraft/admin/strategy-lab/page.tsx`
+  - `apps/web/app/tradecraft/admin/planner/page.tsx`
+  - `apps/web/app/settings/notifications/page.tsx`
+  - `apps/web/app/characters/page.tsx`
+  - `apps/web/app/characters/skills/page.tsx`
+  - `apps/web/app/characters/skills/browser/page.tsx`
+  - `apps/web/app/characters/skills/plans/page.tsx`
+  - `apps/web/app/characters/skill-farms/characters/page.tsx`
+  - `apps/web/app/characters/skill-farms/tracking/page.tsx`
+  - `apps/web/app/characters/skill-farms/math/page.tsx`
+  - `apps/web/app/tradecraft/cycle-history/page.tsx`
+  - `apps/web/app/tradecraft/cycle-details/page.tsx`
+  - `apps/web/app/tradecraft/my-investments/page.tsx`
+  - `apps/web/app/tradecraft/cycles/[cycleId]/lines/page.tsx`
+  - `apps/web/app/tradecraft/cycles/[cycleId]/profit/page.tsx`
+  - `apps/web/app/skill-issue/page.tsx`
+  - `apps/web/app/brokerage/consignments/page.tsx`
+  - `apps/web/app/brokerage/consignments/new/page.tsx`
+  - `apps/web/app/brokerage/consignments/details/page.tsx`
 
 ### Finding X-004
 
-- **Status:** `open`
+- **Status:** `resolved`
 - **Severity:** `P1`
-- **Issue:** Browser client is configured to call backend URL directly via public envs, conflicting with strict BFF boundary intent.
+- **Issue:** Browser API traffic no longer depends on a public backend origin variable; web client uses app-scoped Next BFF routes and backend origin is server-side (`API_URL` / `API_BASE_URL`).
 - **Evidence files:**
   - `packages/api-client/src/index.ts`
-  - `apps/web/app/api-hooks/useApiClient.ts`
+  - `apps/web/app/api/core/[...path]/route.ts`
+  - `apps/web/app/api/tradecraft/[...path]/route.ts`
+  - `apps/web/app/api/characters/[...path]/route.ts`
   - `apps/web/next.config.ts`
 
 ### Finding X-005
 
-- **Status:** `open`
+- **Status:** `resolved`
 - **Severity:** `P1`
-- **Issue:** Next BFF route coverage is very limited: only a few route handlers exist and there are no feature catch-all proxy routes (`[[...path]]`) as defined by the rule.
+- **Issue:** Next BFF coverage now uses app-scoped catch-all routes by app/domain (`tradecraft`, `characters`, `core`) instead of a generic fallback proxy.
 - **Evidence files:**
+  - `apps/web/app/api/tradecraft/[...path]/route.ts`
+  - `apps/web/app/api/characters/[...path]/route.ts`
+  - `apps/web/app/api/core/[...path]/route.ts`
   - `apps/web/app/api/auth/login/user/route.ts`
-  - `apps/web/app/api/auth/login/admin/route.ts`
-  - `apps/web/app/api/auth/link-character/start/route.ts`
-  - `apps/web/app/api/notifications/discord/connect/route.ts`
 
 ### Finding X-006
 
-- **Status:** `open`
+- **Status:** `resolved`
 - **Severity:** `P1`
-- **Issue:** Feature data hooks in client components perform direct backend calls (e.g. `/ledger/*`, `/arbitrage/*`) via shared API client, bypassing Next route handlers as browser boundary.
+- **Issue:** Feature data hooks in browser now route through Next handler boundaries by default (`clientForApp(appId)` -> `/api/<app>/*` in browser runtime), avoiding direct browser-to-backend calls.
 - **Evidence files (sample):**
   - `apps/web/app/api-hooks/useApiClient.ts`
   - `packages/api-client/src/index.ts`
+  - `apps/web/app/api/tradecraft/[...path]/route.ts`
   - `apps/web/app/tradecraft/api/cycles/cycles.hooks.ts`
-  - `apps/web/app/tradecraft/api/market/arbitrage.hooks.ts`
 
 ### Finding X-007
 
@@ -335,12 +502,14 @@ This is a living audit for tracking where the codebase breaks project rules and 
 
 ### Finding A-001
 
-- **Status:** `open`
+- **Status:** `resolved`
 - **Severity:** `P1`
-- **Issue:** Contract ownership is split between `packages/shared` and `packages/api-contracts`, creating dual sources of truth.
+- **Issue:** Contract ownership for app TypeScript request/response shapes was consolidated to `packages/shared`; `packages/api-contracts` is now a runtime-schema/tooling placeholder and no longer an app contract source.
 - **Evidence files:**
-  - `packages/shared/src/types/index.ts`
+  - `packages/shared/src/skill-contracts.ts`
   - `packages/api-contracts/src/index.ts`
+  - `apps/api/package.json`
+  - `apps/web/package.json`
 
 ### Finding A-002
 
@@ -386,14 +555,14 @@ This is a living audit for tracking where the codebase breaks project rules and 
 
 ### Finding A-006
 
-- **Status:** `open`
+- **Status:** `resolved`
 - **Severity:** `P1`
-- **Issue:** Governance mismatch between rule and implementation: rule says contracts live in `packages/shared`, but active implementation uses a separate `packages/api-contracts` package across API and web.
+- **Issue:** Governance is now aligned: app contract imports are standardized on `@eve/shared/*`, and `@eve/api-contracts` is reserved for runtime contract tooling artifacts only.
 - **Evidence files:**
   - `.cursor/rules/api-contracts.mdc`
   - `packages/api-contracts/src/index.ts`
-  - `apps/api/src/skill-farm/skill-farm.service.ts`
-  - `apps/web/app/characters/skills/api.ts`
+  - `apps/api/package.json`
+  - `apps/web/package.json`
 
 ## Rule: `prisma-db.mdc`
 

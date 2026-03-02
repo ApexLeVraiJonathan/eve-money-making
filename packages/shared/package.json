@@ -20,6 +20,7 @@
     "./tradecraft-data-ops": "./src/tradecraft-data-ops.ts",
     "./tradecraft-cycles": "./src/tradecraft-cycles.ts",
     "./tradecraft-arbitrage": "./src/tradecraft-arbitrage.ts",
+    "./tradecraft-pricing": "./src/tradecraft-pricing.ts",
     "./skill-contracts": "./src/skill-contracts.ts",
     "./support-feedback": "./src/support-feedback.ts",
     "./env": "./src/env.ts"

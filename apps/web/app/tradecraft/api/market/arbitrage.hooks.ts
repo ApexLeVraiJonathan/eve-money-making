@@ -5,11 +5,11 @@ import { useApiClient } from "@/app/api-hooks/useApiClient";
 import { useAuthenticatedQuery } from "@/app/api-hooks/useAuthenticatedQuery";
 import { qk } from "@eve/api-client/queryKeys";
 import type {
-  Cycle,
   PlanResult,
   ArbitrageCheckRequest,
   ArbitrageCheckResponse,
-} from "@eve/shared/types";
+} from "@eve/shared/tradecraft-arbitrage";
+import type { Cycle } from "@eve/shared/tradecraft-cycles";
 import type {
   ArbitrageCommitResponse,
   CommitSummaryItem,

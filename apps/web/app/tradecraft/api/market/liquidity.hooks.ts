@@ -7,7 +7,7 @@ import type {
   LiquidityCheckResponse,
   LiquidityItemStatsRequest,
   LiquidityItemStatsResponse,
-} from "@eve/shared/types";
+} from "@eve/shared/tradecraft-pricing";
 
 /**
  * API hooks for liquidity analysis

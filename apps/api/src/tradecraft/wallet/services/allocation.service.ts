@@ -304,7 +304,7 @@ export class AllocationService {
       // Resolve destination from character location, fallback to transaction locationId
       let destStation = charToStation.get(tx.characterId);
       if (!destStation && tx.locationId) {
-        destStation = tx.locationId; // Use transaction's locationId directly
+        destStation = Number(tx.locationId); // DB stores bigint station IDs
       }
       if (!destStation) {
         unmatched++;
