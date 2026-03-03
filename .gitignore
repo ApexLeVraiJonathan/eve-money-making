@@ -5,3 +5,4 @@ build
 .playwright-mcp
 prompts
 apps/api/sde-jsonl
+script
