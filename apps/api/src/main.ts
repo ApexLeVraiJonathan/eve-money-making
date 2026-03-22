@@ -112,6 +112,15 @@ async function bootstrap() {
     )
     .setVersion('1.0')
     .addBearerAuth()
+    .addApiKey(
+      {
+        type: 'apiKey',
+        in: 'header',
+        name: 'x-script-api-key',
+        description: 'API key for /pricing/script/* endpoints',
+      },
+      'scriptApiKey',
+    )
     .addTag('arbitrage', 'Arbitrage cycle and commitment endpoints')
     .addTag('ledger', 'Financial ledger and participation tracking')
     .addTag('liquidity', 'Liquidity management')

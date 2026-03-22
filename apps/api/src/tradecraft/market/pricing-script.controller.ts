@@ -5,7 +5,7 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiHeader, ApiOperation, ApiSecurity, ApiTags } from '@nestjs/swagger';
 import { PricingService } from './services/pricing.service';
 import { ScriptApiKeyGuard } from '@api/characters/guards/script-api-key.guard';
 import { Public } from '@api/characters/decorators/public.decorator';
@@ -15,6 +15,12 @@ import { ScriptConfirmBatchRequest } from './dto/script-confirm-batch.dto';
 import { ScriptRunReportRequest } from './dto/script-run-report.dto';
 
 @ApiTags('pricing-script')
+@ApiSecurity('scriptApiKey')
+@ApiHeader({
+  name: 'x-script-api-key',
+  required: true,
+  description: 'Script API key for script automation endpoints.',
+})
 @Public()
 @Controller('pricing/script')
 @UseGuards(ScriptApiKeyGuard)
