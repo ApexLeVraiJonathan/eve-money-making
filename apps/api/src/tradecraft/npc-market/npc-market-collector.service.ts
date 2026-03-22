@@ -490,7 +490,8 @@ export class NpcMarketCollectorService {
             orders: buy as unknown as object,
           });
         }
-        if (snapshotBuffer.length >= snapshotBatchSize) await flushSnapshotBuffer();
+        if (snapshotBuffer.length >= snapshotBatchSize)
+          await flushSnapshotBuffer();
 
         if (!prevBaselineId) return; // first baseline: no diffs/aggregates
 

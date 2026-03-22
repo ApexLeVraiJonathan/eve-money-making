@@ -969,6 +969,19 @@ model NotificationPreference {
   @@map("notification_preferences")
 }
 
+/// Idempotency store for script confirm batches.
+model ScriptConfirmBatch {
+  id             String   @id @default(uuid()) @map("id")
+  idempotencyKey String   @unique @map("idempotency_key")
+  payloadHash    String   @map("payload_hash")
+  responseJson   Json     @map("response_json")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@index([createdAt])
+  @@map("script_confirm_batches")
+}
+
 /// Buy commitment line per item per destination for a cycle
 model CycleLine {
   id                   String   @id @default(uuid()) @map("id")

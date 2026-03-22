@@ -256,7 +256,8 @@ export class SelfMarketCollectorService {
 
     // Fast path: if the snapshot is bitwise-equivalent (for our purposes), skip
     // aggregate computation and avoid rewriting the large JSONB `orders` payload.
-    let snapshotUnchanged = Boolean(prevSnap) && prevById.size === currById.size;
+    let snapshotUnchanged =
+      Boolean(prevSnap) && prevById.size === currById.size;
     if (snapshotUnchanged) {
       for (const [orderId, prev] of prevById.entries()) {
         const curr = currById.get(orderId);

@@ -860,6 +860,7 @@ export type SellAppraiseByCommitResponse = SellAppraiseByCommitItem[];
  * Update item in undercut check response
  */
 export interface UndercutUpdate {
+  lineId?: string;
   orderId: number;
   typeId: number;
   itemName: string;
@@ -884,6 +885,21 @@ export interface UndercutUpdate {
   estimatedMarginPercentAfter?: number;
   estimatedProfitIskAfter?: number;
   wouldBeLossAfter?: boolean;
+  /**
+   * Script-only deterministic targeting metadata returned by /pricing/script/undercut-check.
+   */
+  uiTarget?: {
+    filterQuery: string;
+    rowRank: number;
+    matchingOwnOrders: Array<{
+      orderId: number;
+      typeId: number;
+      itemName: string;
+      remaining: number;
+      currentPrice: number;
+      rowRank: number;
+    }>;
+  };
 }
 
 /**
@@ -902,6 +918,32 @@ export interface UndercutCheckGroup {
  * Backend: apps/api/src/market/services/pricing.service.ts - undercutCheck
  */
 export type UndercutCheckResponse = UndercutCheckGroup[];
+
+export interface ScriptConfirmBatchItem {
+  lineId: string;
+  quantity: number;
+  mode: 'reprice' | 'listing';
+  newUnitPrice?: number;
+  unitPrice?: number;
+}
+
+export interface ScriptConfirmBatchRequest {
+  idempotencyKey: string;
+  updates: ScriptConfirmBatchItem[];
+}
+
+export interface ScriptConfirmBatchResponse {
+  ok: true;
+  cached?: boolean;
+  confirmedCount: number;
+  skippedCount: number;
+  failedCount: number;
+  results: Array<{
+    lineId: string;
+    status: 'confirmed' | 'skipped' | 'failed';
+    message?: string;
+  }>;
+}
 
 // ============================================================================
 // Utility Types

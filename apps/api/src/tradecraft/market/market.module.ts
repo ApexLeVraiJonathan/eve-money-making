@@ -7,6 +7,7 @@ import { CharactersModule } from '@api/characters/characters.module';
 import { DataImportModule } from '@shared/data-import';
 import { ArbitragePackagerModule } from '@app/arbitrage-packager';
 import { SelfMarketModule } from '@api/tradecraft/self-market/self-market.module';
+import { NotificationsModule } from '@api/notifications/notifications.module';
 
 // Services
 import { ArbitrageService } from './services/arbitrage.service';
@@ -19,6 +20,7 @@ import { MarketDataService } from './services/market-data.service';
 // Controllers
 import { ArbitrageController } from './arbitrage.controller';
 import { PricingController } from './pricing.controller';
+import { PricingScriptController } from './pricing-script.controller';
 import { LiquidityController } from './liquidity.controller';
 import { PackagesController } from './packages.controller';
 import { TrackedStationsController } from './tracked-stations.controller';
@@ -31,6 +33,7 @@ import { TrackedStationsController } from './tracked-stations.controller';
     forwardRef(() => CyclesModule),
     forwardRef(() => GameDataModule),
     CharactersModule,
+    NotificationsModule,
     DataImportModule,
     ArbitragePackagerModule,
   ],
@@ -46,6 +49,7 @@ import { TrackedStationsController } from './tracked-stations.controller';
   controllers: [
     ArbitrageController,
     PricingController,
+    PricingScriptController,
     LiquidityController,
     PackagesController,
     TrackedStationsController,

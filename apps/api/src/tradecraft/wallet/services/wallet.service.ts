@@ -233,7 +233,7 @@ export class WalletService {
         isBuy: r.isBuy,
         locationId,
         stationName: Number.isSafeInteger(locationIdNum)
-          ? stationNameById.get(locationIdNum) ?? null
+          ? (stationNameById.get(locationIdNum) ?? null)
           : null,
         typeId: r.typeId,
         typeName: typeNameById.get(r.typeId) ?? null,

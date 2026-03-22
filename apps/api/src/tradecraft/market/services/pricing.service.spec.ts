@@ -32,6 +32,13 @@ describe('PricingService.undercutCheck', () => {
     }>;
     dailyUnitsSold?: number;
     stationSells?: Array<{ price: number; volume: number }>;
+    cycleLines?: Array<{
+      id: string;
+      destinationStationId: number;
+      typeId: number;
+      unitsBought: number;
+      buyCostIsk: string;
+    }>;
   }) => {
     const esi = {
       withMaxConcurrency: async <T>(_max: number, fn: () => Promise<T>) =>
@@ -65,15 +72,25 @@ describe('PricingService.undercutCheck', () => {
     };
 
     const cycleLineService = {
-      getCycleLinesForCycle: async () => [],
+      getCycleLinesForCycle: async () => opts?.cycleLines ?? [],
     };
 
     const cycleService = {
       getOpenCycleIdForDate: async () => 'cycle',
+      getCurrentOpenCycle: async () => ({ id: 'cycle' }),
+    };
+    const notifications = {
+      sendSystemAlertDm: async () => undefined,
     };
 
     // Not used by undercutCheck in these tests
-    const prisma = {};
+    const prisma = {
+      scriptConfirmBatch: {
+        findUnique: async () => null,
+        create: async () => undefined,
+      },
+      $transaction: async (_fn: any) => [],
+    };
     const feeService = {};
 
     // Mock competitor sells
@@ -91,6 +108,7 @@ describe('PricingService.undercutCheck', () => {
       marketData as any,
       cycleLineService as any,
       cycleService as any,
+      notifications as any,
     );
   };
 
@@ -233,5 +251,164 @@ describe('PricingService.undercutCheck', () => {
     expect(u.orderId).toBe(20);
     expect(u.suggestedNewPriceTicked).toBe(99); // 1 tick undercut (no ladder)
     expect(u.reasons).toEqual(['undercut']);
+  });
+
+  it('script undercut check includes deterministic uiTarget ranking metadata', async () => {
+    const svc = makeSvc({
+      orders: [
+        {
+          order_id: 30,
+          type_id: typeId,
+          is_buy_order: false,
+          price: 110,
+          volume_remain: 5,
+          volume_total: 100,
+          location_id: stationId,
+          issued: isoDaysAgo(1),
+          duration: 90,
+        },
+        {
+          order_id: 31,
+          type_id: typeId,
+          is_buy_order: false,
+          price: 111,
+          volume_remain: 20,
+          volume_total: 100,
+          location_id: stationId,
+          issued: isoDaysAgo(1),
+          duration: 90,
+        },
+      ],
+      stationSells: [{ price: 100, volume: 50 }],
+    });
+
+    const res = await svc.undercutCheckScript({
+      characterIds: [123],
+      stationIds: [stationId],
+      groupingMode: 'perOrder',
+      filterMaxChars: 37,
+      normalizeFilterText: true,
+      filterForceLowercase: true,
+      filterStripQuotes: false,
+    });
+
+    expect(res).toHaveLength(1);
+    expect(res[0].updates).toHaveLength(2);
+    const first = res[0].updates.find((u) => u.orderId === 30);
+    const second = res[0].updates.find((u) => u.orderId === 31);
+    expect(first?.uiTarget?.rowRank).toBe(1);
+    expect(second?.uiTarget?.rowRank).toBe(2);
+    expect(first?.uiTarget?.matchingOwnOrders).toHaveLength(2);
+    expect(first?.lineId).toBeUndefined();
+  });
+
+  it('script undercut check includes lineId when cycle line mapping is available', async () => {
+    const svc = makeSvc({
+      orders: [
+        {
+          order_id: 30,
+          type_id: typeId,
+          is_buy_order: false,
+          price: 110,
+          volume_remain: 5,
+          volume_total: 100,
+          location_id: stationId,
+          issued: isoDaysAgo(1),
+          duration: 90,
+        },
+      ],
+      stationSells: [{ price: 100, volume: 50 }],
+      cycleLines: [
+        {
+          id: 'line-1',
+          destinationStationId: stationId,
+          typeId,
+          unitsBought: 10,
+          buyCostIsk: '100.00',
+        },
+      ],
+    });
+
+    const res = await svc.undercutCheckScript({
+      characterIds: [123],
+      stationIds: [stationId],
+      cycleId: '123e4567-e89b-12d3-a456-426614174000',
+      groupingMode: 'perOrder',
+    });
+
+    expect(res).toHaveLength(1);
+    expect(res[0].updates).toHaveLength(1);
+    expect(res[0].updates[0].lineId).toBe('line-1');
+  });
+});
+
+describe('PricingService.confirmBatchScript', () => {
+  it('returns cached response on idempotent retry', async () => {
+    let stored:
+      | { payloadHash: string; responseJson: any; idempotencyKey: string }
+      | undefined;
+    const updatesApplied: string[] = [];
+
+    const prisma = {
+      scriptConfirmBatch: {
+        findUnique: async ({ where }: any) => {
+          if (!stored || stored.idempotencyKey !== where.idempotencyKey)
+            return null;
+          return {
+            payloadHash: stored.payloadHash,
+            responseJson: stored.responseJson,
+          };
+        },
+        create: async ({ data }: any) => {
+          stored = {
+            idempotencyKey: data.idempotencyKey,
+            payloadHash: data.payloadHash,
+            responseJson: data.responseJson,
+          };
+          return stored;
+        },
+      },
+      $transaction: async (fn: any) =>
+        await fn({
+          cycleLine: {
+            update: async ({ where }: any) => {
+              updatesApplied.push(where.id);
+              return {};
+            },
+          },
+        }),
+    };
+
+    const svc = new PricingService(
+      prisma as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      { sendSystemAlertDm: async () => undefined } as any,
+    );
+
+    const body = {
+      idempotencyKey: 'idem-1',
+      updates: [
+        {
+          lineId: 'line-a',
+          mode: 'reprice' as const,
+          quantity: 12,
+          newUnitPrice: 12345,
+        },
+      ],
+    };
+
+    const first = await svc.confirmBatchScript(body);
+    const second = await svc.confirmBatchScript(body);
+
+    expect(first.cached).toBeUndefined();
+    expect(second.cached).toBe(true);
+    expect(updatesApplied).toEqual(['line-a']);
   });
 });

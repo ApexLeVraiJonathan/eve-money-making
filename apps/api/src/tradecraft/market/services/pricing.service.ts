@@ -1,4 +1,6 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
+import crypto from 'node:crypto';
+import { Prisma } from '@eve/prisma';
 import { PrismaService } from '@api/prisma/prisma.service';
 import { EsiService } from '@api/esi/esi.service';
 import { EsiCharactersService } from '@api/esi/esi-characters.service';
@@ -12,12 +14,35 @@ import { CharacterService } from '@api/characters/services/character.service';
 import { MarketDataService } from './market-data.service';
 import { CycleLineService } from '@api/tradecraft/cycles/services/cycle-line.service';
 import { CycleService } from '@api/tradecraft/cycles/services/cycle.service';
+import { NotificationService } from '@api/notifications/notification.service';
 
 type StructureMarketOrder = {
   is_buy_order: boolean;
   type_id: number;
   price: number;
   volume_remain: number;
+};
+
+type ScriptFilterOptions = {
+  filterMaxChars: number;
+  normalizeFilterText: boolean;
+  filterForceLowercase: boolean;
+  filterStripQuotes: boolean;
+};
+
+type ScriptTargetOrderContext = {
+  orderId: number;
+  typeId: number;
+  itemName: string;
+  remaining: number;
+  currentPrice: number;
+  rowRank: number;
+};
+
+type ScriptUiTargetContext = {
+  filterQuery: string;
+  rowRank: number;
+  matchingOwnOrders: ScriptTargetOrderContext[];
 };
 
 @Injectable()
@@ -32,6 +57,7 @@ export class PricingService {
     private readonly marketData: MarketDataService,
     private readonly cycleLineService: CycleLineService,
     private readonly cycleService: CycleService,
+    private readonly notifications: NotificationService,
   ) {}
 
   private getSelfMarketStructureId(): bigint | null {
@@ -315,6 +341,7 @@ export class PricingService {
       stationId: number;
       stationName: string;
       updates: Array<{
+        lineId?: string;
         orderId: number;
         typeId: number;
         itemName: string;
@@ -367,7 +394,9 @@ export class PricingService {
     // stationId-based SDE lookups and int4-based daily trades queries.
     const selfStructureId = this.getSelfMarketStructureId();
     const selfStructureIdNum =
-      selfStructureId !== null ? this.bigintToSafeNumber(selfStructureId) : null;
+      selfStructureId !== null
+        ? this.bigintToSafeNumber(selfStructureId)
+        : null;
     const INT4_MAX = 2_147_483_647;
     const sdeStationIds = stationIds.filter(
       (id) =>
@@ -512,6 +541,7 @@ export class PricingService {
       stationId: number;
       stationName: string;
       updates: Array<{
+        lineId?: string;
         orderId: number;
         typeId: number;
         itemName: string;
@@ -538,6 +568,7 @@ export class PricingService {
     const updatesByCharStation = new Map<
       string,
       Array<{
+        lineId?: string;
         orderId: number;
         typeId: number;
         itemName: string;
@@ -735,6 +766,8 @@ export class PricingService {
       });
 
       const entry = {
+        lineId: cycleLineMap.get(`${params2.stationId}:${params2.typeId}`)
+          ?.lineId,
         orderId: params2.order.order_id,
         typeId: params2.typeId,
         itemName: params2.itemName,
@@ -959,6 +992,359 @@ export class PricingService {
     return results;
   }
 
+  private normalizeFilterText(text: string, opts: ScriptFilterOptions): string {
+    let out = text ?? '';
+    if (opts.normalizeFilterText) {
+      if (opts.filterStripQuotes) {
+        out = out.replace(/["'`]/g, ' ');
+      }
+      out = out.replace(/\s+/g, ' ').trim();
+    }
+    if (opts.filterForceLowercase) {
+      out = out.toLowerCase();
+    }
+    return out;
+  }
+
+  private buildFilterQuery(text: string, opts: ScriptFilterOptions): string {
+    const cleaned = this.normalizeFilterText(text, opts);
+    const maxChars = Math.max(1, Math.trunc(opts.filterMaxChars));
+    return cleaned.length > maxChars ? cleaned.slice(-maxChars) : cleaned;
+  }
+
+  async undercutCheckScript(params: {
+    characterIds?: number[];
+    stationIds?: number[];
+    cycleId?: string;
+    groupingMode?: 'perOrder' | 'perCharacter' | 'global';
+    minUndercutVolumeRatio?: number;
+    minUndercutUnits?: number;
+    expiryRefreshDays?: number;
+    filterMaxChars?: number;
+    normalizeFilterText?: boolean;
+    filterForceLowercase?: boolean;
+    filterStripQuotes?: boolean;
+  }) {
+    let effectiveCycleId = params.cycleId;
+    if (!effectiveCycleId) {
+      try {
+        effectiveCycleId = await this.getCurrentOpenCycleId();
+      } catch {
+        throw new BadRequestException(
+          'No open cycle found. Provide cycleId explicitly or open a cycle first.',
+        );
+      }
+    }
+    const groups = await this.undercutCheck({
+      ...params,
+      cycleId: effectiveCycleId,
+    });
+
+    if (!groups.length) return groups;
+
+    const filterOpts: ScriptFilterOptions = {
+      filterMaxChars: params.filterMaxChars ?? 37,
+      normalizeFilterText: params.normalizeFilterText ?? true,
+      filterForceLowercase: params.filterForceLowercase ?? true,
+      filterStripQuotes: params.filterStripQuotes ?? false,
+    };
+
+    const charOrderResults = await Promise.allSettled(
+      groups.map((g) => this.esiChars.getOrders(g.characterId)),
+    );
+    const ordersByCharacter = new Map<
+      number,
+      Array<{
+        order_id: number;
+        type_id: number;
+        price: number;
+        volume_remain: number;
+        location_id: number;
+      }>
+    >();
+    charOrderResults.forEach((res, idx) => {
+      if (res.status !== 'fulfilled') return;
+      const charId = groups[idx].characterId;
+      const sells = res.value
+        .filter((o) => !o.is_buy_order)
+        .map((o) => ({
+          order_id: o.order_id,
+          type_id: o.type_id,
+          price: o.price,
+          volume_remain: o.volume_remain,
+          location_id: o.location_id,
+        }));
+      ordersByCharacter.set(charId, sells);
+    });
+
+    const allTypeIds = Array.from(
+      new Set(
+        groups.flatMap((g) => [
+          ...g.updates.map((u) => u.typeId),
+          ...(ordersByCharacter.get(g.characterId) ?? []).map((o) => o.type_id),
+        ]),
+      ),
+    );
+    const typeNameById = allTypeIds.length
+      ? await this.gameData.getTypeNames(allTypeIds)
+      : new Map<number, string>();
+
+    return groups.map((group) => {
+      const stationOrders = (
+        ordersByCharacter.get(group.characterId) ?? []
+      ).filter((o) => o.location_id === group.stationId);
+
+      const updates = group.updates.map((update) => {
+        const filterQuery = this.buildFilterQuery(update.itemName, filterOpts);
+        const matching = stationOrders.filter((o) => {
+          const name = typeNameById.get(o.type_id) ?? String(o.type_id);
+          const normalized = this.normalizeFilterText(name, filterOpts);
+          return filterQuery.length > 0 && normalized.includes(filterQuery);
+        });
+
+        const ranked = matching
+          .map((o) => ({
+            orderId: o.order_id,
+            typeId: o.type_id,
+            itemName: typeNameById.get(o.type_id) ?? String(o.type_id),
+            remaining: o.volume_remain,
+            currentPrice: o.price,
+          }))
+          .sort((a, b) =>
+            a.remaining !== b.remaining
+              ? a.remaining - b.remaining
+              : a.itemName !== b.itemName
+                ? a.itemName.localeCompare(b.itemName)
+                : a.orderId - b.orderId,
+          )
+          .map((o, idx) => ({ ...o, rowRank: idx + 1 }));
+
+        const ownRow = ranked.find((o) => o.orderId === update.orderId);
+        const uiTarget: ScriptUiTargetContext = {
+          filterQuery,
+          rowRank: ownRow?.rowRank ?? 1,
+          matchingOwnOrders: ranked,
+        };
+
+        return {
+          ...update,
+          uiTarget,
+        };
+      });
+
+      return {
+        ...group,
+        updates,
+      };
+    });
+  }
+
+  private buildScriptConfirmBatchHash(params: {
+    updates: Array<{
+      lineId: string;
+      quantity: number;
+      mode: 'reprice' | 'listing';
+      newUnitPrice?: number;
+      unitPrice?: number;
+    }>;
+  }): string {
+    const canonical = params.updates
+      .map((u) => ({
+        lineId: u.lineId,
+        quantity: u.quantity,
+        mode: u.mode,
+        newUnitPrice: u.newUnitPrice ?? null,
+        unitPrice: u.unitPrice ?? null,
+      }))
+      .sort((a, b) =>
+        a.lineId !== b.lineId
+          ? a.lineId.localeCompare(b.lineId)
+          : a.mode !== b.mode
+            ? a.mode.localeCompare(b.mode)
+            : a.quantity - b.quantity,
+      );
+    return crypto
+      .createHash('sha256')
+      .update(JSON.stringify(canonical))
+      .digest('hex');
+  }
+
+  async confirmBatchScript(params: {
+    idempotencyKey: string;
+    updates: Array<{
+      lineId: string;
+      quantity: number;
+      mode: 'reprice' | 'listing';
+      newUnitPrice?: number;
+      unitPrice?: number;
+    }>;
+  }) {
+    const idempotencyKey = (params.idempotencyKey ?? '').trim();
+    if (!idempotencyKey) {
+      throw new BadRequestException('idempotencyKey is required');
+    }
+    if (!params.updates?.length) {
+      throw new BadRequestException('updates must not be empty');
+    }
+
+    for (const u of params.updates) {
+      if (u.mode === 'reprice') {
+        if (!Number.isFinite(u.newUnitPrice) || Number(u.newUnitPrice) <= 0) {
+          throw new BadRequestException(
+            `newUnitPrice is required for reprice (${u.lineId})`,
+          );
+        }
+      } else if (!Number.isFinite(u.unitPrice) || Number(u.unitPrice) <= 0) {
+        throw new BadRequestException(
+          `unitPrice is required for listing (${u.lineId})`,
+        );
+      }
+    }
+
+    const payloadHash = this.buildScriptConfirmBatchHash(params);
+    const existing = await this.prisma.scriptConfirmBatch.findUnique({
+      where: { idempotencyKey },
+      select: { payloadHash: true, responseJson: true },
+    });
+    if (existing) {
+      if (existing.payloadHash !== payloadHash) {
+        throw new BadRequestException(
+          'idempotencyKey already exists with a different payload',
+        );
+      }
+      const cached = existing.responseJson as {
+        ok: true;
+        confirmedCount: number;
+        skippedCount: number;
+        failedCount: number;
+        results: Array<{
+          lineId: string;
+          status: 'confirmed' | 'skipped' | 'failed';
+          message?: string;
+        }>;
+      };
+      return { ...cached, cached: true };
+    }
+
+    const feeDefaults = AppConfig.arbitrage().fees;
+    const results = await this.prisma.$transaction(async (tx) => {
+      const out: Array<{
+        lineId: string;
+        status: 'confirmed' | 'skipped' | 'failed';
+        message?: string;
+      }> = [];
+
+      for (const u of params.updates) {
+        try {
+          if (u.mode === 'reprice') {
+            const total = u.quantity * Number(u.newUnitPrice);
+            const amount = (
+              total *
+              (feeDefaults.relistFeePercent / 100)
+            ).toFixed(2);
+            await tx.cycleLine.update({
+              where: { id: u.lineId },
+              data: {
+                relistFeesIsk: { increment: Number(amount) },
+                currentSellPriceIsk: Number(u.newUnitPrice).toFixed(2),
+              },
+            });
+          } else {
+            if (u.quantity <= 0) {
+              out.push({
+                lineId: u.lineId,
+                status: 'skipped',
+                message: 'Listing quantity <= 0, skipped.',
+              });
+              continue;
+            }
+            const total = u.quantity * Number(u.unitPrice);
+            const amount = (
+              total *
+              (feeDefaults.brokerFeePercent / 100)
+            ).toFixed(2);
+            await tx.cycleLine.update({
+              where: { id: u.lineId },
+              data: {
+                brokerFeesIsk: { increment: Number(amount) },
+                currentSellPriceIsk: Number(u.unitPrice).toFixed(2),
+                listedUnits: { increment: u.quantity },
+              },
+            });
+          }
+          out.push({ lineId: u.lineId, status: 'confirmed' });
+        } catch (e) {
+          out.push({
+            lineId: u.lineId,
+            status: 'failed',
+            message: e instanceof Error ? e.message : String(e ?? 'unknown'),
+          });
+        }
+      }
+      return out;
+    });
+
+    const response = {
+      ok: true as const,
+      confirmedCount: results.filter((r) => r.status === 'confirmed').length,
+      skippedCount: results.filter((r) => r.status === 'skipped').length,
+      failedCount: results.filter((r) => r.status === 'failed').length,
+      results,
+    };
+
+    try {
+      await this.prisma.scriptConfirmBatch.create({
+        data: {
+          idempotencyKey,
+          payloadHash,
+          responseJson: response as unknown as Prisma.InputJsonValue,
+        },
+      });
+    } catch {
+      // Race-safe fallback: another request with same key may have won.
+      const concurrent = await this.prisma.scriptConfirmBatch.findUnique({
+        where: { idempotencyKey },
+        select: { payloadHash: true, responseJson: true },
+      });
+      if (!concurrent)
+        throw new BadRequestException('Failed to store batch result');
+      if (concurrent.payloadHash !== payloadHash) {
+        throw new BadRequestException(
+          'idempotencyKey already exists with a different payload',
+        );
+      }
+      const cached = concurrent.responseJson as typeof response;
+      return { ...cached, cached: true };
+    }
+
+    return response;
+  }
+
+  async sendScriptRunReport(params: {
+    userId: string;
+    status: 'success' | 'failure' | 'late';
+    label?: string;
+    lines?: string[];
+  }) {
+    const titleBase =
+      params.status === 'success'
+        ? 'Script Run Success'
+        : params.status === 'late'
+          ? 'Script Run Late'
+          : 'Script Run Failure';
+    const title = params.label ? `${titleBase} - ${params.label}` : titleBase;
+
+    await this.notifications.sendSystemAlertDm({
+      userId: params.userId,
+      title,
+      lines: params.lines?.length
+        ? params.lines
+        : ['No additional details provided by automation script.'],
+    });
+
+    return { ok: true };
+  }
+
   async sellAppraiseByCommit(params: { cycleId: string }): Promise<
     Array<{
       itemName: string;
@@ -1106,8 +1492,12 @@ export class PricingService {
     return { ok: true, feeAmountISK: amount };
   }
 
-  private async getOpenCycleIdFor(date: Date): Promise<string> {
-    return await this.cycleService.getOpenCycleIdForDate(date);
+  private async getCurrentOpenCycleId(): Promise<string> {
+    const cycle = await this.cycleService.getCurrentOpenCycle();
+    if (!cycle?.id) {
+      throw new Error('No open cycle found');
+    }
+    return cycle.id;
   }
 
   async getRemainingLines(cycleId: string) {

@@ -19,8 +19,10 @@ import { UsersController } from './users.controller';
 // Guards & Strategy
 import { EveJwtStrategy } from './guards/jwt.strategy';
 import { DevApiKeyStrategy } from './guards/dev-api-key.strategy';
+import { ScriptApiKeyStrategy } from './guards/script-api-key.strategy';
 import { CompositeAuthGuard } from './guards/composite-auth.guard';
 import { RolesGuard } from './guards/roles.guard';
+import { ScriptApiKeyGuard } from './guards/script-api-key.guard';
 
 @Module({
   imports: [
@@ -42,8 +44,10 @@ import { RolesGuard } from './guards/roles.guard';
     // Guards & Strategy
     EveJwtStrategy,
     DevApiKeyStrategy,
+    ScriptApiKeyStrategy,
     CompositeAuthGuard,
     RolesGuard,
+    ScriptApiKeyGuard,
     Logger,
   ],
   controllers: [AuthController, UsersController],
@@ -56,6 +60,7 @@ import { RolesGuard } from './guards/roles.guard';
     EveJwtStrategy,
     CompositeAuthGuard,
     RolesGuard,
+    ScriptApiKeyGuard,
   ],
 })
 export class CharactersModule {}

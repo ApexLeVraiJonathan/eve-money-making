@@ -19,9 +19,12 @@ import type {
 export class ImportService {
   private readonly BASE_URL_ADAM4EVE = 'https://static.adam4eve.eu/';
   private readonly PG_INT_MAX = 2147483647;
-  private readonly sdeFreshnessWindowMs = AppConfig.sdeImport().freshnessWindowMs;
-  private sdeEnsurePromise: Promise<{ sdeDir: string; basePath: string }> | null =
-    null;
+  private readonly sdeFreshnessWindowMs =
+    AppConfig.sdeImport().freshnessWindowMs;
+  private sdeEnsurePromise: Promise<{
+    sdeDir: string;
+    basePath: string;
+  }> | null = null;
   private readonly sdeZipUrl =
     'https://developers.eveonline.com/static-data/eve-online-static-data-latest-jsonl.zip';
 
@@ -67,7 +70,9 @@ export class ImportService {
         e.name.startsWith('eve-online-static-data-') &&
         e.name.endsWith('-jsonl'),
     );
-    const basePath = candidateDir ? path.resolve(sdeDir, candidateDir.name) : sdeDir;
+    const basePath = candidateDir
+      ? path.resolve(sdeDir, candidateDir.name)
+      : sdeDir;
     return { sdeDir, basePath };
   }
 
@@ -151,7 +156,9 @@ export class ImportService {
   } | null> {
     if (this.sdeFreshnessWindowMs <= 0) return null;
     try {
-      const resolved = await this.resolveActiveSdeBasePath(this.getDefaultSdeDir());
+      const resolved = await this.resolveActiveSdeBasePath(
+        this.getDefaultSdeDir(),
+      );
       const requiredFiles = [
         'types.jsonl',
         'mapRegions.jsonl',
@@ -159,7 +166,9 @@ export class ImportService {
         'npcStations.jsonl',
       ];
       for (const file of requiredFiles) {
-        const exists = await this.fileExists(path.resolve(resolved.basePath, file));
+        const exists = await this.fileExists(
+          path.resolve(resolved.basePath, file),
+        );
         if (!exists) return null;
       }
       const refMtimeMs = await this.getSdeReferenceMtimeMs(resolved);
@@ -228,7 +237,8 @@ export class ImportService {
     try {
       const basePath = ensureLatestSde
         ? (await this.ensureLatestSdeDownloaded()).basePath
-        : (await this.resolveActiveSdeBasePath(this.getDefaultSdeDir())).basePath;
+        : (await this.resolveActiveSdeBasePath(this.getDefaultSdeDir()))
+            .basePath;
       const typesPath = path.resolve(basePath, 'types.jsonl');
 
       const batcher = this.dataImportService.createBatcher<{
@@ -333,7 +343,8 @@ export class ImportService {
     try {
       const basePath = ensureLatestSde
         ? (await this.ensureLatestSdeDownloaded()).basePath
-        : (await this.resolveActiveSdeBasePath(this.getDefaultSdeDir())).basePath;
+        : (await this.resolveActiveSdeBasePath(this.getDefaultSdeDir()))
+            .basePath;
       const regionsPath = path.resolve(basePath, 'mapRegions.jsonl');
 
       const batcher = this.dataImportService.createBatcher<{
@@ -422,7 +433,8 @@ export class ImportService {
     try {
       const basePath = ensureLatestSde
         ? (await this.ensureLatestSdeDownloaded()).basePath
-        : (await this.resolveActiveSdeBasePath(this.getDefaultSdeDir())).basePath;
+        : (await this.resolveActiveSdeBasePath(this.getDefaultSdeDir()))
+            .basePath;
       const systemsPath = path.resolve(basePath, 'mapSolarSystems.jsonl');
 
       const batcher = this.dataImportService.createBatcher<{
@@ -524,7 +536,8 @@ export class ImportService {
     try {
       const basePath = ensureLatestSde
         ? (await this.ensureLatestSdeDownloaded()).basePath
-        : (await this.resolveActiveSdeBasePath(this.getDefaultSdeDir())).basePath;
+        : (await this.resolveActiveSdeBasePath(this.getDefaultSdeDir()))
+            .basePath;
       const stationsPath = path.resolve(basePath, 'npcStations.jsonl');
       const stations = new Map<number, { id: number; solarSystemId: number }>();
 
@@ -610,7 +623,10 @@ export class ImportService {
                 await tx.stationId.upsert({
                   where: { id: item.id },
                   create: item,
-                  update: { solarSystemId: item.solarSystemId, name: item.name },
+                  update: {
+                    solarSystemId: item.solarSystemId,
+                    name: item.name,
+                  },
                 });
               }
             },
@@ -1097,7 +1113,10 @@ export class ImportService {
       results.typeIds = typeIdsResult;
       results.regionIds = regionIdsResult;
 
-      const solarSystemsResult = await this.importSolarSystemIds(batchSize, false);
+      const solarSystemsResult = await this.importSolarSystemIds(
+        batchSize,
+        false,
+      );
       results.solarSystems = solarSystemsResult;
 
       const stationsResult = await this.importNpcStationIds(batchSize, false);

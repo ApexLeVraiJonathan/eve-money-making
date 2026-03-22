@@ -511,7 +511,8 @@ export const AppConfig = {
    */
   sdeImport(): SdeImportConfig {
     const minutes = Number(process.env.SDE_REFRESH_WINDOW_MINUTES ?? 120);
-    const safeMinutes = Number.isFinite(minutes) && minutes >= 0 ? minutes : 120;
+    const safeMinutes =
+      Number.isFinite(minutes) && minutes >= 0 ? minutes : 120;
     return {
       freshnessWindowMs: safeMinutes * 60_000,
     };
