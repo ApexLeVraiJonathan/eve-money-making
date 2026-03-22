@@ -1048,6 +1048,7 @@ export class PricingService {
       filterForceLowercase: params.filterForceLowercase ?? true,
       filterStripQuotes: params.filterStripQuotes ?? false,
     };
+    const relistFeePct = AppConfig.arbitrage().fees.relistFeePercent;
 
     const charOrderResults = await Promise.allSettled(
       groups.map((g) => this.esiChars.getOrders(g.characterId)),
@@ -1128,6 +1129,13 @@ export class PricingService {
 
         return {
           ...update,
+          expectedRelistFeeIsk: Number(
+            (
+              update.remaining *
+              update.suggestedNewPriceTicked *
+              (relistFeePct / 100)
+            ).toFixed(2),
+          ),
           uiTarget,
         };
       });

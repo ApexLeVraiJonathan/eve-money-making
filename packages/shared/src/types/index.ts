@@ -869,6 +869,11 @@ export interface UndercutUpdate {
   competitorLowest: number;
   suggestedNewPriceTicked: number;
   /**
+   * Script endpoint enrichment: expected relist fee that confirm-reprice will write,
+   * computed as remaining * suggestedNewPriceTicked * relistFeePercent.
+   */
+  expectedRelistFeeIsk?: number;
+  /**
    * When present, indicates the order is near expiry and this update may be
    * a "refresh" even if not currently undercut.
    */

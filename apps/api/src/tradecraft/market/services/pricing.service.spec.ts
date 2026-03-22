@@ -339,6 +339,7 @@ describe('PricingService.undercutCheck', () => {
     expect(res).toHaveLength(1);
     expect(res[0].updates).toHaveLength(1);
     expect(res[0].updates[0].lineId).toBe('line-1');
+    expect(res[0].updates[0].expectedRelistFeeIsk).toBeGreaterThan(0);
   });
 });
 
