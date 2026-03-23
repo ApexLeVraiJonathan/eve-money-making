@@ -11,9 +11,11 @@ export class ScriptRunReportRequest {
   @ApiProperty({
     description: 'Target user ID for DM alert.',
     example: 'clx123abc456def',
+    required: false,
   })
+  @IsOptional()
   @IsString()
-  userId: string;
+  userId?: string;
 
   @ApiProperty({
     description: 'Overall run status.',

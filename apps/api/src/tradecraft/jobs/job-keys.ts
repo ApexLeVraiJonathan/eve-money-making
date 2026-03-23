@@ -80,4 +80,8 @@ export const JobKeys = {
     envKey: 'JOB_SYSTEM_TOKENS_REFRESH_ENABLED',
     legacyEnvKeys: ['JOB_SYSTEM_TOKENS_ENABLED'],
   },
+  scriptRunWatchdog: {
+    id: 'scriptRunWatchdog',
+    envKey: 'JOB_SCRIPT_RUN_WATCHDOG_ENABLED',
+  },
 } as const satisfies Record<string, JobKey>;

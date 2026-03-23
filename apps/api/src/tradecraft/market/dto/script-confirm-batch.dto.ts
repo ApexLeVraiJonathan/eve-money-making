@@ -9,6 +9,7 @@ import {
   IsString,
   IsUUID,
   Min,
+  MinLength,
   ValidateNested,
 } from 'class-validator';
 
@@ -64,6 +65,36 @@ export class ScriptConfirmBatchItemRequest {
   unitPrice?: number;
 }
 
+export class ScriptConfirmBatchFailedItemRequest {
+  @ApiProperty({
+    description:
+      'Cycle line ID if known (optional for UI-level failures before line resolution).',
+    format: 'uuid',
+    required: false,
+  })
+  @IsOptional()
+  @IsUUID()
+  lineId?: string;
+
+  @ApiProperty({
+    description: 'Item name associated with the failure.',
+    required: false,
+    example: 'Tritanium',
+  })
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  itemName?: string;
+
+  @ApiProperty({
+    description: 'Human-readable failure reason from automation.',
+    example: 'OCR mismatch after retries',
+  })
+  @IsString()
+  @MinLength(1)
+  reason: string;
+}
+
 export class ScriptConfirmBatchRequest {
   @ApiProperty({
     description:
@@ -76,10 +107,25 @@ export class ScriptConfirmBatchRequest {
   @ApiProperty({
     description: 'List of successful UI updates to confirm.',
     type: [ScriptConfirmBatchItemRequest],
+    required: false,
   })
+  @IsOptional()
   @IsArray()
   @ArrayMinSize(1)
   @ValidateNested({ each: true })
   @Type(() => ScriptConfirmBatchItemRequest)
-  updates: ScriptConfirmBatchItemRequest[];
+  updates?: ScriptConfirmBatchItemRequest[];
+
+  @ApiProperty({
+    description:
+      'List of UI failures (not persisted as fees) for alerting/observability.',
+    type: [ScriptConfirmBatchFailedItemRequest],
+    required: false,
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMinSize(1)
+  @ValidateNested({ each: true })
+  @Type(() => ScriptConfirmBatchFailedItemRequest)
+  failedItems?: ScriptConfirmBatchFailedItemRequest[];
 }

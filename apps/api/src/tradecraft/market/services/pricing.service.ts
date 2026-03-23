@@ -1155,6 +1155,11 @@ export class PricingService {
       newUnitPrice?: number;
       unitPrice?: number;
     }>;
+    failedItems?: Array<{
+      lineId?: string;
+      itemName?: string;
+      reason: string;
+    }>;
   }): string {
     const canonical = params.updates
       .map((u) => ({
@@ -1171,31 +1176,57 @@ export class PricingService {
             ? a.mode.localeCompare(b.mode)
             : a.quantity - b.quantity,
       );
+    const failedCanonical = (params.failedItems ?? [])
+      .map((f) => ({
+        lineId: f.lineId ?? null,
+        itemName: f.itemName ?? null,
+        reason: f.reason,
+      }))
+      .sort((a, b) =>
+        (a.lineId ?? '').localeCompare(b.lineId ?? '') ||
+        (a.itemName ?? '').localeCompare(b.itemName ?? '') ||
+        a.reason.localeCompare(b.reason),
+      );
     return crypto
       .createHash('sha256')
-      .update(JSON.stringify(canonical))
+      .update(
+        JSON.stringify({
+          updates: canonical,
+          failedItems: failedCanonical,
+        }),
+      )
       .digest('hex');
   }
 
   async confirmBatchScript(params: {
     idempotencyKey: string;
-    updates: Array<{
+    updates?: Array<{
       lineId: string;
       quantity: number;
       mode: 'reprice' | 'listing';
       newUnitPrice?: number;
       unitPrice?: number;
     }>;
+    failedItems?: Array<{
+      lineId?: string;
+      itemName?: string;
+      reason: string;
+    }>;
+    notifyUserId?: string;
   }) {
     const idempotencyKey = (params.idempotencyKey ?? '').trim();
     if (!idempotencyKey) {
       throw new BadRequestException('idempotencyKey is required');
     }
-    if (!params.updates?.length) {
-      throw new BadRequestException('updates must not be empty');
+    const updates = params.updates ?? [];
+    const failedItems = params.failedItems ?? [];
+    if (!updates.length && !failedItems.length) {
+      throw new BadRequestException(
+        'Provide at least one successful update or failedItems entry',
+      );
     }
 
-    for (const u of params.updates) {
+    for (const u of updates) {
       if (u.mode === 'reprice') {
         if (!Number.isFinite(u.newUnitPrice) || Number(u.newUnitPrice) <= 0) {
           throw new BadRequestException(
@@ -1209,7 +1240,10 @@ export class PricingService {
       }
     }
 
-    const payloadHash = this.buildScriptConfirmBatchHash(params);
+    const payloadHash = this.buildScriptConfirmBatchHash({
+      updates,
+      failedItems,
+    });
     const existing = await this.prisma.scriptConfirmBatch.findUnique({
       where: { idempotencyKey },
       select: { payloadHash: true, responseJson: true },
@@ -1225,6 +1259,12 @@ export class PricingService {
         confirmedCount: number;
         skippedCount: number;
         failedCount: number;
+        clientFailedCount?: number;
+        clientFailedItems?: Array<{
+          lineId?: string;
+          itemName?: string;
+          reason: string;
+        }>;
         results: Array<{
           lineId: string;
           status: 'confirmed' | 'skipped' | 'failed';
@@ -1242,7 +1282,7 @@ export class PricingService {
         message?: string;
       }> = [];
 
-      for (const u of params.updates) {
+      for (const u of updates) {
         try {
           if (u.mode === 'reprice') {
             const total = u.quantity * Number(u.newUnitPrice);
@@ -1297,6 +1337,8 @@ export class PricingService {
       confirmedCount: results.filter((r) => r.status === 'confirmed').length,
       skippedCount: results.filter((r) => r.status === 'skipped').length,
       failedCount: results.filter((r) => r.status === 'failed').length,
+      clientFailedCount: failedItems.length,
+      clientFailedItems: failedItems,
       results,
     };
 
@@ -1325,15 +1367,54 @@ export class PricingService {
       return { ...cached, cached: true };
     }
 
+    const notifyUserId = (params.notifyUserId ?? '').trim();
+    if (notifyUserId && AppConfig.boolEnv(process.env.SCRIPT_CONFIRM_BATCH_ALERTS_ENABLED ?? 'true')) {
+      const summaryLines: string[] = [
+        `idempotencyKey: ${idempotencyKey}`,
+        `confirmed: ${response.confirmedCount}`,
+        `skipped: ${response.skippedCount}`,
+        `backend failed: ${response.failedCount}`,
+        `client failed: ${response.clientFailedCount}`,
+      ];
+      const backendFailed = response.results.filter((r) => r.status === 'failed');
+      if (backendFailed.length) {
+        summaryLines.push('Backend failed items:');
+        for (const item of backendFailed.slice(0, 8)) {
+          summaryLines.push(
+            `- ${item.lineId}: ${item.message ?? 'unknown backend error'}`,
+          );
+        }
+      }
+      if (failedItems.length) {
+        summaryLines.push('Client failed items:');
+        for (const item of failedItems.slice(0, 8)) {
+          summaryLines.push(
+            `- ${item.itemName ?? item.lineId ?? 'unknown'}: ${item.reason}`,
+          );
+        }
+      }
+      await this.notifications.sendSystemAlertDm({
+        userId: notifyUserId,
+        title: 'Script Confirm Batch',
+        lines: summaryLines,
+      });
+    }
+
     return response;
   }
 
   async sendScriptRunReport(params: {
-    userId: string;
+    userId?: string;
     status: 'success' | 'failure' | 'late';
     label?: string;
     lines?: string[];
   }) {
+    const userId = (params.userId ?? '').trim();
+    if (!userId) {
+      throw new BadRequestException(
+        'userId is required (or must be resolvable from script API key auth)',
+      );
+    }
     const titleBase =
       params.status === 'success'
         ? 'Script Run Success'
@@ -1343,7 +1424,7 @@ export class PricingService {
     const title = params.label ? `${titleBase} - ${params.label}` : titleBase;
 
     await this.notifications.sendSystemAlertDm({
-      userId: params.userId,
+      userId,
       title,
       lines: params.lines?.length
         ? params.lines

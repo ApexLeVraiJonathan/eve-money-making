@@ -29,6 +29,7 @@ import { ExpiryNotificationsJob } from './expiry-notifications.job';
 import { WalletImportsJob } from './wallet-imports.job';
 import { CapitalRecomputeJob } from './capital-recompute.job';
 import { SystemTokensRefreshJob } from './system-tokens-refresh.job';
+import { ScriptRunWatchdogJob } from './script-run-watchdog.job';
 
 @Module({
   imports: [
@@ -66,6 +67,7 @@ import { SystemTokensRefreshJob } from './system-tokens-refresh.job';
     WalletImportsJob,
     CapitalRecomputeJob,
     SystemTokensRefreshJob,
+    ScriptRunWatchdogJob,
   ],
   controllers: [JobsController],
 })
