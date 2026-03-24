@@ -73,7 +73,6 @@ export type SdeImportConfig = {
 
 export type ScriptRunWatchdogConfig = {
   notifyUserId: string | null;
-  expectedTimesUtc: string[];
   graceMinutes: number;
   alertWindowMinutes: number;
 };
@@ -515,9 +514,6 @@ export const AppConfig = {
 
   /**
    * Script run watchdog configuration.
-   *
-   * expectedTimesUtc format: comma-separated HH:mm values in UTC.
-   * Example: "08:00,20:00"
    */
   scriptRunWatchdog(): ScriptRunWatchdogConfig {
     const notifyUserRaw =
@@ -529,16 +525,6 @@ export const AppConfig = {
         ? notifyUserRaw.trim()
         : null;
 
-    const expectedRaw = process.env.SCRIPT_EXPECTED_RUN_TIMES_UTC ?? '';
-    const expectedTimesUtc = expectedRaw
-      .split(',')
-      .map((x) => x.trim())
-      .filter((x) => /^\d{1,2}:\d{2}$/.test(x))
-      .map((x) => {
-        const [h, m] = x.split(':');
-        return `${h.padStart(2, '0')}:${m}`;
-      });
-
     const graceMinutes = Number(process.env.SCRIPT_EXPECTED_RUN_GRACE_MINUTES ?? 45);
     const alertWindowMinutes = Number(
       process.env.SCRIPT_EXPECTED_RUN_ALERT_WINDOW_MINUTES ?? 1,
@@ -546,7 +532,6 @@ export const AppConfig = {
 
     return {
       notifyUserId,
-      expectedTimesUtc,
       graceMinutes:
         Number.isFinite(graceMinutes) && graceMinutes >= 1 ? graceMinutes : 45,
       alertWindowMinutes:

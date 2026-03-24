@@ -6,9 +6,26 @@ import { AppConfig } from '@api/common/config';
 import { JobsGate } from './jobs-gate.service';
 import { JobKeys } from './job-keys';
 
+const WATCHDOG_TIMEZONE = 'America/Toronto';
+const WATCHDOG_SLOTS = [
+  { hour: 8, minute: 0, label: '08:00' },
+  { hour: 16, minute: 0, label: '16:00' },
+  { hour: 0, minute: 0, label: '00:00' },
+] as const;
+
 @Injectable()
 export class ScriptRunWatchdogJob {
   private readonly logger = new Logger(ScriptRunWatchdogJob.name);
+  private readonly tzPartsFormatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: WATCHDOG_TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23',
+  });
 
   constructor(
     private readonly gate: JobsGate,
@@ -16,32 +33,78 @@ export class ScriptRunWatchdogJob {
     private readonly notifications: NotificationService,
   ) {}
 
+  private getZonedParts(date: Date): {
+    year: number;
+    month: number;
+    day: number;
+    hour: number;
+    minute: number;
+    second: number;
+  } {
+    const parts = this.tzPartsFormatter.formatToParts(date);
+    const pick = (type: string): number => {
+      const raw = parts.find((p) => p.type === type)?.value ?? '0';
+      return Number(raw);
+    };
+    return {
+      year: pick('year'),
+      month: pick('month'),
+      day: pick('day'),
+      hour: pick('hour'),
+      minute: pick('minute'),
+      second: pick('second'),
+    };
+  }
+
+  private zonedLocalToUtcDate(
+    year: number,
+    month: number,
+    day: number,
+    hour: number,
+    minute: number,
+    second = 0,
+  ): Date {
+    // Iteratively solve UTC instant that formats to target local time in WATCHDOG_TIMEZONE.
+    let guess = new Date(Date.UTC(year, month - 1, day, hour, minute, second, 0));
+    for (let i = 0; i < 6; i++) {
+      const z = this.getZonedParts(guess);
+      const actualMs = Date.UTC(
+        z.year,
+        z.month - 1,
+        z.day,
+        z.hour,
+        z.minute,
+        z.second,
+      );
+      const targetMs = Date.UTC(year, month - 1, day, hour, minute, second);
+      const diffMs = actualMs - targetMs;
+      if (diffMs === 0) break;
+      guess = new Date(guess.getTime() - diffMs);
+    }
+    return guess;
+  }
+
   @Cron('* * * * *')
   async run(): Promise<void> {
     if (!this.gate.shouldRun(JobKeys.scriptRunWatchdog)) return;
 
     const cfg = AppConfig.scriptRunWatchdog();
-    if (!cfg.notifyUserId || !cfg.expectedTimesUtc.length) return;
+    if (!cfg.notifyUserId) return;
 
     const now = new Date();
-    const todayUtc = now.toISOString().slice(0, 10); // YYYY-MM-DD
+    const zonedNow = this.getZonedParts(now);
+    const zonedDateLabel = `${String(zonedNow.year).padStart(4, '0')}-${String(
+      zonedNow.month,
+    ).padStart(2, '0')}-${String(zonedNow.day).padStart(2, '0')}`;
 
-    for (const timeStr of cfg.expectedTimesUtc) {
-      const [hRaw, mRaw] = timeStr.split(':');
-      const hour = Number(hRaw);
-      const minute = Number(mRaw);
-      if (!Number.isFinite(hour) || !Number.isFinite(minute)) continue;
-
-      const scheduledAt = new Date(
-        Date.UTC(
-          now.getUTCFullYear(),
-          now.getUTCMonth(),
-          now.getUTCDate(),
-          hour,
-          minute,
-          0,
-          0,
-        ),
+    for (const slot of WATCHDOG_SLOTS) {
+      const scheduledAt = this.zonedLocalToUtcDate(
+        zonedNow.year,
+        zonedNow.month,
+        zonedNow.day,
+        slot.hour,
+        slot.minute,
+        0,
       );
       const lateAt = new Date(scheduledAt.getTime() + cfg.graceMinutes * 60_000);
       const alertUntil = new Date(
@@ -70,7 +133,8 @@ export class ScriptRunWatchdogJob {
         userId: cfg.notifyUserId,
         title: 'Script Run Late',
         lines: [
-          `No /pricing/script/confirm-batch call detected for expected slot ${todayUtc} ${timeStr} UTC.`,
+          `No /pricing/script/confirm-batch call detected for expected slot ${zonedDateLabel} ${slot.label} (${WATCHDOG_TIMEZONE}).`,
+          `Checked UTC window: ${scheduledAt.toISOString()} -> ${lateAt.toISOString()}`,
           `Grace window: ${cfg.graceMinutes} minutes`,
           latest
             ? `Latest confirm-batch: ${latest.createdAt.toISOString()} (${latest.idempotencyKey})`
@@ -78,7 +142,7 @@ export class ScriptRunWatchdogJob {
         ],
       });
       this.logger.warn(
-        `Late script run alert sent for slot ${todayUtc} ${timeStr} UTC`,
+        `Late script run alert sent for slot ${zonedDateLabel} ${slot.label} (${WATCHDOG_TIMEZONE})`,
       );
     }
   }
