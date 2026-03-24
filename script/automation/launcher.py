@@ -220,3 +220,11 @@ class LauncherOrchestrator:
             self._current_account = account
 
         self._ensure_target_profile(profile)
+
+    def close_current_client_if_open(self) -> bool:
+        """Close the active LeVraiMindTrader client using launcher quit flow."""
+        self._sync_current_profile()
+        if not self._current_account:
+            return False
+        self._close_active_client()
+        return True

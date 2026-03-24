@@ -258,7 +258,14 @@ def run(cfg: Config) -> None:
         print(f"Warning: failed to send run report: {exc}")
 
     if cfg.run_mode == "scheduled" and cfg.close_app_when_done:
-        close_app(cfg)
+        closed_via_launcher = False
+        if cfg.enable_launcher_orchestration:
+            try:
+                closed_via_launcher = launcher.close_current_client_if_open()
+            except Exception as exc:
+                print(f"Warning: launcher quit flow failed, falling back to hotkey close: {exc}")
+        if not closed_via_launcher:
+            close_app(cfg)
 
 
 def close_app(cfg: Config) -> None:
