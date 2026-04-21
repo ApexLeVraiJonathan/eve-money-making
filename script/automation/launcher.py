@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import re
 import shlex
 import subprocess
@@ -10,6 +11,21 @@ import pyautogui
 
 from .config import Config
 from .controls import RuntimeControls
+
+try:
+    import mss
+except Exception:  # pragma: no cover
+    mss = None
+
+try:
+    import cv2
+except Exception:  # pragma: no cover
+    cv2 = None
+
+try:
+    import numpy as np
+except Exception:  # pragma: no cover
+    np = None
 
 
 class LauncherOrchestrator:
@@ -129,8 +145,92 @@ class LauncherOrchestrator:
         self._wait(self.cfg.launcher_post_title_detect_wait)
 
     def _open_market_orders(self) -> None:
-        self._click(self.cfg.launcher_market_orders_xy)
+        image_path = (self.cfg.launcher_market_button_image_path or "").strip()
+        if not image_path:
+            self._click(self.cfg.launcher_market_orders_xy)
+            self._wait(self.cfg.launcher_market_hold_seconds)
+            return
+
+        resolved_image_path = image_path
+        if not os.path.isabs(resolved_image_path):
+            resolved_image_path = os.path.join(
+                os.path.dirname(os.path.dirname(__file__)), resolved_image_path
+            )
+        if not os.path.exists(resolved_image_path):
+            raise RuntimeError(
+                f"Market Orders image template not found: {resolved_image_path}"
+            )
+
+        found_xy = self._wait_for_market_orders_button(
+            image_path=resolved_image_path,
+            timeout_seconds=self.cfg.launcher_market_button_timeout,
+            poll_seconds=self.cfg.launcher_market_button_poll_seconds,
+            confidence=self.cfg.launcher_market_button_confidence,
+            region=self.cfg.launcher_market_button_search_region,
+        )
+        if found_xy is None:
+            raise RuntimeError(
+                "Timed out waiting for Market Orders button to appear "
+                f"(timeout={self.cfg.launcher_market_button_timeout:.1f}s)."
+            )
+        self._click(found_xy)
         self._wait(self.cfg.launcher_market_hold_seconds)
+
+    def _wait_for_market_orders_button(
+        self,
+        image_path: str,
+        timeout_seconds: float,
+        poll_seconds: float,
+        confidence: float,
+        region: Optional[Tuple[int, int, int, int]],
+    ) -> Optional[Tuple[int, int]]:
+        if mss is None or cv2 is None or np is None:
+            raise RuntimeError(
+                "MSS/OpenCV/Numpy are required for MARKET_ORDERS_BUTTON_IMAGE_PATH matching."
+            )
+        template = cv2.imread(image_path, cv2.IMREAD_COLOR)
+        if template is None:
+            raise RuntimeError(f"Could not read Market Orders template image: {image_path}")
+
+        conf = max(0.10, min(0.99, float(confidence)))
+        end = time.time() + max(0.0, timeout_seconds)
+        with mss.mss() as sct:
+            while time.time() < end:
+                if self.controls is not None and self.controls.checkpoint():
+                    raise KeyboardInterrupt("Stop hotkey requested by user.")
+
+                if region:
+                    x, y, w, h = region
+                    monitor = {
+                        "left": int(x),
+                        "top": int(y),
+                        "width": int(w),
+                        "height": int(h),
+                    }
+                    left, top = int(x), int(y)
+                else:
+                    mon = sct.monitors[0]
+                    monitor = {
+                        "left": int(mon["left"]),
+                        "top": int(mon["top"]),
+                        "width": int(mon["width"]),
+                        "height": int(mon["height"]),
+                    }
+                    left, top = int(mon["left"]), int(mon["top"])
+
+                shot = sct.grab(monitor)
+                haystack = np.array(shot)[:, :, :3]
+                th, tw = template.shape[:2]
+                hh, hw = haystack.shape[:2]
+                if th <= hh and tw <= hw:
+                    result = cv2.matchTemplate(haystack, template, cv2.TM_CCOEFF_NORMED)
+                    _, max_val, _, max_loc = cv2.minMaxLoc(result)
+                    if float(max_val) >= conf:
+                        mx = int(left + max_loc[0] + (tw // 2))
+                        my = int(top + max_loc[1] + (th // 2))
+                        return mx, my
+                self._wait(max(0.05, poll_seconds))
+        return None
 
     def _close_active_client(self) -> None:
         pyautogui.press("esc")

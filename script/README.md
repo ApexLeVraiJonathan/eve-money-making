@@ -115,6 +115,11 @@ LAUNCHER_ACCOUNT_POINTS={}
 LAUNCHER_SWITCH_MENU_XY=3139,987
 LAUNCHER_SWITCH_NEXT_XY=3161,409
 LAUNCHER_MARKET_ORDERS_XY=3745,488
+MARKET_ORDERS_BUTTON_IMAGE_PATH=
+MARKET_ORDERS_SEARCH_REGION=
+MARKET_ORDERS_MATCH_CONFIDENCE=0.80
+LAUNCHER_MARKET_BUTTON_TIMEOUT=300
+LAUNCHER_MARKET_BUTTON_POLL_SECONDS=0.25
 LAUNCHER_QUIT_BUTTON_XY=3303,982
 LAUNCHER_PRE_CTRL_CLICK_WAIT=2.0
 LAUNCHER_POST_LAUNCH_WAIT=10.0
@@ -254,6 +259,43 @@ Options:
 - `--no-with-launcher-accounts`: skip launcher account capture (enabled by default)
 - `--no-save`: skip writing output file (saving enabled by default)
 - `--save-path <path>`: choose output file path (default `calibrated.env`)
+
+### Helper: market orders button detection
+
+Use this side script to test reliable detection/wait logic for Market Orders:
+
+```powershell
+python test_market_orders_button.py --mode auto --timeout 35
+```
+
+Optional detection envs (only if you want detection gates instead of blind click):
+
+```env
+MARKET_ORDERS_PIXEL_XY=
+MARKET_ORDERS_PIXEL_RGB=
+MARKET_ORDERS_PIXEL_TOLERANCE=24
+MARKET_ORDERS_BUTTON_IMAGE_PATH=
+MARKET_ORDERS_SEARCH_REGION=
+```
+
+If image matching seems different from manual screenshots, capture the template using
+PyAutoGUI itself (same screenshot path as matching):
+
+```powershell
+python capture_template_pyautogui.py --out market-order-button-pya.png
+```
+
+If PyAutoGUI screenshots look black/inaccurate on your machine, use MSS capture instead:
+
+```powershell
+python capture_template_mss.py --out market-order-button-mss.png
+```
+
+For detection, prefer MSS+OpenCV engine:
+
+```powershell
+python test_market_orders_button.py --mode image --image-engine mss_cv2 --timeout 40 --confidence 0.80
+```
 
 ## Run
 

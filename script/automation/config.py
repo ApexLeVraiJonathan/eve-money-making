@@ -154,6 +154,11 @@ class Config:
     launcher_switch_menu_xy: Tuple[int, int]
     launcher_switch_next_xy: Tuple[int, int]
     launcher_market_orders_xy: Tuple[int, int]
+    launcher_market_button_image_path: str
+    launcher_market_button_search_region: Optional[Tuple[int, int, int, int]]
+    launcher_market_button_confidence: float
+    launcher_market_button_timeout: float
+    launcher_market_button_poll_seconds: float
     launcher_quit_button_xy: Tuple[int, int]
     launcher_pre_ctrl_click_wait: float
     launcher_post_launch_wait: float
@@ -210,6 +215,7 @@ class Config:
         launcher_market_orders_xy = (
             parse_point("LAUNCHER_MARKET_ORDERS_XY") or (3745, 488)
         )
+        launcher_market_button_search_region = parse_region("MARKET_ORDERS_SEARCH_REGION")
         launcher_quit_button_xy = (
             parse_point("LAUNCHER_QUIT_BUTTON_XY") or (3303, 982)
         )
@@ -342,6 +348,12 @@ class Config:
             launcher_switch_menu_xy=launcher_switch_menu_xy,
             launcher_switch_next_xy=launcher_switch_next_xy,
             launcher_market_orders_xy=launcher_market_orders_xy,
+            launcher_market_button_image_path=env_str("MARKET_ORDERS_BUTTON_IMAGE_PATH", "")
+            or "",
+            launcher_market_button_search_region=launcher_market_button_search_region,
+            launcher_market_button_confidence=env_float("MARKET_ORDERS_MATCH_CONFIDENCE", 0.80),
+            launcher_market_button_timeout=env_float("LAUNCHER_MARKET_BUTTON_TIMEOUT", 300.0),
+            launcher_market_button_poll_seconds=env_float("LAUNCHER_MARKET_BUTTON_POLL_SECONDS", 0.25),
             launcher_quit_button_xy=launcher_quit_button_xy,
             launcher_pre_ctrl_click_wait=env_float("LAUNCHER_PRE_CTRL_CLICK_WAIT", 2.0),
             launcher_post_launch_wait=env_float("LAUNCHER_POST_LAUNCH_WAIT", 10.0),
