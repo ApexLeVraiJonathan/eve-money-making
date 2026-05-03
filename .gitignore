@@ -5,3 +5,7 @@ build
 .playwright-mcp
 prompts
 apps/api/sde-jsonl
+script/.venv
+script/.venv312
+script/__pycache__
+script/automation/__pycache__
