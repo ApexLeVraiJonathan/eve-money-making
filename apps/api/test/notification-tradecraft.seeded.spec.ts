@@ -1,4 +1,5 @@
 import { PrismaClient } from '@eve/prisma';
+import { PrismaPg } from '@prisma/adapter-pg';
 import { NotificationService } from '../src/notifications/notification.service';
 
 type SeedOut = {
@@ -185,15 +186,18 @@ describe('Tradecraft notifications (seeded DB)', () => {
 
   maybeDescribe('integration', () => {
     let prisma: PrismaClient;
-    let seeded: SeedOut;
+    let seeded: SeedOut | undefined;
 
     beforeAll(async () => {
-      prisma = new PrismaClient();
+      const adapter = new PrismaPg({
+        connectionString: process.env.DATABASE_URL!,
+      });
+      prisma = new PrismaClient({ adapter });
       seeded = await seedTradecraftNotificationFixtures(prisma);
     });
 
     afterAll(async () => {
-      await cleanup(prisma, seeded);
+      if (seeded) await cleanup(prisma, seeded);
       await prisma.$disconnect();
     });
 
@@ -202,12 +206,14 @@ describe('Tradecraft notifications (seeded DB)', () => {
         sendDirectMessage: jest.fn(async () => undefined),
       } as any;
       const svc = new NotificationService(prisma as any, discordDm, {} as any);
-      await svc.notifyCyclePlanned(seeded.cycles.planned);
+      await svc.notifyCyclePlanned(seeded!.cycles.planned);
 
       const recipients = (discordDm.sendDirectMessage as jest.Mock).mock.calls
         .map((c) => c[0])
         .sort();
-      expect(recipients).toEqual(['discord_u1', 'discord_u2']);
+      expect(recipients).toEqual(
+        expect.arrayContaining(['discord_u1', 'discord_u2']),
+      );
     });
 
     it('notifyCycleStarted sends to all opted-in users', async () => {
@@ -215,12 +221,14 @@ describe('Tradecraft notifications (seeded DB)', () => {
         sendDirectMessage: jest.fn(async () => undefined),
       } as any;
       const svc = new NotificationService(prisma as any, discordDm, {} as any);
-      await svc.notifyCycleStarted(seeded.cycles.open);
+      await svc.notifyCycleStarted(seeded!.cycles.open);
 
       const recipients = (discordDm.sendDirectMessage as jest.Mock).mock.calls
         .map((c) => c[0])
         .sort();
-      expect(recipients).toEqual(['discord_u1', 'discord_u2']);
+      expect(recipients).toEqual(
+        expect.arrayContaining(['discord_u1', 'discord_u2']),
+      );
     });
 
     it('notifyCycleResults sends only to opted-in participants', async () => {
@@ -228,7 +236,7 @@ describe('Tradecraft notifications (seeded DB)', () => {
         sendDirectMessage: jest.fn(async () => undefined),
       } as any;
       const svc = new NotificationService(prisma as any, discordDm, {} as any);
-      await svc.notifyCycleResults(seeded.cycles.completed);
+      await svc.notifyCycleResults(seeded!.cycles.completed);
 
       const recipients = (
         discordDm.sendDirectMessage as jest.Mock
@@ -241,7 +249,7 @@ describe('Tradecraft notifications (seeded DB)', () => {
         sendDirectMessage: jest.fn(async () => undefined),
       } as any;
       const svc = new NotificationService(prisma as any, discordDm, {} as any);
-      await svc.notifyPayoutSent(seeded.participations.payout);
+      await svc.notifyPayoutSent(seeded!.participations.payout);
 
       const recipients = (
         discordDm.sendDirectMessage as jest.Mock

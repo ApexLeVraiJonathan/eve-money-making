@@ -77,4 +77,4 @@ export type {
   CycleSnapshot,
   CapitalResponse,
   PayoutSuggestion,
-} from "./types";
+} from "./types/cycles";

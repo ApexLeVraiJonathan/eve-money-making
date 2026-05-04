@@ -121,8 +121,6 @@ Per-job flags (all default to **enabled** when the env var is **unset**):
 - **JOB_CAPITAL_RECOMPUTE_ENABLED**: Capital recompute for open cycles (hourly).
   - Legacy alias: `JOB_CAPITAL_ENABLED`
 - **JOB_DAILY_IMPORTS_ENABLED**: Daily market import checks (daily @ 10:00).
-- **JOB_SKILL_PLAN_NOTIFICATIONS_ENABLED**: Skill plan notifications (hourly).
-- **JOB_SKILL_FARM_NOTIFICATIONS_ENABLED**: Skill farm notifications (hourly).
 - **JOB_EXPIRY_NOTIFICATIONS_ENABLED**: PLEX/MCT/booster expiry summaries (daily @ 09:00).
 - **JOB_ESI_CACHE_CLEANUP_ENABLED**: ESI cache cleanup (hourly).
   - Legacy alias: `JOB_CLEANUP_ENABLED`

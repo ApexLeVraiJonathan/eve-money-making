@@ -15,6 +15,7 @@ import { LiquidityService } from './services/liquidity.service';
 import { PackageService } from './services/package.service';
 import { TrackedStationService } from './services/tracked-station.service';
 import { MarketDataService } from './services/market-data.service';
+import { StructureMarketPricingService } from './services/structure-market-pricing.service';
 
 // Controllers
 import { ArbitrageController } from './arbitrage.controller';
@@ -41,6 +42,7 @@ import { TrackedStationsController } from './tracked-stations.controller';
     PackageService,
     TrackedStationService,
     MarketDataService,
+    StructureMarketPricingService,
     Logger,
   ],
   controllers: [

@@ -27,15 +27,21 @@ export function useTriggersPageController() {
   const [tradeDate, setTradeDate] = React.useState("");
   const [daysBack, setDaysBack] = React.useState("15");
   const [stationId, setStationId] = React.useState("");
-  const [trackedStations, setTrackedStations] = React.useState<TrackedStation[]>([]);
-  const [importSummary, setImportSummary] = React.useState<ImportSummary | null>(null);
-  const [marketStaleness, setMarketStaleness] = React.useState<MarketStaleness | null>(
+  const [trackedStations, setTrackedStations] = React.useState<
+    TrackedStation[]
+  >([]);
+  const [importSummary, setImportSummary] =
+    React.useState<ImportSummary | null>(null);
+  const [marketStaleness, setMarketStaleness] =
+    React.useState<MarketStaleness | null>(null);
+  const [matchResult, setMatchResult] = React.useState<MatchResult | null>(
     null,
   );
-  const [matchResult, setMatchResult] = React.useState<MatchResult | null>(null);
   const [snapshots, setSnapshots] = React.useState<CycleSnapshot[]>([]);
   const [currentCycleId, setCurrentCycleId] = React.useState<string>("");
-  const [missingTradesNote, setMissingTradesNote] = React.useState<string | null>(null);
+  const [missingTradesNote, setMissingTradesNote] = React.useState<
+    string | null
+  >(null);
 
   const loadImportSummary = React.useCallback(async () => {
     try {
@@ -48,7 +54,7 @@ export function useTriggersPageController() {
 
   const loadMarketStaleness = React.useCallback(async () => {
     try {
-      const data = await client.get<MarketStaleness>("/jobs/staleness");
+      const data = await client.post<MarketStaleness>("/jobs/staleness", {});
       setMarketStaleness(data);
     } catch (error) {
       console.error("Error loading market staleness:", error);
@@ -77,12 +83,21 @@ export function useTriggersPageController() {
         const successes = entries.filter(([, value]) => value.ok).length;
         const failures = total - successes;
 
-        setMissingTradesNote(buildMissingTradesNote(entries, successes, failures));
+        setMissingTradesNote(
+          buildMissingTradesNote(entries, successes, failures),
+        );
 
-        toast.success("Missing day imports completed. See note below for details.");
+        toast.success(
+          "Missing day imports completed. See note below for details.",
+        );
       } else {
-        const data = await client.post<MessageResponse>(`/import/${endpoint}`, body);
-        toast.success(`Import triggered successfully: ${data.message || "Completed"}`);
+        const data = await client.post<MessageResponse>(
+          `/import/${endpoint}`,
+          body,
+        );
+        toast.success(
+          `Import triggered successfully: ${data.message || "Completed"}`,
+        );
       }
       await loadImportSummary();
       await loadMarketStaleness();
@@ -90,8 +105,13 @@ export function useTriggersPageController() {
       const errorMessage =
         error instanceof Error ? error.message : "Failed to trigger import";
 
-      if (errorMessage.includes("authenticated") || errorMessage.includes("401")) {
-        toast.error("Session expired. Please refresh the page and log in again.");
+      if (
+        errorMessage.includes("authenticated") ||
+        errorMessage.includes("401")
+      ) {
+        toast.error(
+          "Session expired. Please refresh the page and log in again.",
+        );
       } else {
         toast.error(errorMessage);
       }
@@ -105,7 +125,11 @@ export function useTriggersPageController() {
       const data = await client.get<TrackedStation[]>("/tracked-stations");
       setTrackedStations(data);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to load tracked stations");
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Failed to load tracked stations",
+      );
     }
   }, [client]);
 
@@ -119,7 +143,9 @@ export function useTriggersPageController() {
       setStationId("");
       await loadTrackedStations();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to add station");
+      toast.error(
+        error instanceof Error ? error.message : "Failed to add station",
+      );
     } finally {
       setLoading((prev) => ({ ...prev, ["add-station"]: false }));
     }
@@ -132,7 +158,9 @@ export function useTriggersPageController() {
       toast.success("Station removed successfully");
       await loadTrackedStations();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to remove station");
+      toast.error(
+        error instanceof Error ? error.message : "Failed to remove station",
+      );
     } finally {
       setLoading((prev) => ({ ...prev, [`remove-${id}`]: false }));
     }
@@ -141,7 +169,9 @@ export function useTriggersPageController() {
   const loadSnapshots = React.useCallback(
     async (cycleId: string) => {
       try {
-        const data = await client.get<CycleSnapshot[]>(`/ledger/cycles/${cycleId}/snapshots`);
+        const data = await client.get<CycleSnapshot[]>(
+          `/ledger/cycles/${cycleId}/snapshots`,
+        );
         setSnapshots(data.slice(0, 10));
       } catch (error) {
         console.error("Failed to load snapshots:", error);
@@ -202,7 +232,9 @@ export function useTriggersPageController() {
       );
     } catch (error) {
       const errorMessage =
-        error instanceof Error ? error.message : "Failed to match participation payments";
+        error instanceof Error
+          ? error.message
+          : "Failed to match participation payments";
       toast.error(errorMessage);
     } finally {
       setLoading((prev) => ({ ...prev, ["match-payments"]: false }));
@@ -214,7 +246,12 @@ export function useTriggersPageController() {
     void loadImportSummary();
     void loadMarketStaleness();
     void loadLatestCycle();
-  }, [loadTrackedStations, loadImportSummary, loadMarketStaleness, loadLatestCycle]);
+  }, [
+    loadTrackedStations,
+    loadImportSummary,
+    loadMarketStaleness,
+    loadLatestCycle,
+  ]);
 
   return {
     loading,

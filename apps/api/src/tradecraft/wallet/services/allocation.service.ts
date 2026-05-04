@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '@api/prisma/prisma.service';
 import { AppConfig } from '@api/common/config';
 import { CharacterService } from '@api/characters/services/character.service';
+import { Prisma } from '@eve/prisma';
 
 type CharacterLocation = 'JITA' | 'DODIXIE' | 'AMARR' | 'HEK' | 'RENS' | 'CN';
 
@@ -204,9 +205,9 @@ export class AllocationService {
         toAllocate -= allocQty;
         // Update local cache for subsequent iterations
         line.unitsBought = line.unitsBought + allocQty;
-        (line as any).buyCostIsk = (
+        line.buyCostIsk = new Prisma.Decimal(
           Number(line.buyCostIsk) + costIncrement
-        ).toString();
+        );
         allocated++;
       }
 
@@ -377,11 +378,11 @@ export class AllocationService {
         toAllocate -= allocQty;
         // Update local cache for subsequent iterations
         line.unitsSold = line.unitsSold + allocQty;
-        (line as any).salesGrossIsk = (
+        line.salesGrossIsk = new Prisma.Decimal(
           Number(line.salesGrossIsk) + revenue
-        ).toString();
-        (line as any).salesTaxIsk = (Number(line.salesTaxIsk) + tax).toString();
-        (line as any).salesNetIsk = (Number(line.salesNetIsk) + net).toString();
+        );
+        line.salesTaxIsk = new Prisma.Decimal(Number(line.salesTaxIsk) + tax);
+        line.salesNetIsk = new Prisma.Decimal(Number(line.salesNetIsk) + net);
         allocated++;
       }
 

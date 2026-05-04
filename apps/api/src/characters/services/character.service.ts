@@ -5,6 +5,7 @@ import type {
   CharacterRole,
   CharacterFunction,
   CharacterLocation,
+  Prisma,
 } from '@eve/prisma';
 
 /**
@@ -28,7 +29,7 @@ export class CharacterService {
   async getTrackedSellerIds(
     locations?: CharacterLocation[],
   ): Promise<number[]> {
-    const whereClause: any = {
+    const whereClause: Prisma.EveCharacterWhereInput = {
       function: 'SELLER',
       token: { isNot: null },
     };
@@ -71,7 +72,7 @@ export class CharacterService {
       location: string | null;
     }>
   > {
-    const whereClause: any = {
+    const whereClause: Prisma.EveCharacterWhereInput = {
       function: 'SELLER',
       token: { isNot: null },
     };

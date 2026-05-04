@@ -1,294 +1,97 @@
-# EVE Money Making - Monorepo
+# EVE Money Making
 
-A comprehensive platform for managing EVE Online arbitrage trading cycles, tracking investor participations, and optimizing profit distribution.
+EVE Money Making is a small monorepo for EVE Online operations: Tradecraft investing and market tooling, character/account management, brokerage consignments, Discord notifications, and admin workflows around cycles, pricing, and market data.
 
----
+## Stack
 
-## Architecture
+- **Monorepo:** pnpm workspaces (`apps/*`, `packages/*`)
+- **API:** NestJS 11, Prisma 7, PostgreSQL, Swagger/OpenAPI, class-validator
+- **Web:** Next.js 15 App Router, React 19, TanStack Query, Tailwind, `@eve/ui`
+- **Shared packages:** `@eve/shared`, `@eve/api-client`, `@eve/prisma`, `@eve/ui`, `@eve/eve-core`, `@eve/eve-esi`, `@eve/api-contracts`
 
-### Monorepo Structure
+## Repository Layout
 
+```text
+apps/
+  api/      NestJS backend API
+  web/      Next.js web app and BFF route handlers
+  e2e/      Playwright/API smoke tests
+packages/
+  api-client/     HTTP client and query keys
+  api-contracts/  Runtime-schema/tooling placeholder, not app TS contracts
+  eve-core/       Pure EVE/domain helpers
+  eve-esi/        EVE ESI helpers
+  prisma/         Prisma schema, migrations, generated client
+  shared/         Cross-app request/response types and pure utilities
+  ui/             Shared shadcn/Radix UI components
+docs/
+  README.md                  Documentation index
+  RULES_COMPLIANCE_AUDIT.md  Active rule-refactor backlog
+  old/                       Archived historical notes
 ```
-eve-money-making/
-├── apps/
-│   ├── api/          # NestJS backend API
-│   └── web/          # Next.js frontend
-├── packages/
-│   ├── api-client/   # Shared HTTP client (@eve/api-client)
-│   ├── shared/       # Shared types & utilities (@eve/shared)
-│   ├── prisma/       # Database schema & client (@eve/prisma)
-│   └── ui/           # Shadcn UI components (@eve/ui)
-└── docs/             # Comprehensive documentation
-```
 
-### Tech Stack
+## Architecture Notes
 
-**Backend:**
-- NestJS
-- Prisma + PostgreSQL
-- Swagger/OpenAPI
-- class-validator
+The browser calls Next route handlers under `apps/web/app/api/*`; those handlers proxy to the Nest API with server-only backend URLs. Shared request/response contracts used by both apps live in `packages/shared` and are imported through explicit subpath exports such as `@eve/shared/tradecraft-cycles`.
 
-**Frontend:**
-- Next.js 15 (App Router)
-- TanStack Query
-- Shadcn UI
-- TypeScript
+`packages/api-contracts` is intentionally reserved for future runtime contract artifacts. Do not add app-level TypeScript request/response contracts there.
 
-**Shared:**
-- pnpm workspaces
-- TypeScript
-- Prettier + ESLint
+## Setup
 
----
+Prerequisites:
 
-## Quick Start
-
-### Prerequisites
 - Node.js 20+
-- pnpm 8+
-- PostgreSQL database
-- EVE Online Developer Application
+- pnpm 10+
+- PostgreSQL, usually via Docker
+- EVE Online developer application credentials
 
-### Installation
+Install dependencies and generate Prisma client:
 
 ```bash
-# Install all dependencies
 pnpm install
-
-# Generate Prisma client
-cd packages/prisma
-pnpm run generate
-pnpm run migrate:deploy
+pnpm db:generate
 ```
 
-### Development
+For environment variables, see [`env.example.md`](env.example.md). Local database helpers are available from the root scripts:
 
 ```bash
-# Terminal 1: Start backend
-cd apps/api
-pnpm run dev
-# API: http://localhost:3000
-# Swagger: http://localhost:3000/docs
-
-# Terminal 2: Start frontend
-cd apps/web
-pnpm run dev
-# Web: http://localhost:3001
+pnpm db:up
+pnpm db:migrate:dev
 ```
 
-### Build All
+Development servers are usually run in separate terminals:
 
 ```bash
-# From root
+pnpm dev:api
+pnpm dev:web
+```
+
+## Common Commands
+
+```bash
 pnpm build
-
-# Or individually
-cd apps/api && pnpm run build
-cd apps/web && pnpm run build
+pnpm type-check
+pnpm lint
+pnpm test
+pnpm test:api
+pnpm test:web
 ```
 
----
+## Feature Areas
 
-## Key Features
-
-### For Users
-- **EVE SSO Authentication** - Secure character linking
-- **Cycle Participation** - Opt-in to trading cycles with ISK
-- **Investment Tracking** - View returns, profit, ROI
-- **Real-time Updates** - Live capital & profit calculations
-
-### For Admins
-- **Cycle Management** - Create, open, close cycles
-- **Payment Matching** - Fuzzy matching of investor payments
-- **Profit Distribution** - Automated payout calculations
-- **Item Tracking** - Detailed cycle line management
-- **Admin Dashboard** - Comprehensive operations panel
-
-### Technical Features
-- **Domain-Driven Backend** - 6 clean domains, 9 focused services
-- **Type-Safe API** - Shared types prevent drift
-- **Modern Frontend** - TanStack Query hooks, zero boilerplate
-- **Direct API Calls** - No proxy routes, better performance
-- **Comprehensive Docs** - Swagger API docs + guides
-
----
+- **Tradecraft:** cycle participation, capital accounting, payments, rollovers, JingleYield, arbitrage planning, packages, liquidity, self/NPC market collection, and pricing.
+- **Characters:** EVE SSO login/linking, account grouping, token health, skill queues, skill browser, boosters, PLEX/MCT tracking, and Discord reminders.
+- **Brokerage:** consignment workflows and reporting.
+- **Support and notifications:** Discord account linking, support/feedback webhooks, notification preferences, and scheduled reminders.
 
 ## Documentation
 
-### Architecture & Guides
-- **[ARCHITECTURE.md](docs/ARCHITECTURE.md)** - Complete architecture overview
-- **[CRITICAL_USER_FLOWS.md](docs/CRITICAL_USER_FLOWS.md)** - Testing guide
-- **[REFACTOR_COMPLETE_SUMMARY.md](docs/REFACTOR_COMPLETE_SUMMARY.md)** - Refactor summary
+Start with [`docs/README.md`](docs/README.md). The active rule-driven refactor tracker is [`docs/RULES_COMPLIANCE_AUDIT.md`](docs/RULES_COMPLIANCE_AUDIT.md). Historical phase docs live under [`docs/old`](docs/old) and should be treated as archive/reference material, not current architecture.
 
-### Phase Documentation
-- **[PHASE_5_COMPLETE_SUMMARY.md](docs/PHASE_5_COMPLETE_SUMMARY.md)** - Backend refactor
-- **[PHASE_6_COMPLETE.md](docs/PHASE_6_COMPLETE.md)** - API client infrastructure
-- **[PHASE_7_100_PERCENT_COMPLETE.md](docs/PHASE_7_100_PERCENT_COMPLETE.md)** - Frontend migration
-- **[PHASE_8_COMPLETE.md](docs/PHASE_8_COMPLETE.md)** - Proxy route removal
+## Development Conventions
 
-### App-Specific
-- **[apps/api/README.md](apps/api/README.md)** - Backend setup & architecture
-- **[apps/web/README.md](apps/web/README.md)** - Frontend patterns & hooks
-
----
-
-## Project Highlights
-
-### Backend
-- **6 domains** with clear boundaries (characters, cycles, market, wallet, game-data, infra)
-- **9 focused cycle services** (all <300 lines, was 1 monolith of 2,308 lines)
-- **Zero code duplication** (eliminated 250+ lines)
-- **100% service documentation** with JSDoc
-- **Domain services** prevent cross-domain coupling
-
-### Frontend
-- **67+ API hooks** across 9 domain files
-- **15 components migrated** from manual fetch to hooks
-- **~700 lines of boilerplate removed**
-- **Type-safe** with full IntelliSense
-- **Direct API communication** (no Next.js proxy)
-
-### Packages
-- **@eve/api-client** - Unified HTTP client with auth support
-- **@eve/shared** - 30+ shared types
-- **@eve/prisma** - Centralized database schema
-- **@eve/ui** - 26+ Shadcn components
-
----
-
-## Development Workflow
-
-### Adding a New Feature
-
-1. **Backend:**
-   - Add service methods in appropriate domain
-   - Create DTOs with `@ApiProperty` decorators
-   - Add controller endpoint with `@ApiOperation`
-   - Update Swagger tags
-
-2. **Frontend:**
-   - Add hook in `app/arbitrage/api/*.ts`
-   - Use hook in component
-   - Handle loading/error states automatically
-
-3. **Types:**
-   - Add shared types to `packages/shared/src/types/index.ts`
-   - Use in both frontend and backend
-
-### Testing
-
-```bash
-# Backend tests
-cd apps/api
-pnpm run test
-pnpm run test:e2e
-
-# Frontend (when added)
-cd apps/web
-pnpm run test
-```
-
----
-
-## Environment Setup
-
-### Backend (.env)
-```bash
-DATABASE_URL="postgresql://..."
-ESI_CLIENT_ID="..."
-ESI_CLIENT_SECRET="..."
-ESI_CALLBACK_URL="http://localhost:3000/auth/callback/eveonline"
-JWT_SECRET="..."
-PORT=3000
-CORS_ORIGINS="http://localhost:3001"
-```
-
-### Frontend (.env.local)
-```bash
-API_URL="http://localhost:3000"
-NEXTAUTH_URL="http://localhost:3001"
-NEXTAUTH_SECRET="..."
-EVE_CLIENT_ID="..." # Same as backend
-EVE_CLIENT_SECRET="..." # Same as backend
-```
-
----
-
-## Deployment
-
-### Build
-
-```bash
-# Build all packages
-pnpm build
-```
-
-### Environment Variables
-
-Set production values for:
-- Database URL
-- ESI credentials
-- API URLs
-- Auth secrets
-- CORS origins
-
-### Run Production
-
-```bash
-# Backend
-cd apps/api
-pnpm run start:prod
-
-# Frontend
-cd apps/web
-pnpm run start
-```
-
----
-
-## Key Patterns
-
-### API Hooks
-- **Queries:** `use*()` - Auto-fetching, caching, refetching
-- **Mutations:** `use*()` - Optimistic updates, cache invalidation
-- **Query Keys:** Centralized in `@eve/api-client/queryKeys`
-
-### Component Patterns
-- **Client Components:** Use hooks directly
-- **Server Components:** Use `auth()` + `clientForApp(appId, token)`
-- **Error Handling:** Automatic via hooks
-- **Loading States:** Built-in via `isLoading`
-
-### Type Safety
-- **Shared Types:** Import from `@eve/shared`
-- **API Responses:** Typed via generics `client.get<Type>(...)`
-- **Hooks:** Fully typed with IntelliSense
-
----
-
-## Contributing
-
-### Code Style
-- **TypeScript:** Strict mode
-- **Formatting:** Prettier (auto-format on save)
-- **Linting:** ESLint with Next.js config
-- **Naming:** Follow existing conventions
-
-### Documentation
-- **Services:** JSDoc on all exported methods
-- **Hooks:** JSDoc with usage examples
-- **Complex logic:** Inline comments
-
----
-
-## License
-
-MIT
-
----
-
-## Support
-
-For questions or issues, see documentation in `docs/` directory or check the comprehensive guides linked above.
-
+- Keep API code feature-first: controller, service, module, and DTOs stay near the feature they serve.
+- Keep `page.tsx` files small and composition-only. Route-specific UI belongs in `app/<route>/_components/*`.
+- Use `packages/shared` for cross-app contracts, with package subpath exports. Avoid deep source imports and barrel files unless explicitly approved.
+- Keep Prisma schema and migrations in `packages/prisma`; do not edit applied migrations.
+- Keep changes small and update docs/Notion when a meaningful refactor slice lands.

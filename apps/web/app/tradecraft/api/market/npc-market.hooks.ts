@@ -7,7 +7,6 @@ import type {
   MarketSide,
   NpcMarketCollectResponse,
   NpcMarketDailyAggregatesResponse,
-  NpcMarketOrder,
   NpcMarketSnapshotLatestResponse,
   NpcMarketSnapshotTypeSummaryResponse,
   NpcMarketStatusResponse,

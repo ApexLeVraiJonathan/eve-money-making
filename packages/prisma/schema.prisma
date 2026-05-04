@@ -53,28 +53,6 @@ enum ParameterProfileScope {
   PLANNER
 }
 
-/// Strategy Lab run lifecycle status
-enum TradeStrategyRunStatus {
-  QUEUED
-  RUNNING
-  COMPLETED
-  FAILED
-  CANCELLED
-}
-
-/// How simulated sell-through is modeled
-enum TradeStrategySellModel {
-  VOLUME_SHARE
-  CALIBRATED_CAPTURE
-}
-
-/// How we pick the daily price proxy from MarketOrderTradeDaily
-enum TradeStrategyPriceModel {
-  LOW
-  AVG
-  HIGH
-}
-
 /// Rollover type for automatic reinvestment
 enum RolloverType {
   FULL_PAYOUT // Roll over entire payout (initial + profit), capped at 20B
@@ -90,7 +68,7 @@ model AutoRolloverSettings {
   userId String @id @map("user_id")
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  enabled            Boolean      @default(false) @map("enabled")
+  enabled             Boolean      @default(false) @map("enabled")
   defaultRolloverType RolloverType @default(INITIAL_ONLY) @map("default_rollover_type")
 
   createdAt DateTime @default(now()) @map("created_at")
@@ -117,8 +95,6 @@ enum NotificationType {
   CYCLE_STARTED
   CYCLE_RESULTS
   CYCLE_PAYOUT_SENT
-  SKILL_PLAN_REMAP_REMINDER
-  SKILL_PLAN_COMPLETION
   /// Reminder when an account's primary PLEX/subscription time is ending
   PLEX_ENDING
   /// Reminder when an account's MCT slot is ending
@@ -127,10 +103,6 @@ enum NotificationType {
   BOOSTER_ENDING
   /// Reminder when a character has training time available but no active queue
   TRAINING_QUEUE_IDLE
-  /// Skill farm: character has enough SP for at least one new extractor
-  SKILL_FARM_EXTRACTOR_READY
-  /// Skill farm: character's training queue is low/empty (3d, 1d, or expired)
-  SKILL_FARM_QUEUE_LOW
 }
 
 model TypeId {
@@ -141,11 +113,10 @@ model TypeId {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  marketTrades    MarketOrderTradeDaily[]
-  npcMarketSnapshots NpcMarketSnapshot[]
+  marketTrades         MarketOrderTradeDaily[]
+  npcMarketSnapshots   NpcMarketSnapshot[]
   npcMarketTradesDaily NpcMarketOrderTradeDaily[]
-  strategyRunPositions TradeStrategyRunPosition[]
-  SkillDefinition SkillDefinition[]
+  SkillDefinition      SkillDefinition[]
 
   @@map("item_types")
 }
@@ -157,11 +128,11 @@ model RegionId {
   createdAt DateTime        @default(now()) @map("created_at")
   updatedAt DateTime        @updatedAt @map("updated_at")
 
-  marketTrades MarketOrderTradeDaily[]
-  npcMarketBaselines NpcMarketStationBaseline[]
+  marketTrades                  MarketOrderTradeDaily[]
+  npcMarketBaselines            NpcMarketStationBaseline[]
   npcMarketRegionTypesSnapshots NpcMarketRegionTypesSnapshot[]
-  npcMarketSnapshots NpcMarketSnapshot[]
-  npcMarketRuns NpcMarketRun[]
+  npcMarketSnapshots            NpcMarketSnapshot[]
+  npcMarketRuns                 NpcMarketRun[]
 
   @@map("regions")
 }
@@ -188,11 +159,11 @@ model StationId {
   updatedAt      DateTime         @updatedAt @map("updated_at")
   TrackedStation TrackedStation[]
 
-  marketTrades MarketOrderTradeDaily[]
-  npcMarketBaselines NpcMarketStationBaseline[]
-  npcMarketSnapshots NpcMarketSnapshot[]
+  marketTrades         MarketOrderTradeDaily[]
+  npcMarketBaselines   NpcMarketStationBaseline[]
+  npcMarketSnapshots   NpcMarketSnapshot[]
   npcMarketTradesDaily NpcMarketOrderTradeDaily[]
-  npcMarketRuns NpcMarketRun[]
+  npcMarketRuns        NpcMarketRun[]
 
   @@index([solarSystemId])
   @@map("stations")
@@ -401,14 +372,14 @@ model NpcMarketOrderTradeDaily {
 
 /// A record of a single NPC market collection run (manual or cron).
 model NpcMarketRun {
-  baselineId    String   @id @map("baseline_id")
-  stationId     Int      @map("station_id")
-  regionId      Int      @map("region_id")
-  startedAt     DateTime @map("started_at")
-  finishedAt    DateTime? @map("finished_at")
-  ok            Boolean  @default(false) @map("ok")
-  typeCount     Int?     @map("type_count")
-  errorMessage  String?  @map("error_message")
+  baselineId   String    @id @map("baseline_id")
+  stationId    Int       @map("station_id")
+  regionId     Int       @map("region_id")
+  startedAt    DateTime  @map("started_at")
+  finishedAt   DateTime? @map("finished_at")
+  ok           Boolean   @default(false) @map("ok")
+  typeCount    Int?      @map("type_count")
+  errorMessage String?   @map("error_message")
 
   station StationId @relation(fields: [stationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   region  RegionId  @relation(fields: [regionId], references: [id], onDelete: Restrict, onUpdate: Cascade)
@@ -435,14 +406,11 @@ model User {
 
   characters          EveCharacter[]       @relation("UserCharacters")
   EveAccount          EveAccount[]
-  SkillPlan           SkillPlan[]
   /// JingleYield programs this user participates in
   jingleYieldPrograms JingleYieldProgram[]
 
   discordAccounts          DiscordAccount[]
   notificationPreferences  NotificationPreference[]
-  SkillFarmSettings        SkillFarmSettings[]
-  SkillFarmCharacterConfig SkillFarmCharacterConfig[]
 
   autoRolloverSettings AutoRolloverSettings?
 
@@ -477,8 +445,6 @@ model EveCharacter {
 
   token                    CharacterToken?
   CharacterBoosterPeriod   CharacterBoosterPeriod[]
-  SkillPlanAssignment      SkillPlanAssignment[]
-  SkillFarmCharacterConfig SkillFarmCharacterConfig[]
   /// Cycle ledger entries where this character is the beneficiary (admin repayments, etc.)
   beneficiaryLedgerEntries CycleLedgerEntry[]
   /// JingleYield programs where this character is the admin funding character
@@ -569,131 +535,6 @@ model CharacterBoosterPeriod {
 
   @@index([characterId])
   @@map("character_booster_periods")
-}
-
-/// Per-user economic assumptions and defaults for skill farm planning
-model SkillFarmSettings {
-  id                        String   @id @default(uuid()) @map("id")
-  userId                    String   @map("user_id")
-  user                      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  /// Effective ISK price per PLEX the user pays (including discounts/Discord trades)
-  plexPriceIsk              Decimal? @map("plex_price_isk") @db.Decimal(28, 2)
-  /// Effective number of PLEX required for one Omega period
-  plexPerOmega              Int?     @map("plex_per_omega")
-  /// Effective number of PLEX required for one MCT period
-  plexPerMct                Int?     @map("plex_per_mct")
-  /// ISK cost per skill extractor
-  extractorPriceIsk         Decimal? @map("extractor_price_isk") @db.Decimal(28, 2)
-  /// ISK price per skill injector
-  injectorPriceIsk          Decimal? @map("injector_price_isk") @db.Decimal(28, 2)
-  /// ISK cost per cycle for boosters (e.g., +12 Genius)
-  boosterCostPerCycleIsk    Decimal? @map("booster_cost_per_cycle_isk") @db.Decimal(28, 2)
-  /// When true, include +12 training boosters in the math model
-  useBoosters               Boolean  @default(true) @map("use_boosters")
-  /// Sales tax percentage (0–100)
-  salesTaxPercent           Decimal? @map("sales_tax_percent") @db.Decimal(5, 2)
-  /// Broker's fee percentage (0–100)
-  brokerFeePercent          Decimal? @map("broker_fee_percent") @db.Decimal(5, 2)
-  /// When true, assume injectors are sold via contracts/Discord (skip market fees)
-  soldViaContracts          Boolean  @default(false) @map("sold_via_contracts")
-  /// Cycle length in days for projections (e.g., 30)
-  cycleDays                 Int?     @map("cycle_days")
-  /// Estimated management time per cycle in minutes
-  managementMinutesPerCycle Int?     @map("management_minutes_per_cycle")
-  /// Optional list of skill IDs that should be considered extractable (when empty, treat all SP above the floor as extractable).
-  extractionTargetSkillIds  Int[]    @default([]) @map("extraction_target_skill_ids")
-  createdAt                 DateTime @default(now()) @map("created_at")
-  updatedAt                 DateTime @updatedAt @map("updated_at")
-
-  @@index([userId])
-  @@map("skill_farm_settings")
-}
-
-/// Per-character configuration for skill farm tracking
-model SkillFarmCharacterConfig {
-  id                     String       @id @default(uuid()) @map("id")
-  userId                 String       @map("user_id")
-  user                   User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  characterId            Int          @map("character_id")
-  character              EveCharacter @relation(fields: [characterId], references: [id], onDelete: Cascade)
-  /// Whether the user has marked this character as a skill farm candidate
-  isCandidate            Boolean      @default(false) @map("is_candidate")
-  /// Whether this character is part of the user's active skill farm
-  isActiveFarm           Boolean      @default(false) @map("is_active_farm")
-  /// Optional linked skill plan used to define farmable skills
-  farmPlanId             String?      @map("farm_plan_id")
-  farmPlan               SkillPlan?   @relation(fields: [farmPlanId], references: [id], onDelete: SetNull)
-  /// Whether this character should be included in skill-farm notifications
-  includeInNotifications Boolean      @default(true) @map("include_in_notifications")
-  createdAt              DateTime     @default(now()) @map("created_at")
-  updatedAt              DateTime     @updatedAt @map("updated_at")
-
-  @@unique([userId, characterId], name: "skill_farm_user_character_unique")
-  @@index([characterId])
-  @@index([farmPlanId])
-  @@map("skill_farm_character_configs")
-}
-
-/// User-owned skill plans for training/optimization (game-importable)
-model SkillPlan {
-  id                        String    @id @default(uuid()) @map("id")
-  userId                    String    @map("user_id")
-  user                      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  name                      String    @map("name")
-  description               String?   @map("description")
-  /// Optional cached total estimated training time in seconds for this plan
-  totalEstimatedTimeSeconds Int?      @map("total_estimated_time_seconds")
-  /// Optional free-form tags for organizing plans (stored as JSON string array)
-  tags                      Json?     @map("tags")
-  /// Optional archived timestamp; when set, the plan is hidden from default lists
-  archivedAt                DateTime? @map("archived_at")
-  /// Optional JSON configuration for plan-wide settings (attributes/implants/remaps, etc.)
-  config                    Json?     @map("config")
-  createdAt                 DateTime  @default(now()) @map("created_at")
-  updatedAt                 DateTime  @updatedAt @map("updated_at")
-
-  steps                    SkillPlanStep[]
-  assignments              SkillPlanAssignment[]
-  SkillFarmCharacterConfig SkillFarmCharacterConfig[]
-
-  @@index([userId])
-  @@map("skill_plans")
-}
-
-/// Ordered steps within a skill plan (maps to EVE skill type IDs)
-model SkillPlanStep {
-  id          String    @id @default(uuid()) @map("id")
-  planId      String    @map("plan_id")
-  plan        SkillPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
-  /// 0-based or 1-based order of this step within the plan (UI can choose convention)
-  order       Int       @map("order")
-  /// EVE skill type ID (maps to TypeId.id / EVE skill type)
-  skillId     Int       @map("skill_id")
-  /// Target level I–V (1–5) for this skill
-  targetLevel Int       @map("target_level")
-  notes       String?   @map("notes")
-  createdAt   DateTime  @default(now()) @map("created_at")
-  updatedAt   DateTime  @updatedAt @map("updated_at")
-
-  @@index([planId])
-  @@map("skill_plan_steps")
-}
-
-/// Assignment linking a skill plan to a specific EVE character, with per-assignment settings
-model SkillPlanAssignment {
-  id          String       @id @default(uuid()) @map("id")
-  skillPlanId String       @map("skill_plan_id")
-  skillPlan   SkillPlan    @relation(fields: [skillPlanId], references: [id], onDelete: Cascade)
-  characterId Int          @map("character_id")
-  character   EveCharacter @relation(fields: [characterId], references: [id], onDelete: Cascade)
-  /// Optional JSON settings for this assignment (e.g. implant/booster assumptions, notification prefs)
-  settings    Json?        @map("settings")
-  createdAt   DateTime     @default(now()) @map("created_at")
-  updatedAt   DateTime     @updatedAt @map("updated_at")
-
-  @@index([skillPlanId])
-  @@index([characterId])
-  @@map("skill_plan_assignments")
 }
 
 /// Investment cycles for grouping commits and cash flows
@@ -1191,109 +1032,4 @@ model ParameterProfile {
   @@unique([scope, name])
   @@index([scope])
   @@map("parameter_profiles")
-}
-
-// ============================================================================
-// Tradecraft Strategy Lab (paper trading / backtesting)
-// ============================================================================
-
-model TradeStrategy {
-  id          String   @id @default(uuid()) @map("id")
-  name        String   @map("name")
-  description String?  @map("description")
-  params      Json     @map("params") // compatible with PlanPackagesRequest shape
-  isActive    Boolean  @default(true) @map("is_active")
-  createdBy   String?  @map("created_by")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
-
-  runs TradeStrategyRun[]
-
-  @@unique([name])
-  @@index([isActive])
-  @@map("trade_strategies")
-}
-
-model TradeStrategyRun {
-  id                String                 @id @default(uuid()) @map("id")
-  strategyId        String                 @map("strategy_id")
-  strategy          TradeStrategy          @relation(fields: [strategyId], references: [id], onDelete: Cascade)
-  status            TradeStrategyRunStatus @default(QUEUED) @map("status")
-
-  startDate DateTime @map("start_date") @db.Date
-  endDate   DateTime @map("end_date") @db.Date
-
-  // Core assumptions
-  initialCapitalIsk Decimal                 @map("initial_capital_isk") @db.Decimal(28, 2)
-  sellModel         TradeStrategySellModel  @map("sell_model")
-  sellSharePct      Decimal?                @map("sell_share_pct") @db.Decimal(10, 6)
-  priceModel        TradeStrategyPriceModel @default(LOW) @map("price_model")
-
-  assumptions Json? @map("assumptions") // fee settings, source station, etc.
-  summary     Json? @map("summary") // cached metrics for lists
-  error       String? @map("error")
-
-  startedAt  DateTime? @map("started_at")
-  finishedAt DateTime? @map("finished_at")
-
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-
-  days      TradeStrategyRunDay[]
-  positions TradeStrategyRunPosition[]
-
-  @@index([strategyId])
-  @@index([status])
-  @@index([startDate, endDate])
-  @@map("trade_strategy_runs")
-}
-
-model TradeStrategyRunDay {
-  id    String          @id @default(uuid()) @map("id")
-  runId String          @map("run_id")
-  run   TradeStrategyRun @relation(fields: [runId], references: [id], onDelete: Cascade)
-
-  date DateTime @map("date") @db.Date
-
-  cashIsk           Decimal @map("cash_isk") @db.Decimal(28, 2)
-  inventoryCostIsk  Decimal @map("inventory_cost_isk") @db.Decimal(28, 2)
-  inventoryMarkIsk  Decimal @map("inventory_mark_isk") @db.Decimal(28, 2)
-  realizedProfitIsk Decimal @map("realized_profit_isk") @db.Decimal(28, 2)
-  unrealizedProfitIsk Decimal @map("unrealized_profit_isk") @db.Decimal(28, 2)
-  navIsk            Decimal @map("nav_isk") @db.Decimal(28, 2)
-
-  createdAt DateTime @default(now()) @map("created_at")
-
-  @@unique([runId, date])
-  @@index([runId])
-  @@index([date])
-  @@map("trade_strategy_run_days")
-}
-
-model TradeStrategyRunPosition {
-  id    String          @id @default(uuid()) @map("id")
-  runId String          @map("run_id")
-  run   TradeStrategyRun @relation(fields: [runId], references: [id], onDelete: Cascade)
-
-  destinationStationId Int @map("destination_station_id")
-  typeId               Int @map("type_id")
-  type                 TypeId @relation(fields: [typeId], references: [id], onDelete: Restrict, onUpdate: Cascade)
-
-  plannedUnits Int @map("planned_units")
-
-  buyUnitPriceIsk Decimal @map("buy_unit_price_isk") @db.Decimal(28, 2)
-  unitsSold       Int     @default(0) @map("units_sold")
-  unitsRemaining  Int     @default(0) @map("units_remaining")
-
-  costBasisIskRemaining Decimal @map("cost_basis_isk_remaining") @db.Decimal(28, 2)
-  realizedProfitIsk     Decimal @map("realized_profit_isk") @db.Decimal(28, 2)
-
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-
-  @@unique([runId, destinationStationId, typeId])
-  @@index([runId])
-  @@index([destinationStationId])
-  @@index([typeId])
-  @@map("trade_strategy_run_positions")
 }

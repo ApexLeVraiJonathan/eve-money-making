@@ -11,6 +11,7 @@ import { AuthService } from './services/auth.service';
 import { UserService } from './services/user.service';
 import { TokenService } from './services/token.service';
 import { EsiTokenService } from './services/esi-token.service';
+import { OAuthStateService } from './services/oauth-state.service';
 
 // Controllers
 import { AuthController } from './auth.controller';
@@ -39,6 +40,7 @@ import { RolesGuard } from './guards/roles.guard';
     UserService,
     TokenService,
     EsiTokenService,
+    OAuthStateService,
     // Guards & Strategy
     EveJwtStrategy,
     DevApiKeyStrategy,
@@ -53,6 +55,7 @@ import { RolesGuard } from './guards/roles.guard';
     UserService,
     TokenService,
     EsiTokenService,
+    OAuthStateService,
     EveJwtStrategy,
     CompositeAuthGuard,
     RolesGuard,

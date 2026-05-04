@@ -9,6 +9,18 @@ import {
 } from 'class-validator';
 import { Transform } from 'class-transformer';
 
+function toOptionalDate(value: unknown): unknown {
+  if (value === null || value === undefined || value === '') return value;
+  if (
+    typeof value === 'string' ||
+    typeof value === 'number' ||
+    value instanceof Date
+  ) {
+    return new Date(value);
+  }
+  return value;
+}
+
 enum EntryType {
   DEPOSIT = 'deposit',
   WITHDRAWAL = 'withdrawal',
@@ -50,7 +62,7 @@ export class AppendEntryRequest {
   })
   @IsOptional()
   @IsDateString()
-  @Transform(({ value }) => (value ? new Date(value) : value))
+  @Transform(({ value }: { value: unknown }) => toOptionalDate(value))
   occurredAt?: Date;
 
   @ApiPropertyOptional({

@@ -81,10 +81,6 @@ export class NotificationService {
     ).toString();
   }
 
-  private skillPlansUrl(): string {
-    return new URL('/characters/skills', AppConfig.webBaseUrl()).toString();
-  }
-
   private async getDiscordUserIdForUser(userId: string): Promise<string> {
     const account = await this.prisma.discordAccount.findFirst({
       where: { userId },
@@ -454,123 +450,6 @@ export class NotificationService {
     const discordUserId = await this.getDiscordUserIdForUser(params.userId);
     await this.discordDm.sendDirectMessage(discordUserId, content);
     return { ok: true, participationId: participation.id, content };
-  }
-
-  async notifySkillPlanCompletion(params: {
-    userId: string;
-    characterName: string;
-    planName: string;
-    completionAt: Date;
-    remainingSeconds: number;
-  }): Promise<void> {
-    const [target] = await this.getDiscordTargetsForPreference(
-      'SKILL_PLAN_COMPLETION',
-      [params.userId],
-    );
-    if (!target) return;
-
-    const manageUrl = this.manageUrl();
-    const skillPlansUrl = this.skillPlansUrl();
-
-    const now = new Date();
-    const diffMs = params.completionAt.getTime() - now.getTime();
-    const diffSec = Math.max(0, Math.floor(diffMs / 1000));
-    const hours = Math.floor(diffSec / 3600);
-    const days = Math.floor(hours / 24);
-    const hoursRemainder = hours % 24;
-
-    const timeLabel = days > 0 ? `${days}d ${hoursRemainder}h` : `${hours}h`;
-
-    const content =
-      `Your skill plan **${params.planName}** for character **${params.characterName}** ` +
-      `is estimated to complete in about ${timeLabel}.\n\n` +
-      `You can review or adjust this plan here: ${skillPlansUrl}\n` +
-      `Manage or turn off notifications: ${manageUrl}`;
-
-    await this.discordDm.sendDirectMessage(target.discordUserId, content);
-  }
-
-  async notifySkillPlanRemapReminder(params: {
-    userId: string;
-    characterName: string;
-    planName: string;
-    remapAt: Date;
-  }): Promise<void> {
-    const [target] = await this.getDiscordTargetsForPreference(
-      'SKILL_PLAN_REMAP_REMINDER',
-      [params.userId],
-    );
-    if (!target) return;
-
-    const manageUrl = this.manageUrl();
-    const skillPlansUrl = this.skillPlansUrl();
-
-    const when = params.remapAt.toISOString();
-
-    const content =
-      `Upcoming attribute remap for plan **${params.planName}** on character **${params.characterName}**.\n` +
-      `Recommended time: ${when} (EVE time).\n\n` +
-      `You can review or adjust this plan here: ${skillPlansUrl}\n` +
-      `Manage or turn off notifications: ${manageUrl}`;
-
-    await this.discordDm.sendDirectMessage(target.discordUserId, content);
-  }
-
-  async notifySkillFarmExtractorReady(params: {
-    userId: string;
-    characterName: string;
-    injectorsReady: number;
-  }): Promise<void> {
-    const [target] = await this.getDiscordTargetsForPreference(
-      'SKILL_FARM_EXTRACTOR_READY',
-      [params.userId],
-    );
-    if (!target) return;
-
-    const manageUrl = this.manageUrl();
-    const trackingUrl = new URL(
-      '/skill-farms/tracking',
-      AppConfig.webBaseUrl(),
-    ).toString();
-
-    const content =
-      `Character **${params.characterName}** has enough SP for **${params.injectorsReady} injector(s)**.\n\n` +
-      `You can review your farms here: ${trackingUrl}\n` +
-      `Manage or turn off notifications: ${manageUrl}`;
-
-    await this.discordDm.sendDirectMessage(target.discordUserId, content);
-  }
-
-  async notifySkillFarmQueueLow(params: {
-    userId: string;
-    characterName: string;
-    status: 'WARNING' | 'URGENT' | 'EMPTY';
-    queueHoursRemaining: number;
-  }): Promise<void> {
-    const [target] = await this.getDiscordTargetsForPreference(
-      'SKILL_FARM_QUEUE_LOW',
-      [params.userId],
-    );
-    if (!target) return;
-
-    const manageUrl = this.manageUrl();
-    const trackingUrl = new URL(
-      '/skill-farms/tracking',
-      AppConfig.webBaseUrl(),
-    ).toString();
-
-    const hours = Math.max(0, Math.round(params.queueHoursRemaining));
-    const label =
-      params.status === 'EMPTY'
-        ? 'Your training queue is empty.'
-        : `Your training queue is low (~${hours}h remaining).`;
-
-    const content =
-      `Character **${params.characterName}**: ${label}\n\n` +
-      `You can review your farms here: ${trackingUrl}\n` +
-      `Manage or turn off notifications: ${manageUrl}`;
-
-    await this.discordDm.sendDirectMessage(target.discordUserId, content);
   }
 
   /**

@@ -14,7 +14,6 @@ import type {
   AssignCharacterToAccountInput,
   CharacterManagementActionResult,
   CharacterBooster,
-  CharacterOverview,
   CharacterOverviewResponse,
   CreateAccountInput,
   CreateBoosterInput,

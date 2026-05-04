@@ -15,9 +15,7 @@ const descriptions: Record<string, string> = {
   arbitrage:
     "Track your invested capital and profit share across arbitrage cycles.",
   characters:
-    "Manage your linked characters and plan future character and skill farm setups.",
-  "skill-issue":
-    "Paste a fit and compare against a character to see required and influencing skills.",
+    "Manage linked characters, review training queues, and browse EVE skills.",
 };
 
 export default function LandingPage() {

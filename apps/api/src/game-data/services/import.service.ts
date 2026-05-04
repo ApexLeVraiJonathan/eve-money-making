@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import axios from 'axios';
-import type { Readable } from 'node:stream';
+import type { Readable, Writable } from 'node:stream';
 import { createReadStream, promises as fsp } from 'node:fs';
 import * as path from 'node:path';
 import * as readline from 'node:readline';
@@ -462,7 +462,7 @@ export class ImportService {
       // then find all types that belong to those groups from types.jsonl.
       const skillGroupIds = new Set<number>();
 
-      await this.streamJsonLines(groupsPath, async (row) => {
+      await this.streamJsonLines(groupsPath, (row) => {
         const rec = row as { _key?: unknown; categoryID?: unknown };
         const groupIdRaw = rec._key;
         const categoryIdRaw = rec.categoryID;
@@ -804,10 +804,16 @@ export class ImportService {
         responseType: 'stream',
       });
 
+      const unzip = unzipper as unknown as {
+        Extract(options: { path: string }): Writable;
+      };
+
       await new Promise<void>((resolve, reject) => {
         const stream = (res.data as unknown as Readable)
-          .pipe(unzipper.Extract({ path: sdeDir }))
-          .on('error', (err: unknown) => reject(err))
+          .pipe(unzip.Extract({ path: sdeDir }))
+          .on('error', (err: unknown) =>
+            reject(err instanceof Error ? err : new Error(String(err))),
+          )
           .on('close', () => resolve());
         // In case the stream is already flowing, ensure listeners are attached
         stream.on('finish', () => resolve());

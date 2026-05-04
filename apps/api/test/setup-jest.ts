@@ -82,6 +82,51 @@ const { Client } = require('pg');
 
     const hasTables = out === '1';
     if (!hasTables) {
+      const cleanup = path.join(
+        os.tmpdir(),
+        `eve-mm-jest-retired-notifications-${wid}.js`,
+      );
+      fs.writeFileSync(
+        cleanup,
+        `
+const { Client } = require('pg');
+(async () => {
+  const url = process.env.DATABASE_URL;
+  const schema = process.env.JEST_SCHEMA;
+  const client = new Client({ connectionString: url });
+  await client.connect();
+  for (const targetSchema of [schema, 'public']) {
+    await client.query(\`set search_path to "\${targetSchema}", public\`);
+    const exists = await client.query(
+      "select to_regclass($1) as table_name",
+      [\`\${targetSchema}.notification_preferences\`]
+    );
+    if (!exists.rows[0] || !exists.rows[0].table_name) continue;
+    await client.query(
+      "delete from notification_preferences where notification_type::text = any($1::text[])",
+      [[
+        'SKILL_PLAN_REMAP_REMINDER',
+        'SKILL_PLAN_COMPLETION',
+        'SKILL_FARM_EXTRACTOR_READY',
+        'SKILL_FARM_QUEUE_LOW',
+      ]]
+    );
+  }
+  await client.end();
+})().catch(() => {});
+`,
+        'utf8',
+      );
+      execSync(`node "${cleanup}"`, {
+        cwd: path.resolve(__dirname, '../../..'),
+        env: { ...process.env, JEST_SCHEMA: schemaName },
+        stdio: ['ignore', 'ignore', 'ignore'],
+      });
+      try {
+        fs.unlinkSync(cleanup);
+      } catch {
+        // ignore
+      }
       execSync(
         'pnpm -C packages/prisma exec prisma db push --accept-data-loss',
         {

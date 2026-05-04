@@ -4,7 +4,6 @@ import { MarketModule } from './market/market.module';
 import { WalletModule } from './wallet/wallet.module';
 import { JobsModule } from './jobs/jobs.module';
 import { ParameterProfilesModule } from './parameter-profiles/parameter-profiles.module';
-import { StrategyLabModule } from './strategy-lab/strategy-lab.module';
 import { NpcMarketModule } from './npc-market/npc-market.module';
 
 /**
@@ -17,7 +16,7 @@ import { NpcMarketModule } from './npc-market/npc-market.module';
  * - Jobs (batch operations that primarily serve Tradecraft)
  * - Parameter profiles (trading configuration profiles)
  *
- * This mirrors the character-management and skill-farm product modules and
+ * This mirrors the character-management product module and
  * gives us a single import in AppModule for all Tradecraft functionality.
  */
 @Module({
@@ -27,7 +26,6 @@ import { NpcMarketModule } from './npc-market/npc-market.module';
     WalletModule,
     JobsModule,
     ParameterProfilesModule,
-    StrategyLabModule,
     NpcMarketModule,
   ],
 })

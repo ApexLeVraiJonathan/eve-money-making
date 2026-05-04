@@ -18,6 +18,13 @@ type TokenResponse = {
   refresh_token: string;
 };
 
+type SystemCharacterTokenPayload = {
+  sub: string;
+  name: string;
+  owner: string;
+  scp?: string | string[];
+};
+
 @Injectable()
 export class AuthService {
   private readonly ssoConfig = AppConfig.esiSso();
@@ -433,6 +440,29 @@ export class AuthService {
     return getScopesForFeatures(features);
   }
 
+  async updateUserEnabledFeatures(
+    userId: string,
+    enabledFeatures: string[],
+  ): Promise<AppFeature[]> {
+    const validSet = new Set(
+      (Object.values(AppFeature) as string[]).map((v) => v.toString()),
+    );
+    const next: AppFeature[] = [];
+    for (const key of enabledFeatures) {
+      if (typeof key === 'string' && validSet.has(key)) {
+        next.push(key as AppFeature);
+      }
+    }
+
+    // Empty array means "no explicit choice"; getUserEnabledFeatures applies defaults.
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { enabledFeatures: next },
+    });
+
+    return next;
+  }
+
   /**
    * Uses stored refresh token to rotate access token (and refresh token when provided).
    */
@@ -631,5 +661,247 @@ export class AuthService {
     });
 
     return { success: true, characterId, characterName };
+  }
+
+  async linkAdditionalCharacterToUser(
+    userId: string,
+    input: {
+      characterId: number;
+      characterName: string;
+      ownerHash: string;
+      accessToken: string;
+      refreshToken?: string;
+      expiresIn: number;
+      scopes: string;
+    },
+  ): Promise<{ success: true; characterId: number; characterName: string }> {
+    const {
+      characterId,
+      characterName,
+      ownerHash,
+      accessToken,
+      refreshToken,
+      expiresIn,
+      scopes,
+    } = input;
+
+    const incomingRefreshTokenEnc = refreshToken
+      ? await CryptoUtil.encrypt(refreshToken)
+      : null;
+    const expiresInSeconds = Number(expiresIn) || 1200;
+    const expiresAt = new Date(Date.now() + expiresInSeconds * 1000);
+
+    await this.prisma.$transaction(async (tx) => {
+      const character = await tx.eveCharacter.upsert({
+        where: { id: characterId },
+        update: {
+          name: characterName,
+          ownerHash,
+          userId,
+        },
+        create: {
+          id: characterId,
+          name: characterName,
+          ownerHash,
+          managedBy: 'USER',
+          userId,
+        },
+      });
+
+      // Do not modify ESI tokens for SYSTEM-managed characters from this flow.
+      if (character.managedBy === 'SYSTEM') return;
+
+      const existingToken = await tx.characterToken.findUnique({
+        where: { characterId },
+        select: { scopes: true, refreshTokenEnc: true },
+      });
+
+      const existingScopes = normalizeScopes(existingToken?.scopes);
+      const incomingScopes = normalizeScopes(scopes);
+
+      const existingSet = new Set(existingScopes);
+      const incomingSet = new Set(incomingScopes);
+      const wouldLoseImportantScope = Array.from(existingSet).some(
+        (s) => IMPORTANT_ESI_SCOPES.has(s) && !incomingSet.has(s),
+      );
+
+      if (existingToken && wouldLoseImportantScope) return;
+
+      const mergedScopes = Array.from(
+        new Set<string>([...existingScopes, ...incomingScopes]),
+      ).join(' ');
+
+      const refreshTokenEncToStore =
+        incomingRefreshTokenEnc ??
+        (existingToken?.refreshTokenEnc
+          ? String(existingToken.refreshTokenEnc)
+          : '');
+
+      await tx.characterToken.upsert({
+        where: { characterId },
+        update: {
+          tokenType: 'Bearer',
+          accessToken,
+          accessTokenExpiresAt: expiresAt,
+          refreshTokenEnc: refreshTokenEncToStore,
+          scopes: mergedScopes,
+          lastRefreshAt: new Date(),
+        },
+        create: {
+          characterId,
+          tokenType: 'Bearer',
+          accessToken,
+          accessTokenExpiresAt: expiresAt,
+          refreshTokenEnc: refreshTokenEncToStore,
+          scopes: mergedScopes,
+        },
+      });
+    });
+
+    return { success: true, characterId, characterName };
+  }
+
+  async listAllCharactersForAdmin() {
+    const characters = await this.prisma.eveCharacter.findMany({
+      select: {
+        id: true,
+        name: true,
+        ownerHash: true,
+        userId: true,
+        role: true,
+        function: true,
+        location: true,
+        managedBy: true,
+        notes: true,
+        token: {
+          select: {
+            accessTokenExpiresAt: true,
+            scopes: true,
+          },
+        },
+      },
+      orderBy: [{ managedBy: 'asc' }, { role: 'asc' }, { name: 'asc' }],
+    });
+
+    return characters.map((c) => ({
+      characterId: c.id,
+      characterName: c.name,
+      ownerHash: c.ownerHash,
+      userId: c.userId,
+      role: c.role,
+      function: c.function,
+      location: c.location,
+      managedBy: c.managedBy,
+      notes: c.notes,
+      accessTokenExpiresAt:
+        c.token?.accessTokenExpiresAt?.toISOString() ?? null,
+      scopes: c.token?.scopes ?? null,
+    }));
+  }
+
+  async getCharacterTokenStatus(characterId: number) {
+    return await this.prisma.characterToken.findUnique({
+      where: { characterId },
+      select: {
+        characterId: true,
+        accessTokenExpiresAt: true,
+        scopes: true,
+        lastRefreshAt: true,
+        refreshFailAt: true,
+        refreshFailMsg: true,
+        updatedAt: true,
+      },
+    });
+  }
+
+  async revokeCharacterToken(characterId: number) {
+    await this.prisma.characterToken.update({
+      where: { characterId },
+      data: {
+        refreshTokenEnc: '',
+        accessToken: '',
+        refreshFailAt: new Date(),
+        refreshFailMsg: 'manually_revoked',
+      },
+    });
+
+    return { revoked: true, characterId };
+  }
+
+  async upsertSystemCharacterWithToken(params: {
+    tokens: TokenResponse;
+    decoded: SystemCharacterTokenPayload;
+    stateReturnUrl: string | null;
+  }): Promise<{ characterName: string; storedReturnUrl: string | null }> {
+    const characterId = Number(params.decoded.sub.split(':').pop());
+    const characterName = params.decoded.name;
+    const ownerHash = params.decoded.owner;
+    const scopes = Array.isArray(params.decoded.scp)
+      ? params.decoded.scp.join(' ')
+      : params.decoded.scp || '';
+    const refreshTokenEnc = await CryptoUtil.encrypt(
+      params.tokens.refresh_token,
+    );
+
+    let notes = 'System character';
+    let storedReturnUrl: string | null = null;
+    try {
+      const stateData = JSON.parse(params.stateReturnUrl || '{}') as {
+        notes?: string | null;
+        returnUrl?: string | null;
+      };
+      notes = stateData.notes || 'System character';
+      storedReturnUrl = stateData.returnUrl || null;
+    } catch {
+      notes = params.stateReturnUrl || 'System character';
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.eveCharacter.upsert({
+        where: { id: characterId },
+        update: {
+          name: characterName,
+          ownerHash,
+          managedBy: 'SYSTEM',
+          role: 'LOGISTICS',
+          notes,
+        },
+        create: {
+          id: characterId,
+          name: characterName,
+          ownerHash,
+          managedBy: 'SYSTEM',
+          userId: null,
+          role: 'LOGISTICS',
+          notes,
+        },
+      });
+
+      await tx.characterToken.upsert({
+        where: { characterId },
+        update: {
+          tokenType: 'Bearer',
+          accessToken: params.tokens.access_token,
+          accessTokenExpiresAt: new Date(
+            Date.now() + params.tokens.expires_in * 1000,
+          ),
+          refreshTokenEnc,
+          scopes,
+          lastRefreshAt: new Date(),
+        },
+        create: {
+          characterId,
+          tokenType: 'Bearer',
+          accessToken: params.tokens.access_token,
+          accessTokenExpiresAt: new Date(
+            Date.now() + params.tokens.expires_in * 1000,
+          ),
+          refreshTokenEnc,
+          scopes,
+        },
+      });
+    });
+
+    return { characterName, storedReturnUrl };
   }
 }

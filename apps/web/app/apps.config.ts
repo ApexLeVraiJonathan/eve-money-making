@@ -39,7 +39,7 @@ export type AdminItem = {
 };
 
 export type AppConfig = {
-  id: "arbitrage" | "brokerage" | "characters" | "skill-issue";
+  id: "arbitrage" | "brokerage" | "characters";
   label: string;
   basePath: string;
   // Any path that should mark this app as active
@@ -164,11 +164,6 @@ export const APPS: AppConfig[] = [
             url: "/tradecraft/admin/self-market",
             icon: Database,
           },
-          {
-            name: "Strategy Lab",
-            url: "/tradecraft/admin/strategy-lab",
-            icon: Recycle,
-          },
           { name: "Planner", url: "/tradecraft/admin/planner", icon: Recycle },
           {
             name: "Undercut Checker",
@@ -242,32 +237,7 @@ export const APPS: AppConfig[] = [
         items: [
           { title: "Skill Browser", url: "/characters/skills/browser" },
           { title: "Training Overview", url: "/characters/skills" },
-          { title: "Skill Plans", url: "/characters/skills/plans" },
         ],
-      },
-      {
-        title: "Skill Farms",
-        url: "/characters/skill-farms",
-        icon: NotebookPen,
-        items: [
-          { title: "Characters", url: "/characters/skill-farms/characters" },
-          { title: "Math", url: "/characters/skill-farms/math" },
-          { title: "Tracking", url: "/characters/skill-farms/tracking" },
-        ],
-      },
-    ],
-  },
-  {
-    id: "skill-issue",
-    label: "Skill-Issue",
-    basePath: "/skill-issue",
-    pathPrefixes: ["/skill-issue"],
-    icon: Zap,
-    navMain: [
-      {
-        title: "Fit Analysis",
-        url: "/skill-issue",
-        icon: Zap,
       },
     ],
   },

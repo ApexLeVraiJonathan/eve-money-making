@@ -16,10 +16,10 @@ export type { SkillBrowserCharacter };
 export function useSkillEncyclopedia() {
   const client = useApiClient();
   return useAuthenticatedQuery({
-    queryKey: qk.skillPlans.encyclopedia(),
+    queryKey: qk.gameData.skillEncyclopedia(),
     queryFn: async () => {
       return await client.get<SkillEncyclopediaResponse>(
-        "/skill-plans/encyclopedia",
+        "/game-data/skills/encyclopedia",
       );
     },
     retry: false,

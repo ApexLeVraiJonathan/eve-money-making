@@ -17,6 +17,7 @@ import { GameDataService } from '@api/game-data/services/game-data.service';
 import { CharacterService } from '@api/characters/services/character.service';
 import { NotificationService } from '@api/notifications/notification.service';
 import { ParticipationService } from './participation.service';
+import { Prisma } from '@eve/prisma';
 import {
   CAPITAL_CONSTANTS,
   computeCostBasisPositions,
@@ -296,7 +297,7 @@ export class CycleService {
 
     // Get profit and participation data for each cycle
     const history = await Promise.all(
-      completedCycles.map(async (cycle: any) => {
+      completedCycles.map(async (cycle) => {
         // Get profit data
         const profitData = await this.profitService.computeCycleProfit(
           cycle.id,
@@ -551,7 +552,7 @@ export class CycleService {
     });
 
     // 2) Build weighted-average cost positions from transactions
-    const byTypeStation = await computeCostBasisPositions(this.prisma);
+    const _byTypeStation = await computeCostBasisPositions(this.prisma);
     const key = (stationId: number, typeId: number) => `${stationId}:${typeId}`;
 
     // 3) Query active sell orders for current inventory quantities and prices
@@ -583,7 +584,7 @@ export class CycleService {
 
     // 4) Setup Jita price fallback (for items without sell orders)
     const jitaRegionId = await this.gameData.getJitaRegionId();
-    const getJitaPrice = createJitaPriceFetcher(this.esi, jitaRegionId);
+    const _getJitaPrice = createJitaPriceFetcher(this.esi, jitaRegionId);
 
     // 5) Create Opening Balance cycle lines with carryover items
     const lines: Array<{
@@ -894,7 +895,8 @@ export class CycleService {
     }
 
     // All database operations within a transaction
-    const openedCycle = await this.prisma.$transaction(async (tx: any) => {
+    const openedCycle = await this.prisma.$transaction(
+      async (tx: Prisma.TransactionClient) => {
       // Clean up unpaid and refunded participations for this PLANNED cycle.
       // BUT:
       // - Keep rollover participations (they have rolloverType set)
@@ -1046,8 +1048,9 @@ export class CycleService {
         );
       }
 
-      return await tx.cycle.findUnique({ where: { id: cycle.id } });
-    });
+        return await tx.cycle.findUnique({ where: { id: cycle.id } });
+      },
+    );
 
     // After transaction: Process rollover purchase (synthetic buy allocations)
     // Check if we actually have rollover lines (regardless of whether there's a previous cycle)
@@ -1112,9 +1115,11 @@ export class CycleService {
         ...orders.map((o: { price: number }) => o.price),
       );
       return lowestPrice;
-    } catch (error) {
+    } catch (error: unknown) {
       this.logger.error(
-        `[Jita Price Fetch] Failed to fetch Jita sell price for type ${typeId}: ${error.message}`,
+        `[Jita Price Fetch] Failed to fetch Jita sell price for type ${typeId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
       );
       return null;
     }
@@ -1588,7 +1593,7 @@ export class CycleService {
       skip: Math.max(offset ?? 0, 0),
     });
 
-    return rows.map((r: any) => ({
+    return rows.map((r) => ({
       id: r.id,
       occurredAt: r.occurredAt,
       entryType: r.entryType,

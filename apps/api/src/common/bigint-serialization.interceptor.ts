@@ -16,11 +16,11 @@ import { Prisma } from '@eve/prisma';
  */
 @Injectable()
 export class BigIntSerializationInterceptor implements NestInterceptor {
-  intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
+  intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
     return next.handle().pipe(map((data) => this.serialize(data)));
   }
 
-  private serialize(data: any): any {
+  private serialize(data: unknown): unknown {
     // Handle null/undefined
     if (data === null || data === undefined) {
       return data;
@@ -48,11 +48,10 @@ export class BigIntSerializationInterceptor implements NestInterceptor {
 
     // Handle Objects (plain objects and class instances)
     if (typeof data === 'object') {
-      const serialized: any = {};
-      for (const key in data) {
-        if (Object.prototype.hasOwnProperty.call(data, key)) {
-          serialized[key] = this.serialize(data[key]);
-        }
+      const serialized: Record<string, unknown> = {};
+      const record = data as Record<string, unknown>;
+      for (const key of Object.keys(record)) {
+        serialized[key] = this.serialize(record[key]);
       }
       return serialized;
     }

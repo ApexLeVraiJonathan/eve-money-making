@@ -13,7 +13,10 @@ import {
   TableHeader,
   TableRow,
 } from "@eve/ui";
-import { useCycleProfit, useTransportFees } from "@/app/tradecraft/api";
+import {
+  useCycleProfit,
+  useTransportFees,
+} from "@/app/tradecraft/api/cycles/cycles.hooks";
 import { formatIsk } from "@/lib/utils";
 
 type CycleProfitPageClientProps = {
@@ -170,7 +173,9 @@ export function CycleProfitPageClient({ cycleId }: CycleProfitPageClientProps) {
             <TableBody>
               {transportFees.map((fee) => (
                 <TableRow key={fee.id}>
-                  <TableCell>{new Date(fee.occurredAt).toLocaleString()}</TableCell>
+                  <TableCell>
+                    {new Date(fee.occurredAt).toLocaleString()}
+                  </TableCell>
                   <TableCell>{fee.memo || "—"}</TableCell>
                   <TableCell className="text-right tabular-nums text-red-400">
                     {formatIsk(Number(fee.amountIsk))}

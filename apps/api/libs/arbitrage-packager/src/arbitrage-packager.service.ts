@@ -18,6 +18,11 @@ type ItemState = {
   remainingUnits: number;
 };
 
+type BuiltPackage = Omit<
+  PackagePlan,
+  'packageIndex' | 'efficiency' | 'courierContractId' | 'courierContractLabel'
+>;
+
 @Injectable()
 export class ArbitragePackagerService {
   constructor() {}
@@ -38,10 +43,7 @@ export class ArbitragePackagerService {
     maxPackageCollateralISK: number;
     shippingMarginMultiplier: number;
     densityWeight: number;
-  }): Omit<
-    PackagePlan,
-    'packageIndex' | 'efficiency' | 'courierContractId' | 'courierContractLabel'
-  > | null {
+  }): BuiltPackage | null {
     const {
       destinationStationId,
       shippingCostISK,
@@ -233,7 +235,7 @@ export class ArbitragePackagerService {
 
     const candidates: Array<{
       courier: CourierContractPreset;
-      cand: ReturnType<typeof this.buildBestPackageForDestination>;
+      cand: BuiltPackage;
     }> = [];
 
     for (const courier of courierContracts) {
@@ -258,10 +260,10 @@ export class ArbitragePackagerService {
 
     // Choose best overall by efficiency (ROI), then net profit.
     candidates.sort((a, b) => {
-      const effA = a.cand!.netProfitISK / Math.max(1, a.cand!.spendISK);
-      const effB = b.cand!.netProfitISK / Math.max(1, b.cand!.spendISK);
+      const effA = a.cand.netProfitISK / Math.max(1, a.cand.spendISK);
+      const effB = b.cand.netProfitISK / Math.max(1, b.cand.spendISK);
       if (Math.abs(effA - effB) > 1e-9) return effB - effA;
-      return (b.cand?.netProfitISK ?? 0) - (a.cand?.netProfitISK ?? 0);
+      return b.cand.netProfitISK - a.cand.netProfitISK;
     });
 
     const bestOverall = candidates[0];
@@ -271,8 +273,8 @@ export class ArbitragePackagerService {
     // we prefer that first courier (e.g., Blockade) when possible.
     const preferred = courierContracts[0];
     const fitsPreferred =
-      preferred.maxVolumeM3 >= bestOverall.cand!.usedCapacityM3 &&
-      preferred.maxCollateralISK >= bestOverall.cand!.spendISK;
+      preferred.maxVolumeM3 >= bestOverall.cand.usedCapacityM3 &&
+      preferred.maxCollateralISK >= bestOverall.cand.spendISK;
 
     const preferredCand = candidates.find((c) => c.courier.id === preferred.id);
 

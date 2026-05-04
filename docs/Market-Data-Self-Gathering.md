@@ -2,12 +2,12 @@
 
 ## Why we’re doing this
 
-Today we import **daily aggregated “market order trades”** from Adam4EVE and use them as a proxy for liquidity and pricing heuristics across Tradecraft (planner, Strategy Lab, liquidity checks).
+Today we import **daily aggregated “market order trades”** from Adam4EVE and use them as a proxy for liquidity and pricing heuristics across Tradecraft (planner and liquidity checks).
 
 We want to gather this data ourselves because:
 
 - **Access**: Alliance/private trade hubs are often **player structures** where third parties don’t have market access.
-- **Control**: We want to tune *how* trade data is deduced and represent uncertainty more “justly”.
+- **Control**: We want to tune _how_ trade data is deduced and represent uncertainty more “justly”.
 - **Reliability**: Reduce missed days / external incidents and make backfill behavior deterministic for us.
 
 ## Current state in this repo (Adam4EVE usage)
@@ -35,7 +35,6 @@ We ingest Adam4EVE’s `MarketOrdersTrades` “daily aggregates” into the Pris
 - **Downstream dependencies**:
   - Liquidity heuristics: `apps/api/src/tradecraft/market/services/liquidity.service.ts`
   - Pricing fallback heuristics: `apps/api/src/tradecraft/market/services/pricing.service.ts`
-  - Strategy Lab market coverage + simulations: `apps/api/src/tradecraft/strategy-lab/*`
 
 ### Other Adam4EVE dependencies (non-trade data)
 
@@ -55,7 +54,7 @@ Adam4EVE’s approach (per their docs) is:
 - Take **orderbook snapshots** every ~15 minutes.
 - Compare snapshots and detect:
   - **volume changes** on existing orders (interpreted as trades),
-  - **disappeared orders** (interpreted as cancellations *or* as fully-filled trades depending on how you count).
+  - **disappeared orders** (interpreted as cancellations _or_ as fully-filled trades depending on how you count).
 - Aggregate those inferred trades into daily metrics per `(location_id, type_id, is_buy_order, has_gone, scanDate)`.
 
 Reference: [Adam4EVE MarketOrdersTrades column description](https://static.adam4eve.eu/MarketOrdersTrades/MarketOrdersTrades.txt).
@@ -78,7 +77,7 @@ The biggest decision is the collection strategy, because ESI offers different pr
 
 - **Endpoint**: `GET /markets/structures/{structure_id}`
   - Cached ~5 minutes (per ESI behavior).
-  - Returns *all active* orders in that structure (no per-type filter).
+  - Returns _all active_ orders in that structure (no per-type filter).
   - Requires authenticated access and the character must have access to the structure’s market.
 
 This is the best fit for alliance trade hubs because it directly gives us the structure’s full orderbook.
@@ -112,7 +111,7 @@ We store snapshots keyed by `order_id` (plus `location_id`), and for each poll w
 
 If an order exists in both snapshots:
 
-- \( \Delta = prev.volume\_remain - curr.volume\_remain \)
+- \( \Delta = prev.volume_remain - curr.volume_remain \)
 - If \( \Delta > 0 \), interpret as **confirmed traded volume** of \( \Delta \) at that order’s `price`.
 
 This is the most “just” signal because it is directly observed as a reduction.
@@ -136,7 +135,7 @@ Adam4EVE uses the `has_gone` dimension to represent two counting modes:
   - **Upper-bound**: deltas + treat disappearances as full fill of `prev.volume_remain`
 - Optionally add a third “best-estimate” mode later, but only if we can defend it.
 
-This gives Strategy Lab/liquidity checks better knobs: “be conservative” vs “assume fast fills”.
+This gives liquidity checks better knobs: “be conservative” vs “assume fast fills”.
 
 ##### Expiry-aware handling (recommended improvement)
 
@@ -172,7 +171,7 @@ For each day/location/type/side (and for each counting mode):
 - **orderNum**: count of trade transactions
   - conservative definition: count of distinct `order_id` with \(\Delta > 0\)
   - upper-bound adds disappeared orders as +1 each
-- **iskValue**: sum(tradedVolume * price)
+- **iskValue**: sum(tradedVolume \* price)
 - **high/low**: max/min price across traded orders that day
 - **avg**: volume-weighted average price:
   - \( avg = \frac{\sum (v_i \cdot p_i)}{\sum v_i} \)
@@ -196,15 +195,15 @@ Efficiency tactics:
 
 No snapshot-based method can see trades that happen fully between polls (e.g., an order created and fully filled between two 5-minute snapshots).
 
-What we *can* do:
+What we _can_ do:
 
 - **Shorter polling interval** reduces but doesn’t eliminate this.
 - **Represent uncertainty explicitly**:
   - store lower/upper bounds (deltas-only vs include-gone)
   - track a “coverage” signal per day (how many polls were successfully captured)
-- **Avoid overstating precision** in Strategy Lab:
+- **Avoid overstating precision** in planner/liquidity outputs:
   - treat “daily units sold” as a heuristic, not a fact
-  - allow runs to require minimum coverage
+  - allow consumers to require minimum coverage
 
 ## Data model proposal (incremental, compatible with current usage)
 
@@ -264,7 +263,7 @@ Initial rollout target (provided):
 
 For NPC stations we can self-gather only for types we care about:
 
-- derive type universe from our own usage (planner outputs, tracked items, Strategy Lab universe)
+- derive type universe from our own usage (planner outputs and tracked items)
 - poll region orders per type (existing paging helper), filter to station, diff by `order_id`
 
 This should be an opt-in because of ESI volume and rate limiting.
@@ -286,7 +285,7 @@ This reduces non-market reliance on Adam4EVE and makes builds/backfills more det
 
 - **Exact polling cadence**: 5 minutes aligned to cache vs faster (wasteful) vs slower (miss more).
 - **Storage strategy**: event tables (debuggable) vs direct daily aggregation (simpler).
-- **How we represent “coverage”** in Strategy Lab / liquidity checks.
+- **How we represent “coverage”** in planner/liquidity checks.
 - **Do we need per-structure configuration** (tracked structure list, owning corp/alliance, collector character, on/off switch).
 - **How to handle merges** if we ingest both sources for the same `(day, location, type)` (add a `source` dimension vs separate tables).
 

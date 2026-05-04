@@ -6,8 +6,6 @@ export const TRADECRAFT_TYPES = [
 ] as const;
 
 export const CHARACTERS_TYPES = [
-  "SKILL_PLAN_REMAP_REMINDER",
-  "SKILL_PLAN_COMPLETION",
   "PLEX_ENDING",
   "MCT_ENDING",
   "BOOSTER_ENDING",
@@ -48,17 +46,6 @@ export const TRADECRAFT_ITEMS: PrefItem[] = [
 ];
 
 export const CHARACTERS_ITEMS: PrefItem[] = [
-  {
-    type: "SKILL_PLAN_REMAP_REMINDER",
-    title: "Skill plan remap reminders",
-    description:
-      "Discord DMs before planned attribute remaps for assigned skill plans",
-  },
-  {
-    type: "SKILL_PLAN_COMPLETION",
-    title: "Skill plan completion",
-    description: "Discord DMs shortly before assigned skill plans complete",
-  },
   {
     type: "PLEX_ENDING",
     title: "PLEX ending",

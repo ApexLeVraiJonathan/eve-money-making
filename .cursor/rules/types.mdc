@@ -9,8 +9,8 @@ alwaysApply: true
 - Use `packages/shared` as the **single home** for types that are imported by both `apps/api` and `apps/web`.
 - **No barrel files** for shared types. Do not use `packages/shared/src/index.ts` as a re-export hub.
 - Publish a stable public surface via **package `exports`** (subpath exports) in `packages/shared/package.json`.
-  - Allowed consumer imports: `@kpi-tracker/shared/kpi`, `@kpi-tracker/shared/servers`, etc.
-  - Disallowed: deep imports into source/build internals like `@kpi-tracker/shared/src/*` or `packages/shared/src/*`.
+ - Allowed consumer imports: `@eve/shared/tradecraft-cycles`, `@eve/shared/skill-contracts`, etc.
+ - Disallowed: deep imports into source/build internals like `@eve/shared/src/*` or `packages/shared/src/*`.
 - Before creating a new type, **check if it already exists** in the repo (especially in `packages/shared`).
 - If you created a type in one app and later need it in the other, **deduplicate**:
   - Move the canonical type to `packages/shared`

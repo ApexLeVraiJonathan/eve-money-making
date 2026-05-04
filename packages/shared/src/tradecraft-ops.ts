@@ -14,12 +14,6 @@ export type MarketStaleness = {
   };
 };
 
-export type JobStatusResponse = {
-  lastRun: string | null;
-  isRunning: boolean;
-  nextRun: string | null;
-};
-
 export type CleanupJobResponse = {
   cleaned: number;
 };

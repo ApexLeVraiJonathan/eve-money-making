@@ -12,7 +12,7 @@
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/main",
-    "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
+    "lint": "eslint \"{src,apps,libs,test}/**/*.ts\"",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
@@ -25,9 +25,7 @@
     "prisma:migrate:deploy": "pnpm --filter @eve/prisma prisma:migrate:deploy",
     "db:studio": "pnpm --filter @eve/prisma prisma:studio",
     "db:seed": "pnpm --filter @eve/prisma run prisma db seed",
-    "db:reset": "pnpm --filter @eve/prisma run prisma migrate reset",
-    "seed:strategy-lab": "node scripts/seed-strategy-lab.cjs",
-    "seed:strategy-lab:clear": "node scripts/seed-strategy-lab.cjs --clear"
+    "db:reset": "pnpm --filter @eve/prisma run prisma migrate reset"
   },
   "dependencies": {
     "@eve/eve-core": "workspace:*",
@@ -136,9 +134,7 @@
       "^@api/game-data/(.*)$": "<rootDir>/src/game-data/$1",
       "^@api/prisma/(.*)$": "<rootDir>/src/prisma/$1",
       "^@api/support/(.*)$": "<rootDir>/src/support/$1",
-      "^@api/tradecraft/(.*)$": "<rootDir>/src/tradecraft/$1",
-      "^@api/skill-plans/(.*)$": "<rootDir>/src/skill-plans/$1",
-      "^@api/skill-farm/(.*)$": "<rootDir>/src/skill-farm/$1"
+      "^@api/tradecraft/(.*)$": "<rootDir>/src/tradecraft/$1"
     }
   }
 }

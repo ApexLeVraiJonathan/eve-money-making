@@ -15,8 +15,6 @@ export type NotificationPreferenceDto = {
     | "CYCLE_STARTED"
     | "CYCLE_RESULTS"
     | "CYCLE_PAYOUT_SENT"
-    | "SKILL_PLAN_REMAP_REMINDER"
-    | "SKILL_PLAN_COMPLETION"
     | "PLEX_ENDING"
     | "MCT_ENDING"
     | "BOOSTER_ENDING"

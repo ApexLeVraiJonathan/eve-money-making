@@ -3,18 +3,13 @@
   "version": "0.0.1",
   "private": true,
   "type": "module",
-  "main": "./src/index.ts",
-  "types": "./src/index.ts",
   "exports": {
-    ".": "./src/index.ts",
-    "./types": "./src/types/index.ts",
     "./skills": "./src/skills.ts",
     "./character-management": "./src/character-management.ts",
     "./notifications": "./src/notifications.ts",
     "./tradecraft-market": "./src/tradecraft-market.ts",
     "./parameter-profiles": "./src/parameter-profiles.ts",
     "./tradecraft-characters": "./src/tradecraft-characters.ts",
-    "./tradecraft-strategy-lab": "./src/tradecraft-strategy-lab.ts",
     "./tradecraft-ops": "./src/tradecraft-ops.ts",
     "./tradecraft-participations": "./src/tradecraft-participations.ts",
     "./tradecraft-data-ops": "./src/tradecraft-data-ops.ts",
@@ -34,4 +29,3 @@
     "typescript": "^5.8.0"
   }
 }
-

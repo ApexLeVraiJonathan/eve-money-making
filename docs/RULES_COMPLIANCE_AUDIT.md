@@ -18,6 +18,7 @@ This is a living audit for tracking where the codebase breaks project rules and 
   - `nextjs.mdc`
   - `api-contracts.mdc`
   - `prisma-db.mdc`
+  - `notion-project-ops.mdc`
 
 ## Tracking System
 
@@ -27,6 +28,25 @@ This is a living audit for tracking where the codebase breaks project rules and 
 - Initiatives data source id: `collection://9f1a5d7b-aea7-4763-bc18-7acca42b8519`
 - Accepted decision (contracts canonical): `https://www.notion.so/312cadbcdb75810aac95e86994943341`
 - Baseline findings synced: `T-001..T-003`, `C-001..C-003`, `N-001..N-005`, `X-001..X-004`, `A-001..A-003`, `P-001..P-002`
+- Additional findings synced: `T-004..T-005`, `C-004`, `N-006..N-008`, `X-005..X-007`, `A-004..A-006`
+
+## Current Recovery Snapshot
+
+- **Branch:** `rules-refactor`
+- **Last known stopping point:** Batch 8, after removing retired skill-farm, skill-issue, and user-owned skill-plan products while preserving Tradecraft and character-management.
+- **Repo/Notion drift to reconcile:** Notion and this audit both contain resolved contract findings, but some stale evidence and issue statuses lag the current code. Keep this document as the technical source of truth and sync Notion after each verified slice.
+- **Documentation cleanup posture:** Conservative. Keep `docs/old` as archive material unless a document or code path is proven stale, unreferenced, and safe to remove.
+- **Recovery verification:** Batch 8 full verification passed: `pnpm type-check`, `pnpm lint`, `pnpm test:api`, `pnpm test:web`, and `pnpm build`. Batch 9 cleanup and lint-warning cleanup now pass `pnpm lint`, `pnpm type-check`, and the full API Jest suite.
+- **Notion sync:** Batch 6 changelog entry created after Strategy Lab removal and pricing structure-market extraction; Batch 7 changelog entry created after Skill Farm tracking/notification async cleanup; Batch 8 changelog entry created after retired skill product removal and merge hardening; Batch 9 and lint-cleanup changelog entries created after final cleanup verification.
+- **Next recommended work:** After Batch 9 and lint cleanup, avoid new feature refactors until the removal migration and product-scope change are reviewed for deployment impact.
+
+## Batch 8 Notes - Skill Product Removal
+
+- Removed retired `skill-farm`, `skill-issue`, and user-owned `skill-plans` API/web product surfaces.
+- Preserved character-domain skill training and browser functionality by moving catalog/encyclopedia reads to `apps/api/src/game-data`.
+- Added destructive migration `packages/prisma/migrations/20260504030500_remove_skill_products/migration.sql`; it intentionally drops skill farm/settings/configs and user-owned skill plan tables and prunes retired notification enum values.
+- Kept `SkillDefinition` and SDE import support because the skill browser depends on them.
+- Completed merge-hardening items: removed public `POST /auth/link-character`, sanitized Discord OAuth return URLs, restored GET aliases for Tradecraft job endpoints, and clamped market DTO limits before validation.
 
 ## How To Use This Audit
 
@@ -92,11 +112,12 @@ This is a living audit for tracking where the codebase breaks project rules and 
 
 ### Finding T-001
 
-- **Status:** `open`
+- **Status:** `resolved`
 - **Severity:** `P1`
-- **Issue:** Shared package still uses a barrel file, which is explicitly disallowed.
+- **Issue:** Shared package root barrel was removed; shared contracts are exposed through explicit `@eve/shared/*` subpath exports only.
 - **Evidence files:**
-  - `packages/shared/src/index.ts`
+  - `packages/shared/package.json`
+  - `packages/shared/README.md`
 
 ### Finding T-002
 
@@ -111,12 +132,12 @@ This is a living audit for tracking where the codebase breaks project rules and 
 
 - **Status:** `resolved`
 - **Severity:** `P2`
-- **Issue:** Shared contracts were decomposed from a monolithic `types/index.ts` into focused domain files under `packages/shared/src/types/` with `index.ts` reduced to a compatibility re-export surface.
+- **Issue:** Shared contracts were decomposed from a monolithic `types/index.ts` into focused domain files and public package subpath exports. The temporary compatibility barrel was removed once unused.
 - **Evidence files:**
-  - `packages/shared/src/types/index.ts`
   - `packages/shared/src/types/cycles.ts`
   - `packages/shared/src/types/market-arbitrage.ts`
-  - `packages/shared/src/types/strategy-lab.ts`
+  - `packages/shared/src/types/pricing.ts`
+  - `packages/shared/package.json`
 
 ### Finding T-004
 
@@ -143,33 +164,39 @@ This is a living audit for tracking where the codebase breaks project rules and 
 
 ### Finding C-001
 
-- **Status:** `open`
+- **Status:** `in-progress`
 - **Severity:** `P2`
-- **Issue:** Broad barrel export usage across the repo conflicts with default no-barrel guidance.
+- **Issue:** Broad barrel export usage was narrowed in app/shared contract surfaces. Remaining `index.ts` files are package entrypoints, local test helper entrypoints, or route-local convenience exports that need case-by-case review before removal.
 - **Evidence files (sample):**
   - `apps/web/app/tradecraft/api/index.ts`
-  - `packages/shared/src/index.ts`
+  - `packages/ui/src/index.ts`
+  - `packages/eve-core/src/index.ts`
   - `apps/api/libs/data-import/src/index.ts`
+  - `apps/api/libs/arbitrage-packager/src/index.ts`
 
 ### Finding C-002
 
-- **Status:** `open`
+- **Status:** `in-progress`
 - **Severity:** `P1`
-- **Issue:** Multiple oversized files exceed the rule threshold and mix concerns.
-- **Evidence files (sample):**
+- **Issue:** Multiple oversized files exceed the rule threshold and mix concerns. Batch 6 removed the retired Strategy Lab feature instead of splitting it, extracted C-N/self-market structure pricing support from `PricingService`, and Batch 9 split NPC market daily aggregate/comparison reads out of `NpcMarketQueryService`. Remaining large services should be split opportunistically when the boundary is clear and covered by tests; Auth remains deferred because it delegates Prisma persistence and mainly coordinates OAuth/cookies/responses.
+- **Evidence files (priority order):**
+  - `packages/prisma/migrations/20260504010500_remove_strategy_lab/migration.sql`
+  - `apps/api/src/tradecraft/market/services/pricing.service.ts`
+  - `apps/api/src/tradecraft/market/services/structure-market-pricing.service.ts`
+  - `apps/api/src/tradecraft/npc-market/npc-market-aggregates.service.ts`
+  - `apps/api/src/tradecraft/npc-market/npc-market-comparison.service.ts`
+  - `apps/api/src/tradecraft/cycles/services/cycle.service.ts`
+  - `apps/api/src/game-data/services/import.service.ts`
   - `apps/api/src/characters/auth.controller.ts`
-  - `apps/web/app/characters/page.tsx`
-  - `apps/web/app/characters/skills/plans/page.tsx`
 
 ### Finding C-003
 
 - **Status:** `open`
 - **Severity:** `P2`
-- **Issue:** Many sequential loops in service code suggest missed opportunities for batched parallelism where independent work exists.
+- **Issue:** Many sequential loops in service code suggest missed opportunities for batched parallelism where independent work exists. Batch 7 closed the low-risk Skill Farm slice before the skill products were retired in Batch 8. Remaining `C-003` work should be targeted to active tradecraft/character services where independence is clear and tests can pin behavior.
 - **Evidence files (sample):**
-  - `apps/api/src/tradecraft/market/services/pricing.service.ts`
-  - `apps/api/src/skill-plans/skill-plans.service.ts`
-  - `apps/api/src/skill-farm/skill-farm.service.ts`
+  - `apps/api/src/tradecraft/cycles/services/cycle.service.ts`
+  - `apps/api/src/tradecraft/wallet/services/wallet.service.ts`
 
 ### Finding C-004
 
@@ -187,41 +214,52 @@ This is a living audit for tracking where the codebase breaks project rules and 
 
 ### Finding N-001
 
-- **Status:** `open`
+- **Status:** `resolved`
 - **Severity:** `P1`
-- **Issue:** Controllers include direct Prisma and business logic, violating thin-controller guidance.
+- **Issue:** Known direct Prisma/business logic was moved out of Batch 5 controllers. Market read logic now lives in focused query services, and `auth.controller.ts` no longer injects `PrismaService`; OAuth state and character/token persistence are delegated to character auth services.
 - **Evidence files:**
-  - `apps/api/src/tradecraft/npc-market/npc-market.controller.ts`
-  - `apps/api/src/tradecraft/self-market/self-market.controller.ts`
+  - `apps/api/src/tradecraft/npc-market/npc-market-query.service.ts`
+  - `apps/api/src/tradecraft/self-market/self-market-query.service.ts`
+  - `apps/api/src/characters/services/oauth-state.service.ts`
+  - `apps/api/src/characters/services/auth.service.ts`
   - `apps/api/src/characters/auth.controller.ts`
 
 ### Finding N-002
 
 - **Status:** `resolved`
 - **Severity:** `P1`
-- **Issue:** API code uses `console.*` rather than Nest `Logger`.
+- **Issue:** Runtime API source under `apps/api/src` no longer uses `console.*`; remaining API-package console output is limited to manual scripts/test runners where stdout/stderr is intentional CLI UX rather than Nest runtime logging.
 - **Evidence files:**
-  - `apps/api/src/characters/auth.controller.ts`
-  - `apps/api/src/tradecraft/market/services/pricing.service.ts`
+  - `apps/api/src`
+  - `apps/api/scripts/tests/participation-rollover/participation-rollover.suite.ts`
+  - `apps/api/scripts/tests/jingle-yield/jingle-yield.suite.ts`
 
 ### Finding N-003
 
-- **Status:** `open`
+- **Status:** `resolved`
 - **Severity:** `P2`
-- **Issue:** Some DTO-like payloads are type aliases rather than runtime classes, and are imported with `import type`.
+- **Issue:** Liquidity response DTOs now use runtime classes with Swagger metadata. Service-only type imports may remain where the class is used only as a TypeScript shape, but controllers no longer import this boundary DTO as a type-only alias.
 - **Evidence files:**
   - `apps/api/src/tradecraft/market/dto/liquidity-item.dto.ts`
   - `apps/api/src/tradecraft/market/liquidity.controller.ts`
-  - `apps/api/src/tradecraft/market/services/liquidity.service.ts`
 
 ### Finding N-004
 
-- **Status:** `open`
+- **Status:** `in-progress`
 - **Severity:** `P2`
-- **Issue:** Swagger response decorators are sparse across controllers.
+- **Issue:** Targeted Swagger success response metadata was added to the Batch 5 touched controllers, and Batch 6 extended useful response metadata across high-value controllers. Broad all-controller response schema annotation remains regular follow-up work rather than a blocker for the current refactor slice.
 - **Evidence files (sample):**
-  - `apps/api/src/support/support.controller.ts` (has `@ApiResponse`)
-  - Most other `*.controller.ts` files do not
+  - `apps/api/src/tradecraft/npc-market/npc-market.controller.ts`
+  - `apps/api/src/tradecraft/self-market/self-market.controller.ts`
+  - `apps/api/src/tradecraft/market/liquidity.controller.ts`
+  - `apps/api/src/tradecraft/jobs/jobs.controller.ts`
+  - `apps/api/src/tradecraft/cycles/cycles.controller.ts`
+  - `apps/api/src/characters/auth.controller.ts`
+  - `apps/api/src/notifications/notifications.controller.ts`
+  - `apps/api/src/characters/users.controller.ts`
+  - `apps/api/src/character-management/character-management.controller.ts`
+  - `apps/api/src/skill-plans/skill-plans.controller.ts`
+  - `apps/api/src/skill-farm/skill-farm.controller.ts`
 
 ### Finding N-005
 
@@ -233,9 +271,9 @@ This is a living audit for tracking where the codebase breaks project rules and 
 
 ### Finding N-006
 
-- **Status:** `open`
+- **Status:** `accepted-deferred`
 - **Severity:** `P2`
-- **Issue:** Config stack diverges from rule guidance: app uses custom `AppConfig` + dotenv bootstrap instead of `@nestjs/config` + `ConfigModule.forRoot(...)`.
+- **Issue:** Config stack diverges from rule guidance: app uses custom `AppConfig` + dotenv bootstrap instead of `@nestjs/config` + `ConfigModule.forRoot(...)`. Decision for Batch 5: keep `AppConfig` and existing startup validation for now because the current app is small, env validation already exists, and a full `ConfigService` migration would be broad churn without immediate product value.
 - **Evidence files:**
   - `apps/api/src/main.ts`
   - `apps/api/src/app.module.ts`
@@ -243,20 +281,24 @@ This is a living audit for tracking where the codebase breaks project rules and 
 
 ### Finding N-007
 
-- **Status:** `open`
+- **Status:** `resolved`
 - **Severity:** `P2`
-- **Issue:** Some controller request payloads are inline object types (`@Body`/`@Query`) rather than DTO classes, reducing runtime validation/schema consistency.
+- **Issue:** Inline controller `@Body`/`@Query` object types were replaced with DTO classes in the scanned controller set, including the later-discovered NPC market query objects.
 - **Evidence files:**
   - `apps/api/src/character-management/character-management.controller.ts`
   - `apps/api/src/tradecraft/npc-market/npc-market.controller.ts`
   - `apps/api/src/tradecraft/self-market/self-market.controller.ts`
   - `apps/api/src/skill-plans/skill-plans.controller.ts`
+  - `apps/api/src/tradecraft/npc-market/dto/npc-market.dto.ts`
+  - `apps/api/src/tradecraft/market/dto/self-market.dto.ts`
+  - `apps/api/src/character-management/dto/character-management.dto.ts`
+  - `apps/api/src/skill-plans/dto/skill-plans.dto.ts`
 
 ### Finding N-008
 
-- **Status:** `open`
+- **Status:** `resolved`
 - **Severity:** `P2`
-- **Issue:** Job organization and trigger conventions diverge from the schedule section of the rule (`src/schedule/**` + POST manual run endpoints).
+- **Issue:** Manual job trigger endpoints now use protected `POST` routes. Decision for Batch 5: keep the current feature-local `apps/api/src/tradecraft/jobs/**` module as an accepted small-app exception rather than moving the whole scheduler to `src/schedule/**`.
 - **Evidence files:**
   - `apps/api/src/tradecraft/jobs/jobs.controller.ts`
   - `apps/api/src/tradecraft/jobs/jobs.module.ts`
@@ -266,10 +308,10 @@ This is a living audit for tracking where the codebase breaks project rules and 
 
 ### Finding X-001
 
-- **Status:** `in-progress`
+- **Status:** `resolved`
 - **Severity:** `P1`
-- **Issue:** Many `page.tsx` files are not yet composition-only. Initial migration pattern is in place: `page.tsx` as server wrapper and client-heavy UI moved to route `_components`.
-- **Evidence files (sample):**
+- **Issue:** Remaining large route pages were split into small server wrappers plus route-local `_components`.
+- **Evidence files (migration pattern sample):**
   - `apps/web/app/account-settings/page.tsx`
   - `apps/web/app/account-settings/_components/account-settings-page-client.tsx`
   - `apps/web/app/tradecraft/cycles/page.tsx`
@@ -323,11 +365,6 @@ This is a living audit for tracking where the codebase breaks project rules and 
   - `apps/web/app/tradecraft/admin/self-market/_components/self-market-page-client.tsx`
   - `apps/web/app/tradecraft/admin/self-market/_components/sections/cn-market-tab.tsx`
   - `apps/web/app/tradecraft/admin/self-market/_components/sections/rens-market-tab.tsx`
-  - `apps/web/app/tradecraft/admin/strategy-lab/[runId]/page.tsx`
-  - `apps/web/app/tradecraft/admin/strategy-lab/[runId]/_components/strategy-run-detail-page-client.tsx`
-  - `apps/web/app/tradecraft/admin/strategy-lab/page.tsx`
-  - `apps/web/app/tradecraft/admin/strategy-lab/_components/strategy-lab-page-client.tsx`
-  - `apps/web/app/tradecraft/admin/strategy-lab/_components/sections/strategy-params-dialog.tsx`
   - `apps/web/app/tradecraft/admin/planner/page.tsx`
   - `apps/web/app/tradecraft/admin/planner/_components/planner-page-client.tsx`
   - `apps/web/app/tradecraft/admin/planner/_components/sections/planner-results-section.tsx`
@@ -368,13 +405,22 @@ This is a living audit for tracking where the codebase breaks project rules and 
   - `apps/web/app/brokerage/consignments/new/page.tsx`
   - `apps/web/app/brokerage/consignments/new/_components/new-consignment-page-client.tsx`
   - `apps/web/app/brokerage/consignments/details/page.tsx`
+- **Closed hotspots:**
+  - `apps/web/app/tradecraft/page.tsx`
+  - `apps/web/app/tradecraft/_components/tradecraft-overview-content.tsx`
+  - `apps/web/app/characters/skill-farms/page.tsx`
+  - `apps/web/app/characters/skill-farms/_components/skill-farm-intro-content.tsx`
+  - `apps/web/app/brokerage/reports/page.tsx`
+  - `apps/web/app/brokerage/reports/_components/brokerage-reports-content.tsx`
+  - `apps/web/app/tradecraft/cycles/details/page.tsx`
+  - `apps/web/app/tradecraft/cycles/details/_components/cycle-details-content.tsx`
   - `apps/web/app/brokerage/consignments/details/_components/consignment-details-page-client.tsx`
 
 ### Finding X-002
 
-- **Status:** `in-progress`
+- **Status:** `resolved`
 - **Severity:** `P2`
-- **Issue:** Route-level `_components` structure was introduced and is now used in migrated routes; adoption is still partial across the app tree.
+- **Issue:** Route-level `_components` structure is now used for the previously remaining page hotspots.
 - **Evidence files:**
   - `apps/web/app/account-settings/_components/account-settings-page-client.tsx`
   - `apps/web/app/tradecraft/cycles/_components/cycles-overview-page-client.tsx`
@@ -391,9 +437,7 @@ This is a living audit for tracking where the codebase breaks project rules and 
   - `apps/web/app/tradecraft/admin/cycles/_components/cycles-page-client.tsx`
   - `apps/web/app/tradecraft/admin/jingle-yield/_components/jingle-yield-admin-page-client.tsx`
   - `apps/web/app/tradecraft/admin/self-market/_components/sections/type-orders-expanded.tsx`
-  - `apps/web/app/tradecraft/admin/strategy-lab/[runId]/_components/strategy-run-detail-page-client.tsx`
   - `apps/web/app/tradecraft/admin/self-market/_components/self-market-page-client.tsx`
-  - `apps/web/app/tradecraft/admin/strategy-lab/_components/strategy-lab-page-client.tsx`
   - `apps/web/app/tradecraft/admin/planner/_components/planner-page-client.tsx`
   - `apps/web/app/settings/notifications/_components/notification-settings-page-client.tsx`
   - `apps/web/app/characters/skills/browser/_components/skill-browser-page-client.tsx`
@@ -433,8 +477,6 @@ This is a living audit for tracking where the codebase breaks project rules and 
   - `apps/web/app/tradecraft/admin/cycles/page.tsx`
   - `apps/web/app/tradecraft/admin/jingle-yield/page.tsx`
   - `apps/web/app/tradecraft/admin/self-market/page.tsx`
-  - `apps/web/app/tradecraft/admin/strategy-lab/[runId]/page.tsx`
-  - `apps/web/app/tradecraft/admin/strategy-lab/page.tsx`
   - `apps/web/app/tradecraft/admin/planner/page.tsx`
   - `apps/web/app/settings/notifications/page.tsx`
   - `apps/web/app/characters/page.tsx`
@@ -492,11 +534,11 @@ This is a living audit for tracking where the codebase breaks project rules and 
 
 - **Status:** `resolved`
 - **Severity:** `P2`
-- **Issue:** Route-level UX boundary files are missing (`loading.tsx`, `error.tsx`, `not-found.tsx`), indicating route error/loading handling is not using Next boundary conventions.
+- **Issue:** Root route UX boundary files were added (`loading.tsx`, `error.tsx`, `not-found.tsx`). Feature-level boundaries can still be added later where user-facing routes need custom states.
 - **Evidence files:**
-  - No matches under `apps/web/app/**/loading.tsx`
-  - No matches under `apps/web/app/**/error.tsx`
-  - No matches under `apps/web/app/**/not-found.tsx`
+  - `apps/web/app/loading.tsx`
+  - `apps/web/app/error.tsx`
+  - `apps/web/app/not-found.tsx`
 
 ## Rule: `api-contracts.mdc`
 
@@ -515,7 +557,7 @@ This is a living audit for tracking where the codebase breaks project rules and 
 
 - **Status:** `resolved`
 - **Severity:** `P2`
-- **Issue:** App-local API request/response contract shapes in active API hook/client layers were consolidated into `packages/shared` modules (`character-management`, `notifications`, `tradecraft-market`, `parameter-profiles`, `tradecraft-ops`, `tradecraft-participations`, `tradecraft-strategy-lab`, `tradecraft-data-ops`, `tradecraft-cycles`, `tradecraft-arbitrage`, `skill-contracts`, and `support-feedback`).
+- **Issue:** App-local API request/response contract shapes in active API hook/client layers were consolidated into `packages/shared` modules (`character-management`, `notifications`, `tradecraft-market`, `parameter-profiles`, `tradecraft-ops`, `tradecraft-participations`, `tradecraft-data-ops`, `tradecraft-cycles`, `tradecraft-arbitrage`, `skill-contracts`, and `support-feedback`). Retired Strategy Lab contracts were removed with the feature.
 - **Evidence files (sample):**
   - `apps/web/app/tradecraft/api/cycles/cycles.hooks.ts`
   - `apps/web/app/tradecraft/api/market/arbitrage.hooks.ts`
@@ -643,6 +685,7 @@ This plan sequences work by dependency and blast radius so we can make progress 
 - **Validation:**
   - Browser traffic to backend goes through Next routes
   - Largest page hotspots shrink and remain behaviorally equivalent
+- **Recovery status:** Resolved for page architecture. Static scan shows all `apps/web/app/**/page.tsx` files are small wrappers; the remaining frontend cleanup is regular component maintenance rather than Batch 4 page migration.
 
 ## Batch 5 - NestJS Controller/DTO/Jobs Alignment
 
@@ -656,6 +699,7 @@ This plan sequences work by dependency and blast radius so we can make progress 
 - **Validation:**
   - Controller surface is thin; service tests cover moved logic
   - Swagger docs are coherent and endpoint metadata is explicit
+- **Recovery status:** Complete for the conservative Batch 5 slice. NPC/self-market controller read logic moved into feature query services with characterization tests; later-discovered NPC inline query objects were replaced with DTO classes; liquidity response DTOs now have runtime classes; touched endpoints gained targeted Swagger success metadata; manual job triggers now use protected `POST` routes; `auth.controller.ts` no longer owns OAuth state or character/token Prisma persistence. The controller remains large because it still coordinates OAuth redirects/cookies/responses, so any further split should be a focused maintainability follow-up rather than a Batch 5 blocker.
 
 ## Cross-Batch Risks
 
@@ -679,4 +723,3 @@ This plan sequences work by dependency and blast radius so we can make progress 
 - **New findings added:** `...`
 - **Findings status changes:** `...`
 - **Open questions for user:** `...`
-

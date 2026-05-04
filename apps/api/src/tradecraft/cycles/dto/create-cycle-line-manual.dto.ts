@@ -1,5 +1,5 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsInt, IsNumber, IsOptional, Min } from 'class-validator';
+import { ApiProperty } from '@nestjs/swagger';
+import { IsInt, Min } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class CreateCycleLineManualRequest {

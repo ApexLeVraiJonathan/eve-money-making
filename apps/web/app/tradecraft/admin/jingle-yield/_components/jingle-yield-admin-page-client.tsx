@@ -1,14 +1,17 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useCycles } from "@/app/tradecraft/api/cycles/cycles.hooks";
 import {
-  useCycles,
   useCreateJingleYieldParticipation,
   useJingleYieldPrograms,
-} from "@/app/tradecraft/api";
-import { Card, CardDescription, CardHeader, CardTitle, toast } from "@eve/ui";
+} from "@/app/tradecraft/api/market/jingle-yield.hooks";
+import { toast } from "@eve/ui";
 import { Loader2, Shield } from "lucide-react";
-import { useAllUsers, useAdminCharacters } from "../../../api/characters/admin.hooks";
+import {
+  useAllUsers,
+  useAdminCharacters,
+} from "../../../api/characters/admin.hooks";
 import { JingleYieldCreateCard } from "./sections/jingle-yield-create-card";
 import { JingleYieldStatsCards } from "./sections/jingle-yield-stats-cards";
 import { JingleYieldProgramsCard } from "./sections/jingle-yield-programs-card";
@@ -47,12 +50,17 @@ export default function JingleYieldAdminPageClient() {
     return count;
   };
 
-  const plannedCycles = useMemo(() => cycles.filter((c) => c.status === "PLANNED"), [cycles]);
+  const plannedCycles = useMemo(
+    () => cycles.filter((c) => c.status === "PLANNED"),
+    [cycles],
+  );
 
   const userLabelMap = useMemo(() => {
     const map = new Map<string, { primaryName: string; label: string }>();
     for (const u of users) {
-      const primary = u.characters.find((c) => c.id === u.primaryCharacterId) ?? u.characters[0];
+      const primary =
+        u.characters.find((c) => c.id === u.primaryCharacterId) ??
+        u.characters[0];
       const primaryName = primary?.name ?? "Unknown character";
       map.set(u.id, {
         primaryName,
@@ -72,7 +80,10 @@ export default function JingleYieldAdminPageClient() {
   }, [jyUserId, userLabelMap]);
 
   const filtered = useMemo(
-    () => programs.filter((p) => (statusFilter === "all" ? true : p.status === statusFilter)),
+    () =>
+      programs.filter((p) =>
+        statusFilter === "all" ? true : p.status === statusFilter,
+      ),
     [programs, statusFilter],
   );
 
@@ -91,7 +102,9 @@ export default function JingleYieldAdminPageClient() {
           <Shield className="h-6 w-6" />
         </span>
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">JingleYield Programs</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">
+            JingleYield Programs
+          </h1>
           <p className="text-sm text-muted-foreground">
             Overview of seeded principal programs and their progress.
           </p>
@@ -129,7 +142,8 @@ export default function JingleYieldAdminPageClient() {
                     : Number(jyAdminCharacterId),
                 characterName: jyCharacterName,
                 principalIsk: jyPrincipalIsk,
-                minCycles: typeof jyMinCycles === "number" ? jyMinCycles : undefined,
+                minCycles:
+                  typeof jyMinCycles === "number" ? jyMinCycles : undefined,
               });
               toast.success("JingleYield participation created.");
               setJyUserId("");
@@ -137,7 +151,8 @@ export default function JingleYieldAdminPageClient() {
               setJyAdminCharacterId("");
               setJyCharacterName("");
             } catch (err) {
-              const msg = err instanceof Error ? err.message : "Failed to create JY";
+              const msg =
+                err instanceof Error ? err.message : "Failed to create JY";
               toast.error(msg);
             }
           })();

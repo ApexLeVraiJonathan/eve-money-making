@@ -574,12 +574,12 @@ export class EsiCharactersService {
   ): Promise<{
     home_location?: {
       location_id: number;
-      location_type: 'station' | 'structure' | string;
+      location_type: string;
     };
     jump_clones?: Array<{
       jump_clone_id: number;
       location_id: number;
-      location_type: 'station' | 'structure' | string;
+      location_type: string;
       name?: string | null;
       implant_ids?: number[];
     }>;
@@ -589,12 +589,12 @@ export class EsiCharactersService {
     const { data } = await this.esi.fetchJson<{
       home_location?: {
         location_id: number;
-        location_type: 'station' | 'structure' | string;
+        location_type: string;
       };
       jump_clones?: Array<{
         jump_clone_id: number;
         location_id: number;
-        location_type: 'station' | 'structure' | string;
+        location_type: string;
         name?: string | null;
         implant_ids?: number[];
       }>;

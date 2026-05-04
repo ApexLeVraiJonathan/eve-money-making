@@ -1,15 +1,26 @@
 import { Controller, Post, Body, Req, UseGuards } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiExtraModels,
+  ApiOkResponse,
+  ApiOperation,
+  ApiTags,
+  getSchemaPath,
+} from '@nestjs/swagger';
 import { Roles } from '@api/characters/decorators/roles.decorator';
 import { RolesGuard } from '@api/characters/guards/roles.guard';
 import { Public } from '@api/characters/decorators/public.decorator';
 import type { Request } from 'express';
 import { LiquidityService } from './services/liquidity.service';
-import type { LiquidityItemDto } from './dto/liquidity-item.dto';
+import {
+  LiquidityItemDto,
+  LiquidityStationResultDto,
+} from './dto/liquidity-item.dto';
 import { LiquidityCheckRequest } from './dto/liquidity-check-request.dto';
 import { LiquidityItemStatsRequest } from './dto/item-stats-request.dto';
 
 @ApiTags('liquidity')
+@ApiExtraModels(LiquidityStationResultDto)
 @Controller('liquidity')
 export class LiquidityController {
   constructor(private readonly liquidityService: LiquidityService) {}
@@ -20,6 +31,13 @@ export class LiquidityController {
   @ApiBearerAuth()
   @ApiOperation({
     summary: 'Check liquidity for items across tracked stations',
+  })
+  @ApiOkResponse({
+    description: 'Liquidity results keyed by station ID',
+    schema: {
+      type: 'object',
+      additionalProperties: { $ref: getSchemaPath(LiquidityStationResultDto) },
+    },
   })
   async check(
     @Body()
@@ -38,6 +56,7 @@ export class LiquidityController {
   @Post('item-stats')
   @Public()
   @ApiOperation({ summary: 'Get detailed liquidity stats for a specific item' })
+  @ApiOkResponse({ description: 'Detailed liquidity stats for an item' })
   async itemStats(
     @Body() body: LiquidityItemStatsRequest,
     @Req() req: Request,

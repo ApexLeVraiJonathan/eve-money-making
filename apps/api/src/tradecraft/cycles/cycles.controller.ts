@@ -15,6 +15,7 @@ import {
 import {
   ApiTags,
   ApiBearerAuth,
+  ApiOkResponse,
   ApiOperation,
   ApiQuery,
   ApiParam,
@@ -98,6 +99,7 @@ export class CyclesController {
   @UseGuards(RolesGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create a new arbitrage cycle' })
+  @ApiOkResponse({ description: 'Created arbitrage cycle' })
   async createCycle(@Body() body: CreateCycleRequest) {
     return await this.cycleService.createCycle({
       ...body,
@@ -110,6 +112,7 @@ export class CyclesController {
   @UseGuards(RolesGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Plan a future arbitrage cycle' })
+  @ApiOkResponse({ description: 'Planned arbitrage cycle' })
   async planCycle(@Body() body: PlanCycleRequest): Promise<unknown> {
     return await this.cycleService.planCycle({
       ...body,
@@ -120,6 +123,7 @@ export class CyclesController {
   @Public()
   @Get('cycles')
   @ApiOperation({ summary: 'List all arbitrage cycles' })
+  @ApiOkResponse({ description: 'Arbitrage cycle list' })
   async listCycles() {
     return await this.cycleService.listCycles();
   }
@@ -129,6 +133,7 @@ export class CyclesController {
   @Public()
   @Get('cycles/history')
   @ApiOperation({ summary: 'Get public cycle history with profit metrics' })
+  @ApiOkResponse({ description: 'Public cycle history with profit metrics' })
   async getCycleHistory(): Promise<unknown> {
     return await this.cycleService.getCycleHistory();
   }
@@ -136,6 +141,7 @@ export class CyclesController {
   @Public()
   @Get('cycles/overview')
   @ApiOperation({ summary: 'Get cycles overview' })
+  @ApiOkResponse({ description: 'Cycle overview summary' })
   async cyclesOverview(): Promise<unknown> {
     return (await this.cycleService.getCycleOverview()) as unknown;
   }
@@ -144,6 +150,7 @@ export class CyclesController {
   @Get('cycles/:id')
   @ApiOperation({ summary: 'Get a cycle by ID' })
   @ApiParam({ name: 'id', description: 'Cycle ID' })
+  @ApiOkResponse({ description: 'Cycle detail' })
   async getCycleById(@Param('id') id: string) {
     const cycle = await this.cycleService.getCycleById(id);
     if (!cycle) throw new NotFoundException('Cycle not found');
@@ -156,6 +163,7 @@ export class CyclesController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update a cycle (admin only)' })
   @ApiParam({ name: 'id', description: 'Cycle ID' })
+  @ApiOkResponse({ description: 'Updated cycle' })
   async updateCycle(@Param('id') id: string, @Body() body: UpdateCycleRequest) {
     return await this.cycleService.updateCycle(id, {
       name: body.name,
@@ -170,6 +178,7 @@ export class CyclesController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete a PLANNED cycle (admin only)' })
   @ApiParam({ name: 'id', description: 'Cycle ID' })
+  @ApiOkResponse({ description: 'Deleted planned cycle result' })
   async deleteCycle(@Param('id') id: string) {
     return await this.cycleService.deletePlannedCycle(id);
   }
@@ -180,6 +189,7 @@ export class CyclesController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Close a cycle' })
   @ApiParam({ name: 'id', description: 'Cycle ID' })
+  @ApiOkResponse({ description: 'Closed cycle settlement result' })
   async closeCycle(@Param('id') id: string): Promise<unknown> {
     return await this.cycleService.closeCycleWithFinalSettlement(
       id,
@@ -196,6 +206,7 @@ export class CyclesController {
     summary: 'Manually allocate wallet transactions to cycle lines',
   })
   @ApiParam({ name: 'id', description: 'Cycle ID' })
+  @ApiOkResponse({ description: 'Transaction allocation result' })
   async allocateTransactions(@Param('id') id: string): Promise<unknown> {
     return await this.allocation.allocateAll(id);
   }
@@ -206,6 +217,7 @@ export class CyclesController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Open a planned cycle' })
   @ApiParam({ name: 'id', description: 'Cycle ID' })
+  @ApiOkResponse({ description: 'Opened planned cycle result' })
   async openCycle(
     @Param('id') id: string,
     @Body() body: OpenCycleRequest,
@@ -231,6 +243,7 @@ export class CyclesController {
     name: 'cycleId',
     description: 'Target cycle ID (OPEN or PLANNED)',
   })
+  @ApiOkResponse({ description: 'JingleYield rollover backfill result' })
   async backfillJingleYieldRollovers(
     @Param('cycleId') cycleId: string,
     @Body() body: BackfillJingleYieldRolloversRequestDto,
@@ -246,6 +259,7 @@ export class CyclesController {
   @UseGuards(RolesGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Append a ledger entry' })
+  @ApiOkResponse({ description: 'Appended ledger entry' })
   async append(@Body() body: AppendEntryRequest): Promise<unknown> {
     return await this.cycleService.appendEntry(body);
   }
@@ -256,6 +270,7 @@ export class CyclesController {
   @ApiQuery({ name: 'cycleId', type: String, description: 'Cycle ID' })
   @ApiQuery({ name: 'limit', required: false, type: Number })
   @ApiQuery({ name: 'offset', required: false, type: Number })
+  @ApiOkResponse({ description: 'Ledger entries for a cycle' })
   async list(@Query() query: GetEntriesQuery): Promise<unknown> {
     return await this.cycleService.listEntriesEnriched(
       query.cycleId,
@@ -268,6 +283,7 @@ export class CyclesController {
   @Get('nav/:cycleId')
   @ApiOperation({ summary: 'Compute Net Asset Value for a cycle' })
   @ApiParam({ name: 'cycleId', description: 'Cycle ID' })
+  @ApiOkResponse({ description: 'Cycle net asset value' })
   async nav(@Param('cycleId') cycleId: string): Promise<unknown> {
     return await this.capitalService.computeNav(cycleId);
   }
@@ -277,6 +293,7 @@ export class CyclesController {
   @ApiOperation({ summary: 'Compute capital for a cycle' })
   @ApiParam({ name: 'cycleId', description: 'Cycle ID' })
   @ApiQuery({ name: 'force', required: false, type: String })
+  @ApiOkResponse({ description: 'Cycle capital computation result' })
   async capital(
     @Param('cycleId') cycleId: string,
     @Query('force') force?: string,
@@ -293,6 +310,7 @@ export class CyclesController {
   @ApiOperation({
     summary: 'Get maximum allowed participation amount for current user',
   })
+  @ApiOkResponse({ description: 'Current user maximum participation caps' })
   async getMaxParticipation(
     @CurrentUser() user: RequestUser | null,
     @Query('testUserId') testUserId?: string,
@@ -336,6 +354,7 @@ export class CyclesController {
       'Admin: get Tradecraft caps for a specific user (principal + effective principal + maximum)',
   })
   @ApiQuery({ name: 'userId', type: String, description: 'Target user ID' })
+  @ApiOkResponse({ description: 'Tradecraft caps for target user' })
   async getCapsForUserAdmin(@Query('userId') userId?: string): Promise<{
     principalCapIsk: string;
     principalCapB: number;
@@ -366,6 +385,7 @@ export class CyclesController {
   @ApiOperation({
     summary: 'Get my automatic rollover settings (tradecraft)',
   })
+  @ApiOkResponse({ description: 'Current user automatic rollover settings' })
   async getMyAutoRolloverSettings(
     @CurrentUser() user: RequestUser | null,
   ): Promise<AutoRolloverSettingsResponseDto> {
@@ -382,6 +402,7 @@ export class CyclesController {
   @ApiOperation({
     summary: 'Update my automatic rollover settings (tradecraft)',
   })
+  @ApiOkResponse({ description: 'Updated automatic rollover settings' })
   async updateMyAutoRolloverSettings(
     @CurrentUser() user: RequestUser | null,
     @Body() body: UpdateAutoRolloverSettingsRequestDto,
@@ -399,6 +420,7 @@ export class CyclesController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create a participation in a cycle' })
   @ApiParam({ name: 'cycleId', description: 'Cycle ID' })
+  @ApiOkResponse({ description: 'Created cycle participation' })
   async createParticipation(
     @Param('cycleId') cycleId: string,
     @Body() body: CreateParticipationManualRequest,
@@ -441,6 +463,7 @@ export class CyclesController {
       'Admin: manually create a standard participation for an OPEN cycle by main character',
   })
   @ApiParam({ name: 'cycleId', description: 'Cycle ID (must be OPEN)' })
+  @ApiOkResponse({ description: 'Admin-created open cycle participation' })
   async adminCreateParticipationForOpenCycle(
     @Param('cycleId') cycleId: string,
     @Body() body: CreateParticipationAdminRequest,
@@ -878,6 +901,7 @@ export class CyclesController {
   @Get('cycles/:cycleId/profit')
   @ApiOperation({ summary: 'Get cycle profit' })
   @ApiParam({ name: 'cycleId', description: 'Cycle ID' })
+  @ApiOkResponse({ description: 'Cycle profit summary' })
   async getCycleProfit(@Param('cycleId') cycleId: string): Promise<unknown> {
     return await this.profitService.computeCycleProfit(cycleId);
   }
@@ -885,6 +909,7 @@ export class CyclesController {
   @Get('cycles/:cycleId/profit/breakdown')
   @ApiOperation({ summary: 'Get detailed profit breakdown (P&L statement)' })
   @ApiParam({ name: 'cycleId', description: 'Cycle ID' })
+  @ApiOkResponse({ description: 'Detailed cycle profit breakdown' })
   async getProfitBreakdown(
     @Param('cycleId') cycleId: string,
   ): Promise<unknown> {
@@ -895,6 +920,7 @@ export class CyclesController {
   @Get('cycles/:cycleId/profit/estimated')
   @ApiOperation({ summary: 'Get estimated profit for a cycle' })
   @ApiParam({ name: 'cycleId', description: 'Cycle ID' })
+  @ApiOkResponse({ description: 'Estimated cycle profit' })
   async getEstimatedProfit(
     @Param('cycleId') cycleId: string,
   ): Promise<unknown> {
@@ -905,6 +931,7 @@ export class CyclesController {
   @Get('cycles/:cycleId/profit/portfolio')
   @ApiOperation({ summary: 'Get portfolio value for a cycle' })
   @ApiParam({ name: 'cycleId', description: 'Cycle ID' })
+  @ApiOkResponse({ description: 'Cycle portfolio value' })
   async getPortfolioValue(@Param('cycleId') cycleId: string): Promise<unknown> {
     return await this.profitService.computePortfolioValue(cycleId);
   }
@@ -915,6 +942,7 @@ export class CyclesController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create a cycle snapshot' })
   @ApiParam({ name: 'cycleId', description: 'Cycle ID' })
+  @ApiOkResponse({ description: 'Created cycle snapshot' })
   async createSnapshot(@Param('cycleId') cycleId: string): Promise<unknown> {
     return await this.snapshotService.createCycleSnapshot(cycleId);
   }
@@ -923,6 +951,7 @@ export class CyclesController {
   @Get('cycles/:cycleId/snapshots')
   @ApiOperation({ summary: 'Get cycle snapshots' })
   @ApiParam({ name: 'cycleId', description: 'Cycle ID' })
+  @ApiOkResponse({ description: 'Cycle snapshots' })
   async getSnapshots(@Param('cycleId') cycleId: string): Promise<unknown> {
     return await this.snapshotService.getCycleSnapshots(cycleId);
   }

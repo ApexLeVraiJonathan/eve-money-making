@@ -3,22 +3,22 @@
 ## ✅ Completed Features
 
 ### 1. Backend API (NestJS)
-**Location:** `apps/api/src/skill-plans/`
+**Location:** `apps/api/src/game-data/`
 
-- **New Endpoint:** `GET /skill-plans/encyclopedia`
+- **Endpoint:** `GET /game-data/skills/encyclopedia`
   - Returns comprehensive skill data organized by category and group
   - Includes all skill metadata: name, description, attributes, SP requirements
-  - Prerequisites placeholder ready (TODO: implement from SDE typeDogma)
+  - Includes prerequisites and required-by links from imported SDE skill data
   - Proper authentication via JWT guards
 
-**Service Method:** `getSkillEncyclopedia()` in `skill-plans.service.ts`
+**Service Method:** `getSkillEncyclopedia()` in `skill-catalog.service.ts`
 - Queries all published skills from `SkillDefinition` table
 - Calculates SP requirements per level using EVE formula
 - Groups skills by groupId and category
 - Returns structured data matching API contracts
 
 ### 2. API Contracts (Shared Types)
-**Location:** `packages/api-contracts/src/index.ts`
+**Location:** `packages/shared/src/skill-contracts.ts`
 
 New types added:
 - `SkillPrerequisite` - Skill dependency information
@@ -30,7 +30,7 @@ New types added:
 ### 3. Query Keys
 **Location:** `packages/api-client/src/queryKeys.ts`
 
-- Added `encyclopedia` key to `skillPlans` domain
+- Added `skillEncyclopedia` key to the `gameData` domain
 - Follows established patterns for cache management
 
 ### 4. Frontend - New Route Structure
@@ -83,7 +83,7 @@ Displays comprehensive information:
 
 ### Why This Approach?
 1. **Backend First:** Proper API contracts ensure type safety across frontend/backend
-2. **Shared Types:** All types in `@eve/api-contracts` prevent duplication
+2. **Shared Types:** Cross-app request/response contracts live in `@eve/shared/*` subpath exports to prevent duplication
 3. **Query Keys:** Centralized in `@eve/api-client` for consistent cache management
 4. **Monorepo Conventions:** Followed all established patterns (no types in apps)
 
@@ -91,9 +91,9 @@ Displays comprehensive information:
 ```
 Database (SkillDefinition)
     ↓
-Backend Service (SkillPlansService)
+Backend Service (SkillCatalogService)
     ↓
-API Endpoint (/skill-plans/encyclopedia)
+API Endpoint (/game-data/skills/encyclopedia)
     ↓
 API Client (@eve/api-client)
     ↓
@@ -189,11 +189,11 @@ UI Components (SkillCategoryView)
 ## 📝 Files Modified/Created
 
 ### Backend
-- `apps/api/src/skill-plans/skill-plans.service.ts` - Added `getSkillEncyclopedia()`
-- `apps/api/src/skill-plans/skill-plans.controller.ts` - Added `GET /encyclopedia` endpoint
+- `apps/api/src/game-data/services/skill-catalog.service.ts` - Owns skill catalog and encyclopedia reads
+- `apps/api/src/game-data/skill-catalog.controller.ts` - Adds game-data skill endpoints
 
 ### Shared Packages
-- `packages/api-contracts/src/index.ts` - Added 5 new types
+- `packages/shared/src/skill-contracts.ts` - Added skill encyclopedia response types
 - `packages/api-client/src/queryKeys.ts` - Added encyclopedia key
 
 ### Frontend
@@ -209,7 +209,7 @@ UI Components (SkillCategoryView)
 
 ## 🎨 Design Compliance
 
-All UI follows the design principles from `.cursor/rules/design-principles-ui-ux-guidelines.mdc`:
+All UI follows the current Next.js and UI composition rules in `.cursor/rules/nextjs.mdc`:
 - ✅ Proper use of shadcn/ui components
 - ✅ Consistent spacing and shadows
 - ✅ Gradient backgrounds (`from-background to-muted/10`)

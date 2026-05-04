@@ -12,13 +12,7 @@ import { CharacterService } from '@api/characters/services/character.service';
 import { MarketDataService } from './market-data.service';
 import { CycleLineService } from '@api/tradecraft/cycles/services/cycle-line.service';
 import { CycleService } from '@api/tradecraft/cycles/services/cycle.service';
-
-type StructureMarketOrder = {
-  is_buy_order: boolean;
-  type_id: number;
-  price: number;
-  volume_remain: number;
-};
+import { StructureMarketPricingService } from './structure-market-pricing.service';
 
 @Injectable()
 export class PricingService {
@@ -34,112 +28,8 @@ export class PricingService {
     private readonly marketData: MarketDataService,
     private readonly cycleLineService: CycleLineService,
     private readonly cycleService: CycleService,
+    private readonly structureMarket: StructureMarketPricingService,
   ) {}
-
-  private getSelfMarketStructureId(): bigint | null {
-    return AppConfig.marketSelfGather().structureId ?? null;
-  }
-
-  private async getCnStructureMarketCharacterId(): Promise<number | null> {
-    // Prefer the SELLER character assigned to C-N in the DB (location=CN),
-    // and only if it has a token + structure market scope.
-    const requiredScope = 'esi-markets.structure_markets.v1';
-    const row = await this.prisma.eveCharacter.findFirst({
-      where: {
-        function: 'SELLER',
-        location: 'CN',
-        token: { is: { scopes: { contains: requiredScope } } },
-      },
-      select: { id: true },
-      orderBy: { updatedAt: 'desc' },
-    });
-    if (row?.id) return row.id;
-
-    // Fallback: use env-configured collector character if it has the required scope.
-    const cfgChar = AppConfig.marketSelfGather().characterId ?? null;
-    if (!cfgChar) return null;
-    const token = await this.prisma.characterToken.findUnique({
-      where: { characterId: cfgChar },
-      select: { scopes: true },
-    });
-    const scopes = (token?.scopes ?? '')
-      .split(' ')
-      .map((s) => s.trim())
-      .filter(Boolean);
-    if (!scopes.includes(requiredScope)) return null;
-    return cfgChar;
-  }
-
-  private bigintToSafeNumber(v: bigint): number | null {
-    if (v > BigInt(Number.MAX_SAFE_INTEGER)) return null;
-    return Number(v);
-  }
-
-  private async fetchStructureOrders(params: {
-    structureId: bigint;
-    characterId: number;
-    forceRefresh?: boolean;
-    reqId?: string;
-  }): Promise<StructureMarketOrder[]> {
-    const path = `/latest/markets/structures/${params.structureId.toString()}/`;
-    const first = await this.esi.fetchPaged<StructureMarketOrder[]>(path, {
-      characterId: params.characterId,
-      forceRefresh: params.forceRefresh,
-      reqId: params.reqId,
-      page: 1,
-    });
-    const out: StructureMarketOrder[] = Array.isArray(first.data)
-      ? [...first.data]
-      : [];
-    const totalPages = first.totalPages ?? 1;
-    for (let page = 2; page <= totalPages; page++) {
-      const { data } = await this.esi.fetchJson<StructureMarketOrder[]>(path, {
-        characterId: params.characterId,
-        forceRefresh: params.forceRefresh,
-        reqId: params.reqId,
-        query: { page },
-      });
-      if (Array.isArray(data) && data.length) out.push(...data);
-    }
-    return out;
-  }
-
-  private computeBestSellByTypeFromStructureOrders(
-    orders: StructureMarketOrder[],
-  ): Map<number, number> {
-    const bestSellByType = new Map<number, number>();
-    for (const o of orders) {
-      if (!o || o.is_buy_order) continue;
-      if (!Number.isFinite(o.type_id) || !Number.isFinite(o.price)) continue;
-      if (Number(o.volume_remain) <= 0) continue;
-      const prev = bestSellByType.get(o.type_id);
-      bestSellByType.set(
-        o.type_id,
-        prev === undefined ? o.price : Math.min(prev, o.price),
-      );
-    }
-    return bestSellByType;
-  }
-
-  private buildSelfSellsByTypeFromStructureOrders(
-    orders: StructureMarketOrder[],
-  ): Map<number, Array<{ price: number; volume: number }>> {
-    const out = new Map<number, Array<{ price: number; volume: number }>>();
-    for (const o of orders) {
-      if (!o || o.is_buy_order) continue;
-      if (!Number.isFinite(o.type_id) || !Number.isFinite(o.price)) continue;
-      const vol = Number(o.volume_remain);
-      if (!Number.isFinite(vol) || vol <= 0) continue;
-      const list = out.get(o.type_id) ?? [];
-      list.push({ price: o.price, volume: vol });
-      out.set(o.type_id, list);
-    }
-    for (const [typeId, list] of out.entries()) {
-      list.sort((a, b) => a.price - b.price);
-      out.set(typeId, list);
-    }
-    return out;
-  }
 
   private parseLines(lines: string[]): Array<{ name: string; qty: number }> {
     const out: Array<{ name: string; qty: number }> = [];
@@ -185,42 +75,19 @@ export class PricingService {
     // present in SDE station tables, so we cannot resolve regionId via GameDataService.
     // Prefer a direct ESI fetch of the structure orders (ESI cache ~5m), with a
     // fallback to the latest stored self-market snapshot.
-    const selfStructureId = this.getSelfMarketStructureId();
+    const selfStructureId = this.structureMarket.getSelfMarketStructureId();
     const selfStructureIdNum =
       selfStructureId !== null
-        ? this.bigintToSafeNumber(selfStructureId)
+        ? this.structureMarket.bigintToSafeNumber(selfStructureId)
         : null;
     const isSelfMarketDestination =
       selfStructureIdNum !== null &&
       params.destinationStationId === selfStructureIdNum;
 
     if (isSelfMarketDestination && selfStructureId !== null) {
-      let bestSellByType: Map<number, number> | null = null;
-      try {
-        const cnCharId = await this.getCnStructureMarketCharacterId();
-        if (cnCharId) {
-          const orders = await this.fetchStructureOrders({
-            structureId: selfStructureId,
-            characterId: cnCharId,
-          });
-          bestSellByType =
-            this.computeBestSellByTypeFromStructureOrders(orders);
-        }
-      } catch {
-        // Fall back to DB snapshot below.
-      }
-
-      if (!bestSellByType) {
-        const snap = await this.prisma.selfMarketSnapshotLatest.findUnique({
-          where: { locationId: selfStructureId },
-          select: { orders: true },
-        });
-        const rawOrders = (snap?.orders ??
-          []) as unknown as StructureMarketOrder[];
-        bestSellByType = this.computeBestSellByTypeFromStructureOrders(
-          Array.isArray(rawOrders) ? rawOrders : [],
-        );
-      }
+      const bestSellByType =
+        (await this.structureMarket.getBestSellByType()) ??
+        new Map<number, number>();
 
       return parsed.map((p) => {
         const typeId = nameToType.get(p.name);
@@ -367,9 +234,11 @@ export class PricingService {
 
     // Self-market (C-N structure) is not an SDE stationId (int4); avoid passing it to
     // stationId-based SDE lookups and int4-based daily trades queries.
-    const selfStructureId = this.getSelfMarketStructureId();
+    const selfStructureId = this.structureMarket.getSelfMarketStructureId();
     const selfStructureIdNum =
-      selfStructureId !== null ? this.bigintToSafeNumber(selfStructureId) : null;
+      selfStructureId !== null
+        ? this.structureMarket.bigintToSafeNumber(selfStructureId)
+        : null;
     const INT4_MAX = 2_147_483_647;
     const sdeStationIds = stationIds.filter(
       (id) =>
@@ -643,30 +512,7 @@ export class PricingService {
       selfStructureIdNum !== null &&
       stationIdSet.has(selfStructureIdNum)
     ) {
-      let structureOrders: StructureMarketOrder[] | null = null;
-      try {
-        const cnCharId = await this.getCnStructureMarketCharacterId();
-        if (cnCharId) {
-          structureOrders = await this.fetchStructureOrders({
-            structureId: selfStructureId,
-            characterId: cnCharId,
-          });
-        }
-      } catch {
-        // Fall back to DB snapshot below.
-      }
-
-      if (!structureOrders) {
-        const snap = await this.prisma.selfMarketSnapshotLatest.findUnique({
-          where: { locationId: selfStructureId },
-          select: { orders: true },
-        });
-        const rawOrders = (snap?.orders ??
-          []) as unknown as StructureMarketOrder[];
-        structureOrders = Array.isArray(rawOrders) ? rawOrders : [];
-      }
-
-      const map = this.buildSelfSellsByTypeFromStructureOrders(structureOrders);
+      const map = await this.structureMarket.getSellOrdersByType();
       for (const [typeId, list] of map.entries())
         selfSellsByType.set(typeId, list);
     }
@@ -994,16 +840,14 @@ export class PricingService {
       ? await this.gameData.getTypeNames(typeIds)
       : new Map<number, string>();
 
-    const feeDefaults = AppConfig.arbitrage().fees;
-
-    const out: Array<{
+    type UnlistedCycleLine = {
       itemName: string;
       typeId: number;
       quantityRemaining: number;
       destinationStationId: number;
       lowestSell: number | null;
       suggestedSellPriceTicked: number | null;
-    }> = [];
+    };
 
     // Resolve regionIds for all destination stations
     const stationIds = Array.from(
@@ -1052,7 +896,7 @@ export class PricingService {
     });
 
     const results = await Promise.all(fetchPromises);
-    return results.filter((r) => r !== null) as typeof out;
+    return results.filter((r) => r !== null) as UnlistedCycleLine[];
   }
 
   async confirmListing(params: {

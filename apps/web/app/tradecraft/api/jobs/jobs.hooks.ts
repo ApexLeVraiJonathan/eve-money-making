@@ -5,7 +5,6 @@ import { useApiClient } from "@/app/api-hooks/useApiClient";
 import { useAuthenticatedQuery } from "@/app/api-hooks/useAuthenticatedQuery";
 import type {
   CleanupJobResponse,
-  JobStatusResponse,
   MarketStaleness,
   WalletsJobRunResponse,
 } from "@eve/shared/tradecraft-ops";
@@ -28,19 +27,7 @@ export function useMarketStaleness() {
   const client = useApiClient();
   return useAuthenticatedQuery({
     queryKey: ["jobs", "staleness"],
-    queryFn: () => client.get<MarketStaleness>("/jobs/staleness"),
-  });
-}
-
-/**
- * Get job status
- */
-export function useJobStatus() {
-  const client = useApiClient();
-  return useAuthenticatedQuery({
-    queryKey: ["jobs", "status"],
-    queryFn: () =>
-      client.get<JobStatusResponse>("/jobs/status"),
+    queryFn: () => client.post<MarketStaleness>("/jobs/staleness", {}),
   });
 }
 
@@ -77,6 +64,6 @@ export function useRunWalletsJob() {
   const client = useApiClient();
   return useMutation({
     mutationFn: () =>
-      client.get<WalletsJobRunResponse>("/jobs/wallets/run"),
+      client.post<WalletsJobRunResponse>("/jobs/wallets/run", {}),
   });
 }

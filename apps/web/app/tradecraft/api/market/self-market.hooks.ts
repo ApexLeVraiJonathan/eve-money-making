@@ -8,7 +8,6 @@ import type {
   SelfMarketClearDailyResponse,
   SelfMarketCollectResponse,
   SelfMarketDailyAggregatesResponse,
-  SelfMarketOrder,
   SelfMarketSnapshotLatestResponse,
   SelfMarketSnapshotTypeSummaryResponse,
   SelfMarketStatusResponse,

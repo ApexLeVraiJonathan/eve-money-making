@@ -7,17 +7,20 @@ import {
   Delete,
   Body,
   Post,
-  UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiFoundResponse,
+  ApiOkResponse,
+  ApiOperation,
+  ApiTags,
+} from '@nestjs/swagger';
 import type { Response } from 'express';
 import {
   CurrentUser,
   type RequestUser,
 } from '@api/characters/decorators/current-user.decorator';
 import { Public } from '@api/characters/decorators/public.decorator';
-import { Roles } from '@api/characters/decorators/roles.decorator';
-import { RolesGuard } from '@api/characters/guards/roles.guard';
 import { DiscordOauthService } from './discord-oauth.service';
 import {
   NotificationPreferenceItemDto,
@@ -40,6 +43,7 @@ export class NotificationsController {
   @ApiOperation({
     summary: 'Start Discord account linking for the current user',
   })
+  @ApiFoundResponse({ description: 'Redirects to Discord OAuth authorization' })
   async connectDiscord(
     @CurrentUser() user: RequestUser | null,
     @Res() res: Response,
@@ -57,6 +61,7 @@ export class NotificationsController {
   @Public()
   @Get('discord/callback')
   @ApiOperation({ summary: 'Discord OAuth callback for account linking' })
+  @ApiFoundResponse({ description: 'Redirects after Discord OAuth callback' })
   async discordCallback(
     @Query('code') code: string | undefined,
     @Query('state') state: string | undefined,
@@ -88,6 +93,7 @@ export class NotificationsController {
   @ApiOperation({
     summary: 'Get the current user Discord account link (if any)',
   })
+  @ApiOkResponse({ description: 'Current user Discord account link or null' })
   async getDiscordAccount(@CurrentUser() user: RequestUser | null) {
     if (!user?.userId) return null;
     return await this.discordOauth.getAccountForUser(user.userId);
@@ -96,6 +102,7 @@ export class NotificationsController {
   @Delete('discord/account')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Disconnect Discord account from current user' })
+  @ApiOkResponse({ description: 'Discord account disconnect result' })
   async disconnectDiscord(@CurrentUser() user: RequestUser | null) {
     if (!user?.userId) {
       return { ok: false as const };
@@ -112,6 +119,7 @@ export class NotificationsController {
   @ApiOperation({
     summary: 'Get notification preferences for current user',
   })
+  @ApiOkResponse({ description: 'Current user notification preferences' })
   async getPreferences(
     @CurrentUser() user: RequestUser | null,
   ): Promise<NotificationPreferenceItemDto[]> {
@@ -127,6 +135,7 @@ export class NotificationsController {
     summary:
       'Update notification preferences for current user (partial or full set)',
   })
+  @ApiOkResponse({ description: 'Notification preference update result' })
   async updatePreferences(
     @CurrentUser() user: RequestUser | null,
     @Body() body: UpdateNotificationPreferencesDto,
@@ -144,6 +153,7 @@ export class NotificationsController {
     summary:
       'Send a test Discord DM to the currently authenticated user to verify Discord linking',
   })
+  @ApiOkResponse({ description: 'Discord test DM send result' })
   async sendTestDm(@CurrentUser() user: RequestUser | null) {
     if (!user?.userId) {
       return {
@@ -169,6 +179,7 @@ export class NotificationsController {
   @Post('debug/tradecraft/cycle-planned')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'DEBUG: Send Tradecraft cycle planned DM preview' })
+  @ApiOkResponse({ description: 'Cycle planned DM preview result' })
   async debugTradecraftCyclePlanned(
     @CurrentUser() user: RequestUser | null,
     @Body()
@@ -197,6 +208,7 @@ export class NotificationsController {
   @Post('debug/tradecraft/cycle-started')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'DEBUG: Send Tradecraft cycle started DM preview' })
+  @ApiOkResponse({ description: 'Cycle started DM preview result' })
   async debugTradecraftCycleStarted(
     @CurrentUser() user: RequestUser | null,
     @Body()
@@ -225,6 +237,7 @@ export class NotificationsController {
   @Post('debug/tradecraft/cycle-results')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'DEBUG: Send Tradecraft cycle results DM preview' })
+  @ApiOkResponse({ description: 'Cycle results DM preview result' })
   async debugTradecraftCycleResults(
     @CurrentUser() user: RequestUser | null,
     @Body()
@@ -253,6 +266,7 @@ export class NotificationsController {
   @Post('debug/tradecraft/payout-sent')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'DEBUG: Send Tradecraft payout sent DM preview' })
+  @ApiOkResponse({ description: 'Payout sent DM preview result' })
   async debugTradecraftPayoutSent(
     @CurrentUser() user: RequestUser | null,
     @Body()
@@ -284,6 +298,7 @@ export class NotificationsController {
     summary:
       'ADMIN: Send a preview of grouped expiry notifications (PLEX/MCT/Boosters) for the current user',
   })
+  @ApiOkResponse({ description: 'Expiry notification preview result' })
   async sendExpiryPreview(@CurrentUser() user: RequestUser | null) {
     if (!user?.userId) {
       return {
