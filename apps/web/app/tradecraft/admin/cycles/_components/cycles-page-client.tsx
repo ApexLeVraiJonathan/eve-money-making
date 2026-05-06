@@ -13,7 +13,11 @@ import {
   useDeleteCycle,
   useAllocateCycleTransactions,
 } from "../../../api";
-import type { Cycle } from "@eve/shared/tradecraft-cycles";
+import type {
+  Cycle,
+  CycleLifecycleResponse,
+  CycleSettlementReport,
+} from "@eve/shared/tradecraft-cycles";
 import { normalizeIsk, toDatetimeLocal } from "./lib/cycle-utils";
 import {
   buildCycleUpdatePayload,
@@ -23,6 +27,12 @@ import {
 import { CycleCreationCard } from "./sections/cycle-creation-card";
 import { CyclesListCard } from "./sections/cycles-list-card";
 import { CapitalCard } from "./sections/capital-card";
+import { SettlementReportPanel } from "./ui/settlement-report-panel";
+
+type LastSettlementReport = {
+  title: string;
+  report: CycleSettlementReport;
+};
 
 export default function CyclesPageClient() {
   const { data: cycles = [], isLoading: isCyclesLoading } = useCycles();
@@ -47,6 +57,8 @@ export default function CyclesPageClient() {
   const [editName, setEditName] = React.useState("");
   const [editStartedAt, setEditStartedAt] = React.useState("");
   const [editInitialInjection, setEditInitialInjection] = React.useState("");
+  const [lastSettlementReport, setLastSettlementReport] =
+    React.useState<LastSettlementReport | null>(null);
 
   const { data: capital, refetch: refetchCapital } = useCycleCapital(viewingCapitalFor, false);
 
@@ -99,17 +111,41 @@ export default function CyclesPageClient() {
   };
 
   const closeCycle = async (id: string) => {
+    let response: CycleLifecycleResponse | null = null;
     await runToastAction({
-      action: () => closeCycleMutation.mutateAsync(id),
+      action: async () => {
+        response = await closeCycleMutation.mutateAsync(id);
+      },
       successMessage: "Cycle closed",
+      onSuccess: () => {
+        if (response) {
+          setLastSettlementReport({
+            title: "Close Cycle",
+            report: response.settlementReport,
+          });
+        }
+      },
     });
   };
 
   const openPlanned = async (id: string) => {
+    let response: CycleLifecycleResponse | null = null;
     await runToastAction({
-      action: () =>
-        openCycleMutation.mutateAsync({ cycleId: id, startedAt: undefined }),
+      action: async () => {
+        response = await openCycleMutation.mutateAsync({
+          cycleId: id,
+          startedAt: undefined,
+        });
+      },
       successMessage: "Cycle opened",
+      onSuccess: () => {
+        if (response) {
+          setLastSettlementReport({
+            title: "Open Planned Cycle",
+            report: response.settlementReport,
+          });
+        }
+      },
     });
   };
 
@@ -209,6 +245,11 @@ export default function CyclesPageClient() {
         setEditInitialInjection={setEditInitialInjection}
         saveEdit={() => void saveEdit()}
         doDelete={(id) => void doDelete(id)}
+      />
+
+      <SettlementReportPanel
+        report={lastSettlementReport?.report ?? null}
+        title={lastSettlementReport?.title ?? ""}
       />
 
       <CapitalCard capital={capital} onRecompute={(id) => loadCapital(id, true)} />

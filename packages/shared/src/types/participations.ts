@@ -1,6 +1,12 @@
 import type { ParticipationStatus, RolloverType } from "./core-enums";
 
-export interface CycleParticipation {
+export interface RolloverIntent {
+  rolloverType: RolloverType | null;
+  rolloverRequestedAmountIsk: string | null;
+  rolloverFromParticipationId: string | null;
+}
+
+export interface CycleParticipation extends RolloverIntent {
   id: string;
   cycleId: string;
   userId: string | null;
@@ -17,9 +23,6 @@ export interface CycleParticipation {
   refundAmountIsk: string | null;
   refundedAt: string | null;
   optedOutAt: string | null;
-  rolloverType: RolloverType | null;
-  rolloverRequestedAmountIsk: string | null;
-  rolloverFromParticipationId: string | null;
   createdAt: string;
   updatedAt: string;
 }

@@ -23,11 +23,11 @@ import {
   createJitaPriceFetcher,
 } from '../utils/capital-helpers';
 /**
- * CycleService handles core cycle lifecycle management.
+ * CycleService handles cycle records, ledger entries, and cycle summaries.
  *
  * Responsibilities:
  * - Cycle CRUD operations (create, plan, list)
- * - Cycle state transitions (open, close)
+ * - Low-level cycle state persistence used by the Cycle Lifecycle Entry Point
  * - Ledger entry management
  * - Cycle overview and enrichment
  * - Opening balance line creation from carryover inventory

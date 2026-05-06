@@ -14,7 +14,7 @@ import type {
   CycleSettlementStepKind,
   CycleSettlementStepName,
   CycleSettlementStepReport,
-} from '@eve/shared/tradecraft-cycles';
+} from '@eve/shared/tradecraft-cycles' assert { 'resolution-mode': 'import' };
 
 type AllocationResult = {
   buysAllocated: number;
@@ -80,13 +80,13 @@ export class CycleLifecycleService {
       });
 
     const rolloverLinesTemp = await this.rollovers.buildRolloverLineCandidates(
-      previousCycleToClose && previousCycleToClose.id !== cycle.id
-        ? previousCycleToClose.id
-        : null,
+      previousCycleToSettle?.id ?? null,
     );
     const jitaPriceMap =
       await this.rollovers.fetchJitaPricesForRolloverLines(rolloverLinesTemp);
 
+    // Strict Settlement Steps run before the open transition; failures here must
+    // stop us from closing the previous Cycle or opening the target Cycle.
     if (shouldSettlePreviousCycle) {
       this.logger.log(
         `Auto-closing previous cycle ${previousCycleToSettle.id}`,
@@ -164,7 +164,7 @@ export class CycleLifecycleService {
                 ? line.currentSellPriceIsk.toFixed(2)
                 : null,
               isRollover: true,
-              rolloverFromCycleId: previousCycleToClose?.id ?? null,
+              rolloverFromCycleId: previousCycleToSettle?.id ?? null,
               rolloverFromLineId: line.rolloverFromLineId,
             })),
           });

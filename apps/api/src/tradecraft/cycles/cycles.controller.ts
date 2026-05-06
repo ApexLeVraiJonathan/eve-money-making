@@ -32,7 +32,6 @@ import { PaymentMatchingService } from './services/payment-matching.service';
 import { CapitalService } from './services/capital.service';
 import { ProfitService } from './services/profit.service';
 import { CycleLinesIntelService } from './services/cycle-lines-intel.service';
-import { WalletService } from '@api/tradecraft/wallet/services/wallet.service';
 import { AllocationService } from '@api/tradecraft/wallet/services/allocation.service';
 import { AppConfig } from '@api/common/config';
 import {
@@ -92,7 +91,6 @@ export class CyclesController {
     private readonly capitalService: CapitalService,
     private readonly profitService: ProfitService,
     private readonly cycleLinesIntel: CycleLinesIntelService,
-    private readonly wallet: WalletService,
     private readonly allocation: AllocationService,
     private readonly jingleYieldService: JingleYieldService,
     private readonly autoRolloverSettings: AutoRolloverSettingsService,
@@ -191,9 +189,13 @@ export class CyclesController {
   @Roles('ADMIN')
   @UseGuards(RolesGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Close a cycle' })
+  @ApiOperation({
+    summary: 'Run Cycle Settlement for the Open Cycle',
+    description:
+      'Runs the Cycle Lifecycle Entry Point for Cycle Settlement and returns a Settlement Report. The route path is retained for API compatibility.',
+  })
   @ApiParam({ name: 'id', description: 'Cycle ID' })
-  @ApiOkResponse({ description: 'Closed cycle settlement result' })
+  @ApiOkResponse({ description: 'Settlement Report' })
   async closeCycle(@Param('id') id: string): Promise<unknown> {
     return await this.cycleLifecycle.settleOpenCycle({ cycleId: id });
   }
@@ -203,10 +205,13 @@ export class CyclesController {
   @UseGuards(RolesGuard)
   @ApiBearerAuth()
   @ApiOperation({
-    summary: 'Manually allocate wallet transactions to cycle lines',
+    summary:
+      'Manually allocate wallet transactions to cycle lines for a specified Cycle',
+    description:
+      'Runs steady-state wallet transaction allocation for the specified Cycle. This is not Cycle Settlement.',
   })
   @ApiParam({ name: 'id', description: 'Cycle ID' })
-  @ApiOkResponse({ description: 'Transaction allocation result' })
+  @ApiOkResponse({ description: 'Steady-state transaction allocation result' })
   async allocateTransactions(@Param('id') id: string): Promise<unknown> {
     return await this.allocation.allocateAll(id);
   }
@@ -215,9 +220,13 @@ export class CyclesController {
   @Roles('ADMIN')
   @UseGuards(RolesGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Open a planned cycle' })
+  @ApiOperation({
+    summary: 'Open a planned Cycle through the Cycle Lifecycle Entry Point',
+    description:
+      'Opens the planned Cycle. If another Cycle is open, the lifecycle entry point performs Cycle Settlement first so there is still at most one Open Cycle.',
+  })
   @ApiParam({ name: 'id', description: 'Cycle ID' })
-  @ApiOkResponse({ description: 'Opened planned cycle result' })
+  @ApiOkResponse({ description: 'Cycle Lifecycle transition result' })
   async openCycle(
     @Param('id') id: string,
     @Body() body: OpenCycleRequest,

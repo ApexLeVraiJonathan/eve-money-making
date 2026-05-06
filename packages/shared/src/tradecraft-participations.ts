@@ -1,5 +1,5 @@
 import type { CycleParticipation } from "./types/participations";
-export type { CycleParticipation } from "./types/participations";
+export type { CycleParticipation, RolloverIntent } from "./types/participations";
 
 export type AutoRolloverSettings = {
   enabled: boolean;

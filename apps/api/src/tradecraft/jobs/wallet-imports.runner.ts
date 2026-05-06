@@ -16,8 +16,8 @@ export class WalletImportsRunner {
   ) {}
 
   /**
-   * Core wallet import and allocation logic (no jobs-enabled check).
-   * Can be called manually via API or from scheduled job.
+   * Steady-state Open Cycle wallet import and allocation (no jobs-enabled check).
+   * Can be called manually via API or from a scheduled job. This is not Cycle Settlement.
    */
   async executeWalletImportsAndAllocation(): Promise<{
     buysAllocated: number;
@@ -26,7 +26,7 @@ export class WalletImportsRunner {
     await this.wallets.importAllLinked();
     const result = await this.allocation.allocateAll();
     this.logger.log(
-      `Wallets import and allocation completed: buys=${result.buysAllocated}, sells=${result.sellsAllocated}`,
+      `Steady-state Open Cycle wallet import and allocation completed: buys=${result.buysAllocated}, sells=${result.sellsAllocated}`,
     );
 
     await this.snapshotOpenCycles();

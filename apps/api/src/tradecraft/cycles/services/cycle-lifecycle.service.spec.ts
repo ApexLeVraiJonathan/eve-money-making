@@ -241,6 +241,76 @@ describe('CycleLifecycleService', () => {
     );
   });
 
+  it('opens a planned Cycle without settlement steps when there is no previous Open Cycle', async () => {
+    const { service, wallet, allocation, payouts, rollovers } = createService({
+      cycles: {
+        getCurrentOpenCycle: jest.fn().mockResolvedValue(null),
+      },
+    });
+
+    const result = await service.openPlannedCycle({ cycleId: 'planned-cycle' });
+
+    expect(result.cycle.status).toBe('OPEN');
+    expect(result.settlementReport).toEqual({
+      settledCycleId: null,
+      targetCycleId: 'planned-cycle',
+      steps: [],
+      recoverableFailures: [],
+    });
+    expect(wallet.importAllLinked).not.toHaveBeenCalled();
+    expect(allocation.allocateAll).not.toHaveBeenCalled();
+    expect(rollovers.processInventoryBuyback).not.toHaveBeenCalled();
+    expect(payouts.createPayouts).not.toHaveBeenCalled();
+    expect(rollovers.processParticipationRollovers).not.toHaveBeenCalled();
+  });
+
+  it('records recoverable rollover failures without blocking the target Cycle opening', async () => {
+    const { service } = createService({
+      rollovers: {
+        processParticipationRollovers: jest
+          .fn()
+          .mockRejectedValue(new Error('rollover failed')),
+      },
+    });
+
+    const result = await service.openPlannedCycle({ cycleId: 'planned-cycle' });
+
+    expect(result.cycle.status).toBe('OPEN');
+    expect(result.settlementReport.recoverableFailures).toEqual([
+      expect.objectContaining({
+        name: 'cycle_rollover',
+        kind: 'recoverable',
+        status: 'failed',
+        message: 'rollover failed',
+      }),
+    ]);
+    expect(result.settlementReport.steps).toContainEqual(
+      expect.objectContaining({
+        name: 'payout_creation',
+        status: 'succeeded',
+        message: 'created=1',
+      }),
+    );
+  });
+
+  it('records inventory purchase when rollover lines exist after opening', async () => {
+    const { service, rollovers } = createService({
+      prisma: {
+        cycleLine: {
+          findMany: jest.fn().mockResolvedValue([]),
+          count: jest.fn().mockResolvedValue(1),
+        },
+      },
+    });
+
+    await service.openPlannedCycle({ cycleId: 'planned-cycle' });
+
+    expect(rollovers.processInventoryPurchase).toHaveBeenCalledWith(
+      'planned-cycle',
+      'open-cycle',
+    );
+  });
+
   it('records recoverable payout failures without blocking the No Open Cycle Period', async () => {
     const { service } = createService({
       payouts: {
