@@ -1,0 +1,99 @@
+---
+description: NestJS conventions for apps/api (small-project friendly)
+globs: apps/api/**/*.ts
+alwaysApply: false
+---
+
+# NestJS Rule (apps/api)
+
+## Structure (feature-first)
+- Organize by feature: `src/<feature>/` (controller/service/module/dto under the feature).
+- Keep controllers/services/modules **inside the feature folder**; avoid a “god” `common/` that becomes a dump.
+- Keep files concise: if a feature file grows beyond **~500 lines**, refactor by splitting into sub-feature files (e.g., `match-history.service.ts` + `match-history.sync.ts` + `match-history.mapper.ts`) instead of a 2k-line logic file.
+
+## Controllers stay thin
+- Controllers should: route, validate, auth/guards, and serialize responses.
+- Business logic, DB calls, and complex branching belong in **services** (or small helpers).
+
+## Validation + DTOs
+- Use `ValidationPipe` (global) with `transform`, `whitelist`, `forbidNonWhitelisted`.
+- DTOs must be **classes** (not interfaces/types) to work with runtime validation.
+- Don’t use type-only imports for DTOs used at runtime (avoid `import type { ... }` for DTO classes).
+
+## Config + env validation
+- Use `@nestjs/config` and `ConfigService` (prefer `ConfigModule.forRoot({ isGlobal: true })`).
+- Validate required env at startup (Joi `validationSchema` or custom `validate()`).
+- Keep `.env.example` updated whenever env vars change (see core rule).
+
+## Swagger (dev-only by default)
+- Swagger exists to make development/testing easier.
+- Enable it in dev by default; keep it off in prod unless explicitly enabled.
+- Swagger should include auth configuration for protected endpoints (admin api-key header).
+- For each controller endpoint, add explicit Swagger decorators (`@ApiOperation`, success response decorator, and key error response decorators when relevant).
+- For request/response bodies that should appear as schemas, use DTO **classes** with `@ApiProperty` metadata (or equivalent), not plain object literals/type aliases.
+- Add `@ApiTags` on controllers so Swagger groups endpoints predictably by feature.
+
+## Scheduling / jobs (when needed)
+- Create a dedicated feature folder: `src/schedule/` for scheduled jobs and manual job triggers.
+- Keep each job in its **own service file** under `src/schedule/jobs/` using clear names (example: `player-name-sync.job.service.ts`).
+- Co-locate job-specific helper logic with that job service; avoid one large schedule service containing multiple jobs.
+- Keep job policy/business logic (retention windows, thresholds, cleanup behavior) inside the job's own service file; move it to shared services only with explicit user approval.
+- Jobs must be gateable via env flags:
+  - Global: `JOB_RUNNER=true|false`
+  - Per-job: `JOB_<JOB_NAME>=true|false` (example: `JOB_DB_CLEANUP`)
+- Scheduling flags gate **scheduled execution only**. Manual trigger endpoints should remain callable in dev/test/prod unless a separate, explicit manual-run guard is introduced.
+- Default behavior:
+  - **Dev**: `JOB_RUNNER=false` and all `JOB_*` false by default
+  - **Prod**: `JOB_RUNNER=true` and relevant `JOB_*` true by default
+  - Implement defaults based on `NODE_ENV`, but allow explicit env overrides.
+- Each job should have a **manual endpoint** in the schedule controller to trigger it on-demand (e.g., `POST /schedule/jobs/db-cleanup/run`).
+  - Manual endpoints must be **protected** (admin-only / internal-only). Never expose a dangerous public trigger.
+  - Manual endpoints should be idempotent / safe against double-submit:
+    - Use an idempotency key header when it makes sense, or at minimum return “already running” when a job is in progress.
+- Keep jobs safe to run:
+  - Prefer idempotent logic where possible.
+  - Avoid overlapping runs of the same job (use a simple in-memory guard; if we ever run multiple instances, revisit with a shared lock).
+
+## Errors & exception handling
+- Prefer built-in HTTP exceptions (`BadRequestException`, `NotFoundException`, etc.).
+- Add a custom exception filter **only** when we need consistent error shape and/or logging.
+- Don’t leak internal error details to clients (especially in prod). Log the real error server-side with context; return a safe message to the client.
+
+## API response shape
+- Keep a consistent API response shape per endpoint (and per feature).
+- If introducing a shared response envelope/interceptor is needed, keep it **simple** and apply it deliberately (don’t refactor the whole API opportunistically).
+
+## Module boundaries
+- Export only what other modules need; keep providers private by default.
+- Avoid `@Global()` unless it’s truly cross-cutting (typically `ConfigModule` and `PrismaModule` only).
+- Watch for circular deps; refactor rather than “hack around” them.
+
+## Logging
+- Use Nest `Logger` (or an injectable logger abstraction). Avoid `console.*` in app code.
+- Log unexpected errors with enough context to debug (request/feature identifiers, not secrets).
+- Use log levels appropriately (`debug`, `log`, `warn`, `error`):
+  - Use `log` for high-level, admin-friendly milestones so execution flow can be followed.
+  - Use `debug` for troubleshooting details (noisy, developer-focused).
+  - **Dev**: allow verbose logs (including `debug`) for investigation.
+  - **Prod**: keep logs minimal (no `debug`; prefer `log`/`warn`/`error` only).
+- When useful, include a lightweight request context (e.g., request-id, user-id) in logs.
+  - Keep it simple; don’t add heavy tracing infrastructure unless explicitly requested.
+
+## Prisma usage
+- DB access stays in services (or repositories) — not controllers.
+- Don’t expose Prisma model/types as public API contracts; map to API shapes (see types rule).
+- Use transactions when a workflow must be atomic; keep them small and clear.
+- Migrations discipline:
+  - Prefer additive, minimal migrations.
+  - Don’t edit applied migrations; create a new migration instead.
+
+## Testing (small-project)
+- Prefer minimal, high-signal tests: service unit tests + a lightweight e2e smoke test when valuable.
+- Don’t overbuild test infrastructure unless requested.
+
+## Avoid over-engineering (Nest-specific)
+- No CQRS/event bus/microservices/modules explosion unless explicitly needed and agreed with the user.
+- For queues/caching/integration workflows: first check if patterns already exist in the codebase and reuse them.
+  - Prefer simple approaches (in-memory queue, DB-backed queue/cache tables) unless a stronger system is clearly needed and approved.
+- For outbound integrations (HTTP/API calls), always set explicit timeouts (and only add retries/backoff when explicitly needed).
+

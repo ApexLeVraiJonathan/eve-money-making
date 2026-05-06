@@ -29,6 +29,18 @@ type CapitalResponse = {
   notes: string[];
 };
 
+type CycleCapitalCacheDelegate = {
+  findUnique(args: {
+    where: { cycleId: string };
+    select: { snapshot: true; updatedAt: true };
+  }): Promise<{ snapshot: unknown; updatedAt: Date } | null>;
+  upsert(args: {
+    where: { cycleId: string };
+    create: { cycleId: string; asOf: Date; snapshot: CapitalResponse };
+    update: { asOf: Date; snapshot: CapitalResponse };
+  }): Promise<unknown>;
+};
+
 /**
  * CapitalService handles capital and NAV (Net Asset Value) computations.
  *
@@ -207,10 +219,15 @@ export class CapitalService {
 
     // Cache unless forced and cache younger than 1h
     if (!opts?.force) {
-      const cache = (await (this.prisma as any).cycleCapitalCache.findUnique({
+      const cycleCapitalCache = (
+        this.prisma as unknown as {
+          cycleCapitalCache: CycleCapitalCacheDelegate;
+        }
+      ).cycleCapitalCache;
+      const cache = await cycleCapitalCache.findUnique({
         where: { cycleId },
         select: { snapshot: true, updatedAt: true },
-      })) as { snapshot: unknown; updatedAt: Date } | null;
+      });
       if (cache?.updatedAt) {
         const ageMs = now.getTime() - cache.updatedAt.getTime();
         if (ageMs < CAPITAL_CONSTANTS.CACHE_TTL_MS) {
@@ -421,7 +438,12 @@ export class CapitalService {
     };
 
     // Upsert cache
-    await (this.prisma as unknown as any).cycleCapitalCache.upsert({
+    const cycleCapitalCache = (
+      this.prisma as unknown as {
+        cycleCapitalCache: CycleCapitalCacheDelegate;
+      }
+    ).cycleCapitalCache;
+    await cycleCapitalCache.upsert({
       where: { cycleId },
       create: { cycleId, asOf: now, snapshot: out },
       update: { asOf: now, snapshot: out },

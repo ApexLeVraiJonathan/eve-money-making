@@ -1,0 +1,59 @@
+---
+description: Core guardrails for agent collaboration (scope, prompting, ownership)
+alwaysApply: true
+---
+
+# Core Rule (Project-Wide)
+
+## Right-size engineering
+- Optimize for a **small app (10–20 users)** by default.
+- Avoid “big-tech” complexity unless there is a clear, stated need (e.g., heavy scale, multi-region, extreme throughput).
+- If uncertain about the appropriate engineering level, **pause and ask the user before implementing** the heavier approach.
+
+## User runs servers
+- **Never start** the API server or the Web server (no `pnpm dev:*`, `nest start`, `next dev`, etc.).
+- Assume the servers are typically **already running in watch mode** (start once, auto-restart on changes).
+- If verification is needed, **ask the user to run it** and provide the exact command(s).
+- If an error indicates the servers are likely not running, **ask the user to start them**.
+
+## Decision points: present options
+- When meaningful choices are required (architecture, libraries, migrations, auth strategy, caching, etc.):
+  - Present **2–4 options** with trade-offs.
+  - Give a **recommended default**.
+  - The **user makes the final choice** before implementation.
+
+## Stack consistency (no silent swaps)
+- If a primary technology has already been chosen for a layer (for example Prisma for database access), do **not** switch to a different implementation (for example raw SQL clients) without explicit user approval.
+- If blocked by tooling/runtime issues, pause and present options + recommendation before changing stack.
+
+## Safety & collaboration defaults
+- Keep changes **incremental** and minimize new dependencies.
+- **Do not commit/push** unless the user explicitly asks.
+- Avoid secrets: never paste real credentials; prefer `.env.example` for placeholders.
+- Keep `.env.example` **up to date** whenever new environment variables are introduced.
+- Keep the root `README.md` up to date as features evolve; it is the primary project documentation.
+- No destructive/irreversible commands without explicit user approval (e.g., dropping DB data, resetting migrations, deleting large directories).
+- Keep package boundaries clean: don’t import other workspace package internals; use package **exports** and stable public APIs.
+- Prefer non-interactive tooling/commands; if a step requires prompts, ask the user to run it or provide a non-interactive alternative.
+- If a file grows beyond **~500 lines**, proactively consider refactoring:
+  - Split by concern into smaller files/modules.
+  - Extract helpers/components/services.
+  - Exceptions are fine (e.g., generated code), but large hand-written files should be justified.
+- Add comments when they clarify **non-obvious mechanics** or intent (primarily to help agents, but useful for humans too).
+- Do **not** remove relevant existing comments when iterating on code; update them if the behavior changes.
+
+## Parallelism-first execution
+- Prefer **parallel/batched processing** over basic sequential iteration when tasks are independent.
+- For collections of independent async work, default to `Promise.all`/`Promise.allSettled` patterns.
+- If a sequential loop (`for`, `for...of`) is considered, get **explicit user approval** first.
+- If external service limits, infra constraints, or data integrity require controlled throughput, present options and ask the user before switching to bounded concurrency.
+
+## Naming clarity maintenance
+- If a name (field/function/type/variable) no longer matches actual behavior, propose a clearer rename.
+- Apply the rename only after **explicit user approval**.
+- Once approved, update all related references/comments/docs in the same change.
+
+## Barrel imports/exports
+- Avoid barrel import/export files (for example `index.ts`) by default.
+- Prefer direct, explicit file imports to reduce resolution/debugging issues.
+- Introduce a barrel file only with **explicit user approval**.

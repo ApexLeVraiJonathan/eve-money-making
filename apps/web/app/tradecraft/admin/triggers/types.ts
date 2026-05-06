@@ -1,45 +1,14 @@
+import type { CycleSnapshot } from "@eve/shared/tradecraft-cycles";
+import type { GameDataImportSummaryResponse } from "@eve/shared/tradecraft-data-ops";
+import type { TrackedStation } from "@eve/shared/tradecraft-market";
+import type { MarketTradesStalenessResponse } from "@eve/shared/tradecraft-ops";
+import type { MatchParticipationPaymentsResponse } from "@eve/shared/tradecraft-participations";
+
 export type TriggerState = {
   [key: string]: boolean;
 };
 
-export type TrackedStation = {
-  id: string;
-  stationId: number;
-  station: {
-    id: number;
-    name: string;
-  };
-};
-
-export type ImportSummary = {
-  typeIds: number;
-  regionIds: number;
-  solarSystemIds: number;
-  npcStationIds: number;
-};
-
-export type MarketStaleness = {
-  missing: string[];
-  results?: Record<string, unknown>;
-};
-
-export type MatchResult = {
-  matched: number;
-  partial: number;
-  unmatched: Array<{
-    journalId: string;
-    characterId: number;
-    amount: string;
-    description: string | null;
-    date: string;
-  }>;
-};
-
-export type CycleSnapshot = {
-  id: string;
-  cycleId: string;
-  walletCashIsk: string;
-  inventoryIsk: string;
-  cycleProfitIsk: string;
-  snapshotAt: string;
-};
+export type { TrackedStation, CycleSnapshot };
+export type ImportSummary = GameDataImportSummaryResponse;
+export type MarketStaleness = MarketTradesStalenessResponse;
+export type MatchResult = MatchParticipationPaymentsResponse;

@@ -8,6 +8,9 @@
   "exports": {
     ".": "./src/index.ts"
   },
+  "dependencies": {
+    "@eve/shared": "workspace:*"
+  },
   "scripts": {
     "build": "tsc --noEmit",
     "lint": "echo \"lint (api-contracts)\""

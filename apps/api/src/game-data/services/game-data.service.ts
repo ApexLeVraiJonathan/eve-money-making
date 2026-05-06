@@ -169,7 +169,7 @@ export class GameDataService {
 
     if (missing.length === 0) return result;
 
-    // Chunk to avoid pathological giant IN (...) queries in hot paths (Strategy Lab batches)
+    // Chunk to avoid pathological giant IN (...) queries in planner-heavy paths.
     const chunkSize = 1000;
     for (let i = 0; i < missing.length; i += chunkSize) {
       const chunk = missing.slice(i, i + chunkSize);

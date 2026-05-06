@@ -9,6 +9,7 @@ import {
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
+  ApiOkResponse,
   ApiOperation,
   ApiParam,
   ApiTags,
@@ -25,6 +26,8 @@ import {
   AssignCharacterToAccountDto,
   CreatePlexSubscriptionDto,
   UpdatePlexSubscriptionDto,
+  CreateMctSlotDto,
+  UpdateMctSlotDto,
   CreateBoosterDto,
   UpdateBoosterDto,
 } from './dto/character-management.dto';
@@ -39,6 +42,9 @@ export class CharacterManagementController {
 
   @Get('characters')
   @ApiOperation({ summary: 'List my linked characters with metadata' })
+  @ApiOkResponse({
+    description: 'Current user linked characters with metadata',
+  })
   async getMyCharacters(@CurrentUser() user: RequestUser | null) {
     const userId = user?.userId;
     if (!userId) return [];
@@ -47,6 +53,7 @@ export class CharacterManagementController {
 
   @Post('primary-character')
   @ApiOperation({ summary: 'Set my primary character' })
+  @ApiOkResponse({ description: 'Primary character update result' })
   async setMyPrimaryCharacter(
     @CurrentUser() user: RequestUser | null,
     @Body() body: SetPrimaryCharacterDto,
@@ -61,6 +68,9 @@ export class CharacterManagementController {
 
   @Get('accounts')
   @ApiOperation({ summary: 'List my EVE accounts and unassigned characters' })
+  @ApiOkResponse({
+    description: 'Current user EVE accounts and unassigned characters',
+  })
   async getMyAccounts(@CurrentUser() user: RequestUser | null) {
     const userId = user?.userId;
     if (!userId) return [];
@@ -69,6 +79,7 @@ export class CharacterManagementController {
 
   @Post('accounts')
   @ApiOperation({ summary: 'Create a new EVE account group' })
+  @ApiOkResponse({ description: 'Created EVE account group' })
   async createAccount(
     @CurrentUser() user: RequestUser | null,
     @Body() body: CreateAccountDto,
@@ -81,6 +92,7 @@ export class CharacterManagementController {
   @Patch('accounts/:accountId')
   @ApiOperation({ summary: 'Update account label/notes' })
   @ApiParam({ name: 'accountId', description: 'EVE account id' })
+  @ApiOkResponse({ description: 'Updated EVE account metadata' })
   async updateAccount(
     @CurrentUser() user: RequestUser | null,
     @Param('accountId') accountId: string,
@@ -98,6 +110,7 @@ export class CharacterManagementController {
   @Delete('accounts/:accountId')
   @ApiOperation({ summary: 'Delete an EVE account group' })
   @ApiParam({ name: 'accountId', description: 'EVE account id' })
+  @ApiOkResponse({ description: 'Deleted EVE account group result' })
   async deleteAccount(
     @CurrentUser() user: RequestUser | null,
     @Param('accountId') accountId: string,
@@ -110,6 +123,7 @@ export class CharacterManagementController {
   @Post('accounts/:accountId/characters')
   @ApiOperation({ summary: 'Assign one of my characters to an account' })
   @ApiParam({ name: 'accountId', description: 'EVE account id' })
+  @ApiOkResponse({ description: 'Character account assignment result' })
   async assignCharacter(
     @CurrentUser() user: RequestUser | null,
     @Param('accountId') accountId: string,
@@ -128,6 +142,7 @@ export class CharacterManagementController {
   @ApiOperation({ summary: 'Remove a character from an account (unassign)' })
   @ApiParam({ name: 'accountId', description: 'EVE account id' })
   @ApiParam({ name: 'characterId', description: 'Character ID' })
+  @ApiOkResponse({ description: 'Character account unassignment result' })
   async unassignCharacter(
     @CurrentUser() user: RequestUser | null,
     @Param('accountId') accountId: string,
@@ -193,7 +208,7 @@ export class CharacterManagementController {
   async createMct(
     @CurrentUser() user: RequestUser | null,
     @Param('accountId') accountId: string,
-    @Body() body: { expiresAt: string; notes?: string },
+    @Body() body: CreateMctSlotDto,
   ) {
     const userId = user?.userId;
     if (!userId) return { ok: false as const };
@@ -212,7 +227,7 @@ export class CharacterManagementController {
     @CurrentUser() user: RequestUser | null,
     @Param('accountId') accountId: string,
     @Param('slotId') slotId: string,
-    @Body() body: { expiresAt?: string; notes?: string | null },
+    @Body() body: UpdateMctSlotDto,
   ) {
     const userId = user?.userId;
     if (!userId) return { ok: false as const };
@@ -353,6 +368,7 @@ export class CharacterManagementController {
 
   @Get('overview')
   @ApiOperation({ summary: 'Aggregated overview for my linked characters' })
+  @ApiOkResponse({ description: 'Current user character management overview' })
   async overview(@CurrentUser() user: RequestUser | null) {
     const userId = user?.userId;
     if (!userId) return { characters: [] as unknown[] };
@@ -364,6 +380,7 @@ export class CharacterManagementController {
     summary: 'Get training queue summary for one of my characters',
   })
   @ApiParam({ name: 'characterId', description: 'Character ID' })
+  @ApiOkResponse({ description: 'Character training queue summary' })
   async getTrainingQueue(
     @CurrentUser() user: RequestUser | null,
     @Param('characterId') characterId: string,
@@ -379,6 +396,7 @@ export class CharacterManagementController {
     summary: 'Get learned skills snapshot for one of my characters',
   })
   @ApiParam({ name: 'characterId', description: 'Character ID' })
+  @ApiOkResponse({ description: 'Character learned skills snapshot' })
   async getSkills(
     @CurrentUser() user: RequestUser | null,
     @Param('characterId') characterId: string,
@@ -394,6 +412,7 @@ export class CharacterManagementController {
     summary: 'Get current attributes & remap info for one of my characters',
   })
   @ApiParam({ name: 'characterId', description: 'Character ID' })
+  @ApiOkResponse({ description: 'Character attributes and remap information' })
   async getAttributes(
     @CurrentUser() user: RequestUser | null,
     @Param('characterId') characterId: string,

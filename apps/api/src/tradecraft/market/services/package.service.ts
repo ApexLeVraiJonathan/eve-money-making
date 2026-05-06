@@ -1,5 +1,6 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '@api/prisma/prisma.service';
+import { Prisma } from '@eve/prisma';
 import type { PlanResult } from '@app/arbitrage-packager/interfaces/packager.interfaces';
 
 @Injectable()
@@ -13,7 +14,7 @@ export class PackageService {
    * Get all committed packages for a cycle, optionally filtered by status
    */
   async getCommittedPackages(cycleId: string, status?: string) {
-    const where: any = { cycleId };
+    const where: Prisma.CommittedPackageWhereInput = { cycleId };
     if (status) {
       where.status = status;
     }
@@ -219,7 +220,7 @@ export class PackageService {
    * Transaction-aware version for use within existing transactions
    */
   async createCommittedPackagesInTransaction(
-    tx: any, // Prisma.TransactionClient
+    tx: Prisma.TransactionClient,
     cycleId: string,
     planResult: PlanResult,
   ): Promise<string[]> {
@@ -230,7 +231,7 @@ export class PackageService {
    * Core implementation that works with either prisma client or transaction client
    */
   private async _createCommittedPackagesCore(
-    client: any, // PrismaClient or Prisma.TransactionClient
+    client: Prisma.TransactionClient,
     cycleId: string,
     planResult: PlanResult,
   ): Promise<string[]> {
@@ -243,7 +244,7 @@ export class PackageService {
           cycleId,
           packageIndex: pkg.packageIndex,
           destinationStationId: pkg.destinationStationId,
-          destinationName: (pkg as any).destinationName ?? null,
+          destinationName: pkg.destinationName ?? null,
           collateralIsk: pkg.spendISK.toFixed(2),
           shippingCostIsk: pkg.shippingISK.toFixed(2),
           estimatedProfitIsk: pkg.netProfitISK.toFixed(2),
@@ -496,7 +497,24 @@ export class PackageService {
    * Called when cycle is closed
    */
   async completePackagesForCycle(cycleId: string): Promise<number> {
-    const result = await this.prisma.committedPackage.updateMany({
+    return await this.completePackagesForCycleCore(this.prisma, cycleId);
+  }
+
+  /**
+   * Transaction-aware version for Cycle Settlement transitions.
+   */
+  async completePackagesForCycleInTransaction(
+    tx: Pick<Prisma.TransactionClient, 'committedPackage'>,
+    cycleId: string,
+  ): Promise<number> {
+    return await this.completePackagesForCycleCore(tx, cycleId);
+  }
+
+  private async completePackagesForCycleCore(
+    client: Pick<Prisma.TransactionClient, 'committedPackage'>,
+    cycleId: string,
+  ): Promise<number> {
+    const result = await client.committedPackage.updateMany({
       where: {
         cycleId,
         status: 'active',

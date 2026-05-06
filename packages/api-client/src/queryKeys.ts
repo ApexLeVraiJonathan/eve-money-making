@@ -91,6 +91,7 @@ export const qk = {
   cycles: {
     _root: ["cycles"] as const,
     list: () => ["cycles", "list"] as const,
+    history: () => ["cycles", "history"] as const,
     byId: (id: string) => ["cycles", "byId", id] as const,
     current: () => ["cycles", "current"] as const,
     overview: () => ["cycles", "overview"] as const,
@@ -126,11 +127,21 @@ export const qk = {
       ["participations", "list", cycleId, status] as const,
     byId: (id: string) => ["participations", "byId", id] as const,
     me: (cycleId: string) => ["participations", "me", cycleId] as const,
+    history: () => ["participations", "history"] as const,
+    maxAmount: () => ["participations", "maxAmount"] as const,
     unmatchedDonations: () => ["participations", "unmatchedDonations"] as const,
     adminCaps: (userId: string) =>
       ["participations", "adminCaps", userId] as const,
     autoRolloverSettings: () =>
       ["participations", "autoRolloverSettings"] as const,
+  },
+
+  /** JingleYield programs */
+  jingleYield: {
+    _root: ["jingleYield"] as const,
+    programs: () => ["jingleYield", "programs"] as const,
+    byId: (id: string) => ["jingleYield", "program", id] as const,
+    me: () => ["jingleYield", "me"] as const,
   },
 
   /** Payouts */
@@ -162,6 +173,9 @@ export const qk = {
     stations: (stationIds: number[]) =>
       ["gameData", "stations", stationIds] as const,
     trackedStations: () => ["gameData", "trackedStations"] as const,
+    skillEncyclopedia: () => ["gameData", "skillEncyclopedia"] as const,
+    skillCatalogSearch: (query: string) =>
+      ["gameData", "skillCatalogSearch", query] as const,
   },
 
   /** ESI (EVE Swagger Interface) */
@@ -189,47 +203,6 @@ export const qk = {
       ["characterManagement", "characterSkills", characterId] as const,
     characterAttributes: (characterId: number) =>
       ["characterManagement", "characterAttributes", characterId] as const,
-  },
-
-  /** Skill farm planning & optimization */
-  skillFarm: {
-    _root: ["skillFarm"] as const,
-    profiles: () => ["skillFarm", "profiles"] as const,
-    profileById: (profileId: string) =>
-      ["skillFarm", "profileById", profileId] as const,
-    profitEstimate: (profileId: string, horizonDays: number) =>
-      ["skillFarm", "profitEstimate", profileId, horizonDays] as const,
-    /** Skill Farm Assistant: per-user settings */
-    settings: () => ["skillFarm", "settings"] as const,
-    /** Skill Farm Assistant: characters + requirement status */
-    characters: () => ["skillFarm", "characters"] as const,
-    /** Skill Farm Assistant: tracking snapshot for active farm characters */
-    tracking: () => ["skillFarm", "tracking"] as const,
-    /** Optional server-side math preview */
-    mathPreview: () => ["skillFarm", "mathPreview"] as const,
-    /** Market price snapshot for common skill farm items */
-    marketPrices: (stationId?: number) =>
-      ["skillFarm", "marketPrices", stationId ?? "default"] as const,
-  },
-
-  /** User-owned skill plans */
-  skillPlans: {
-    _root: ["skillPlans"] as const,
-    list: () => ["skillPlans", "list"] as const,
-    byId: (planId: string) => ["skillPlans", "byId", planId] as const,
-    search: (query: string) => ["skillPlans", "search", query] as const,
-    encyclopedia: () => ["skillPlans", "encyclopedia"] as const,
-    optimizationPreview: (planId: string) =>
-      ["skillPlans", "optimizationPreview", planId] as const,
-    progress: (planId: string, characterId: number) =>
-      ["skillPlans", "progress", planId, characterId] as const,
-  },
-
-  /** Skill-Issue (fit analysis) */
-  skillIssue: {
-    _root: ["skillIssue"] as const,
-    analyze: (characterId: number, eft: string) =>
-      ["skillIssue", "analyze", characterId, eft] as const,
   },
 
   /** Notifications & preferences */

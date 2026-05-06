@@ -25,7 +25,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@eve/ui";
-import type { CreateFeedbackRequest } from "@eve/api-contracts";
+import type { CreateFeedbackRequest } from "@eve/shared/support-feedback";
 
 const FEEDBACK_TYPES = [
   { value: "bug", label: "Bug Report" },

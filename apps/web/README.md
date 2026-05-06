@@ -1,6 +1,6 @@
 # EVE Money Making - Web (Frontend)
 
-Next.js frontend for EVE Online arbitrage trading cycle management.
+Next.js frontend for EVE Online Tradecraft and character-management workflows.
 
 ---
 
@@ -11,7 +11,7 @@ Next.js frontend for EVE Online arbitrage trading cycle management.
 This app uses:
 - **Next.js 15** with App Router
 - **TanStack Query** for API state management
-- **Direct API calls** (no Next.js proxy routes)
+- **Next as BFF**: browser calls route handlers under `/api/*`, route handlers call Nest with server-only backend URLs
 - **Type-safe hooks** with shared types from `@eve/shared`
 - **Shadcn UI** components from `@eve/ui`
 
@@ -20,22 +20,18 @@ This app uses:
 ```
 apps/web/
 ├── app/
-│   ├── arbitrage/              # Main arbitrage features
-│   │   ├── api/                # TanStack Query hooks (67+ hooks)
-│   │   │   ├── cycles.ts       # Cycle management hooks
-│   │   │   ├── participations.ts
-│   │   │   ├── pricing.ts
-│   │   │   ├── packages.ts
-│   │   │   ├── wallet.ts
-│   │   │   ├── arbitrage.ts
-│   │   │   ├── admin.ts
-│   │   │   └── index.ts        # Central exports
+│   ├── tradecraft/             # Trading cycles, admin tools, market workflows
+│   │   ├── api/                # TanStack Query hooks by feature
 │   │   ├── cycles/             # Cycle pages
 │   │   ├── admin/              # Admin panels
 │   │   └── my-investments/     # User investment tracking
+│   ├── characters/             # Character overview, training queues, skill browser
 │   ├── account-settings/       # User account management
 │   ├── api/
-│   │   └── auth/               # NextAuth routes ONLY
+│   │   ├── auth/               # NextAuth and auth bridge routes
+│   │   ├── tradecraft/         # BFF proxy to Tradecraft API routes
+│   │   ├── characters/         # BFF proxy to character API routes
+│   │   └── core/               # BFF proxy to core API routes
 │   ├── api-hooks/              # Cross-domain hooks
 │   │   └── users.ts            # User & auth hooks
 │   └── brokerage/              # Brokerage features
@@ -68,9 +64,8 @@ pnpm install
 Create `.env.local` file:
 
 ```bash
-# API URLs (no /api suffix)
-NEXT_PUBLIC_API_URL="http://localhost:3000"  # API is on port 3000
-API_URL="http://localhost:3000"              # Server-side only
+# API URLs
+API_URL="http://localhost:3000"              # Server-side only (used by Next route handlers)
 NEXT_PUBLIC_WEB_BASE_URL="http://localhost:3001"  # Web is on port 3001
 
 # NextAuth
@@ -82,7 +77,7 @@ EVE_CLIENT_ID="your_client_id"
 EVE_CLIENT_SECRET="your_client_secret"
 ```
 
-**Important:** Do NOT include `/api` suffix in `NEXT_PUBLIC_API_URL` - the backend routes handle the full path.
+Browser API calls go through app-scoped Next.js BFF routes (`/api/tradecraft/*`, `/api/characters/*`, `/api/core/*`) and do not require a public backend URL variable.
 
 See [../../env.example.md](../../env.example.md) for complete configuration guide.
 
@@ -92,7 +87,7 @@ See [../../env.example.md](../../env.example.md) for complete configuration guid
 pnpm run dev
 ```
 
-App will be available at `http://localhost:3000`
+App will be available at `http://localhost:3001`
 
 ---
 
@@ -100,11 +95,11 @@ App will be available at `http://localhost:3000`
 
 ### Pattern: TanStack Query Hooks
 
-**All API calls** use centralized hooks from `app/arbitrage/api/`:
+Feature API calls should use centralized hooks from route/feature API modules, usually under `app/tradecraft/api/`, `app/characters/**/api.ts`, or `app/api-hooks/`:
 
 ```typescript
 // ✅ Correct (using hooks)
-import { useCycles, useCreateCycle } from "@/app/arbitrage/api";
+import { useCycles, useCreateCycle } from "@/app/tradecraft/api/cycles";
 
 function MyComponent() {
   const { data: cycles, isLoading } = useCycles();
@@ -157,7 +152,7 @@ export async function ServerComponent() {
 }
 ```
 
-### Available Hooks (67+)
+### Available Hooks
 
 **Cycles (21 hooks):**
 - `useCycleOverview()`, `useCycles()`, `useCycleProfit()`, etc.
@@ -171,9 +166,9 @@ export async function ServerComponent() {
 - `useCurrentUser()`, `useMyCharacters()`, etc.
 - `useSetPrimaryCharacter()`, `useUnlinkCharacter()`, etc.
 
-**Pricing, Packages, Wallet, Admin** (27+ hooks)
+**Characters, Pricing, Packages, Wallet, Admin** hooks are grouped by feature.
 
-See `app/arbitrage/api/index.ts` for complete exports.
+Prefer direct feature imports over barrel exports. See `app/tradecraft/api/**` and `app/api-hooks/**` for current hook modules.
 
 ---
 
@@ -187,9 +182,9 @@ import { Button, Card, Badge } from "@eve/ui";
 
 ### @eve/shared
 ```typescript
-import type { Cycle, CycleParticipation, User } from "@eve/shared";
+import type { CycleOverviewResponse } from "@eve/shared/tradecraft-cycles";
 ```
-30+ shared types for frontend/backend consistency.
+Shared request/response contracts are published through `@eve/shared/*` subpath exports.
 
 ### @eve/api-client
 ```typescript
@@ -230,15 +225,15 @@ pnpm run start
 ```typescript
 // ✅ Shared packages
 import { Button } from "@eve/ui";
-import type { Cycle } from "@eve/shared";
-import { useCycles } from "@/app/arbitrage/api";
+import type { CycleOverviewResponse } from "@eve/shared/tradecraft-cycles";
+import { useCycles } from "@/app/tradecraft/api/cycles";
 
 // ✅ Local utilities
 import { formatIsk } from "@/lib/utils";
 import { auth } from "@/auth";
 
-// ❌ Avoid direct fetch calls
-// Use hooks instead!
+// ❌ Avoid ad-hoc browser fetches to the Nest API
+// Use feature hooks that call Next route handlers instead.
 ```
 
 ### API Hook Naming
@@ -272,7 +267,7 @@ import { auth } from "@/auth";
 
 ## Critical User Flows
 
-See [../../docs/CRITICAL_USER_FLOWS.md](../../docs/CRITICAL_USER_FLOWS.md) for detailed flow documentation and testing guide.
+Historical flow docs live in [../../docs/old](../../docs/old). Treat them as archive context and prefer current route/API behavior when they conflict with code.
 
 ---
 
@@ -297,7 +292,7 @@ This repo intentionally separates Next.js output folders to avoid file-lock/race
 ### Environment Variables
 
 Set all production environment variables:
-- `NEXT_PUBLIC_API_URL` - Backend API URL
+- `API_URL` - Backend API URL for Next.js server-side routes
 - `NEXTAUTH_URL` - Frontend URL
 - `NEXTAUTH_SECRET` - Session secret
 - EVE SSO credentials

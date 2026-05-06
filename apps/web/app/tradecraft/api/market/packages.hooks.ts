@@ -4,7 +4,8 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useApiClient } from "@/app/api-hooks/useApiClient";
 import { useAuthenticatedQuery } from "@/app/api-hooks/useAuthenticatedQuery";
 import { qk } from "@eve/api-client/queryKeys";
-import type { CommittedPackage } from "@eve/shared";
+import type { CommittedPackage } from "@eve/shared/tradecraft-market";
+import type { PlanPackagesResponse } from "@eve/shared/tradecraft-arbitrage";
 
 /**
  * API hooks for package management
@@ -73,14 +74,7 @@ export function usePlanPackages() {
       opportunities: Array<{ typeId: number; quantity: number }>;
       destinationStationId: number;
     }) =>
-      client.post<{
-        packageId: string;
-        items: Array<{
-          typeId: number;
-          quantity: number;
-          buyPrice: string;
-        }>;
-      }>("/plan-packages", data),
+      client.post<PlanPackagesResponse>("/plan-packages", data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: qk.packages._root });
     },

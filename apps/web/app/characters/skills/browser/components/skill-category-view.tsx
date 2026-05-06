@@ -12,7 +12,7 @@ import {
 import { Badge, Checkbox, Skeleton, Input } from "@eve/ui";
 import { useSkillEncyclopedia } from "../api";
 import { SkillDetailModal } from "./skill-detail-modal";
-import type { SkillEncyclopediaEntry } from "@eve/api-contracts";
+import type { SkillEncyclopediaEntry } from "@eve/shared/skill-contracts";
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\\\$&");

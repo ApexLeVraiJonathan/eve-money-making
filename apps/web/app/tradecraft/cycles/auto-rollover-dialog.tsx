@@ -20,7 +20,7 @@ import {
   type AutoRolloverSettings,
   useAutoRolloverSettings,
   useUpdateAutoRolloverSettings,
-} from "../api";
+} from "../api/market/participations.hooks";
 
 function coerceRolloverType(
   v: unknown,

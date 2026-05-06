@@ -7,6 +7,16 @@ import {
 import { PrismaClient } from '@eve/prisma';
 import { PrismaPg } from '@prisma/adapter-pg';
 
+type PrismaQueryEvent = {
+  duration: number;
+  query: string;
+  params: string;
+};
+
+type PrismaErrorEvent = {
+  message: string;
+};
+
 /**
  * Prisma database service with slow query logging
  *
@@ -43,21 +53,21 @@ export class PrismaService
 
     // Enable slow query logging in development
     if (this.isDev) {
-      this.$on('query' as never, (e: any) => {
-        const duration = e.duration as number;
-        const query = e.query as string;
-        const params = e.params as string;
-
+      const onQuery = (e: PrismaQueryEvent) => {
+        const { duration, query, params } = e;
         if (duration > this.slowQueryThreshold) {
           this.logger.warn(
             `[SLOW QUERY] ${duration}ms - ${this.sanitizeQuery(query)} - Params: ${this.sanitizeParams(params)}`,
           );
         }
-      });
+      };
 
-      this.$on('error' as never, (e: any) => {
+      const onError = (e: PrismaErrorEvent) => {
         this.logger.error(`Prisma error: ${e.message}`);
-      });
+      };
+
+      this.$on('query' as never, onQuery as never);
+      this.$on('error' as never, onError as never);
 
       this.logger.log('Slow query logging enabled (threshold: 500ms)');
     }

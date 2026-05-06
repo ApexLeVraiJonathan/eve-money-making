@@ -1,0 +1,32 @@
+---
+description: API contracts & HTTP conventions (Nest controllers + Next BFF routes)
+globs: apps/api/**/*.ts
+alwaysApply: false
+---
+
+# API Contracts & HTTP Conventions
+
+## Contracts live in packages/shared
+- Public request/response shapes belong in `packages/shared` (see types rule).
+- Don’t expose Prisma model/types as API contracts. Map to API shapes.
+
+## Endpoint design (small-project friendly)
+- Use clear resource-oriented routes (nouns), predictable status codes, and consistent naming.
+- Keep controllers thin; validation and parsing via DTOs/pipes.
+
+## Error handling
+- Use standard Nest `HttpException` subclasses for expected errors.
+- Don’t leak internal details in responses (especially in prod). Log details server-side.
+
+## Response shape
+- Keep response shapes consistent within a feature.
+- Only introduce a global envelope/interceptor when needed and agreed; keep it simple.
+
+## BFF rule (Next as the browser boundary)
+- The browser calls `apps/web` route handlers; route handlers proxy to `apps/api`.
+- Prefer 1 backend controller/feature ↔ 1 frontend route handler file (see nextjs rule).
+
+## Mutations
+- Prefer explicit mutation endpoints (POST/PUT/PATCH/DELETE).
+- For UX-heavy flows, support “read-after-write” by returning updated resource (or identifiers) and keeping responses deterministic.
+

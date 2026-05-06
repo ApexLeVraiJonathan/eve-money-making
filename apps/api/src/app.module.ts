@@ -15,13 +15,10 @@ import { CharactersModule } from './characters/characters.module';
 import { GameDataModule } from './game-data/game-data.module';
 import { SupportModule } from './support/support.module';
 import { CharacterManagementModule } from './character-management/character-management.module';
-import { SkillFarmModule } from './skill-farm/skill-farm.module';
 import { TradecraftModule } from './tradecraft/tradecraft.module';
-import { SkillPlansModule } from './skill-plans/skill-plans.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { CompositeAuthGuard } from './characters/guards/composite-auth.guard';
 import { Public } from './characters/decorators/public.decorator';
-import { SkillIssueModule } from './skill-issue/skill-issue.module';
 
 @Controller('health')
 class HealthController {
@@ -51,9 +48,6 @@ class HealthController {
     // Product-level modules for separate apps
     TradecraftModule,
     CharacterManagementModule,
-    SkillFarmModule,
-    SkillPlansModule,
-    SkillIssueModule,
   ],
   controllers: [HealthController],
   providers: [

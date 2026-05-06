@@ -10,7 +10,7 @@ import {
 import { Badge } from "@eve/ui";
 import { Separator } from "@eve/ui";
 import { Zap, Brain } from "lucide-react";
-import type { SkillEncyclopediaEntry } from "@eve/api-contracts";
+import type { SkillEncyclopediaEntry } from "@eve/shared/skill-contracts";
 
 interface SkillDetailModalProps {
   skill: SkillEncyclopediaEntry;

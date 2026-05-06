@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { Logger } from '@nestjs/common';
-import { PackageService } from '../src/market/services/package.service';
-import { PrismaService } from '../src/prisma/prisma.service';
+import { PackageService } from '../src/tradecraft/market/services/package.service';
+import { PrismaService } from '@api/prisma/prisma.service';
 
 describe('PackageService.markPackageFailed', () => {
   let service: PackageService;

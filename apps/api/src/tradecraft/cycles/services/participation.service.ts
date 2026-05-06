@@ -4,6 +4,8 @@ import { CharacterService } from '@api/characters/services/character.service';
 import { NotificationService } from '@api/notifications/notification.service';
 import { AppConfig } from '@api/common/config';
 import type { ParticipationStatus, Prisma } from '@eve/prisma';
+import { LedgerEntryService } from './ledger-entry.service';
+import { ParticipationCapsService } from './participation-caps.service';
 
 /**
  * ParticipationService handles user participation in cycles.
@@ -17,10 +19,9 @@ export class ParticipationService {
     private readonly prisma: PrismaService,
     private readonly characterService: CharacterService,
     private readonly notifications: NotificationService,
+    private readonly ledgerEntries: LedgerEntryService,
+    private readonly participationCaps: ParticipationCapsService,
   ) {}
-
-  private static readonly DEFAULT_PRINCIPAL_CAP_ISK = 10_000_000_000;
-  private static readonly DEFAULT_MAXIMUM_CAP_ISK = 20_000_000_000;
 
   private async getUserDefaultCharacterName(
     userId: string,
@@ -93,57 +94,17 @@ export class ParticipationService {
     principalCapIsk: number;
     maximumCapIsk: number;
   }> {
-    const rec = await this.prisma.user.findUnique({
-      where: { id: userId },
-      select: {
-        tradecraftPrincipalCapIsk: true,
-        tradecraftMaximumCapIsk: true,
-      },
-    });
-
-    // IMPORTANT: `Number(null) === 0`, so we must treat null/undefined explicitly
-    // as "not set" and fall back to defaults.
-    const principalCapIsk =
-      rec?.tradecraftPrincipalCapIsk == null
-        ? NaN
-        : Number(rec.tradecraftPrincipalCapIsk);
-    const maximumCapIsk =
-      rec?.tradecraftMaximumCapIsk == null
-        ? NaN
-        : Number(rec.tradecraftMaximumCapIsk);
-
-    return {
-      principalCapIsk: Number.isFinite(principalCapIsk)
-        ? principalCapIsk
-        : ParticipationService.DEFAULT_PRINCIPAL_CAP_ISK,
-      maximumCapIsk: Number.isFinite(maximumCapIsk)
-        ? maximumCapIsk
-        : ParticipationService.DEFAULT_MAXIMUM_CAP_ISK,
-    };
+    return await this.participationCaps.getUserTradecraftCaps(userId);
   }
 
   private async getEffectivePrincipalCapForUser(
     userId: string,
     principalCapIsk: number,
   ): Promise<number> {
-    // Existing behavior: active admin-funded JingleYield principal consumes headroom.
-    const activeJyPrograms = await this.prisma.jingleYieldProgram.findMany({
-      where: {
-        userId,
-        status: 'ACTIVE',
-      },
-      select: {
-        lockedPrincipalIsk: true,
-      },
-    });
-
-    if (activeJyPrograms.length === 0) return principalCapIsk;
-
-    const totalJyPrincipal = activeJyPrograms.reduce(
-      (sum, p) => sum + Number(p.lockedPrincipalIsk),
-      0,
+    return await this.participationCaps.getEffectivePrincipalCapForUser(
+      userId,
+      principalCapIsk,
     );
-    return Math.max(0, principalCapIsk - totalJyPrincipal);
   }
 
   async getTradecraftCapsForUser(userId?: string): Promise<{
@@ -151,21 +112,7 @@ export class ParticipationService {
     maximumCapIsk: number;
     effectivePrincipalCapIsk: number;
   }> {
-    if (!userId) {
-      return {
-        principalCapIsk: ParticipationService.DEFAULT_PRINCIPAL_CAP_ISK,
-        maximumCapIsk: ParticipationService.DEFAULT_MAXIMUM_CAP_ISK,
-        effectivePrincipalCapIsk:
-          ParticipationService.DEFAULT_PRINCIPAL_CAP_ISK,
-      };
-    }
-
-    const caps = await this.getUserTradecraftCaps(userId);
-    const effectivePrincipalCapIsk = await this.getEffectivePrincipalCapForUser(
-      userId,
-      caps.principalCapIsk,
-    );
-    return { ...caps, effectivePrincipalCapIsk };
+    return await this.participationCaps.getTradecraftCapsForUser(userId);
   }
 
   /**
@@ -449,7 +396,7 @@ export class ParticipationService {
    * not the principal cap. Callers should migrate to using the explicit caps.
    */
   async determineMaxParticipation(userId?: string): Promise<number> {
-    if (!userId) return ParticipationService.DEFAULT_MAXIMUM_CAP_ISK;
+    if (!userId) return this.participationCaps.defaults().maximumCapIsk;
     const { maximumCapIsk } = await this.getUserTradecraftCaps(userId);
     return maximumCapIsk;
   }
@@ -505,10 +452,7 @@ export class ParticipationService {
     const userId = input.userId ?? undefined;
     const caps = userId
       ? await this.getUserTradecraftCaps(userId)
-      : {
-          principalCapIsk: ParticipationService.DEFAULT_PRINCIPAL_CAP_ISK,
-          maximumCapIsk: ParticipationService.DEFAULT_MAXIMUM_CAP_ISK,
-        };
+      : this.participationCaps.defaults();
 
     let principalCapIsk = caps.principalCapIsk;
     const maximumCapIsk = caps.maximumCapIsk;
@@ -748,10 +692,7 @@ export class ParticipationService {
     const userId = participation.userId ?? undefined;
     const caps = userId
       ? await this.getUserTradecraftCaps(userId)
-      : {
-          principalCapIsk: ParticipationService.DEFAULT_PRINCIPAL_CAP_ISK,
-          maximumCapIsk: ParticipationService.DEFAULT_MAXIMUM_CAP_ISK,
-        };
+      : this.participationCaps.defaults();
 
     let principalCapIsk = caps.principalCapIsk;
     const maximumCapIsk = caps.maximumCapIsk;
@@ -1018,14 +959,6 @@ export class ParticipationService {
   async adminValidatePayment(
     participationId: string,
     walletJournal: { characterId: number; journalId: bigint } | null,
-    appendEntryFn: (entry: {
-      cycleId: string;
-      entryType: string;
-      amountIsk: string;
-      memo: string;
-      participationId: string;
-      planCommitId: null;
-    }) => Promise<unknown>,
   ) {
     const p = await this.prisma.cycleParticipation.findUnique({
       where: { id: participationId },
@@ -1074,7 +1007,7 @@ export class ParticipationService {
     }
 
     // Create deposit ledger entry only for the new delta amount.
-    await appendEntryFn({
+    await this.ledgerEntries.appendEntry({
       cycleId: updated.cycleId,
       entryType: 'deposit',
       amountIsk: deltaAmount.toFixed(2),
@@ -1110,7 +1043,7 @@ export class ParticipationService {
       data: {
         status: 'REFUNDED',
         refundedAt: new Date(),
-        amountIsk: input.amountIsk,
+        refundAmountIsk: input.amountIsk,
       },
     });
   }

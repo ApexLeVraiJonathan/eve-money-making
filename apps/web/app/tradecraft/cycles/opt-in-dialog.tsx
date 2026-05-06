@@ -25,12 +25,12 @@ import { Badge } from "@eve/ui";
 import { RadioGroup, RadioGroupItem } from "@eve/ui";
 import { Checkbox } from "@eve/ui";
 import {
-  useCycles,
   useCreateParticipation,
-  useCurrentUser,
   useMaxParticipation,
   useMyParticipation,
-} from "../api";
+} from "../api/market/participations.hooks";
+import { useCycles } from "../api/cycles/cycles.hooks";
+import { useCurrentUser } from "../api/characters/users.hooks";
 
 type OptInDialogProps = {
   nextCycleName: string;

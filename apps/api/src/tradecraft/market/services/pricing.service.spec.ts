@@ -1,5 +1,16 @@
 import { PricingService } from './pricing.service';
 import { fetchStationOrders } from '@api/esi/market-helpers';
+import type { CharacterService } from '@api/characters/services/character.service';
+import type { EsiService } from '@api/esi/esi.service';
+import type { EsiCharactersService } from '@api/esi/esi-characters.service';
+import type { GameDataService } from '@api/game-data/services/game-data.service';
+import type { PrismaService } from '@api/prisma/prisma.service';
+import type { CycleLineService } from '@api/tradecraft/cycles/services/cycle-line.service';
+import type { CycleService } from '@api/tradecraft/cycles/services/cycle.service';
+import type { FeeService } from '@api/tradecraft/cycles/services/fee.service';
+import type { NotificationService } from '@api/notifications/notification.service';
+import type { MarketDataService } from './market-data.service';
+import type { StructureMarketPricingService } from './structure-market-pricing.service';
 
 jest.mock('@api/esi/market-helpers', () => ({
   fetchStationOrders: jest.fn(),
@@ -46,41 +57,55 @@ describe('PricingService.undercutCheck', () => {
     };
 
     const esiChars = {
-      getOrders: async (_characterId: number) => opts?.orders ?? [],
+      getOrders: (_characterId: number) => Promise.resolve(opts?.orders ?? []),
     };
 
     const gameData = {
-      getStationsWithRegions: async (_stationIds: number[]) =>
-        new Map<number, { name: string; regionId: number }>([
-          [stationId, { name: 'Test Station', regionId }],
-        ]),
-      getTypeNames: async (_typeIds: number[]) =>
-        new Map<number, string>([[typeId, 'Tritanium']]),
+      getStationsWithRegions: (_stationIds: number[]) =>
+        Promise.resolve(
+          new Map<number, { name: string; regionId: number }>([
+            [stationId, { name: 'Test Station', regionId }],
+          ]),
+        ),
+      getTypeNames: (_typeIds: number[]) =>
+        Promise.resolve(new Map<number, string>([[typeId, 'Tritanium']])),
     };
 
     const characterService = {
-      getCharacterName: async (_id: number) => 'Test Character',
-      getSellerCharacters: async () => [{ id: 123, name: 'Test Character' }],
+      getCharacterName: (_id: number) => Promise.resolve('Test Character'),
+      getSellerCharacters: () =>
+        Promise.resolve([{ id: 123, name: 'Test Character' }]),
     };
 
     const marketData = {
-      getTrackedStationIds: async () => [stationId],
-      getLatestMarketTradesForPairs: async () =>
-        new Map<string, { amount: number }>([
-          [`${stationId}:${typeId}`, { amount: opts?.dailyUnitsSold ?? 0 }],
-        ]),
+      getTrackedStationIds: () => Promise.resolve([stationId]),
+      getLatestMarketTradesForPairs: () =>
+        Promise.resolve(
+          new Map<string, { amount: number }>([
+            [`${stationId}:${typeId}`, { amount: opts?.dailyUnitsSold ?? 0 }],
+          ]),
+        ),
     };
 
     const cycleLineService = {
-      getCycleLinesForCycle: async () => opts?.cycleLines ?? [],
+      getCycleLinesForCycle: () => Promise.resolve(opts?.cycleLines ?? []),
     };
 
     const cycleService = {
-      getOpenCycleIdForDate: async () => 'cycle',
-      getCurrentOpenCycle: async () => ({ id: 'cycle' }),
+      getOpenCycleIdForDate: () => Promise.resolve('cycle'),
+      getCurrentOpenCycle: () => Promise.resolve({ id: 'cycle' }),
     };
     const notifications = {
-      sendSystemAlertDm: async () => undefined,
+      sendSystemAlertDm: () => Promise.resolve(undefined),
+    };
+    const structureMarket = {
+      getSelfMarketStructureId: () => null,
+      bigintToSafeNumber: (value: bigint) => Number(value),
+      getBestSellByType: () => Promise.resolve(null),
+      getSellOrdersByType: () =>
+        Promise.resolve(
+          new Map<number, Array<{ price: number; volume: number }>>(),
+        ),
     };
 
     // Not used by undercutCheck in these tests
@@ -95,20 +120,21 @@ describe('PricingService.undercutCheck', () => {
 
     // Mock competitor sells
     fetchStationOrdersMock.mockImplementation(
-      async () => opts?.stationSells ?? [],
+      () => Promise.resolve(opts?.stationSells ?? []),
     );
 
     return new PricingService(
-      prisma as any,
-      esi as any,
-      esiChars as any,
-      feeService as any,
-      gameData as any,
-      characterService as any,
-      marketData as any,
-      cycleLineService as any,
-      cycleService as any,
-      notifications as any,
+      prisma as unknown as PrismaService,
+      esi as unknown as EsiService,
+      esiChars as unknown as EsiCharactersService,
+      feeService as unknown as FeeService,
+      gameData as unknown as GameDataService,
+      characterService as unknown as CharacterService,
+      marketData as unknown as MarketDataService,
+      cycleLineService as unknown as CycleLineService,
+      cycleService as unknown as CycleService,
+      notifications as unknown as NotificationService,
+      structureMarket as unknown as StructureMarketPricingService,
     );
   };
 

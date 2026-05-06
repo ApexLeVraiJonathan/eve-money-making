@@ -1,6 +1,8 @@
 node_modules  
 dist  
 build
+coverage
+.turbo
 .env
 .playwright-mcp
 prompts
@@ -11,3 +13,11 @@ apps/api/sde-jsonl
 **/.venv*/
 **/__pycache__/
 *.pyc
+apps/api/dist/
+apps/web/.next/
+docs/testing/runs/
+*.tsbuildinfo
+script/.venv
+script/.venv312
+script/__pycache__
+script/automation/__pycache__

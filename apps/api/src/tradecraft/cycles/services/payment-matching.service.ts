@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { CharacterService } from '../../../characters/services/character.service';
+import { LedgerEntryService } from './ledger-entry.service';
 
 /**
  * PaymentMatchingService handles fuzzy matching of wallet donations to participations.
@@ -20,6 +21,7 @@ export class PaymentMatchingService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly characterService: CharacterService,
+    private readonly ledgerEntries: LedgerEntryService,
   ) {}
 
   /**
@@ -53,17 +55,7 @@ export class PaymentMatchingService {
    * Match wallet journal entries to participations
    * Returns matched/partial counts and unmatched journals
    */
-  async matchParticipationPayments(
-    cycleId: string | undefined,
-    appendEntryFn: (entry: {
-      cycleId: string;
-      entryType: string;
-      amountIsk: string;
-      memo: string;
-      participationId: string;
-      planCommitId: null;
-    }) => Promise<unknown>,
-  ): Promise<{
+  async matchParticipationPayments(cycleId?: string): Promise<{
     matched: number;
     partial: number;
     unmatched: Array<{
@@ -216,7 +208,7 @@ export class PaymentMatchingService {
       });
 
       // Create deposit ledger entry
-      await appendEntryFn({
+      await this.ledgerEntries.appendEntry({
         cycleId: p.cycleId,
         entryType: 'deposit',
         amountIsk: totalAmount.toFixed(2),

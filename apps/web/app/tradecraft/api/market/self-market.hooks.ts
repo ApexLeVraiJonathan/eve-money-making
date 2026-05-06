@@ -3,110 +3,24 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuthenticatedQuery } from "@/app/api-hooks/useAuthenticatedQuery";
 import { useApiClient } from "@/app/api-hooks/useApiClient";
-
-export type SelfMarketStatusResponse = {
-  config: {
-    enabled: boolean;
-    structureId: string | null;
-    characterId: number | null;
-    pollMinutes: number;
-    expiryWindowMinutes: number;
-  };
-  cron: {
-    appEnv: "dev" | "test" | "prod";
-    jobsEnabled: boolean;
-    jobEnabled: boolean;
-    jobEnabledSourceKey: string | null;
-    effectiveEnabled: boolean;
-  };
-  resolvedStructureId: string | null;
-  latestSnapshot: null | {
-    observedAt: string;
-    orderCount: number;
-    buyCount: number;
-    sellCount: number;
-    uniqueTypes: number;
-  };
-  latestAggregateDay: string | null;
-};
-
-export type SelfMarketOrder = {
-  duration: number;
-  is_buy_order: boolean;
-  issued: string;
-  location_id: number;
-  min_volume: number;
-  order_id: number;
-  price: number;
-  range: string;
-  type_id: number;
-  volume_remain: number;
-  volume_total: number;
-};
-
-export type SelfMarketSnapshotLatestResponse = {
-  structureId: string | null;
-  observedAt: string | null;
-  totalOrders: number;
-  matchedOrders?: number;
-  filteredOrders: number;
-  typeTotalOrders?: number;
-  typeNames?: Record<string, string>;
-  orders: SelfMarketOrder[];
-};
-
-export type SelfMarketSnapshotTypeSummaryResponse = {
-  structureId: string | null;
-  observedAt: string | null;
-  totalOrders: number;
-  matchedOrders: number;
-  uniqueTypes: number;
-  types: Array<{
-    typeId: number;
-    typeName: string | null;
-    sellCount: number;
-    buyCount: number;
-    bestSell: number | null;
-    bestBuy: number | null;
-  }>;
-};
-
-export type SelfMarketDailyAggregatesResponse = {
-  structureId: string | null;
-  date: string | null;
-  hasGone?: boolean;
-  side?: "ALL" | "BUY" | "SELL";
-  typeNames?: Record<string, string>;
-  rows: Array<{
-    scanDate: string;
-    locationId: string;
-    typeId: number;
-    isBuyOrder: boolean;
-    hasGone: boolean;
-    amount: string;
-    orderNum: string;
-    iskValue: string;
-    high: string;
-    low: string;
-    avg: string;
-  }>;
-};
-
-export type SelfMarketCollectResponse = {
-  ok: true;
-  observedAt: string;
-  orderCount: number;
-  tradesKeys: number;
-};
-
-export type SelfMarketClearDailyResponse =
-  | {
-      ok: true;
-      deleted: number;
-      date: string;
-      structureId: string;
-    }
-  | { ok: false; error: string };
+import type {
+  MarketSide,
+  SelfMarketClearDailyResponse,
+  SelfMarketCollectResponse,
+  SelfMarketDailyAggregatesResponse,
+  SelfMarketSnapshotLatestResponse,
+  SelfMarketSnapshotTypeSummaryResponse,
+  SelfMarketStatusResponse,
+} from "@eve/shared/tradecraft-market";
+export type {
+  SelfMarketClearDailyResponse,
+  SelfMarketCollectResponse,
+  SelfMarketDailyAggregatesResponse,
+  SelfMarketOrder,
+  SelfMarketSnapshotLatestResponse,
+  SelfMarketSnapshotTypeSummaryResponse,
+  SelfMarketStatusResponse,
+} from "@eve/shared/tradecraft-market";
 
 export function useSelfMarketStatus() {
   const client = useApiClient();
@@ -120,7 +34,7 @@ export function useSelfMarketStatus() {
 export function useSelfMarketSnapshotLatest(
   params: {
     limit: number;
-    side: "ALL" | "BUY" | "SELL";
+    side: MarketSide;
     typeId?: number;
   },
   opts?: { enabled?: boolean },
@@ -145,7 +59,7 @@ export function useSelfMarketSnapshotLatest(
 export function useSelfMarketSnapshotLatestTypeSummary(
   params: {
     limitTypes: number;
-    side: "ALL" | "BUY" | "SELL";
+    side: MarketSide;
   },
   opts?: { enabled?: boolean },
 ) {
@@ -168,7 +82,7 @@ export function useSelfMarketSnapshotLatestTypeSummary(
 export function useSelfMarketDailyAggregates(params: {
   date: string; // YYYY-MM-DD
   hasGone: boolean;
-  side: "ALL" | "BUY" | "SELL";
+  side: MarketSide;
   typeId?: number;
   limit: number;
 }) {

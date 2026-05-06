@@ -111,6 +111,18 @@ export const AppConfig = {
   },
 
   /**
+   * Swagger/OpenAPI enablement policy.
+   * - Dev/Test: enabled by default
+   * - Prod: disabled by default
+   * - Override via SWAGGER_ENABLED=true|false
+   */
+  swaggerEnabled(): boolean {
+    const override = process.env.SWAGGER_ENABLED;
+    if (override !== undefined) return AppConfig.boolEnv(override);
+    return AppConfig.env() !== 'prod';
+  },
+
+  /**
    * Server port
    */
   port(): number {

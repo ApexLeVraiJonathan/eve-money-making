@@ -10,11 +10,7 @@
     "declaration": true,
     "declarationMap": true,
     "outDir": "./dist",
-    "rootDir": "./src",
-    "paths": {
-      "@eve/shared": ["../shared/src/index.ts"],
-      "@eve/shared/*": ["../shared/src/*"]
-    }
+    "rootDir": "./src"
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]

@@ -41,7 +41,6 @@ export class LiquidityService {
 
   async runCheck(
     params?: LiquidityCheckParams,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     _reqId?: string,
   ): Promise<
     Record<
@@ -119,11 +118,10 @@ export class LiquidityService {
 
   /**
    * Raw station liquidity without threshold filtering. This is intentionally reusable
-   * for Strategy Lab so we can cache and apply different knob thresholds cheaply.
+   * for planner-style consumers so we can cache and apply different knob thresholds cheaply.
    */
   async runRaw(
     params?: LiquidityCheckParams,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     _reqId?: string,
   ): Promise<
     Record<
@@ -304,7 +302,6 @@ export class LiquidityService {
       isBuyOrder?: boolean;
       windowDays?: number;
     },
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     _reqId?: string,
   ): Promise<
     Record<

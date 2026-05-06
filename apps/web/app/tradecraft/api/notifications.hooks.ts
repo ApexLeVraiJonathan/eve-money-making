@@ -5,32 +5,15 @@ import { ApiError } from "@eve/api-client";
 import { qk } from "@eve/api-client/queryKeys";
 import { useApiClient } from "@/app/api-hooks/useApiClient";
 import { useAuthenticatedQuery } from "@/app/api-hooks/useAuthenticatedQuery";
-
-export type DiscordAccountDto = {
-  id: string;
-  userId: string;
-  discordUserId: string;
-  username: string;
-  discriminator: string | null;
-  avatarUrl: string | null;
-  linkedAt: string;
-};
-
-export type NotificationPreferenceDto = {
-  channel: "DISCORD_DM";
-  notificationType:
-    | "CYCLE_PLANNED"
-    | "CYCLE_STARTED"
-    | "CYCLE_RESULTS"
-    | "CYCLE_PAYOUT_SENT"
-    | "SKILL_PLAN_REMAP_REMINDER"
-    | "SKILL_PLAN_COMPLETION"
-    | "PLEX_ENDING"
-    | "MCT_ENDING"
-    | "BOOSTER_ENDING"
-    | "TRAINING_QUEUE_IDLE";
-  enabled: boolean;
-};
+import type {
+  DiscordAccountDto,
+  NotificationActionResponse,
+  NotificationPreferenceDto,
+} from "@eve/shared/notifications";
+export type {
+  DiscordAccountDto,
+  NotificationPreferenceDto,
+} from "@eve/shared/notifications";
 
 export function useDiscordAccount(enabled = true) {
   const client = useApiClient();
@@ -82,7 +65,7 @@ export function useUpdateNotificationPreferences() {
 
   return useMutation({
     mutationFn: (prefs: NotificationPreferenceDto[]) =>
-      client.patch<{ ok: boolean }>("/notifications/preferences", {
+      client.patch<NotificationActionResponse>("/notifications/preferences", {
         preferences: prefs,
       }),
     onSuccess: () => {
@@ -99,7 +82,7 @@ export function useDisconnectDiscord() {
 
   return useMutation({
     mutationFn: () =>
-      client.delete<{ ok: boolean }>("/notifications/discord/account"),
+      client.delete<NotificationActionResponse>("/notifications/discord/account"),
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: qk.notifications.discordAccount(),
@@ -122,7 +105,7 @@ export function useSendTestNotification() {
 
   return useMutation({
     mutationFn: () =>
-      client.post<{ ok: boolean; error?: string }>(
+      client.post<NotificationActionResponse>(
         "/notifications/debug/test-dm",
         {},
       ),
@@ -133,7 +116,7 @@ export function useSendTradecraftCyclePlannedPreview() {
   const client = useApiClient();
   return useMutation({
     mutationFn: (cycleId?: string) =>
-      client.post<{ ok: boolean; error?: string }>(
+      client.post<NotificationActionResponse>(
         "/notifications/debug/tradecraft/cycle-planned",
         cycleId ? { cycleId } : {},
       ),
@@ -144,7 +127,7 @@ export function useSendTradecraftCycleStartedPreview() {
   const client = useApiClient();
   return useMutation({
     mutationFn: (cycleId?: string) =>
-      client.post<{ ok: boolean; error?: string }>(
+      client.post<NotificationActionResponse>(
         "/notifications/debug/tradecraft/cycle-started",
         cycleId ? { cycleId } : {},
       ),
@@ -155,7 +138,7 @@ export function useSendTradecraftCycleResultsPreview() {
   const client = useApiClient();
   return useMutation({
     mutationFn: (cycleId?: string) =>
-      client.post<{ ok: boolean; error?: string }>(
+      client.post<NotificationActionResponse>(
         "/notifications/debug/tradecraft/cycle-results",
         cycleId ? { cycleId } : {},
       ),
@@ -166,7 +149,7 @@ export function useSendTradecraftPayoutSentPreview() {
   const client = useApiClient();
   return useMutation({
     mutationFn: (participationId?: string) =>
-      client.post<{ ok: boolean; error?: string }>(
+      client.post<NotificationActionResponse>(
         "/notifications/debug/tradecraft/payout-sent",
         participationId ? { participationId } : {},
       ),

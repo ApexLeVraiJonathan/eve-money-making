@@ -1,28 +1,25 @@
 # @eve/api-contracts
 
-OpenAPI/Zod contracts and generated TypeScript types (Future).
+Runtime API contract artifacts (OpenAPI/Zod/tooling outputs).
 
 ## Purpose
 
-This package will contain:
+This package is reserved for:
 - OpenAPI specifications
 - Zod schemas for request/response validation
-- Generated TypeScript types from OpenAPI specs
-- Shared contracts between frontend and backend
+- Generated validators or codegen outputs tied to runtime schemas
 
 ## Status
 
-🚧 **Placeholder** - This package will be populated during Phase 2 when Swagger is implemented.
+🚧 **Placeholder** - app-level request/response TypeScript contracts live in `@eve/shared/*`.
 
 ## Future Usage
 
 ```typescript
-import { UserSchema, CreateUserDto } from '@eve/api-contracts';
+import { UserSchema } from '@eve/api-contracts';
+import type { UserDto } from '@eve/shared/some-feature';
 
-// Use for validation
 const result = UserSchema.parse(data);
-
-// Use for type safety
-const dto: CreateUserDto = { name: 'John' };
+const dto: UserDto = { id: '1', name: 'John' };
 ```
 

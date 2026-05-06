@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '@api/prisma/prisma.service';
 import { AppConfig } from '@api/common/config';
 import { CharacterService } from '@api/characters/services/character.service';
+import { Prisma } from '@eve/prisma';
 
 type CharacterLocation = 'JITA' | 'DODIXIE' | 'AMARR' | 'HEK' | 'RENS' | 'CN';
 
@@ -36,15 +37,7 @@ export class AllocationService {
     unmatchedBuys: number;
     unmatchedSells: number;
   }> {
-    const cycle =
-      cycleId ??
-      (
-        await this.prisma.cycle.findFirst({
-          where: { status: 'OPEN' },
-          orderBy: { startedAt: 'desc' },
-          select: { id: true },
-        })
-      )?.id;
+    const cycle = await this.resolveCycleIdForAllocation(cycleId);
 
     if (!cycle) {
       this.logger.warn('[Allocation] No open cycle found');
@@ -65,6 +58,20 @@ export class AllocationService {
       unmatchedBuys: buysResult.unmatched,
       unmatchedSells: sellsResult.unmatched,
     };
+  }
+
+  private async resolveCycleIdForAllocation(
+    cycleId?: string,
+  ): Promise<string | null> {
+    if (cycleId) return cycleId;
+
+    const openCycle = await this.prisma.cycle.findFirst({
+      where: { status: 'OPEN' },
+      orderBy: { startedAt: 'desc' },
+      select: { id: true },
+    });
+
+    return openCycle?.id ?? null;
   }
 
   /**
@@ -205,9 +212,9 @@ export class AllocationService {
         toAllocate -= allocQty;
         // Update local cache for subsequent iterations
         line.unitsBought = line.unitsBought + allocQty;
-        (line as any).buyCostIsk = (
-          Number(line.buyCostIsk) + costIncrement
-        ).toString();
+        line.buyCostIsk = new Prisma.Decimal(
+          Number(line.buyCostIsk) + costIncrement,
+        );
         allocated++;
       }
 
@@ -385,11 +392,11 @@ export class AllocationService {
         toAllocate -= allocQty;
         // Update local cache for subsequent iterations
         line.unitsSold = line.unitsSold + allocQty;
-        (line as any).salesGrossIsk = (
-          Number(line.salesGrossIsk) + revenue
-        ).toString();
-        (line as any).salesTaxIsk = (Number(line.salesTaxIsk) + tax).toString();
-        (line as any).salesNetIsk = (Number(line.salesNetIsk) + net).toString();
+        line.salesGrossIsk = new Prisma.Decimal(
+          Number(line.salesGrossIsk) + revenue,
+        );
+        line.salesTaxIsk = new Prisma.Decimal(Number(line.salesTaxIsk) + tax);
+        line.salesNetIsk = new Prisma.Decimal(Number(line.salesNetIsk) + net);
         allocated++;
       }
 

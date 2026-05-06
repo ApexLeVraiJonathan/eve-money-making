@@ -106,9 +106,12 @@ export class TokenService {
         },
       });
       return data.access_token;
-    } catch (e: any) {
-      const details =
-        e?.response?.data ?? (e instanceof Error ? e.message : String(e));
+    } catch (e: unknown) {
+      const details: unknown = axios.isAxiosError(e)
+        ? ((e.response?.data as unknown) ?? e.message)
+        : e instanceof Error
+          ? e.message
+          : String(e);
       this.logger.warn(
         `Token refresh failed for character ${characterId}: ${JSON.stringify(details)}`,
       );
@@ -169,9 +172,12 @@ export class TokenService {
         },
       });
       return data.access_token;
-    } catch (e: any) {
-      const details =
-        e?.response?.data ?? (e instanceof Error ? e.message : String(e));
+    } catch (e: unknown) {
+      const details: unknown = axios.isAxiosError(e)
+        ? ((e.response?.data as unknown) ?? e.message)
+        : e instanceof Error
+          ? e.message
+          : String(e);
       this.logger.warn(
         `Force token refresh failed for character ${characterId}: ${JSON.stringify(details)}`,
       );

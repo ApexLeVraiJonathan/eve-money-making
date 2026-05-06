@@ -11,7 +11,9 @@ export type RequestUser = {
 
 export const CurrentUser = createParamDecorator(
   (_data: unknown, ctx: ExecutionContext): RequestUser | null => {
-    const req = ctx.switchToHttp().getRequest();
+    const req = ctx
+      .switchToHttp()
+      .getRequest<{ user?: RequestUser | null }>();
     return req?.user ?? null;
   },
 );

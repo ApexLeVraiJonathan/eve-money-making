@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { GitBranch, Search, Shuffle, X } from "lucide-react";
 import { Input, Skeleton, Badge } from "@eve/ui";
 import { useSkillEncyclopedia } from "../api";
-import type { SkillEncyclopediaEntry } from "@eve/api-contracts";
+import type { SkillEncyclopediaEntry } from "@eve/shared/skill-contracts";
 import {
   estimateTrainingTimeSeconds,
   type AttributeSet,

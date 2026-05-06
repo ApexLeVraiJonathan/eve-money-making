@@ -8,8 +8,7 @@ Shared packages used across the EVE Money Making monorepo.
 Lightweight types and pure utilities. No dependencies.
 
 **Exports:**
-- `@eve/shared` - Main exports
-- `@eve/shared/types` - Shared TypeScript types
+- `@eve/shared/<feature>` - Focused shared contracts, such as `@eve/shared/tradecraft-cycles`
 - `@eve/shared/env` - Frontend environment helpers
 
 ### [@eve/api-client](./api-client/)
@@ -32,7 +31,7 @@ Single Prisma schema and migrations for the entire monorepo.
 - `@eve/prisma` - Prisma Client instance
 
 ### [@eve/api-contracts](./api-contracts/)
-🚧 **Future** - OpenAPI/Zod contracts (Phase 2)
+🚧 **Runtime tooling** - OpenAPI/Zod/schema artifacts (app TypeScript contracts live in `@eve/shared/*`)
 
 ## Usage Guidelines
 
@@ -42,14 +41,14 @@ Single Prisma schema and migrations for the entire monorepo.
 ```typescript
 import { clientForApp } from '@eve/api-client';
 import { qk } from '@eve/api-client/queryKeys';
-import type { User } from '@eve/shared/types';
+import type { CycleOverviewResponse } from '@eve/shared/tradecraft-cycles';
 import { Button } from '@eve/ui';
 ```
 
 **Backend (NestJS):**
 ```typescript
 import { PrismaClient } from '@eve/prisma';
-import type { User } from '@eve/shared/types';
+import type { CharacterOverviewResponse } from '@eve/shared/character-management';
 ```
 
 ### Rules
@@ -57,6 +56,7 @@ import type { User } from '@eve/shared/types';
 - ✅ Apps share code **only** via packages
 - ❌ Apps must **never** import from each other
 - ✅ Use package imports: `@eve/*`
+- ✅ Use explicit shared subpaths: `@eve/shared/tradecraft-cycles`, not `@eve/shared`
 - ❌ Don't duplicate types, clients, or components in apps
 
 ## Development
@@ -67,12 +67,4 @@ All packages use TypeScript with strict mode enabled. Build with:
 pnpm build
 ```
 
-## Phase 1 Progress
-
-- [x] 1.1 - Create packages/ directory structure
-- [ ] 1.2 - Move Prisma to packages/
-- [ ] 1.3 - Setup package.json files (✅ Done)
-- [ ] 1.4 - Move shared UI components
-- [ ] 1.5 - Update TypeScript configs (✅ Done)
-- [ ] 1.6 - Update pnpm-workspace.yaml (✅ Already configured)
 

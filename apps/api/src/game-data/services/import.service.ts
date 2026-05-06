@@ -13,7 +13,7 @@ import { AppConfig } from '@api/common/config';
 import type {
   ImportMissingMarketTradesResponse,
   ImportMarketTradesDayResult,
-} from '@eve/api-contracts';
+} from '@eve/shared/tradecraft-data-ops';
 
 @Injectable()
 export class ImportService {
@@ -749,7 +749,7 @@ export class ImportService {
       // then find all types that belong to those groups from types.jsonl.
       const skillGroupIds = new Set<number>();
 
-      await this.streamJsonLines(groupsPath, async (row) => {
+      await this.streamJsonLines(groupsPath, (row) => {
         const rec = row as { _key?: unknown; categoryID?: unknown };
         const groupIdRaw = rec._key;
         const categoryIdRaw = rec.categoryID;

@@ -13,7 +13,14 @@
  */
 
 export type HttpMethod = "GET" | "POST" | "PATCH" | "DELETE" | "PUT";
-export type AppId = "api" | "web-portal" | "web-admin" | string;
+export type AppId =
+  | "api"
+  | "core"
+  | "tradecraft"
+  | "characters"
+  | "web-portal"
+  | "web-admin"
+  | string;
 
 export type ApiClientOptions = Omit<
   RequestInit,
@@ -38,13 +45,30 @@ export class ApiError extends Error {
 }
 
 /**
- * Base URL configuration per app
- * Note: Depending on deployment, your API may be mounted under a prefix (e.g. `/api`).
- * `NEXT_PUBLIC_API_URL` may include that prefix.
+ * Base URL configuration per app.
+ *
+ * Browser clients default to app-scoped Next.js BFF routes so backend origins
+ * are not exposed via public env vars.
  */
+const SERVER_API_BASE =
+  process.env.API_URL ||
+  process.env.API_BASE_URL ||
+  process.env.NEXT_PUBLIC_API_URL ||
+  "http://localhost:3000";
+const BROWSER_DEFAULT_BASE = "/api/core";
+const BROWSER_APP_BASES: Record<string, string> = {
+  api: BROWSER_DEFAULT_BASE,
+  core: BROWSER_DEFAULT_BASE,
+  tradecraft: "/api/tradecraft",
+  characters: "/api/characters",
+  "web-portal": BROWSER_DEFAULT_BASE,
+};
 const BASES: Record<AppId, string> = {
-  api: process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000",
-  "web-portal": process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000",
+  api: SERVER_API_BASE,
+  core: SERVER_API_BASE,
+  tradecraft: SERVER_API_BASE,
+  characters: SERVER_API_BASE,
+  "web-portal": SERVER_API_BASE,
   "web-admin": process.env.NEXT_PUBLIC_ADMIN_API_URL || "http://localhost:3002",
 };
 
@@ -52,7 +76,10 @@ const BASES: Record<AppId, string> = {
  * Get base URL for an app
  */
 function getBase(appId: AppId): string {
-  return BASES[appId] ?? BASES["api"];
+  if (typeof window !== "undefined") {
+    return BROWSER_APP_BASES[appId] ?? BROWSER_DEFAULT_BASE;
+  }
+  return BASES[appId] ?? BASES.api;
 }
 
 /**
@@ -104,7 +131,8 @@ async function request<T>(
     const shouldTryApiPrefix =
       res.status === 404 &&
       !normalizedPath.startsWith("/api/") &&
-      !trimmedBase.endsWith("/api");
+      !trimmedBase.endsWith("/api") &&
+      !trimmedBase.startsWith("/api/");
 
     if (shouldTryApiPrefix) {
       const altUrl = `${trimmedBase}/api${normalizedPath}`;

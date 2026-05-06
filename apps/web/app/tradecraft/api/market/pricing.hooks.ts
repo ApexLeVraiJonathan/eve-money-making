@@ -7,7 +7,7 @@ import type {
   SellAppraiseResponse,
   SellAppraiseByCommitResponse,
   UndercutCheckResponse,
-} from "@eve/shared/types";
+} from "@eve/shared/tradecraft-pricing";
 
 /**
  * API hooks for pricing operations

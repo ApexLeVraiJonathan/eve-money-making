@@ -23,8 +23,8 @@ import { Loader2, PlusCircle } from "lucide-react";
 import {
   useAdminCreateParticipationForOpenCycle,
   useAdminTradecraftCaps,
-  useCycles,
-} from "@/app/tradecraft/api";
+} from "@/app/tradecraft/api/market/participations.hooks";
+import { useCycles } from "@/app/tradecraft/api/cycles/cycles.hooks";
 import { useSearchUsersByPrimaryCharacter } from "@/app/tradecraft/api/characters/admin.hooks";
 
 function iskFromB(b: number) {

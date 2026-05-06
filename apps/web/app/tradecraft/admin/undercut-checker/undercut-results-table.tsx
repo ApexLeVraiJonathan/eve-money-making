@@ -14,27 +14,12 @@ import {
 } from "@eve/ui";
 import { formatIsk } from "@/lib/utils";
 import { eveClientStringCompare } from "@/lib/eve-sort";
-import type { UndercutCheckGroup } from "@eve/shared/types";
-
-type ProfitCategory = "red" | "yellow" | "normal";
-
-function getProfitCategory(marginPercent: number | undefined): ProfitCategory {
-  if (marginPercent === undefined) return "normal";
-  if (marginPercent <= -10) return "red";
-  if (marginPercent < 0) return "yellow";
-  return "normal";
-}
+import type { UndercutCheckGroup } from "@eve/shared/tradecraft-pricing";
+import { getProfitCategory } from "./_components/lib/profit";
+import type { SelectionStore } from "./_components/lib/selection-store";
 
 type UpdateRow = UndercutCheckGroup["updates"][number] & {
   __key: string;
-};
-
-type SelectionStore = {
-  subscribe: (listener: () => void) => () => void;
-  getVersion: () => number;
-  get: (key: string) => boolean;
-  toggle: (key: string) => void;
-  setMany: (keys: string[], checked: boolean) => void;
 };
 
 const RowSelectCheckbox = React.memo(function RowSelectCheckbox({

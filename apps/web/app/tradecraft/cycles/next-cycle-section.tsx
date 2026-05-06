@@ -27,8 +27,8 @@ import {
   useMyParticipation,
   useOptOutParticipation,
   useIncreaseParticipation,
-  useMyJingleYieldStatus,
-} from "../api";
+} from "../api/market/participations.hooks";
+import { useMyJingleYieldStatus } from "../api/market/jingle-yield.hooks";
 import { startUserLogin, useCurrentUser } from "../api/characters/users.hooks";
 
 type NextCycle = {

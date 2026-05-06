@@ -1,5 +1,6 @@
 import {
   Controller,
+  Logger,
   Get,
   Query,
   Res,
@@ -14,6 +15,8 @@ import {
 import {
   ApiTags,
   ApiBearerAuth,
+  ApiFoundResponse,
+  ApiOkResponse,
   ApiOperation,
   ApiParam,
 } from '@nestjs/swagger';
@@ -22,15 +25,11 @@ import crypto from 'node:crypto';
 import * as jwt from 'jsonwebtoken';
 import { AuthService } from './services/auth.service';
 import { CharacterService } from './services/character.service';
+import { OAuthStateService } from './services/oauth-state.service';
 import { CryptoUtil } from '../common/crypto.util';
 import { EsiService } from '../esi/esi.service';
 import { EsiCharactersService } from '../esi/esi-characters.service';
-import { PrismaService } from '../prisma/prisma.service';
-import {
-  AppFeature,
-  IMPORTANT_ESI_SCOPES,
-  normalizeScopes,
-} from '../common/app-features';
+import { normalizeScopes } from '../common/app-features';
 import { Roles } from './decorators/roles.decorator';
 import { RolesGuard } from './guards/roles.guard';
 import { SetCharacterProfileRequest } from './dto/set-character-profile.dto';
@@ -44,13 +43,56 @@ import {
 @ApiTags('auth')
 @Controller('auth')
 export class AuthController {
+  private readonly logger = new Logger(AuthController.name);
+
   constructor(
     private readonly auth: AuthService,
     private readonly characterService: CharacterService,
+    private readonly oauthStates: OAuthStateService,
     private readonly esi: EsiService,
     private readonly esiChars: EsiCharactersService,
-    private readonly prisma: PrismaService,
   ) {}
+
+  private safeReturnUrl(returnUrl?: string | null): string | null {
+    const value = returnUrl?.trim();
+    if (!value) return null;
+
+    if (
+      value.startsWith('/') &&
+      !value.startsWith('//') &&
+      !value.includes('\\')
+    ) {
+      return value;
+    }
+
+    try {
+      const parsed = new URL(value);
+      const allowedOrigins = AppConfig.esiReturnUrlAllowlist()
+        .map((allowed) => {
+          try {
+            return new URL(allowed).origin;
+          } catch {
+            return null;
+          }
+        })
+        .filter((origin): origin is string => origin !== null);
+
+      return allowedOrigins.includes(parsed.origin) ? parsed.toString() : null;
+    } catch {
+      return null;
+    }
+  }
+
+  private setSafeReturnCookie(res: Response, returnUrl?: string | null): void {
+    const safeReturnUrl = this.safeReturnUrl(returnUrl);
+    if (!safeReturnUrl) return;
+
+    res.cookie('sso_return', safeReturnUrl, {
+      httpOnly: true,
+      sameSite: 'lax',
+      maxAge: 10 * 60 * 1000,
+    });
+  }
 
   /**
    * Starts the OAuth flow with PKCE and state.
@@ -58,6 +100,7 @@ export class AuthController {
    */
   @Public()
   @Get('login')
+  @ApiFoundResponse({ description: 'Redirects to EVE SSO login' })
   login(@Res() res: Response, @Query('returnUrl') returnUrl?: string) {
     const state = crypto.randomUUID();
     const codeVerifier = crypto.randomBytes(32).toString('base64url');
@@ -80,22 +123,7 @@ export class AuthController {
       sameSite: 'lax',
       maxAge: 10 * 60 * 1000,
     });
-    if (returnUrl) {
-      // Whitelist return URL origins via centralized config
-      const allow = AppConfig.esiReturnUrlAllowlist();
-      try {
-        const u = new URL(returnUrl);
-        if (allow.includes(u.origin)) {
-          res.cookie('sso_return', returnUrl, {
-            httpOnly: true,
-            sameSite: 'lax',
-            maxAge: 10 * 60 * 1000,
-          });
-        }
-      } catch {
-        // ignore
-      }
-    }
+    this.setSafeReturnCookie(res, returnUrl);
 
     const scopes = AppConfig.esiScopes().login;
     const url = this.auth.getAuthorizeUrl(state, codeChallenge, scopes);
@@ -108,6 +136,7 @@ export class AuthController {
    */
   @Get('link-character/start')
   @ApiBearerAuth()
+  @ApiFoundResponse({ description: 'Redirects to EVE SSO character linking' })
   async linkCharacterStart(
     @CurrentUser() user: RequestUser | null,
     @Res() res: Response,
@@ -128,16 +157,11 @@ export class AuthController {
       .replace(/\//g, '_')
       .replace(/=+$/, '');
 
-    // Store OAuth state in database with user association
-    const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
-    await this.prisma.oAuthState.create({
-      data: {
-        state,
-        codeVerifier,
-        userId: user.userId,
-        returnUrl: returnUrl ?? null,
-        expiresAt,
-      },
+    await this.oauthStates.createUserLinkState({
+      state,
+      codeVerifier,
+      userId: user.userId,
+      returnUrl: this.safeReturnUrl(returnUrl),
     });
 
     // Compute scopes based on the user's enabled app features. For user-managed
@@ -157,6 +181,10 @@ export class AuthController {
    */
   @Public()
   @Get('link-character/callback')
+  @ApiOkResponse({
+    description:
+      'Character linking callback result or redirect to stored return URL',
+  })
   async linkCharacterCallback(
     @Query('code') code: string,
     @Query('state') state: string,
@@ -167,25 +195,20 @@ export class AuthController {
       return;
     }
 
-    // Retrieve OAuth state from database
-    const oauthState = await this.prisma.oAuthState.findUnique({
-      where: { state },
-    });
+    const oauthState = await this.oauthStates.findByState(state);
 
     if (!oauthState) {
       res.status(400).send('Invalid or expired OAuth state');
       return;
     }
 
-    // Check if state has expired
-    if (oauthState.expiresAt < new Date()) {
-      await this.prisma.oAuthState.delete({ where: { id: oauthState.id } });
+    if (this.oauthStates.isExpired(oauthState)) {
+      await this.oauthStates.deleteById(oauthState.id);
       res.status(400).send('OAuth state expired');
       return;
     }
 
-    // Delete state immediately (single use)
-    await this.prisma.oAuthState.delete({ where: { id: oauthState.id } });
+    await this.oauthStates.deleteById(oauthState.id);
 
     if (!oauthState.userId) {
       res
@@ -241,8 +264,9 @@ export class AuthController {
       );
 
       // Redirect to return URL or show success
-      if (oauthState.returnUrl) {
-        res.redirect(oauthState.returnUrl);
+      const returnUrl = this.safeReturnUrl(oauthState.returnUrl);
+      if (returnUrl) {
+        res.redirect(returnUrl);
         return;
       }
 
@@ -256,7 +280,10 @@ export class AuthController {
         </html>
       `);
     } catch (error) {
-      console.error('Error linking character:', error);
+      this.logger.error(
+        `Error linking character: ${error instanceof Error ? error.message : String(error)}`,
+        error instanceof Error ? error.stack : undefined,
+      );
       res.status(500).send('Failed to link character. Please try again.');
     }
   }
@@ -266,6 +293,7 @@ export class AuthController {
   @Public()
   @Public()
   @Get('login/user')
+  @ApiFoundResponse({ description: 'Redirects to EVE SSO user login' })
   loginUser(@Res() res: Response, @Query('returnUrl') returnUrl?: string) {
     const state = crypto.randomUUID();
     const codeVerifier = crypto.randomBytes(32).toString('base64url');
@@ -286,12 +314,7 @@ export class AuthController {
       sameSite: 'lax',
       maxAge: 10 * 60 * 1000,
     });
-    if (returnUrl)
-      res.cookie('sso_return', returnUrl, {
-        httpOnly: true,
-        sameSite: 'lax',
-        maxAge: 10 * 60 * 1000,
-      });
+    this.setSafeReturnCookie(res, returnUrl);
     // Mark intent so callback can tag role
     res.cookie('sso_kind', 'user', {
       httpOnly: true,
@@ -309,6 +332,7 @@ export class AuthController {
   @Public()
   @Public()
   @Get('login/admin')
+  @ApiFoundResponse({ description: 'Redirects to EVE SSO admin login' })
   loginAdmin(@Res() res: Response, @Query('returnUrl') returnUrl?: string) {
     const state = crypto.randomUUID();
     const codeVerifier = crypto.randomBytes(32).toString('base64url');
@@ -329,12 +353,7 @@ export class AuthController {
       sameSite: 'lax',
       maxAge: 10 * 60 * 1000,
     });
-    if (returnUrl)
-      res.cookie('sso_return', returnUrl, {
-        httpOnly: true,
-        sameSite: 'lax',
-        maxAge: 10 * 60 * 1000,
-      });
+    this.setSafeReturnCookie(res, returnUrl);
     res.cookie('sso_kind', 'admin', {
       httpOnly: true,
       sameSite: 'lax',
@@ -352,6 +371,9 @@ export class AuthController {
   @Public()
   @Public()
   @Get('callback')
+  @ApiOkResponse({
+    description: 'SSO callback result, session cookie response, or redirect',
+  })
   async callback(
     @Query('code') code: string,
     @Query('state') state: string,
@@ -364,20 +386,18 @@ export class AuthController {
     }
 
     // First try OAuthState - used for character linking (USER) and system characters
-    const oauthState = await this.prisma.oAuthState.findUnique({
-      where: { state },
-    });
+    const oauthState = await this.oauthStates.findByState(state);
 
     if (oauthState) {
       // OAuthState-based flows: link-character or system-character
-      if (oauthState.expiresAt < new Date()) {
-        await this.prisma.oAuthState.delete({ where: { id: oauthState.id } });
+      if (this.oauthStates.isExpired(oauthState)) {
+        await this.oauthStates.deleteById(oauthState.id);
         res.status(400).send('OAuth state expired');
         return;
       }
 
       // Delete immediately (single use)
-      await this.prisma.oAuthState.delete({ where: { id: oauthState.id } });
+      await this.oauthStates.deleteById(oauthState.id);
 
       // USER-managed character linking (has userId)
       if (oauthState.userId) {
@@ -425,8 +445,9 @@ export class AuthController {
             oauthState.userId,
           );
 
-          if (oauthState.returnUrl) {
-            res.redirect(oauthState.returnUrl);
+          const returnUrl = this.safeReturnUrl(oauthState.returnUrl);
+          if (returnUrl) {
+            res.redirect(returnUrl);
             return;
           }
 
@@ -441,7 +462,10 @@ export class AuthController {
           `);
           return;
         } catch (error) {
-          console.error('Error linking character:', error);
+          this.logger.error(
+            `Error linking character: ${error instanceof Error ? error.message : String(error)}`,
+            error instanceof Error ? error.stack : undefined,
+          );
           res.status(500).send('Failed to link character. Please try again.');
           return;
         }
@@ -466,79 +490,19 @@ export class AuthController {
           return;
         }
 
-        const characterId = Number(decoded.sub.split(':').pop());
-        const characterName = decoded.name;
-        const ownerHash = decoded.owner;
-
-        const scopes = Array.isArray(decoded.scp)
-          ? decoded.scp.join(' ')
-          : decoded.scp || '';
-
-        const refreshTokenEnc = await CryptoUtil.encrypt(tokens.refresh_token);
-
-        let notes = 'System character';
-        let storedReturnUrl: string | null = null;
-        try {
-          const stateData = JSON.parse(oauthState.returnUrl || '{}') as {
-            notes?: string | null;
-            returnUrl?: string | null;
-          };
-          notes = stateData.notes || 'System character';
-          storedReturnUrl = stateData.returnUrl || null;
-        } catch {
-          notes = oauthState.returnUrl || 'System character';
-        }
-
-        await this.prisma.$transaction(async (tx) => {
-          await tx.eveCharacter.upsert({
-            where: { id: characterId },
-            update: {
-              name: characterName,
-              ownerHash,
-              managedBy: 'SYSTEM',
-              // IMPORTANT: do not clear existing userId on update so a system
-              // character can also be attached to a user for the Characters app.
-              role: 'LOGISTICS',
-              notes,
-            },
-            create: {
-              id: characterId,
-              name: characterName,
-              ownerHash,
-              managedBy: 'SYSTEM',
-              userId: null,
-              role: 'LOGISTICS',
-              notes,
-            },
+        const { characterName, storedReturnUrl } =
+          await this.auth.upsertSystemCharacterWithToken({
+            tokens,
+            decoded,
+            stateReturnUrl: oauthState.returnUrl,
           });
 
-          await tx.characterToken.upsert({
-            where: { characterId },
-            update: {
-              tokenType: 'Bearer',
-              accessToken: tokens.access_token,
-              accessTokenExpiresAt: new Date(
-                Date.now() + tokens.expires_in * 1000,
-              ),
-              refreshTokenEnc,
-              scopes,
-              lastRefreshAt: new Date(),
-            },
-            create: {
-              characterId,
-              tokenType: 'Bearer',
-              accessToken: tokens.access_token,
-              accessTokenExpiresAt: new Date(
-                Date.now() + tokens.expires_in * 1000,
-              ),
-              refreshTokenEnc,
-              scopes,
-            },
-          });
-        });
-
-        if (storedReturnUrl) {
-          const redirectUrl = new URL(storedReturnUrl);
+        const safeStoredReturnUrl = this.safeReturnUrl(storedReturnUrl);
+        if (safeStoredReturnUrl) {
+          const redirectUrl = new URL(
+            safeStoredReturnUrl,
+            AppConfig.webBaseUrl(),
+          );
           redirectUrl.searchParams.set('systemCharLinked', characterName);
           res.redirect(redirectUrl.toString());
         } else {
@@ -551,7 +515,10 @@ export class AuthController {
         }
         return;
       } catch (e) {
-        console.error('Error linking system character:', e);
+        this.logger.error(
+          `Error linking system character: ${e instanceof Error ? e.message : String(e)}`,
+          e instanceof Error ? e.stack : undefined,
+        );
         res
           .status(500)
           .send(
@@ -654,9 +621,11 @@ export class AuthController {
     } catch {
       // non-fatal
     }
-    const redirectTo = cookies['sso_return'];
-    if (redirectTo) {
+    const redirectTo = this.safeReturnUrl(cookies['sso_return']);
+    if (cookies['sso_return']) {
       res.clearCookie('sso_return');
+    }
+    if (redirectTo) {
       res.redirect(redirectTo);
       return;
     }
@@ -703,6 +672,7 @@ export class AuthController {
   @Roles('ADMIN')
   @UseGuards(RolesGuard)
   @Get('characters')
+  @ApiOkResponse({ description: 'Linked character list' })
   async listCharacters(@Res() res: Response) {
     const rows = await this.auth.listLinkedCharacters();
     res.json({ characters: rows });
@@ -712,6 +682,7 @@ export class AuthController {
    * Logout - clears the session cookie
    */
   @Get('logout')
+  @ApiOkResponse({ description: 'Logout result after clearing session cookie' })
   async logout(@Res() res: Response) {
     await Promise.resolve();
     const secureCookie = AppConfig.env() === 'prod';
@@ -731,6 +702,7 @@ export class AuthController {
   @Get('me')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get current user identity' })
+  @ApiOkResponse({ description: 'Current user identity' })
   me(@CurrentUser() user: RequestUser) {
     return {
       userId: user.userId,
@@ -747,6 +719,7 @@ export class AuthController {
   @Patch('me/features')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update enabled app features for current user' })
+  @ApiOkResponse({ description: 'Updated enabled app features' })
   async updateMyFeatures(
     @CurrentUser() user: RequestUser | null,
     @Body()
@@ -760,26 +733,10 @@ export class AuthController {
       return;
     }
 
-    const raw = body?.enabledFeatures ?? [];
-    const validSet = new Set(
-      (Object.values(AppFeature) as string[]).map((v) => v.toString()),
+    const next = await this.auth.updateUserEnabledFeatures(
+      user.userId,
+      body?.enabledFeatures ?? [],
     );
-    const next: AppFeature[] = [];
-    for (const key of raw) {
-      if (typeof key === 'string' && validSet.has(key)) {
-        next.push(key as AppFeature);
-      }
-    }
-
-    // Persist as simple string array JSON; empty means "no explicit choice" and will
-    // fall back to CHARACTERS in helpers.
-    await this.prisma.user.update({
-      where: { id: user.userId },
-      data: {
-        enabledFeatures: next,
-      },
-    });
-
     res.json({ enabledFeatures: next });
   }
 
@@ -789,6 +746,7 @@ export class AuthController {
   @Get('me/features')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get enabled app features for current user' })
+  @ApiOkResponse({ description: 'Current user enabled app features' })
   async getMyFeatures(
     @CurrentUser() user: RequestUser | null,
     @Res() res: Response,
@@ -808,6 +766,7 @@ export class AuthController {
   @Roles('ADMIN')
   @UseGuards(RolesGuard)
   @Get('refresh')
+  @ApiOkResponse({ description: 'Refreshed character token metadata' })
   async refresh(
     @Query('characterId') characterId: string,
     @Res() res: Response,
@@ -831,6 +790,7 @@ export class AuthController {
   @Roles('ADMIN')
   @UseGuards(RolesGuard)
   @Get('wallet')
+  @ApiOkResponse({ description: 'Character wallet balance' })
   async wallet(
     @Query('characterId') characterId: string,
     @Res() res: Response,
@@ -859,6 +819,7 @@ export class AuthController {
   @Roles('ADMIN')
   @UseGuards(RolesGuard)
   @Delete('characters/:id')
+  @ApiOkResponse({ description: 'Character unlink result' })
   async unlink(@Param('id') idParam: string, @Res() res: Response) {
     const id = Number(idParam);
     if (!Number.isInteger(id) || id <= 0) {
@@ -877,6 +838,7 @@ export class AuthController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update character profile (admin only)' })
   @ApiParam({ name: 'id', description: 'Character ID' })
+  @ApiOkResponse({ description: 'Character profile update result' })
   @Patch('characters/:id')
   async setProfile(
     @Param('id') characterId: string,
@@ -909,6 +871,7 @@ export class AuthController {
   @Roles('ADMIN')
   @UseGuards(RolesGuard)
   @Get('admin/characters/:id/token/status')
+  @ApiOkResponse({ description: 'Character token status metadata' })
   async getTokenStatus(@Param('id') idParam: string, @Res() res: Response) {
     const id = Number(idParam);
     if (!Number.isInteger(id) || id <= 0) {
@@ -916,18 +879,7 @@ export class AuthController {
       return;
     }
     try {
-      const token = await this.prisma.characterToken.findUnique({
-        where: { characterId: id },
-        select: {
-          characterId: true,
-          accessTokenExpiresAt: true,
-          scopes: true,
-          lastRefreshAt: true,
-          refreshFailAt: true,
-          refreshFailMsg: true,
-          updatedAt: true,
-        },
-      });
+      const token = await this.auth.getCharacterTokenStatus(id);
       if (!token) {
         res.status(404).json({ error: 'Token not found' });
         return;
@@ -944,6 +896,7 @@ export class AuthController {
   @Roles('ADMIN')
   @UseGuards(RolesGuard)
   @Delete('admin/characters/:id/token')
+  @ApiOkResponse({ description: 'Character token revoke result' })
   async revokeToken(@Param('id') idParam: string, @Res() res: Response) {
     const id = Number(idParam);
     if (!Number.isInteger(id) || id <= 0) {
@@ -951,16 +904,7 @@ export class AuthController {
       return;
     }
     try {
-      await this.prisma.characterToken.update({
-        where: { characterId: id },
-        data: {
-          refreshTokenEnc: '',
-          accessToken: '',
-          refreshFailAt: new Date(),
-          refreshFailMsg: 'manually_revoked',
-        },
-      });
-      res.json({ revoked: true, characterId: id });
+      res.json(await this.auth.revokeCharacterToken(id));
     } catch (e) {
       res.status(400).json({ error: String(e) });
     }
@@ -972,6 +916,7 @@ export class AuthController {
    */
   @Post('link-additional-character')
   @ApiBearerAuth()
+  @ApiOkResponse({ description: 'Additional character linking result' })
   async linkAdditionalCharacter(
     @CurrentUser() user: RequestUser | null,
     @Req() req: Request,
@@ -1008,146 +953,25 @@ export class AuthController {
         return;
       }
 
-      // Encrypt refresh token if provided. IMPORTANT: callers may omit refreshToken
-      // on subsequent logins; never overwrite an existing refresh token with ''.
-      const incomingRefreshTokenEnc = refreshToken
-        ? await CryptoUtil.encrypt(refreshToken)
-        : null;
-
-      const expiresInSeconds = Number(expiresIn) || 1200;
-      const expiresAt = new Date(Date.now() + expiresInSeconds * 1000);
-
-      // Upsert character and token, then link to the authenticated user
-      await this.prisma.$transaction(async (tx) => {
-        const character = await tx.eveCharacter.upsert({
-          where: { id: characterId },
-          update: {
-            name: characterName,
-            ownerHash,
-            userId: user.userId, // Link to existing user
-          },
-          create: {
-            id: characterId,
-            name: characterName,
-            ownerHash,
-            managedBy: 'USER',
-            userId: user.userId,
-          },
-        });
-
-        // Do not modify ESI tokens for SYSTEM-managed characters from this flow.
-        if (character.managedBy === 'SYSTEM') {
-          return;
-        }
-
-        const existingToken = await tx.characterToken.findUnique({
-          where: { characterId },
-          select: { scopes: true, refreshTokenEnc: true },
-        });
-
-        const existingScopes = normalizeScopes(existingToken?.scopes);
-        const incomingScopes = normalizeScopes(scopes);
-
-        const existingSet = new Set(existingScopes);
-        const incomingSet = new Set(incomingScopes);
-
-        const wouldLoseImportantScope = Array.from(existingSet).some(
-          (s) => IMPORTANT_ESI_SCOPES.has(s) && !incomingSet.has(s),
-        );
-
-        // If this flow would remove important scopes from an existing trading token,
-        // keep the current token as-is and only update the character linkage.
-        if (existingToken && wouldLoseImportantScope) {
-          // Controller has no Logger injected; rely on upstream diagnostics.
-          return;
-        }
-
-        const mergedScopes = Array.from(
-          new Set<string>([...existingScopes, ...incomingScopes]),
-        ).join(' ');
-
-        const refreshTokenEncToStore =
-          incomingRefreshTokenEnc ??
-          (existingToken?.refreshTokenEnc
-            ? String(existingToken.refreshTokenEnc)
-            : '');
-
-        await tx.characterToken.upsert({
-          where: { characterId },
-          update: {
-            tokenType: 'Bearer',
-            accessToken,
-            accessTokenExpiresAt: expiresAt,
-            refreshTokenEnc: refreshTokenEncToStore,
-            scopes: mergedScopes,
-            lastRefreshAt: new Date(),
-          },
-          create: {
-            characterId,
-            tokenType: 'Bearer',
-            accessToken,
-            accessTokenExpiresAt: expiresAt,
-            refreshTokenEnc: refreshTokenEncToStore,
-            scopes: mergedScopes,
-          },
-        });
-      });
-
-      res.json({ success: true, characterId, characterName });
-    } catch (e) {
-      console.error('Error linking additional character:', e);
-      res.status(500).json({
-        error: e instanceof Error ? e.message : String(e),
-        stack: e instanceof Error ? e.stack : undefined,
-      });
-    }
-  }
-
-  /**
-   * Link character from NextAuth callback - creates/updates character and tokens in DB
-   */
-  @Public()
-  @Post('link-character')
-  async linkCharacterFromNextAuth(@Req() req: Request, @Res() res: Response) {
-    try {
-      const body = req.body as {
-        characterId: number;
-        characterName: string;
-        ownerHash: string;
-        accessToken: string;
-        refreshToken?: string;
-        expiresIn: number;
-        scopes: string;
-      };
-
-      const {
-        characterId,
-        characterName,
-        ownerHash,
-        accessToken,
-        refreshToken,
-        expiresIn,
-        scopes,
-      } = body;
-
-      if (!characterId || !characterName || !ownerHash || !accessToken) {
-        res.status(400).json({ error: 'Missing required fields' });
-        return;
-      }
-
-      const result = await this.auth.linkCharacterFromNextAuth({
-        characterId,
-        characterName,
-        ownerHash,
-        accessToken,
-        refreshToken,
-        expiresIn,
-        scopes,
-      });
+      const result = await this.auth.linkAdditionalCharacterToUser(
+        user.userId,
+        {
+          characterId,
+          characterName,
+          ownerHash,
+          accessToken,
+          refreshToken,
+          expiresIn,
+          scopes,
+        },
+      );
 
       res.json(result);
     } catch (e) {
-      console.error('Error linking character:', e);
+      this.logger.error(
+        `Error linking additional character: ${e instanceof Error ? e.message : String(e)}`,
+        e instanceof Error ? e.stack : undefined,
+      );
       res.status(500).json({
         error: e instanceof Error ? e.message : String(e),
         stack: e instanceof Error ? e.stack : undefined,
@@ -1161,42 +985,11 @@ export class AuthController {
   @UseGuards(RolesGuard)
   @Roles('ADMIN')
   @Get('admin/characters')
+  @ApiOkResponse({
+    description: 'Admin character list including system characters',
+  })
   async getAllCharacters() {
-    const characters = await this.prisma.eveCharacter.findMany({
-      select: {
-        id: true,
-        name: true,
-        ownerHash: true,
-        userId: true,
-        role: true,
-        function: true,
-        location: true,
-        managedBy: true,
-        notes: true,
-        token: {
-          select: {
-            accessTokenExpiresAt: true,
-            scopes: true,
-          },
-        },
-      },
-      orderBy: [{ managedBy: 'asc' }, { role: 'asc' }, { name: 'asc' }],
-    });
-
-    return characters.map((c) => ({
-      characterId: c.id,
-      characterName: c.name,
-      ownerHash: c.ownerHash,
-      userId: c.userId,
-      role: c.role,
-      function: c.function,
-      location: c.location,
-      managedBy: c.managedBy,
-      notes: c.notes,
-      accessTokenExpiresAt:
-        c.token?.accessTokenExpiresAt?.toISOString() ?? null,
-      scopes: c.token?.scopes ?? null,
-    }));
+    return await this.auth.listAllCharactersForAdmin();
   }
 
   /**
@@ -1218,6 +1011,7 @@ export class AuthController {
     type: 'number',
     example: 123456789,
   })
+  @ApiOkResponse({ description: 'Character market orders from ESI' })
   @Get('admin/characters/:id/orders')
   async getCharacterOrders(@Param('id') idParam: string): Promise<
     Array<{
@@ -1244,6 +1038,7 @@ export class AuthController {
   @UseGuards(RolesGuard)
   @Roles('ADMIN')
   @Get('admin/system-characters/link/url')
+  @ApiOkResponse({ description: 'System character linking URL' })
   async getSystemCharacterLinkUrl(
     @Query('notes') notes?: string,
     @Query('returnUrl') returnUrl?: string,
@@ -1262,21 +1057,11 @@ export class AuthController {
       .replace(/\//g, '_')
       .replace(/=+$/, '');
 
-    // Store state in database (expires in 10 minutes)
-    // Store both notes and returnUrl as JSON in returnUrl field
-    const stateData = JSON.stringify({
-      notes: notes || null,
-      returnUrl: returnUrl || null,
-    });
-
-    await this.prisma.oAuthState.create({
-      data: {
-        state,
-        codeVerifier,
-        userId: null, // No user for system characters
-        returnUrl: stateData,
-        expiresAt: new Date(Date.now() + 10 * 60 * 1000),
-      },
+    await this.oauthStates.createSystemLinkState({
+      state,
+      codeVerifier,
+      notes,
+      returnUrl: this.safeReturnUrl(returnUrl),
     });
 
     const url = this.auth.getAuthorizeSystemUrl(state, codeChallenge, scopes);
@@ -1290,6 +1075,7 @@ export class AuthController {
    */
   @Public()
   @Get('admin/system-characters/callback')
+  @ApiFoundResponse({ description: 'Redirects after system character linking' })
   async systemCharacterCallback(
     @Query('code') code: string,
     @Query('state') state: string,
@@ -1301,19 +1087,15 @@ export class AuthController {
         return;
       }
 
-      // Retrieve OAuth state from database
-      const oauthState = await this.prisma.oAuthState.findUnique({
-        where: { state },
-      });
+      const oauthState = await this.oauthStates.findByState(state);
 
       if (!oauthState) {
         res.status(400).send('Invalid or expired state');
         return;
       }
 
-      // Check if state has expired
-      if (oauthState.expiresAt < new Date()) {
-        await this.prisma.oAuthState.delete({ where: { state } });
+      if (this.oauthStates.isExpired(oauthState)) {
+        await this.oauthStates.deleteByState(state);
         res.status(400).send('State has expired');
         return;
       }
@@ -1337,89 +1119,24 @@ export class AuthController {
         return;
       }
 
-      const characterId = Number(decoded.sub.split(':').pop());
-      const characterName = decoded.name;
-      const ownerHash = decoded.owner;
-
-      // Extract scopes from JWT (can be string or array)
-      const scopes = Array.isArray(decoded.scp)
-        ? decoded.scp.join(' ')
-        : decoded.scp || '';
-
-      // Encrypt refresh token
-      const refreshTokenEnc = await CryptoUtil.encrypt(tokens.refresh_token);
-
-      // Parse state data (contains notes and returnUrl)
-      let notes = 'System character';
-      let storedReturnUrl: string | null = null;
-      try {
-        const stateData = JSON.parse(oauthState.returnUrl || '{}') as {
-          notes?: string | null;
-          returnUrl?: string | null;
-        };
-        notes = stateData.notes || 'System character';
-        storedReturnUrl = stateData.returnUrl || null;
-      } catch {
-        // Fallback for old format (plain string)
-        notes = oauthState.returnUrl || 'System character';
-      }
-
-      // Upsert character and token with managedBy=SYSTEM, role=LOGISTICS.
-      // IMPORTANT: on update we do NOT clear userId so a system character can
-      // also be attached to a user for the Characters app.
-      await this.prisma.$transaction(async (tx) => {
-        await tx.eveCharacter.upsert({
-          where: { id: characterId },
-          update: {
-            name: characterName,
-            ownerHash,
-            managedBy: 'SYSTEM',
-            role: 'LOGISTICS',
-            notes,
-          },
-          create: {
-            id: characterId,
-            name: characterName,
-            ownerHash,
-            managedBy: 'SYSTEM',
-            userId: null,
-            role: 'LOGISTICS',
-            notes,
-          },
+      const { characterName, storedReturnUrl } =
+        await this.auth.upsertSystemCharacterWithToken({
+          tokens,
+          decoded,
+          stateReturnUrl: oauthState.returnUrl,
         });
-
-        await tx.characterToken.upsert({
-          where: { characterId },
-          update: {
-            tokenType: 'Bearer',
-            accessToken: tokens.access_token,
-            accessTokenExpiresAt: new Date(
-              Date.now() + tokens.expires_in * 1000,
-            ),
-            refreshTokenEnc,
-            scopes,
-            lastRefreshAt: new Date(),
-          },
-          create: {
-            characterId,
-            tokenType: 'Bearer',
-            accessToken: tokens.access_token,
-            accessTokenExpiresAt: new Date(
-              Date.now() + tokens.expires_in * 1000,
-            ),
-            refreshTokenEnc,
-            scopes,
-          },
-        });
-      });
 
       // Clean up OAuth state
-      await this.prisma.oAuthState.delete({ where: { state } });
+      await this.oauthStates.deleteByState(state);
 
       // Redirect to stored returnUrl or default
-      if (storedReturnUrl) {
+      const safeStoredReturnUrl = this.safeReturnUrl(storedReturnUrl);
+      if (safeStoredReturnUrl) {
         // Add success message to returnUrl
-        const redirectUrl = new URL(storedReturnUrl);
+        const redirectUrl = new URL(
+          safeStoredReturnUrl,
+          AppConfig.webBaseUrl(),
+        );
         redirectUrl.searchParams.set('systemCharLinked', characterName);
         res.redirect(redirectUrl.toString());
       } else {
@@ -1432,7 +1149,10 @@ export class AuthController {
         res.redirect(redirectUrl.toString());
       }
     } catch (e) {
-      console.error('Error linking system character:', e);
+      this.logger.error(
+        `Error linking system character: ${e instanceof Error ? e.message : String(e)}`,
+        e instanceof Error ? e.stack : undefined,
+      );
       res
         .status(500)
         .send(

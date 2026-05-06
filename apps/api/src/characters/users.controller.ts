@@ -13,6 +13,7 @@ import {
 import {
   ApiTags,
   ApiBearerAuth,
+  ApiOkResponse,
   ApiOperation,
   ApiQuery,
   ApiParam,
@@ -41,6 +42,7 @@ export class UsersController {
   @ApiOperation({ summary: 'List all users (admin only)' })
   @ApiQuery({ name: 'limit', required: false, type: Number })
   @ApiQuery({ name: 'offset', required: false, type: Number })
+  @ApiOkResponse({ description: 'Admin user list' })
   async listUsers(
     @Query('limit') limit?: string,
     @Query('offset') offset?: string,
@@ -63,6 +65,7 @@ export class UsersController {
     description: 'Primary character name (partial) or character ID',
   })
   @ApiQuery({ name: 'limit', required: false, type: Number })
+  @ApiOkResponse({ description: 'Users matching primary character search' })
   async searchUsersByPrimaryCharacter(
     @Query('q') q?: string,
     @Query('limit') limit?: string,
@@ -81,6 +84,9 @@ export class UsersController {
   @ApiOperation({ summary: 'List Tradecraft users (admin only)' })
   @ApiQuery({ name: 'limit', required: false, type: Number })
   @ApiQuery({ name: 'offset', required: false, type: Number })
+  @ApiOkResponse({
+    description: 'Tradecraft user list with participation stats',
+  })
   async listTradecraftUsers(
     @Query('limit') limit?: string,
     @Query('offset') offset?: string,
@@ -100,6 +106,7 @@ export class UsersController {
       'Set Tradecraft caps (principal + maximum) for a user (admin only)',
   })
   @ApiParam({ name: 'id', description: 'User ID' })
+  @ApiOkResponse({ description: 'Updated Tradecraft caps for the user' })
   async updateTradecraftCaps(
     @Param('id') id: string,
     @Body() body: UpdateTradecraftCapsRequestDto,
@@ -120,6 +127,9 @@ export class UsersController {
       '(Deprecated) Set Tradecraft maximum cap override for a user (admin only)',
   })
   @ApiParam({ name: 'id', description: 'User ID' })
+  @ApiOkResponse({
+    description: 'Updated deprecated Tradecraft max participation cap',
+  })
   async updateTradecraftMaxParticipationDeprecated(
     @Param('id') id: string,
     @Body() body: UpdateTradecraftCapsRequestDto,
@@ -137,6 +147,7 @@ export class UsersController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Change user role (admin only)' })
   @ApiParam({ name: 'id', description: 'User ID' })
+  @ApiOkResponse({ description: 'Updated user role' })
   async setRole(@Param('id') id: string, @Body() body: SetRoleRequest) {
     return await this.users.setRole(id, body.role);
   }
@@ -148,6 +159,7 @@ export class UsersController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Force link a character to a user (admin only)' })
   @ApiParam({ name: 'id', description: 'User ID' })
+  @ApiOkResponse({ description: 'Force-link result' })
   async forceLink(@Param('id') id: string, @Body() body: LinkCharacterRequest) {
     return await this.users.forceLink(id, body.characterId);
   }
@@ -159,6 +171,7 @@ export class UsersController {
   @ApiBearerAuth()
   @ApiOperation({ summary: "Set user's primary character (admin only)" })
   @ApiParam({ name: 'id', description: 'User ID' })
+  @ApiOkResponse({ description: 'Updated primary character' })
   async adminSetPrimary(
     @Param('id') id: string,
     @Body() body: LinkCharacterRequest,
@@ -174,6 +187,7 @@ export class UsersController {
   @ApiOperation({ summary: 'Unlink a character from a user (admin only)' })
   @ApiParam({ name: 'id', description: 'User ID' })
   @ApiParam({ name: 'characterId', description: 'Character ID' })
+  @ApiOkResponse({ description: 'Admin unlink result' })
   async adminUnlink(
     @Param('id') id: string,
     @Param('characterId') characterId: string,
@@ -185,6 +199,7 @@ export class UsersController {
   @Get('users/me/characters')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List my linked characters' })
+  @ApiOkResponse({ description: 'Current user linked characters' })
   async myCharacters(@CurrentUser() user: RequestUser) {
     if (!user.userId) return [];
     return await this.users.listMyCharacters(user.userId);
@@ -193,6 +208,7 @@ export class UsersController {
   @Patch('users/me/primary-character')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Set my primary character' })
+  @ApiOkResponse({ description: 'Updated current user primary character' })
   async setPrimary(
     @CurrentUser() user: RequestUser | null,
     @Body() body: LinkCharacterRequest,
@@ -206,6 +222,7 @@ export class UsersController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Unlink one of my characters' })
   @ApiParam({ name: 'characterId', description: 'Character ID' })
+  @ApiOkResponse({ description: 'Current user unlink result' })
   async unlink(
     @CurrentUser() user: RequestUser | null,
     @Param('characterId') characterId: string,

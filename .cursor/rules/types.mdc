@@ -1,0 +1,36 @@
+---
+description: Type management and cross-package contracts (shared vs app-local)
+alwaysApply: true
+---
+
+# Types Rule (Project-Wide)
+
+## Source of truth for shared contracts
+- Use `packages/shared` as the **single home** for types that are imported by both `apps/api` and `apps/web`.
+- **No barrel files** for shared types. Do not use `packages/shared/src/index.ts` as a re-export hub.
+- Publish a stable public surface via **package `exports`** (subpath exports) in `packages/shared/package.json`.
+ - Allowed consumer imports: `@eve/shared/tradecraft-cycles`, `@eve/shared/skill-contracts`, etc.
+ - Disallowed: deep imports into source/build internals like `@eve/shared/src/*` or `packages/shared/src/*`.
+- Before creating a new type, **check if it already exists** in the repo (especially in `packages/shared`).
+- If you created a type in one app and later need it in the other, **deduplicate**:
+  - Move the canonical type to `packages/shared`
+  - Update both sides to import it from there
+  - Avoid keeping parallel “same meaning” types in `apps/api` and `apps/web`
+- Prefer **one shared canonical type** even if each side uses only a subset of fields (pick fields as needed rather than duplicating the type).
+
+## Schema-first for boundary data (recommended)
+- For data that crosses process boundaries (API requests/responses, cookies/session payloads, etc.), prefer **runtime schemas** with inferred TS types (e.g., Zod `schema` → `type`).
+- If adding a schema library is a meaningful choice, present options and recommend a default before implementing.
+
+## Keep layers decoupled
+- Do **not** share database-layer types as API contracts:
+  - Avoid exporting Prisma-generated types as public API types.
+  - Avoid returning Prisma models directly from controllers; map to API shapes.
+- Do **not** put framework-specific types in `packages/shared`:
+  - Nest DTO classes/pipes/guards stay in `apps/api`.
+  - React component props that are UI-only stay in `packages/ui` or `apps/web`.
+
+## Rule of thumb
+- If both apps need it → `packages/shared`.
+- If only one app/package needs it → keep it local.
+

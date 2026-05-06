@@ -7,8 +7,31 @@ import { Reflector } from '@nestjs/core';
 import { AuthGuard } from '@nestjs/passport';
 import type { Request } from 'express';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
+import type { RequestUser } from '../decorators/current-user.decorator';
 import { CryptoUtil } from '../../common/crypto.util';
 import { PrismaService } from '../../prisma/prisma.service';
+
+type AuthenticatedRequest = Request & {
+  user?: RequestUser;
+};
+
+type SessionPayload = {
+  userId: string | null;
+  characterId: number;
+  characterName: string;
+  role: string;
+};
+
+function isSessionPayload(value: unknown): value is SessionPayload {
+  if (!value || typeof value !== 'object') return false;
+  const payload = value as Record<string, unknown>;
+  return (
+    (typeof payload.userId === 'string' || payload.userId === null) &&
+    typeof payload.characterId === 'number' &&
+    typeof payload.characterName === 'string' &&
+    typeof payload.role === 'string'
+  );
+}
 
 /**
  * Composite authentication guard supporting multiple auth methods:
@@ -50,21 +73,20 @@ export class CompositeAuthGuard extends AuthGuard(['dev-api-key', 'eve-jwt']) {
     }
 
     const http = context.switchToHttp();
-    const req = http.getRequest<Request & { user?: any }>();
-    const cookies = (req as any).cookies as
-      | Record<string, string | undefined>
-      | undefined;
+    const req = http.getRequest<AuthenticatedRequest>();
+    const cookies = (req as unknown as {
+      cookies?: Record<string, string | undefined>;
+    }).cookies;
 
     const encSession = cookies?.session;
     if (encSession) {
       try {
         const json = await CryptoUtil.decrypt(encSession);
-        const payload = JSON.parse(json) as {
-          userId: string | null;
-          characterId: number;
-          characterName: string;
-          role: string;
-        };
+        const parsed: unknown = JSON.parse(json) as unknown;
+        if (!isSessionPayload(parsed)) {
+          throw new Error('Invalid session payload');
+        }
+        const payload = parsed;
 
         // Load latest character + user info to populate RequestUser
         const character = await this.prisma.eveCharacter.findUnique({
@@ -110,9 +132,13 @@ export class CompositeAuthGuard extends AuthGuard(['dev-api-key', 'eve-jwt']) {
     return result;
   }
 
-  handleRequest(err: any, user: any) {
+  handleRequest<TUser = RequestUser>(
+    err: unknown,
+    user: TUser | null | undefined,
+  ): TUser {
     if (err || !user) {
-      throw err || new UnauthorizedException('Authentication required');
+      if (err instanceof Error) throw err;
+      throw new UnauthorizedException('Authentication required');
     }
     return user;
   }

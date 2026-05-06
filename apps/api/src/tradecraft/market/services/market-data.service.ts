@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '@api/prisma/prisma.service';
+import { Prisma } from '@eve/prisma';
 
 /**
  * MarketDataService provides centralized access to market data.
@@ -99,7 +100,9 @@ export class MarketDataService {
     }>
   > {
     // Default to conservative mode (hasGone=false).
-    const whereClause: any = { hasGone: false };
+    const whereClause: Prisma.MarketOrderTradeDailyWhereInput = {
+      hasGone: false,
+    };
 
     if (params.typeIds && params.typeIds.length > 0) {
       whereClause.typeId = { in: params.typeIds };

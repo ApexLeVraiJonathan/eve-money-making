@@ -5,11 +5,15 @@ import {
   IsBoolean,
   IsOptional,
   Min,
-  Max,
   MinLength,
   ValidateIf,
 } from 'class-validator';
 import { Type } from 'class-transformer';
+
+type LiquidityItemStatsShape = {
+  itemId?: number;
+  itemName?: string;
+};
 
 export class LiquidityItemStatsRequest {
   @ApiPropertyOptional({
@@ -75,7 +79,7 @@ export class LiquidityItemStatsRequest {
   @Min(1)
   windowDays?: number;
 
-  @ValidateIf((o) => !o.itemId && !o.itemName)
+  @ValidateIf((o: LiquidityItemStatsShape) => !o.itemId && !o.itemName)
   @IsString({ message: 'Provide either itemId or itemName' })
   _requireItemIdentifier?: never;
 }

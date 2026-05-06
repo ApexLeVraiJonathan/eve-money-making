@@ -7,6 +7,16 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { EsiCharactersService } from '../esi/esi-characters.service';
 
+function getErrorStatus(error: unknown): number | undefined {
+  if (!error || typeof error !== 'object') return undefined;
+  const record = error as {
+    status?: unknown;
+    response?: { status?: unknown };
+  };
+  const status = record.response?.status ?? record.status;
+  return typeof status === 'number' ? status : undefined;
+}
+
 @Injectable()
 export class CharacterManagementService {
   private readonly logger = new Logger(CharacterManagementService.name);
@@ -921,8 +931,8 @@ export class CharacterManagementService {
     let rawQueue;
     try {
       rawQueue = await this.esiChars.getSkillQueue(characterId);
-    } catch (err: any) {
-      const status = err?.response?.status ?? err?.status;
+    } catch (err: unknown) {
+      const status = getErrorStatus(err);
       if (status === 401 || status === 403) {
         throw new BadRequestException(
           'Could not load training queue: ESI token is invalid, expired, or missing required skills scopes. Please re-link this character.',
@@ -1069,8 +1079,8 @@ export class CharacterManagementService {
     let snapshot;
     try {
       snapshot = await this.esiChars.getSkills(characterId);
-    } catch (err: any) {
-      const status = err?.response?.status ?? err?.status;
+    } catch (err: unknown) {
+      const status = getErrorStatus(err);
       if (status === 401 || status === 403) {
         throw new BadRequestException(
           'Could not load skills: ESI token is invalid, expired, or missing required skills scopes. Please re-link this character.',
@@ -1108,8 +1118,8 @@ export class CharacterManagementService {
     let attrs;
     try {
       attrs = await this.esiChars.getAttributes(characterId);
-    } catch (err: any) {
-      const status = err?.response?.status ?? err?.status;
+    } catch (err: unknown) {
+      const status = getErrorStatus(err);
       if (status === 401 || status === 403) {
         throw new BadRequestException(
           'Could not load attributes: ESI token is invalid, expired, or missing required skills scopes. Please re-link this character.',
@@ -1147,8 +1157,8 @@ export class CharacterManagementService {
     let implants: number[];
     try {
       implants = await this.esiChars.getImplants(characterId);
-    } catch (err: any) {
-      const status = err?.response?.status ?? err?.status;
+    } catch (err: unknown) {
+      const status = getErrorStatus(err);
       if (status === 401 || status === 403) {
         throw new BadRequestException(
           'Could not load implants: ESI token is invalid, expired, or missing required implants scopes. Please re-link this character.',
@@ -1192,8 +1202,8 @@ export class CharacterManagementService {
         lastCloneJumpDate: data.last_clone_jump_date ?? null,
         lastStationChangeDate: data.last_station_change_date ?? null,
       };
-    } catch (err: any) {
-      const status = err?.response?.status ?? err?.status;
+    } catch (err: unknown) {
+      const status = getErrorStatus(err);
       if (status === 401 || status === 403) {
         throw new BadRequestException(
           'Could not load clones: ESI token is invalid, expired, or missing required clones scopes. Please re-link this character.',

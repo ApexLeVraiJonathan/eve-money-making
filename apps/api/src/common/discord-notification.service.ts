@@ -1,5 +1,4 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { AppConfig } from './config';
 
 export interface SupportRequestPayload {
   category: string;

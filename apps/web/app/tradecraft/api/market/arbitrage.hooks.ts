@@ -5,11 +5,15 @@ import { useApiClient } from "@/app/api-hooks/useApiClient";
 import { useAuthenticatedQuery } from "@/app/api-hooks/useAuthenticatedQuery";
 import { qk } from "@eve/api-client/queryKeys";
 import type {
-  Cycle,
   PlanResult,
   ArbitrageCheckRequest,
   ArbitrageCheckResponse,
-} from "@eve/shared/types";
+} from "@eve/shared/tradecraft-arbitrage";
+import type { Cycle } from "@eve/shared/tradecraft-cycles";
+import type {
+  ArbitrageCommitResponse,
+  CommitSummaryItem,
+} from "@eve/shared/tradecraft-arbitrage";
 
 /**
  * API hooks for arbitrage opportunities and commitments
@@ -83,10 +87,7 @@ export function useCommitArbitrage() {
 
   return useMutation({
     mutationFn: (data: { request: unknown; result: unknown; memo?: string }) =>
-      client.post<{
-        id: string;
-        createdAt: Date;
-      }>("/arbitrage/commit", data),
+      client.post<ArbitrageCommitResponse>("/arbitrage/commit", data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: qk.arbitrage._root });
       queryClient.invalidateQueries({ queryKey: qk.packages._root });
@@ -102,13 +103,6 @@ export function useCommitSummaries(cycleId: string) {
   const client = useApiClient();
   return useMutation({
     mutationFn: () =>
-      client.get<
-        Array<{
-          id: string;
-          typeId: number;
-          typeName: string;
-          quantity: number;
-        }>
-      >(`/ledger/commits/summary?cycleId=${cycleId}`),
+      client.get<CommitSummaryItem[]>(`/ledger/commits/summary?cycleId=${cycleId}`),
   });
 }

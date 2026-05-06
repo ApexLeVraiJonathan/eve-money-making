@@ -84,6 +84,33 @@ export class CreatePlexSubscriptionDto {
   notes?: string;
 }
 
+export class CreateMctSlotDto {
+  @ApiProperty({
+    description: 'Expiry time of this MCT slot (ISO-8601)',
+  })
+  @IsDateString()
+  expiresAt!: string;
+
+  @ApiPropertyOptional({ description: 'Free-form notes for this MCT slot' })
+  @IsOptional()
+  @IsString()
+  notes?: string;
+}
+
+export class UpdateMctSlotDto {
+  @ApiPropertyOptional({
+    description: 'Updated expiry time (ISO-8601)',
+  })
+  @IsOptional()
+  @IsDateString()
+  expiresAt?: string;
+
+  @ApiPropertyOptional({ description: 'Updated notes' })
+  @IsOptional()
+  @IsString()
+  notes?: string | null;
+}
+
 export class UpdatePlexSubscriptionDto {
   @ApiPropertyOptional({
     description: 'Updated start time (ISO-8601)',

@@ -1,0 +1,29 @@
+---
+description: Prisma + DB workflow (schema, migrations, safety) for packages/prisma
+globs: packages/prisma/**/*
+alwaysApply: false
+---
+
+# Prisma + DB Rule (packages/prisma)
+
+## Source of truth
+- Prisma schema + migrations live in `packages/prisma`.
+- The migration history (`prisma/migrations/**`) is source of truth and must be kept intact.
+
+## Prisma v7 config reminder
+- Do **not** add `datasource.url` back into `schema.prisma` (Prisma v7 uses `prisma.config.ts` for the DB URL).
+- Keep `packages/prisma/prisma.config.ts` as the CLI configuration entrypoint.
+
+## Migrations discipline
+- In development use `prisma migrate dev` to create/apply migrations.
+- **Never edit or delete migrations that have been applied**. If the DB needs to change again, create a new migration.
+- If a migration needs manual SQL changes, do it **before** applying it (use `--create-only`, then edit `migration.sql`, then apply).
+- Avoid destructive commands (`migrate reset`, dropping schemas, etc.) unless the user explicitly approves (core rule).
+
+## Client generation
+- After changing the schema, run `prisma generate` and ensure consumers still typecheck/build.
+
+## Env + safety
+- Any new env var must be added to `.env.example`.
+- Commands that need a DB (migrate/studio) require `DATABASE_URL` to be set.
+

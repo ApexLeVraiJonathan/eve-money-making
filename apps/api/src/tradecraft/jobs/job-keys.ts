@@ -34,14 +34,6 @@ export function resolveJobEnabledFlag(job: JobKey): {
 }
 
 export const JobKeys = {
-  skillPlanNotifications: {
-    id: 'skillPlanNotifications',
-    envKey: 'JOB_SKILL_PLAN_NOTIFICATIONS_ENABLED',
-  },
-  skillFarmNotifications: {
-    id: 'skillFarmNotifications',
-    envKey: 'JOB_SKILL_FARM_NOTIFICATIONS_ENABLED',
-  },
   esiCacheCleanup: {
     id: 'esiCacheCleanup',
     envKey: 'JOB_ESI_CACHE_CLEANUP_ENABLED',

@@ -8,6 +8,8 @@ import { NotificationsModule } from '@api/notifications/notifications.module';
 
 // Services
 import { CycleService } from './services/cycle.service';
+import { CycleLifecycleService } from './services/cycle-lifecycle.service';
+import { CycleRolloverService } from './services/cycle-rollover.service';
 import { CycleLineService } from './services/cycle-line.service';
 import { FeeService } from './services/fee.service';
 import { SnapshotService } from './services/snapshot.service';
@@ -19,9 +21,14 @@ import { ProfitService } from './services/profit.service';
 import { JingleYieldService } from './services/jingle-yield.service';
 import { AutoRolloverSettingsService } from './services/auto-rollover-settings.service';
 import { CycleLinesIntelService } from './services/cycle-lines-intel.service';
+import { LedgerEntryService } from './services/ledger-entry.service';
+import { OpenCycleWalletRefreshService } from './services/open-cycle-wallet-refresh.service';
+import { ParticipationCapsService } from './services/participation-caps.service';
+import { CycleSettlementRunnerService } from './services/cycle-settlement-runner.service';
 
 // Controllers
 import { CyclesController } from './cycles.controller';
+import { CyclesLifecycleController } from './cycles-lifecycle.controller';
 import { WalletModule } from '@api/tradecraft/wallet/wallet.module';
 
 @Module({
@@ -37,6 +44,12 @@ import { WalletModule } from '@api/tradecraft/wallet/wallet.module';
   providers: [
     // New focused services
     CycleService,
+    CycleLifecycleService,
+    CycleSettlementRunnerService,
+    LedgerEntryService,
+    OpenCycleWalletRefreshService,
+    ParticipationCapsService,
+    CycleRolloverService,
     CycleLineService,
     FeeService,
     SnapshotService,
@@ -50,9 +63,14 @@ import { WalletModule } from '@api/tradecraft/wallet/wallet.module';
     CycleLinesIntelService,
     Logger,
   ],
-  controllers: [CyclesController],
+  controllers: [CyclesController, CyclesLifecycleController],
   exports: [
     CycleService,
+    CycleLifecycleService,
+    LedgerEntryService,
+    OpenCycleWalletRefreshService,
+    ParticipationCapsService,
+    CycleRolloverService,
     CycleLineService,
     FeeService,
     SnapshotService,

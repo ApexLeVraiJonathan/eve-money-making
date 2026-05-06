@@ -7,8 +7,6 @@ import { WalletModule } from '@api/tradecraft/wallet/wallet.module';
 import { CyclesModule } from '@api/tradecraft/cycles/cycles.module';
 import { CharactersModule } from '@api/characters/characters.module';
 import { NotificationsModule } from '@api/notifications/notifications.module';
-import { SkillPlansModule } from '@api/skill-plans/skill-plans.module';
-import { SkillFarmModule } from '@api/skill-farm/skill-farm.module';
 import { EsiModule } from '@api/esi/esi.module';
 import { SelfMarketModule } from '@api/tradecraft/self-market/self-market.module';
 import { NpcMarketModule } from '@api/tradecraft/npc-market/npc-market.module';
@@ -19,8 +17,6 @@ import { TradeStalenessService } from './trade-staleness.service';
 import { WalletImportsRunner } from './wallet-imports.runner';
 import { MarketGatheringRunner } from './market-gathering.runner';
 import { SystemTokensRefresher } from './system-tokens.refresher';
-import { SkillPlanNotificationsJob } from './skill-plan-notifications.job';
-import { SkillFarmNotificationsJob } from './skill-farm-notifications.job';
 import { EsiCacheCleanupJob } from './esi-cache-cleanup.job';
 import { OAuthStateCleanupJob } from './oauth-state-cleanup.job';
 import { DailyImportsJob } from './daily-imports.job';
@@ -40,8 +36,6 @@ import { ScriptRunWatchdogJob } from './script-run-watchdog.job';
     forwardRef(() => CyclesModule),
     CharactersModule,
     NotificationsModule,
-    SkillPlansModule,
-    SkillFarmModule,
     EsiModule,
     SelfMarketModule,
     NpcMarketModule,
@@ -57,8 +51,6 @@ import { ScriptRunWatchdogJob } from './script-run-watchdog.job';
     SystemTokensRefresher,
 
     // Jobs (cron)
-    SkillPlanNotificationsJob,
-    SkillFarmNotificationsJob,
     EsiCacheCleanupJob,
     OAuthStateCleanupJob,
     DailyImportsJob,

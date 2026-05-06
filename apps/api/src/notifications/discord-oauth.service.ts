@@ -26,6 +26,47 @@ export class DiscordOauthService {
 
   constructor(private readonly prisma: PrismaService) {}
 
+  private defaultReturnUrl(): string {
+    return new URL('/settings/notifications', AppConfig.webBaseUrl()).toString();
+  }
+
+  private safeReturnUrl(returnUrl?: string | null): string {
+    const value = returnUrl?.trim();
+    if (!value) return this.defaultReturnUrl();
+
+    if (
+      value.startsWith('/') &&
+      !value.startsWith('//') &&
+      !value.includes('\\')
+    ) {
+      return value;
+    }
+
+    try {
+      const parsed = new URL(value);
+      const allowedOrigins = [
+        AppConfig.webBaseUrl(),
+        ...AppConfig.esiReturnUrlAllowlist(),
+      ]
+        .map((allowed) => {
+          try {
+            return new URL(allowed).origin;
+          } catch {
+            return null;
+          }
+        })
+        .filter((origin): origin is string => origin !== null);
+
+      if (allowedOrigins.includes(parsed.origin)) {
+        return parsed.toString();
+      }
+    } catch {
+      return this.defaultReturnUrl();
+    }
+
+    return this.defaultReturnUrl();
+  }
+
   /**
    * Start Discord OAuth for the given user and return the authorization URL.
    */
@@ -45,9 +86,7 @@ export class DiscordOauthService {
         state,
         codeVerifier: 'discord',
         userId,
-        returnUrl:
-          returnUrl ??
-          new URL('/settings/notifications', AppConfig.webBaseUrl()).toString(),
+        returnUrl: this.safeReturnUrl(returnUrl),
         expiresAt,
       },
     });
@@ -160,10 +199,7 @@ export class DiscordOauthService {
       }
     }
 
-    return (
-      oauthState.returnUrl ??
-      new URL('/settings/notifications', AppConfig.webBaseUrl()).toString()
-    );
+    return this.safeReturnUrl(oauthState.returnUrl);
   }
 
   async getAccountForUser(userId: string) {

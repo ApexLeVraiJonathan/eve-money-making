@@ -26,6 +26,13 @@ import { RolesGuard } from '@api/characters/guards/roles.guard';
 import { Public } from '@api/characters/decorators/public.decorator';
 import type { Request } from 'express';
 
+type RequestWithOptionalUser = Request & {
+  user?: {
+    sub?: string;
+    id?: string;
+  };
+};
+
 @ApiTags('parameter-profiles')
 @Controller('parameter-profiles')
 export class ParameterProfilesController {
@@ -58,10 +65,9 @@ export class ParameterProfilesController {
   @UseGuards(RolesGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create a new parameter profile' })
-  async create(@Body() dto: CreateProfileDto, @Req() req: Request) {
+  async create(@Body() dto: CreateProfileDto, @Req() req: RequestWithOptionalUser) {
     // Extract user ID from request if available
-    const user = (req as any).user;
-    const userId = user?.sub || user?.id;
+    const userId = req.user?.sub ?? req.user?.id;
     return this.parameterProfilesService.create(dto, userId);
   }
 

@@ -16,9 +16,20 @@ const toInt = (v: unknown): number | undefined => {
   return Number.isFinite(n) ? n : undefined;
 };
 
+const toClampedInt = (
+  value: unknown,
+  min: number,
+  max: number,
+): number | undefined => {
+  const n = toInt(value);
+  if (n === undefined) return undefined;
+  return Math.min(Math.max(n, min), max);
+};
+
 const toBool = (v: unknown): boolean | undefined => {
   if (v === undefined || v === null) return undefined;
   if (typeof v === 'boolean') return v;
+  if (typeof v !== 'string' && typeof v !== 'number') return undefined;
   const s = String(v).toLowerCase().trim();
   if (['true', '1', 'yes', 'y'].includes(s)) return true;
   if (['false', '0', 'no', 'n'].includes(s)) return false;
@@ -33,6 +44,17 @@ export class SelfMarketStatusQueryDto {
   @IsOptional()
   @IsString()
   structureId?: string;
+}
+
+export class SelfMarketCollectBodyDto {
+  @ApiPropertyOptional({
+    description: 'Bypass cache and refresh ESI data',
+    default: false,
+  })
+  @IsOptional()
+  @Transform(({ value }) => toBool(value))
+  @IsBoolean()
+  forceRefresh?: boolean;
 }
 
 export class SelfMarketSnapshotLatestQueryDto {
@@ -51,7 +73,7 @@ export class SelfMarketSnapshotLatestQueryDto {
     default: 200,
   })
   @IsOptional()
-  @Transform(({ value }) => toInt(value))
+  @Transform(({ value }) => toClampedInt(value, 1, 5000))
   @IsInt()
   @Min(1)
   @Max(5000)
@@ -93,7 +115,7 @@ export class SelfMarketSnapshotTypeSummaryQueryDto {
     default: 200,
   })
   @IsOptional()
-  @Transform(({ value }) => toInt(value))
+  @Transform(({ value }) => toClampedInt(value, 1, 5000))
   @IsInt()
   @Min(1)
   @Max(5000)
@@ -162,9 +184,27 @@ export class SelfMarketDailyAggregatesQueryDto {
     default: 500,
   })
   @IsOptional()
-  @Transform(({ value }) => toInt(value))
+  @Transform(({ value }) => toClampedInt(value, 1, 5000))
   @IsInt()
   @Min(1)
   @Max(5000)
   limit?: number;
+}
+
+export class SelfMarketClearDailyQueryDto {
+  @ApiPropertyOptional({
+    description: 'Structure ID (defaults to MARKET_SELF_GATHER_STRUCTURE_ID)',
+    example: '1045667241057',
+  })
+  @IsOptional()
+  @IsString()
+  structureId?: string;
+
+  @ApiPropertyOptional({
+    description: 'UTC date (YYYY-MM-DD) to clear',
+    example: '2026-01-19',
+  })
+  @IsOptional()
+  @IsString()
+  date?: string;
 }

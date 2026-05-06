@@ -2,31 +2,14 @@
 
 import { useApiClient } from "@/app/api-hooks/useApiClient";
 import { useAuthenticatedQuery } from "@/app/api-hooks/useAuthenticatedQuery";
+import type { EsiMetrics } from "@eve/shared/tradecraft-ops";
+export type { EsiMetrics } from "@eve/shared/tradecraft-ops";
 
 /**
  * API hooks for ESI (EVE Swagger Interface) operations
  *
  * Backend: apps/api/src/esi/esi.controller.ts
  */
-
-// ============================================================================
-// Types
-// ============================================================================
-
-export type EsiMetrics = {
-  cacheHitMem: number;
-  cacheHitDb: number;
-  cacheMiss: number;
-  http200: number;
-  http304: number;
-  http401: number;
-  http420: number;
-  memCacheSize: number;
-  inflightSize: number;
-  effectiveMaxConcurrency: number;
-  errorRemain: number | null;
-  errorResetAt: number | null;
-};
 
 // ============================================================================
 // Queries

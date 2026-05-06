@@ -109,7 +109,6 @@ export class WalletService {
     // a concurrency cap here.
     const concurrency = Math.max(1, chars.length);
     const queue = [...chars];
-    let processed = 0;
 
     const worker = async () => {
       for (;;) {
@@ -130,8 +129,6 @@ export class WalletService {
               e,
             )}`,
           );
-        } finally {
-          processed += 1;
         }
       }
     };
@@ -197,10 +194,10 @@ export class WalletService {
 
     const typesPromise: Promise<Map<number, string>> = typeIds.length
       ? this.gameData.getTypeNames(typeIds)
-      : Promise.resolve(new Map());
+      : Promise.resolve(new Map<number, string>());
     const stationsPromise: Promise<Map<number, string>> = stationIds.length
       ? this.gameData.getStationNames(stationIds)
-      : Promise.resolve(new Map());
+      : Promise.resolve(new Map<number, string>());
     const charsPromise: Promise<Array<{ id: number; name: string }>> =
       charIds.length
         ? (async () => {

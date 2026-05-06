@@ -1,6 +1,8 @@
 import { createPrisma, ensureE2eAdmin, resetTradecraftData } from "../testkit/db";
+import { seedTradecraftAcceptance } from "../testkit/tradecraft-acceptance-seed";
 
 type ScenarioName =
+  | "acceptance:tradecraft"
   | "cycles:empty"
   | "cycles:planned"
   | "cycles:planned-opted-in"
@@ -11,6 +13,7 @@ type ScenarioName =
   | "cycles:auto-rollover-on";
 
 const ALL_SCENARIOS: ScenarioName[] = [
+  "acceptance:tradecraft",
   "cycles:empty",
   "cycles:planned",
   "cycles:planned-opted-in",
@@ -29,6 +32,7 @@ function usage() {
       "  pnpm -C apps/e2e seed:tradecraft <scenario>",
       "",
       "Examples:",
+      "  pnpm -C apps/e2e seed:tradecraft acceptance:tradecraft",
       "  pnpm -C apps/e2e seed:tradecraft cycles:planned",
       "  pnpm -C apps/e2e seed:tradecraft cycles:open+planned",
       "  pnpm -C apps/e2e seed:tradecraft cycles:rollover-into-planned",
@@ -72,6 +76,19 @@ async function main() {
 
   const prisma = createPrisma();
   try {
+    if (scenario === "acceptance:tradecraft") {
+      const seeded = await seedTradecraftAcceptance(prisma);
+      // eslint-disable-next-line no-console
+      console.log(`Seeded scenario: ${scenario}`);
+      // eslint-disable-next-line no-console
+      console.log(`Open Cycle: ${seeded.cycles.openCycleId}`);
+      // eslint-disable-next-line no-console
+      console.log(`Planned Cycle: ${seeded.cycles.plannedCycleId}`);
+      // eslint-disable-next-line no-console
+      console.log(`Open: ${process.env.WEB_URL ?? "http://localhost:3001"}/tradecraft/cycles`);
+      return;
+    }
+
     const userId = await ensureE2eAdmin(prisma);
     await resetTradecraftData(prisma);
 

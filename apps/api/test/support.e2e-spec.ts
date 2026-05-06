@@ -7,6 +7,12 @@ import { DiscordNotificationService } from '../src/common/discord-notification.s
 describe('Support & Feedback (e2e)', () => {
   let app: INestApplication;
   let discordService: DiscordNotificationService;
+  let sendSupportRequestSpy: jest.SpiedFunction<
+    DiscordNotificationService['sendSupportRequest']
+  >;
+  let sendFeedbackSpy: jest.SpiedFunction<
+    DiscordNotificationService['sendFeedback']
+  >;
 
   // Mock dev API key for testing
   const DEV_API_KEY = process.env.DEV_API_KEY || 'test-api-key';
@@ -41,10 +47,12 @@ describe('Support & Feedback (e2e)', () => {
     discordService = app.get(DiscordNotificationService);
 
     // Mock Discord methods to avoid real network calls
-    jest
+    sendSupportRequestSpy = jest
       .spyOn(discordService, 'sendSupportRequest')
       .mockResolvedValue(undefined);
-    jest.spyOn(discordService, 'sendFeedback').mockResolvedValue(undefined);
+    sendFeedbackSpy = jest
+      .spyOn(discordService, 'sendFeedback')
+      .mockResolvedValue(undefined);
   });
 
   afterAll(async () => {
@@ -80,7 +88,7 @@ describe('Support & Feedback (e2e)', () => {
       });
 
       // Verify Discord service was called
-      expect(discordService.sendSupportRequest).toHaveBeenCalled();
+      expect(sendSupportRequestSpy).toHaveBeenCalled();
     });
 
     it('should accept support request with optional context', async () => {
@@ -190,7 +198,7 @@ describe('Support & Feedback (e2e)', () => {
       });
 
       // Verify Discord service was called
-      expect(discordService.sendFeedback).toHaveBeenCalled();
+      expect(sendFeedbackSpy).toHaveBeenCalled();
     });
 
     it('should accept feedback with optional rating', async () => {

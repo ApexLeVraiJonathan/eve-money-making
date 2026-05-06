@@ -25,7 +25,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@eve/ui";
-import type { CreateSupportRequest } from "@eve/api-contracts";
+import type { CreateSupportRequest } from "@eve/shared/support-feedback";
 
 const SUPPORT_CATEGORIES = [
   { value: "technical", label: "Technical Issue" },
