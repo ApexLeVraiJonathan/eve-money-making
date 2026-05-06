@@ -39,6 +39,9 @@ Copy this file to `.env` and fill in the values you need. Only the **required** 
   - Prod: `API_URL=https://your-api-domain.railway.app`
 - **CORS_ORIGINS**: Comma-separated list of extra allowed origins for the API.
   - Example: `CORS_ORIGINS=https://yourdomain.com,https://admin.yourdomain.com`
+- **SESSION_COOKIE_DOMAIN**: Optional parent domain for the encrypted API session cookie when API and web run on sibling subdomains.
+  - Example: `SESSION_COOKIE_DOMAIN=.apexapps.gg`
+  - Leave unset for localhost/dev.
 
 #### Database (dev / test helpers)
 

@@ -28,6 +28,7 @@ function makeController() {
   };
   const oauthStates = {
     createUserLinkState: jest.fn(async () => undefined),
+    findByState: jest.fn(async () => null),
   };
   const controller = new AuthController(
     auth as any,
@@ -42,6 +43,10 @@ function makeController() {
 
 function getCookieValue(res: MockResponse, name: string): unknown {
   return res.cookie.mock.calls.find(([cookieName]) => cookieName === name)?.[1];
+}
+
+function getCookieOptions(res: MockResponse, name: string): unknown {
+  return res.cookie.mock.calls.find(([cookieName]) => cookieName === name)?.[2];
 }
 
 describe('AuthController return URL handling', () => {
@@ -102,5 +107,57 @@ describe('AuthController return URL handling', () => {
         returnUrl: '/characters/skills/browser',
       }),
     );
+  });
+
+  it('scopes production session cookies to the configured parent domain', async () => {
+    const previousAppEnv = process.env.APP_ENV;
+    const previousSessionCookieDomain = process.env.SESSION_COOKIE_DOMAIN;
+    process.env.APP_ENV = 'prod';
+    process.env.SESSION_COOKIE_DOMAIN = '.apexapps.gg';
+
+    try {
+      const { controller, auth } = makeController();
+      const res = makeResponse();
+      const req = {
+        cookies: {
+          sso_state: 'state-1',
+          sso_verifier: 'verifier-1',
+          sso_kind: 'user',
+        },
+      };
+
+      auth.exchangeCodeForToken = jest.fn(async () => ({
+        access_token: 'token',
+      }));
+      auth.upsertCharacterWithToken = jest.fn(async () => ({
+        characterId: 123,
+        characterName: 'Pilot',
+      }));
+      auth.setCharacterRole = jest.fn(async () => undefined);
+      auth.ensureUserForCharacter = jest.fn(async () => 'user-1');
+
+      jest.spyOn(global, 'fetch').mockResolvedValueOnce({
+        json: async () => ({
+          CharacterID: 123,
+          CharacterName: 'Pilot',
+          CharacterOwnerHash: 'owner',
+        }),
+      } as Response);
+
+      await controller.callback('code-1', 'state-1', req as any, res as any);
+
+      expect(getCookieOptions(res, 'session')).toEqual(
+        expect.objectContaining({
+          domain: '.apexapps.gg',
+          httpOnly: true,
+          sameSite: 'none',
+          secure: true,
+        }),
+      );
+    } finally {
+      process.env.APP_ENV = previousAppEnv;
+      process.env.SESSION_COOKIE_DOMAIN = previousSessionCookieDomain;
+      jest.restoreAllMocks();
+    }
   });
 });

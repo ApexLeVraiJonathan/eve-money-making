@@ -184,6 +184,18 @@ export const AppConfig = {
   },
 
   /**
+   * Optional parent-domain cookie scope for the encrypted API session cookie.
+   *
+   * Use this in production when the API and web app run on sibling subdomains
+   * and browser requests go through the Next.js BFF, e.g. `.apexapps.gg` for
+   * `eveapi.apexapps.gg` + `eve.apexapps.gg`.
+   */
+  sessionCookieDomain(): string | undefined {
+    const domain = process.env.SESSION_COOKIE_DOMAIN?.trim();
+    return domain || undefined;
+  },
+
+  /**
    * Database URL selected by APP_ENV.
    */
   databaseUrl(): string | undefined {

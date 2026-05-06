@@ -94,6 +94,16 @@ export class AuthController {
     });
   }
 
+  private sessionCookieOptions() {
+    const secureCookie = AppConfig.env() === 'prod';
+    return {
+      httpOnly: true,
+      sameSite: secureCookie ? ('none' as const) : ('lax' as const),
+      secure: secureCookie,
+      domain: AppConfig.sessionCookieDomain(),
+    };
+  }
+
   /**
    * Starts the OAuth flow with PKCE and state.
    * Learning note: state protects against CSRF, PKCE protects public clients.
@@ -611,11 +621,8 @@ export class AuthController {
         at: Date.now(),
       } as const;
       const enc = await CryptoUtil.encrypt(JSON.stringify(payload));
-      const secureCookie = AppConfig.env() === 'prod';
       res.cookie('session', enc, {
-        httpOnly: true,
-        sameSite: secureCookie ? 'none' : 'lax',
-        secure: secureCookie,
+        ...this.sessionCookieOptions(),
         maxAge: 7 * 24 * 60 * 60 * 1000,
       });
     } catch {
@@ -685,12 +692,7 @@ export class AuthController {
   @ApiOkResponse({ description: 'Logout result after clearing session cookie' })
   async logout(@Res() res: Response) {
     await Promise.resolve();
-    const secureCookie = AppConfig.env() === 'prod';
-    res.clearCookie('session', {
-      httpOnly: true,
-      sameSite: secureCookie ? 'none' : 'lax',
-      secure: secureCookie,
-    });
+    res.clearCookie('session', this.sessionCookieOptions());
     res.json({ ok: true });
     return;
   }
