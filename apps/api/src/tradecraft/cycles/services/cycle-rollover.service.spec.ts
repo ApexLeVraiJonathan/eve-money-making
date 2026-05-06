@@ -11,7 +11,6 @@ function createService(overrides?: {
   prisma?: Record<string, unknown>;
   esiChars?: Record<string, unknown>;
   characterService?: Record<string, unknown>;
-  payouts?: Record<string, unknown>;
   participations?: Record<string, unknown>;
 }) {
   const prisma = {
@@ -53,13 +52,6 @@ function createService(overrides?: {
     getTrackedSellerIds: jest.fn().mockResolvedValue([]),
     ...overrides?.characterService,
   };
-  const payouts = {
-    computePayouts: jest.fn().mockResolvedValue({
-      payouts: [],
-      totalPayout: '0.00',
-    }),
-    ...overrides?.payouts,
-  };
   const participations = {
     createParticipation: jest.fn(),
     ...overrides?.participations,
@@ -80,7 +72,6 @@ function createService(overrides?: {
     esiChars as never,
     {} as never,
     characterService as never,
-    payouts as never,
     participations as never,
     participationCaps as never,
   );
@@ -90,7 +81,6 @@ function createService(overrides?: {
     prisma,
     esiChars,
     characterService,
-    payouts,
     participations,
     participationCaps,
   };
@@ -604,5 +594,62 @@ describe('CycleRolloverService', () => {
         status: 'AWAITING_PAYOUT',
       }),
     });
+  });
+
+  it('requires the Cycle Settlement payout snapshot before processing Rollover Intent', async () => {
+    const { service } = createService({
+      prisma: {
+        autoRolloverSettings: {
+          findMany: jest.fn().mockResolvedValue([]),
+        },
+        cycle: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: 'target-cycle',
+            status: 'OPEN',
+          }),
+        },
+        cycleParticipation: {
+          create: jest.fn(),
+          findMany: jest
+            .fn()
+            .mockResolvedValueOnce([])
+            .mockResolvedValueOnce([
+              {
+                id: 'rollover-participation',
+                userId: 'user-1',
+                characterName: 'Pilot',
+                amountIsk: '100.00',
+                userPrincipalIsk: '100.00',
+                rolloverType: 'INITIAL_ONLY',
+                rolloverRequestedAmountIsk: '100.00',
+                rolloverFromParticipationId: 'source-participation',
+                jingleYieldProgram: null,
+                rolloverFromParticipation: {
+                  id: 'source-participation',
+                  cycleId: 'closed-cycle',
+                  amountIsk: '100.00',
+                  userPrincipalIsk: '100.00',
+                  rolloverDeductedIsk: null,
+                  jingleYieldProgram: null,
+                },
+              },
+            ]),
+          findFirst: jest.fn(),
+          findUnique: jest.fn().mockResolvedValue({
+            payoutAmountIsk: null,
+            amountIsk: '100.00',
+            status: 'OPTED_IN',
+            payoutPaidAt: null,
+          }),
+          update: jest.fn(),
+        },
+      },
+    });
+
+    await expect(
+      service.processParticipationRollovers('closed-cycle', 'target-cycle'),
+    ).rejects.toThrow(
+      'Missing authoritative payout snapshot for participation source-participation',
+    );
   });
 });

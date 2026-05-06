@@ -12,6 +12,16 @@ export type OpenCycleWalletRefreshResult = {
   snapshottedCycleIds: string[];
 };
 
+export class OpenCycleWalletRefreshError extends Error {
+  constructor(
+    readonly phase: 'wallet_import' | 'transaction_allocation',
+    cause: unknown,
+  ) {
+    super(cause instanceof Error ? cause.message : String(cause));
+    this.name = 'OpenCycleWalletRefreshError';
+  }
+}
+
 @Injectable()
 export class OpenCycleWalletRefreshService {
   private readonly logger = new Logger(OpenCycleWalletRefreshService.name);
@@ -39,13 +49,29 @@ export class OpenCycleWalletRefreshService {
     };
   }
 
-  async importWallets(): Promise<void> {
+  async prepareStrictSettlementWalletActivity(
+    cycleId: string,
+  ): Promise<Omit<OpenCycleWalletRefreshResult, 'snapshottedCycleIds'>> {
+    try {
+      await this.importWallets();
+    } catch (error) {
+      throw new OpenCycleWalletRefreshError('wallet_import', error);
+    }
+
+    try {
+      return await this.allocateCycle(cycleId);
+    } catch (error) {
+      throw new OpenCycleWalletRefreshError('transaction_allocation', error);
+    }
+  }
+
+  private async importWallets(): Promise<void> {
     await this.wallets.importAllLinked();
   }
 
-  async allocateCycle(cycleId?: string): Promise<
-    Omit<OpenCycleWalletRefreshResult, 'snapshottedCycleIds'>
-  > {
+  private async allocateCycle(
+    cycleId?: string,
+  ): Promise<Omit<OpenCycleWalletRefreshResult, 'snapshottedCycleIds'>> {
     return await this.allocation.allocateAll(cycleId);
   }
 

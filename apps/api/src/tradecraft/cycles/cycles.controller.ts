@@ -21,7 +21,6 @@ import {
   ApiParam,
 } from '@nestjs/swagger';
 import { CycleService } from './services/cycle.service';
-import { CycleLifecycleService } from './services/cycle-lifecycle.service';
 import { LedgerEntryService } from './services/ledger-entry.service';
 import { CycleLineService } from './services/cycle-line.service';
 import { FeeService } from './services/fee.service';
@@ -44,7 +43,6 @@ import { RolesGuard } from '@api/characters/guards/roles.guard';
 import { Public } from '@api/characters/decorators/public.decorator';
 import { CreateCycleRequest } from './dto/create-cycle.dto';
 import { PlanCycleRequest } from './dto/plan-cycle.dto';
-import { OpenCycleRequest } from './dto/open-cycle.dto';
 import { UpdateCycleRequest } from './dto/update-cycle.dto';
 import { AppendEntryRequest } from './dto/append-entry.dto';
 import { GetEntriesQuery } from './dto/get-entries-query.dto';
@@ -81,7 +79,6 @@ export class CyclesController {
 
   constructor(
     private readonly cycleService: CycleService,
-    private readonly cycleLifecycle: CycleLifecycleService,
     private readonly ledgerEntries: LedgerEntryService,
     private readonly cycleLineService: CycleLineService,
     private readonly feeService: FeeService,
@@ -187,21 +184,6 @@ export class CyclesController {
     return await this.cycleService.deletePlannedCycle(id);
   }
 
-  @Post('cycles/:id/close')
-  @Roles('ADMIN')
-  @UseGuards(RolesGuard)
-  @ApiBearerAuth()
-  @ApiOperation({
-    summary: 'Run Cycle Settlement for the Open Cycle',
-    description:
-      'Runs the Cycle Lifecycle Entry Point for Cycle Settlement and returns a Settlement Report. The route path is retained for API compatibility.',
-  })
-  @ApiParam({ name: 'id', description: 'Cycle ID' })
-  @ApiOkResponse({ description: 'Settlement Report' })
-  async closeCycle(@Param('id') id: string): Promise<unknown> {
-    return await this.cycleLifecycle.settleOpenCycle({ cycleId: id });
-  }
-
   @Post('cycles/:id/allocate')
   @Roles('ADMIN')
   @UseGuards(RolesGuard)
@@ -216,27 +198,6 @@ export class CyclesController {
   @ApiOkResponse({ description: 'Steady-state transaction allocation result' })
   async allocateTransactions(@Param('id') id: string): Promise<unknown> {
     return await this.allocation.allocateAll(id);
-  }
-
-  @Post('cycles/:id/open')
-  @Roles('ADMIN')
-  @UseGuards(RolesGuard)
-  @ApiBearerAuth()
-  @ApiOperation({
-    summary: 'Open a planned Cycle through the Cycle Lifecycle Entry Point',
-    description:
-      'Opens the planned Cycle. If another Cycle is open, the lifecycle entry point performs Cycle Settlement first so there is still at most one Open Cycle.',
-  })
-  @ApiParam({ name: 'id', description: 'Cycle ID' })
-  @ApiOkResponse({ description: 'Cycle Lifecycle transition result' })
-  async openCycle(
-    @Param('id') id: string,
-    @Body() body: OpenCycleRequest,
-  ): Promise<unknown> {
-    return await this.cycleLifecycle.openPlannedCycle({
-      cycleId: id,
-      startedAt: body.startedAt ? new Date(body.startedAt) : undefined,
-    });
   }
 
   @Post('cycles/:cycleId/rollovers/backfill-jingle-yield')
@@ -659,7 +620,9 @@ export class CyclesController {
   @ApiOperation({ summary: 'Match participation payments from wallet' })
   @ApiQuery({ name: 'cycleId', required: false, type: String })
   async matchPayments(@Query('cycleId') cycleId?: string): Promise<unknown> {
-    return await this.paymentMatchingService.matchParticipationPayments(cycleId);
+    return await this.paymentMatchingService.matchParticipationPayments(
+      cycleId,
+    );
   }
 
   @Post('participations/:id/validate')

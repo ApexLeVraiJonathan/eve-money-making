@@ -58,7 +58,12 @@ function EditCycleDialog({
       onOpenChange={(open) => (open ? openEdit(cycle) : closeEdit())}
     >
       <DialogTrigger asChild>
-        <Button variant="outline" size="sm" disabled={loading} aria-label="Edit cycle">
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={loading}
+          aria-label="Edit cycle"
+        >
           <Pencil className="h-4 w-4" />
         </Button>
       </DialogTrigger>
@@ -120,7 +125,7 @@ export function CyclesListCard({
   loading,
   editingCycleId,
   openPlanned,
-  doAllocate,
+  allocateTransactions,
   closeCycle,
   loadCapital,
   copyCycleId,
@@ -140,7 +145,7 @@ export function CyclesListCard({
   loading: boolean;
   editingCycleId: string | null;
   openPlanned: (id: string) => void;
-  doAllocate: (id: string) => void;
+  allocateTransactions: (id: string) => void;
   closeCycle: (id: string) => void;
   loadCapital: (id: string) => void;
   copyCycleId: (id: string) => void;
@@ -174,7 +179,9 @@ export function CyclesListCard({
                   <div key={c.id} className="rounded-md border p-4 space-y-3">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <div className="font-medium truncate">{c.name || c.id.slice(0, 8)}</div>
+                        <div className="font-medium truncate">
+                          {c.name || c.id.slice(0, 8)}
+                        </div>
                         <div className="text-xs text-muted-foreground break-all mt-1">
                           {c.id}
                         </div>
@@ -200,7 +207,9 @@ export function CyclesListCard({
                         <div className="mt-1">{formatLocal(c.startedAt)}</div>
                       </div>
                       <div>
-                        <div className="text-xs text-muted-foreground">Closed</div>
+                        <div className="text-xs text-muted-foreground">
+                          Closed
+                        </div>
                         <div className="mt-1">{formatLocal(c.closedAt)}</div>
                       </div>
                     </div>
@@ -218,7 +227,7 @@ export function CyclesListCard({
                       <Button
                         variant="secondary"
                         size="sm"
-                        onClick={() => doAllocate(c.id)}
+                        onClick={() => allocateTransactions(c.id)}
                         disabled={loading || status !== "Ongoing"}
                       >
                         <RefreshCcw className="h-4 w-4 mr-2" />
@@ -287,7 +296,9 @@ export function CyclesListCard({
                     <TableHead className="text-foreground">Status</TableHead>
                     <TableHead className="text-foreground">Started</TableHead>
                     <TableHead className="text-foreground">Closed</TableHead>
-                    <TableHead className="text-right text-foreground">Actions</TableHead>
+                    <TableHead className="text-right text-foreground">
+                      Actions
+                    </TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -297,7 +308,9 @@ export function CyclesListCard({
                       <TableRow key={c.id}>
                         <TableCell className="font-medium">
                           {c.name || c.id.slice(0, 8)}
-                          <div className="text-xs text-muted-foreground">{c.id}</div>
+                          <div className="text-xs text-muted-foreground">
+                            {c.id}
+                          </div>
                         </TableCell>
                         <TableCell>
                           <Badge
@@ -328,7 +341,7 @@ export function CyclesListCard({
                             <Button
                               variant="secondary"
                               size="sm"
-                              onClick={() => doAllocate(c.id)}
+                              onClick={() => allocateTransactions(c.id)}
                               disabled={loading || status !== "Ongoing"}
                             >
                               <RefreshCcw className="h-4 w-4 mr-2" />

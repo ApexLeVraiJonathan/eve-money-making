@@ -46,8 +46,7 @@ export function useCycleLifecycleAdmin() {
   const [planStart, setPlanStart] = React.useState("");
 
   const [startName, setStartName] = React.useState("");
-  const [startInitialInjection, setStartInitialInjection] =
-    React.useState("");
+  const [startInitialInjection, setStartInitialInjection] = React.useState("");
 
   const [viewingCapitalFor, setViewingCapitalFor] = React.useState("");
   const [editingCycle, setEditingCycle] = React.useState<Cycle | null>(null);
@@ -192,7 +191,7 @@ export function useCycleLifecycleAdmin() {
     });
   };
 
-  const doAllocate = async (cycleId: string) => {
+  const allocateTransactions = async (cycleId: string) => {
     await runToastAction({
       action: () => allocateMutation.mutateAsync(cycleId),
       successMessage: "Allocation complete",
@@ -232,7 +231,7 @@ export function useCycleLifecycleAdmin() {
       loading,
       editingCycleId: editingCycle?.id ?? null,
       openPlanned: (id: string) => void openPlanned(id),
-      doAllocate: (id: string) => void doAllocate(id),
+      allocateTransactions: (id: string) => void allocateTransactions(id),
       closeCycle: (id: string) => void closeCycle(id),
       loadCapital,
       copyCycleId: (id: string) => void copyCycleId(id),

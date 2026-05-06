@@ -27,6 +27,7 @@ import { ParticipationCapsService } from './services/participation-caps.service'
 
 // Controllers
 import { CyclesController } from './cycles.controller';
+import { CyclesLifecycleController } from './cycles-lifecycle.controller';
 import { WalletModule } from '@api/tradecraft/wallet/wallet.module';
 
 @Module({
@@ -60,7 +61,7 @@ import { WalletModule } from '@api/tradecraft/wallet/wallet.module';
     CycleLinesIntelService,
     Logger,
   ],
-  controllers: [CyclesController],
+  controllers: [CyclesController, CyclesLifecycleController],
   exports: [
     CycleService,
     CycleLifecycleService,

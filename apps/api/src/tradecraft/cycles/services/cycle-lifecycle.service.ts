@@ -5,7 +5,10 @@ import { PayoutService } from './payout.service';
 import { CycleRolloverService } from './cycle-rollover.service';
 import { NotificationService } from '@api/notifications/notification.service';
 import { Prisma } from '@eve/prisma';
-import { OpenCycleWalletRefreshService } from './open-cycle-wallet-refresh.service';
+import {
+  OpenCycleWalletRefreshError,
+  OpenCycleWalletRefreshService,
+} from './open-cycle-wallet-refresh.service';
 import type {
   Cycle,
   CycleLifecycleResponse,
@@ -319,46 +322,47 @@ export class CycleLifecycleService {
   }): Promise<void> {
     const { settledCycleId, recordSettlementStep } = input;
 
-    const importStartedAt = Date.now();
+    const walletStartedAt = Date.now();
     try {
-      await this.walletRefresh.importWallets();
+      const allocationResult =
+        await this.walletRefresh.prepareStrictSettlementWalletActivity(
+          settledCycleId,
+        );
       recordSettlementStep(
         'wallet_import',
         'strict',
         'succeeded',
-        importStartedAt,
+        walletStartedAt,
       );
-    } catch (error) {
-      recordSettlementStep(
-        'wallet_import',
-        'strict',
-        'failed',
-        importStartedAt,
-        error instanceof Error ? error.message : String(error),
-      );
-      throw error;
-    }
-
-    const allocationStartedAt = Date.now();
-    try {
-      const allocationResult =
-        await this.walletRefresh.allocateCycle(settledCycleId);
       recordSettlementStep(
         'transaction_allocation',
         'strict',
         'succeeded',
-        allocationStartedAt,
+        walletStartedAt,
         `buys=${allocationResult.buysAllocated}, sells=${allocationResult.sellsAllocated}`,
       );
       this.logger.log(
         `Allocation: buys=${allocationResult.buysAllocated}, sells=${allocationResult.sellsAllocated}`,
       );
     } catch (error) {
+      if (
+        error instanceof OpenCycleWalletRefreshError &&
+        error.phase === 'transaction_allocation'
+      ) {
+        recordSettlementStep(
+          'wallet_import',
+          'strict',
+          'succeeded',
+          walletStartedAt,
+        );
+      }
       recordSettlementStep(
-        'transaction_allocation',
+        error instanceof OpenCycleWalletRefreshError
+          ? error.phase
+          : 'wallet_import',
         'strict',
         'failed',
-        allocationStartedAt,
+        walletStartedAt,
         error instanceof Error ? error.message : String(error),
       );
       throw error;
@@ -400,7 +404,8 @@ export class CycleLifecycleService {
     const payoutsStartedAt = Date.now();
     try {
       this.logger.log(`Creating payouts for cycle ${settledCycleId}...`);
-      const payouts = await this.payouts.createPayouts(settledCycleId);
+      const payouts =
+        await this.payouts.createSettlementPayoutSnapshot(settledCycleId);
       this.logger.log(
         `Created ${payouts.length} payouts for cycle ${settledCycleId}`,
       );

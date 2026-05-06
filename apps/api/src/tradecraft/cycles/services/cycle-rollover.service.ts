@@ -5,7 +5,6 @@ import { EsiService } from '@api/esi/esi.service';
 import { CharacterService } from '@api/characters/services/character.service';
 import { fetchStationOrders } from '@api/esi/market-helpers';
 import { CAPITAL_CONSTANTS } from '../utils/capital-helpers';
-import { PayoutService } from './payout.service';
 import { ParticipationService } from './participation.service';
 import { ParticipationCapsService } from './participation-caps.service';
 
@@ -27,7 +26,6 @@ export class CycleRolloverService {
     private readonly esiChars: EsiCharactersService,
     private readonly esi: EsiService,
     private readonly characterService: CharacterService,
-    private readonly payouts: PayoutService,
     private readonly participations: ParticipationService,
     private readonly participationCaps: ParticipationCapsService,
   ) {}
@@ -716,40 +714,22 @@ export class CycleRolloverService {
    */
   async processRollovers(
     closedCycleId: string,
-    targetCycleId?: string,
-    profitSharePct = 0.5,
+    targetCycleId: string,
   ): Promise<{
     processed: number;
     rolledOver: string;
     paidOut: string;
   }> {
     this.logger.log(
-      `[DEBUG] processRollovers called for closedCycleId: ${closedCycleId.substring(0, 8)}, targetCycleId: ${targetCycleId?.substring(0, 8) ?? 'auto-detect'}`,
+      `[DEBUG] processRollovers called for closedCycleId: ${closedCycleId.substring(0, 8)}, targetCycleId: ${targetCycleId.substring(0, 8)}`,
     );
 
-    let nextCycle;
-    if (targetCycleId) {
-      nextCycle = await this.prisma.cycle.findUnique({
-        where: { id: targetCycleId },
-      });
-      if (!nextCycle) {
-        this.logger.warn(`Target cycle ${targetCycleId} not found`);
-        return { processed: 0, rolledOver: '0.00', paidOut: '0.00' };
-      }
-    } else {
-      nextCycle = await this.prisma.cycle.findFirst({
-        where: {
-          status: { in: ['PLANNED', 'OPEN'] },
-          id: { not: closedCycleId },
-        },
-        orderBy: { startedAt: 'asc' },
-      });
-      if (!nextCycle) {
-        this.logger.log(
-          'No PLANNED/OPEN cycle found, skipping rollover processing',
-        );
-        return { processed: 0, rolledOver: '0.00', paidOut: '0.00' };
-      }
+    const nextCycle = await this.prisma.cycle.findUnique({
+      where: { id: targetCycleId },
+    });
+    if (!nextCycle) {
+      this.logger.warn(`Target cycle ${targetCycleId} not found`);
+      return { processed: 0, rolledOver: '0.00', paidOut: '0.00' };
     }
 
     this.logger.log(
@@ -853,28 +833,12 @@ export class CycleRolloverService {
       let initialInvestmentIsk: string;
 
       if (!participationWithPayout?.payoutAmountIsk) {
-        this.logger.warn(
-          `No payout amount set for participation ${fromParticipation.id}, using computed value`,
+        throw new Error(
+          `Missing authoritative payout snapshot for participation ${fromParticipation.id}`,
         );
-        const { payouts } = await this.payouts.computePayouts(
-          closedCycleId,
-          profitSharePct,
-        );
-        const payoutInfo = payouts.find(
-          (p) => p.participationId === fromParticipation.id,
-        );
-        if (!payoutInfo) {
-          this.logger.warn(
-            `Cannot compute payout for participation ${fromParticipation.id}, skipping rollover`,
-          );
-          continue;
-        }
-        actualPayoutIsk = payoutInfo.totalPayoutIsk;
-        initialInvestmentIsk = fromParticipation.amountIsk.toString();
-      } else {
-        actualPayoutIsk = participationWithPayout.payoutAmountIsk.toString();
-        initialInvestmentIsk = participationWithPayout.amountIsk.toString();
       }
+      actualPayoutIsk = participationWithPayout.payoutAmountIsk.toString();
+      initialInvestmentIsk = participationWithPayout.amountIsk.toString();
 
       const actualPayout = Number(actualPayoutIsk);
       const initialInvestment = Number(initialInvestmentIsk);
@@ -1058,7 +1022,6 @@ export class CycleRolloverService {
     const rollovers = await this.processRollovers(
       sourceClosedCycleId,
       targetCycle.id,
-      input.profitSharePct ?? 0.5,
     );
 
     return {

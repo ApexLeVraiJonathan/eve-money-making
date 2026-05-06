@@ -31,7 +31,8 @@ import type {
 /**
  * API hooks for cycle management
  *
- * Backend: apps/api/src/cycles/cycles.controller.ts
+ * Backend: apps/api/src/tradecraft/cycles/cycles.controller.ts
+ * Cycle Lifecycle Entry Point: apps/api/src/tradecraft/cycles/cycles-lifecycle.controller.ts
  *
  * Uses useApiClient() for authenticated API calls with Bearer tokens
  * and centralized query keys from @eve/api-client/queryKeys
@@ -334,7 +335,7 @@ export function useOpenCycle() {
 }
 
 /**
- * Close a cycle
+ * Run Cycle Settlement for the Open Cycle.
  */
 export function useCloseCycle() {
   const client = useApiClient();
@@ -391,7 +392,7 @@ export function useDeleteCycle() {
 }
 
 /**
- * Allocate wallet transactions to cycle lines (admin only)
+ * Allocate wallet transactions to cycle lines (admin-only maintenance, not Cycle Settlement).
  */
 export function useAllocateCycleTransactions() {
   const client = useApiClient();

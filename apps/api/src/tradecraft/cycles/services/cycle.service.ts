@@ -34,9 +34,11 @@ import {
  *
  * Orchestrates:
  * - Capital computation (via CapitalService)
- * - Payout creation (via PayoutService)
  * - Profit calculations (via ProfitService)
  * - Package completion (via PackageService)
+ * - Best-effort Rollover Intent seeding when a Cycle is planned
+ *
+ * Full Cycle Settlement lives behind the Cycle Lifecycle Entry Point.
  */
 @Injectable()
 export class CycleService {

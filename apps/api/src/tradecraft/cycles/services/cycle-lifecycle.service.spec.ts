@@ -54,8 +54,7 @@ function createService(overrides?: {
     ...overrides?.cycles,
   };
   const walletRefresh = {
-    importWallets: jest.fn().mockResolvedValue(undefined),
-    allocateCycle: jest.fn().mockResolvedValue({
+    prepareStrictSettlementWalletActivity: jest.fn().mockResolvedValue({
       buysAllocated: 3,
       sellsAllocated: 4,
       unmatchedBuys: 0,
@@ -64,7 +63,9 @@ function createService(overrides?: {
     ...overrides?.walletRefresh,
   };
   const payouts = {
-    createPayouts: jest.fn().mockResolvedValue([{ id: 'payout-1' }]),
+    createSettlementPayoutSnapshot: jest
+      .fn()
+      .mockResolvedValue([{ id: 'payout-1' }]),
     ...overrides?.payouts,
   };
   const rollovers = {
@@ -251,10 +252,11 @@ describe('CycleLifecycleService', () => {
       steps: [],
       recoverableFailures: [],
     });
-    expect(walletRefresh.importWallets).not.toHaveBeenCalled();
-    expect(walletRefresh.allocateCycle).not.toHaveBeenCalled();
+    expect(
+      walletRefresh.prepareStrictSettlementWalletActivity,
+    ).not.toHaveBeenCalled();
     expect(rollovers.processInventoryBuyback).not.toHaveBeenCalled();
-    expect(payouts.createPayouts).not.toHaveBeenCalled();
+    expect(payouts.createSettlementPayoutSnapshot).not.toHaveBeenCalled();
     expect(rollovers.processParticipationRollovers).not.toHaveBeenCalled();
   });
 
@@ -308,7 +310,9 @@ describe('CycleLifecycleService', () => {
   it('records recoverable payout failures without blocking the No Open Cycle Period', async () => {
     const { service } = createService({
       payouts: {
-        createPayouts: jest.fn().mockRejectedValue(new Error('payout failed')),
+        createSettlementPayoutSnapshot: jest
+          .fn()
+          .mockRejectedValue(new Error('payout failed')),
       },
     });
 
@@ -334,7 +338,7 @@ describe('CycleLifecycleService', () => {
   it('stops before closing when a Strict Settlement Step fails', async () => {
     const { service, cycles, walletRefresh, rollovers } = createService({
       walletRefresh: {
-        importWallets: jest
+        prepareStrictSettlementWalletActivity: jest
           .fn()
           .mockRejectedValue(new Error('wallet failed')),
       },
@@ -344,7 +348,9 @@ describe('CycleLifecycleService', () => {
       service.settleOpenCycle({ cycleId: 'open-cycle' }),
     ).rejects.toThrow('wallet failed');
 
-    expect(walletRefresh.allocateCycle).not.toHaveBeenCalled();
+    expect(
+      walletRefresh.prepareStrictSettlementWalletActivity,
+    ).toHaveBeenCalledTimes(1);
     expect(rollovers.processInventoryBuyback).not.toHaveBeenCalled();
     expect(cycles.closeCycle).not.toHaveBeenCalled();
   });

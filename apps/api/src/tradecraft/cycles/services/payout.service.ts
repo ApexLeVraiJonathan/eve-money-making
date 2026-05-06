@@ -14,8 +14,8 @@ type ComputedPayout = {
 };
 
 /**
- * PayoutService handles payout computation and creation.
- * Responsibilities: Computing payouts based on profit share, creating payout records.
+ * PayoutService owns payout computation and the authoritative persisted payout
+ * snapshot consumed by Cycle Rollover during Cycle Settlement.
  */
 @Injectable()
 export class PayoutService {
@@ -87,10 +87,7 @@ export class PayoutService {
     };
   }
 
-  /**
-   * Create payout records for validated participations
-   */
-  async createPayouts(
+  async createSettlementPayoutSnapshot(
     cycleId: string,
     profitSharePct = 0.5,
   ): Promise<Array<{ participationId: string; payoutIsk: string }>> {
@@ -103,6 +100,17 @@ export class PayoutService {
       payouts,
       notifyResults: false,
     });
+  }
+
+  /**
+   * Compatibility wrapper for manual/admin callers that predate the Cycle
+   * Settlement vocabulary. Prefer createSettlementPayoutSnapshot in lifecycle code.
+   */
+  async createPayouts(
+    cycleId: string,
+    profitSharePct = 0.5,
+  ): Promise<Array<{ participationId: string; payoutIsk: string }>> {
+    return await this.createSettlementPayoutSnapshot(cycleId, profitSharePct);
   }
 
   /**
