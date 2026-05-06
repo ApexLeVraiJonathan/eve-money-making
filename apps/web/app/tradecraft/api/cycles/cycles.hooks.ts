@@ -200,11 +200,11 @@ export function useCycleEntries(
     queryKey: qk.cycles.entries(cycleId, options),
     queryFn: () => {
       const params = new URLSearchParams();
+      params.set("cycleId", cycleId);
       if (options?.limit) params.set("limit", String(options.limit));
       if (options?.offset) params.set("offset", String(options.offset));
-      const query = params.toString() ? `?${params.toString()}` : "";
       return client.get<CycleLedgerEntry[]>(
-        `/ledger/entries${query}&cycleId=${cycleId}`,
+        `/ledger/entries?${params.toString()}`,
       );
     },
     enabled: !!cycleId,

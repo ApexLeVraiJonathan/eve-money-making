@@ -49,7 +49,7 @@ export function useAllParticipations() {
 export function useMyParticipationHistory() {
   const client = useApiClient();
   return useAuthenticatedQuery({
-    queryKey: ["myParticipationHistory"],
+    queryKey: qk.participations.history(),
     queryFn: () =>
       client.get<ParticipationHistoryItem[]>("/ledger/participations/my-history"),
   });
@@ -78,7 +78,7 @@ export function useParticipations(cycleId: string, status?: string) {
 export function useMaxParticipation() {
   const client = useApiClient();
   return useAuthenticatedQuery({
-    queryKey: ["maxParticipation"],
+    queryKey: qk.participations.maxAmount(),
     queryFn: () => client.get<TradecraftCaps>("/ledger/participations/max-amount"),
   });
 }

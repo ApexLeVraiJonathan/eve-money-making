@@ -363,4 +363,24 @@ describe('CycleLifecycleService', () => {
     expect(rollovers.processInventoryBuyback).not.toHaveBeenCalled();
     expect(cycles.closeCycle).not.toHaveBeenCalled();
   });
+
+  it('stops before opening a planned Cycle when a Strict Settlement Step fails', async () => {
+    const { service, cycles, walletRefresh, prisma } = createService({
+      walletRefresh: {
+        prepareStrictSettlementWalletActivity: jest
+          .fn()
+          .mockRejectedValue(new Error('wallet failed')),
+      },
+    });
+
+    await expect(
+      service.openPlannedCycle({ cycleId: 'planned-cycle' }),
+    ).rejects.toThrow('wallet failed');
+
+    expect(
+      walletRefresh.prepareStrictSettlementWalletActivity,
+    ).toHaveBeenCalledTimes(1);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(cycles.closeCycleInTransaction).not.toHaveBeenCalled();
+  });
 });

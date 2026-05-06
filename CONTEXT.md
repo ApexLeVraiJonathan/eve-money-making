@@ -48,6 +48,22 @@ _Avoid_: reinvestment when it hides payout deductions or participant intent
 A participant's choice for how much eligible value should move into the next Cycle.
 _Avoid_: preference when referring to a per-Cycle choice
 
+**Participation**:
+A user's committed ISK position in a specific Cycle, including payment status, validation status, payout or rollover outcome, and any program-specific behavior like JingleYield.
+_Avoid_: investment when referring to the full lifecycle through validation, settlement, payout, refund, rollover, or program completion
+
+**Payment Matching**:
+The admin/system process that connects incoming wallet journal payments to pending Participations, turning raw ISK transfers into validated or partially matched Participation payment evidence.
+_Avoid_: allocation when referring to Participation payments
+
+**JingleYield Program**:
+A first-class program that creates and owns specialized Participations with program rules such as minimum Cycles, principal handling, interest targets, completion behavior, and rollover/backfill cases.
+_Avoid_: treating it as only a normal Participation when program rules matter
+
+**Admin Recovery Flow**:
+A product/API-supported admin action that repairs, completes, or records follow-up for an imperfect money workflow state, such as unmatched Participation payments, refunds, payout marking, recoverable Settlement Report failures, or JingleYield rollover backfill.
+_Avoid_: ad hoc script when the action is an official operational path
+
 ## Relationships
 
 - **Cycle Lifecycle** contains the allowed transitions for a **Cycle**.
@@ -62,6 +78,10 @@ _Avoid_: preference when referring to a per-Cycle choice
 - **Cycle Rollover** moves value from a settled **Cycle** into the next **Cycle**.
 - If **Cycle Settlement** has no target **Cycle**, **Cycle Rollover** is skipped and **Rollover Intent** becomes payout/admin follow-up.
 - **Cycle Rollover** is a first-class Module concept because it owns **Rollover Intent**, payout deductions, cap rules, program defaults, and idempotency.
+- A **Participation** belongs to one **Cycle** and carries the user's committed ISK through payment matching, validation, settlement, payout, refund, rollover, or program completion.
+- **Payment Matching** validates **Participation** payments from wallet journal transfers and is separate from **Transaction Allocation**, which allocates buy/sell wallet activity to Cycle Lines during trading or **Cycle Settlement**.
+- A **JingleYield Program** creates specialized **Participations** whose payout, rollover, and completion behavior are governed by program rules.
+- An **Admin Recovery Flow** handles imperfect money workflow states through product/API features; standalone scripts are support tooling unless explicitly promoted to an official operational path.
 
 ## Example Dialogue
 
@@ -88,6 +108,18 @@ _Avoid_: preference when referring to a per-Cycle choice
 >
 > **Dev:** "Should **Rollover Intent** carry forward during a **No Open Cycle Period**?"
 > **Domain expert:** "No. If there is no target **Cycle**, pending value should become payout/admin follow-up instead of holding user ISK for an unknown future Cycle."
+>
+> **Dev:** "Is a **Participation** just an investment request?"
+> **Domain expert:** "No. A **Participation** is the user's committed ISK position in a **Cycle** and continues through validation, settlement, payout, refund, rollover, or program completion."
+>
+> **Dev:** "Is **Payment Matching** the same as **Transaction Allocation**?"
+> **Domain expert:** "No. **Payment Matching** connects incoming wallet payments to **Participations**. **Transaction Allocation** connects buy/sell wallet activity to Cycle Lines."
+>
+> **Dev:** "Can **JingleYield Program** behavior be covered by normal **Participation** tests?"
+> **Domain expert:** "No. **JingleYield Program** is first-class because its minimum Cycles, principal handling, interest targets, completion, rollover, and backfill rules change the expected outcomes."
+>
+> **Dev:** "Should standalone scripts be part of **Admin Recovery Flow**?"
+> **Domain expert:** "No, not by default. **Admin Recovery Flow** means product/API-supported recovery unless a script is explicitly made an official operational path."
 
 ## Flagged Ambiguities
 

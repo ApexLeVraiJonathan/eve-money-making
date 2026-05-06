@@ -19,7 +19,7 @@ import { qk } from "@eve/api-client/queryKeys";
 export function useJingleYieldPrograms() {
   const client = useApiClient();
   return useAuthenticatedQuery({
-    queryKey: ["jingleYield", "programs"],
+    queryKey: qk.jingleYield.programs(),
     queryFn: () =>
       client.get<JingleYieldProgramSummary[]>("/ledger/jingle-yield/programs"),
   });
@@ -31,7 +31,7 @@ export function useJingleYieldPrograms() {
 export function useJingleYieldProgram(id: string) {
   const client = useApiClient();
   return useAuthenticatedQuery({
-    queryKey: ["jingleYield", "program", id],
+    queryKey: qk.jingleYield.byId(id),
     queryFn: () =>
       client.get<JingleYieldProgramSummary>(
         `/ledger/jingle-yield/programs/${id}`,
@@ -46,7 +46,7 @@ export function useJingleYieldProgram(id: string) {
 export function useMyJingleYieldStatus() {
   const client = useApiClient();
   return useAuthenticatedQuery({
-    queryKey: ["jingleYield", "me"],
+    queryKey: qk.jingleYield.me(),
     queryFn: () =>
       client.get<JingleYieldStatus | null>("/ledger/jingle-yield/me"),
   });
@@ -74,7 +74,7 @@ export function useCreateJingleYieldParticipation() {
     }) => client.post("/ledger/jingle-yield/participations", data),
     onSuccess: () => {
       // Refresh related data after creation
-      queryClient.invalidateQueries({ queryKey: ["jingleYield"] });
+      queryClient.invalidateQueries({ queryKey: qk.jingleYield._root });
       queryClient.invalidateQueries({ queryKey: qk.participations._root });
     },
   });

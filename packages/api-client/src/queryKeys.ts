@@ -127,11 +127,21 @@ export const qk = {
       ["participations", "list", cycleId, status] as const,
     byId: (id: string) => ["participations", "byId", id] as const,
     me: (cycleId: string) => ["participations", "me", cycleId] as const,
+    history: () => ["participations", "history"] as const,
+    maxAmount: () => ["participations", "maxAmount"] as const,
     unmatchedDonations: () => ["participations", "unmatchedDonations"] as const,
     adminCaps: (userId: string) =>
       ["participations", "adminCaps", userId] as const,
     autoRolloverSettings: () =>
       ["participations", "autoRolloverSettings"] as const,
+  },
+
+  /** JingleYield programs */
+  jingleYield: {
+    _root: ["jingleYield"] as const,
+    programs: () => ["jingleYield", "programs"] as const,
+    byId: (id: string) => ["jingleYield", "program", id] as const,
+    me: () => ["jingleYield", "me"] as const,
   },
 
   /** Payouts */

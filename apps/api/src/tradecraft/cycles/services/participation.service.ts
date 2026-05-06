@@ -1043,7 +1043,7 @@ export class ParticipationService {
       data: {
         status: 'REFUNDED',
         refundedAt: new Date(),
-        amountIsk: input.amountIsk,
+        refundAmountIsk: input.amountIsk,
       },
     });
   }

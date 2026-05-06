@@ -8,7 +8,10 @@
     "test:ui": "playwright test --ui",
     "test:headed": "playwright test --headed",
     "seed:tradecraft": "tsx scripts/tradecraft-scenarios.ts",
-    "seed:tradecraft:list": "tsx scripts/tradecraft-scenarios.ts --list"
+    "seed:tradecraft:list": "tsx scripts/tradecraft-scenarios.ts --list",
+    "acceptance:tradecraft": "tsx scripts/tradecraft-acceptance-gate.ts",
+    "acceptance:tradecraft:list": "tsx scripts/tradecraft-acceptance-gate.ts --list",
+    "acceptance:tradecraft:dry-run": "tsx scripts/tradecraft-acceptance-gate.ts --dry-run"
   },
   "dependencies": {
     "@eve/prisma": "workspace:*",

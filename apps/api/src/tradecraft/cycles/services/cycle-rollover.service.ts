@@ -849,16 +849,14 @@ export class CycleRolloverService {
           },
         });
 
-      let actualPayoutIsk: string;
-      let initialInvestmentIsk: string;
-
       if (!participationWithPayout?.payoutAmountIsk) {
         throw new Error(
           `Missing authoritative payout snapshot for participation ${fromParticipation.id}`,
         );
       }
-      actualPayoutIsk = participationWithPayout.payoutAmountIsk.toString();
-      initialInvestmentIsk = participationWithPayout.amountIsk.toString();
+      const actualPayoutIsk =
+        participationWithPayout.payoutAmountIsk.toString();
+      const initialInvestmentIsk = participationWithPayout.amountIsk.toString();
 
       const actualPayout = Number(actualPayoutIsk);
       const initialInvestment = Number(initialInvestmentIsk);
