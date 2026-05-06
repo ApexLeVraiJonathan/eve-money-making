@@ -497,7 +497,24 @@ export class PackageService {
    * Called when cycle is closed
    */
   async completePackagesForCycle(cycleId: string): Promise<number> {
-    const result = await this.prisma.committedPackage.updateMany({
+    return await this.completePackagesForCycleCore(this.prisma, cycleId);
+  }
+
+  /**
+   * Transaction-aware version for Cycle Settlement transitions.
+   */
+  async completePackagesForCycleInTransaction(
+    tx: Pick<Prisma.TransactionClient, 'committedPackage'>,
+    cycleId: string,
+  ): Promise<number> {
+    return await this.completePackagesForCycleCore(tx, cycleId);
+  }
+
+  private async completePackagesForCycleCore(
+    client: Pick<Prisma.TransactionClient, 'committedPackage'>,
+    cycleId: string,
+  ): Promise<number> {
+    const result = await client.committedPackage.updateMany({
       where: {
         cycleId,
         status: 'active',

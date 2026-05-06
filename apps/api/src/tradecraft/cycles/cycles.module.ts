@@ -9,6 +9,7 @@ import { NotificationsModule } from '@api/notifications/notifications.module';
 // Services
 import { CycleService } from './services/cycle.service';
 import { CycleLifecycleService } from './services/cycle-lifecycle.service';
+import { CycleRolloverService } from './services/cycle-rollover.service';
 import { CycleLineService } from './services/cycle-line.service';
 import { FeeService } from './services/fee.service';
 import { SnapshotService } from './services/snapshot.service';
@@ -39,6 +40,7 @@ import { WalletModule } from '@api/tradecraft/wallet/wallet.module';
     // New focused services
     CycleService,
     CycleLifecycleService,
+    CycleRolloverService,
     CycleLineService,
     FeeService,
     SnapshotService,
@@ -56,6 +58,7 @@ import { WalletModule } from '@api/tradecraft/wallet/wallet.module';
   exports: [
     CycleService,
     CycleLifecycleService,
+    CycleRolloverService,
     CycleLineService,
     FeeService,
     SnapshotService,
