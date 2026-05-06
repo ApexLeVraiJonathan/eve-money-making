@@ -64,6 +64,16 @@ function createService(overrides?: {
     createParticipation: jest.fn(),
     ...overrides?.participations,
   };
+  const participationCaps = {
+    defaults: jest.fn().mockReturnValue({
+      principalCapIsk: 10_000_000_000,
+      maximumCapIsk: 20_000_000_000,
+    }),
+    getUserTradecraftCaps: jest.fn().mockResolvedValue({
+      principalCapIsk: 10_000_000_000,
+      maximumCapIsk: 20_000_000_000,
+    }),
+  };
 
   const service = new CycleRolloverService(
     prisma as never,
@@ -72,6 +82,7 @@ function createService(overrides?: {
     characterService as never,
     payouts as never,
     participations as never,
+    participationCaps as never,
   );
 
   return {
@@ -81,6 +92,7 @@ function createService(overrides?: {
     characterService,
     payouts,
     participations,
+    participationCaps,
   };
 }
 

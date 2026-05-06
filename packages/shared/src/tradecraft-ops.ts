@@ -14,6 +14,10 @@ export type MarketStaleness = {
   };
 };
 
+export type MarketTradesStalenessResponse = {
+  missing: string[];
+};
+
 export type CleanupJobResponse = {
   cleaned: number;
 };

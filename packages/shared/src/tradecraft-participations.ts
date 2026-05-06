@@ -1,5 +1,13 @@
-import type { CycleParticipation } from "./types/participations";
-export type { CycleParticipation, RolloverIntent } from "./types/participations";
+import type {
+  CycleParticipation,
+  CycleParticipationWithCycle,
+} from "./types/participations.js";
+export type {
+  CycleParticipation,
+  CycleParticipationWithCycle,
+  ParticipationCycleSummary,
+  RolloverIntent,
+} from "./types/participations.js";
 
 export type AutoRolloverSettings = {
   enabled: boolean;
@@ -15,17 +23,7 @@ export type TradecraftCaps = {
   maximumCapB: number;
 };
 
-export type ParticipationCycleSummary = {
-  id: string;
-  name: string | null;
-  startedAt: string;
-  closedAt: string | null;
-  status: string;
-};
-
-export type ParticipationHistoryItem = CycleParticipation & {
-  cycle: ParticipationCycleSummary;
-};
+export type ParticipationHistoryItem = CycleParticipationWithCycle;
 
 export type UnmatchedDonation = {
   journalId: string;
@@ -37,10 +35,19 @@ export type UnmatchedDonation = {
   date: string;
 };
 
+export type MatchedParticipationPaymentUnmatchedJournal = {
+  journalId: string;
+  characterId: number;
+  amount: string;
+  description: string | null;
+  reason: string | null;
+  date: string;
+};
+
 export type MatchParticipationPaymentsResponse = {
   matched: number;
   partial: number;
-  unmatched: unknown[];
+  unmatched: MatchedParticipationPaymentUnmatchedJournal[];
 };
 
 export type IncreaseParticipationResponse = {

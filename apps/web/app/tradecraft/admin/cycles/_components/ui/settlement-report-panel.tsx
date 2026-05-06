@@ -19,19 +19,14 @@ import type {
   CycleSettlementStepReport,
   CycleSettlementStepStatus,
 } from "@eve/shared/tradecraft-cycles";
+import {
+  CYCLE_SETTLEMENT_STEP_KIND_LABELS,
+  CYCLE_SETTLEMENT_STEP_LABELS,
+} from "@eve/shared/tradecraft-cycles";
 
 type SettlementReportPanelProps = {
   report: CycleSettlementReport | null;
   title: string;
-};
-
-const stepLabels: Record<CycleSettlementStepReport["name"], string> = {
-  wallet_import: "Wallet Import",
-  transaction_allocation: "Transaction Allocation",
-  rollover_buyback: "Cycle Rollover Buyback",
-  close_previous_cycle: "Close Previous Cycle",
-  payout_creation: "Payout Creation",
-  cycle_rollover: "Cycle Rollover",
 };
 
 const statusVariants: Record<
@@ -56,7 +51,7 @@ function formatDuration(durationMs?: number) {
 }
 
 function formatStepKind(step: CycleSettlementStepReport) {
-  return step.kind === "strict" ? "Strict Settlement Step" : "Recoverable Settlement Step";
+  return CYCLE_SETTLEMENT_STEP_KIND_LABELS[step.kind];
 }
 
 export function SettlementReportPanel({ report, title }: SettlementReportPanelProps) {
@@ -102,7 +97,7 @@ export function SettlementReportPanel({ report, title }: SettlementReportPanelPr
               <div className="mt-2 space-y-1">
                 {report.recoverableFailures.map((step) => (
                   <div key={step.name}>
-                    {stepLabels[step.name]}: {step.message ?? "Failed without a message."}
+                    {CYCLE_SETTLEMENT_STEP_LABELS[step.name]}: {step.message ?? "Failed without a message."}
                   </div>
                 ))}
               </div>
@@ -124,7 +119,9 @@ export function SettlementReportPanel({ report, title }: SettlementReportPanelPr
             <TableBody>
               {report.steps.map((step) => (
                 <TableRow key={step.name}>
-                  <TableCell className="font-medium">{stepLabels[step.name]}</TableCell>
+                  <TableCell className="font-medium">
+                    {CYCLE_SETTLEMENT_STEP_LABELS[step.name]}
+                  </TableCell>
                   <TableCell>{formatStepKind(step)}</TableCell>
                   <TableCell>
                     <Badge

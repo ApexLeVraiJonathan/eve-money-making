@@ -15,6 +15,7 @@ import type {
   CycleSnapshot,
   CapitalResponse,
   CycleLifecycleResponse,
+  CreateCycleSnapshotResponse,
   PayoutSuggestion,
 } from "@eve/shared/tradecraft-cycles";
 import type {
@@ -419,7 +420,10 @@ export function useCreateCycleSnapshot() {
 
   return useMutation({
     mutationFn: (cycleId: string) =>
-      client.post<CycleSnapshot>(`/ledger/cycles/${cycleId}/snapshot`, {}),
+      client.post<CreateCycleSnapshotResponse>(
+        `/ledger/cycles/${cycleId}/snapshot`,
+        {},
+      ),
     onSuccess: (_, cycleId) => {
       queryClient.invalidateQueries({ queryKey: qk.cycles.snapshots(cycleId) });
     },

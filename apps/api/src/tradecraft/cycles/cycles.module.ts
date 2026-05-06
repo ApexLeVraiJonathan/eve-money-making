@@ -21,6 +21,9 @@ import { ProfitService } from './services/profit.service';
 import { JingleYieldService } from './services/jingle-yield.service';
 import { AutoRolloverSettingsService } from './services/auto-rollover-settings.service';
 import { CycleLinesIntelService } from './services/cycle-lines-intel.service';
+import { LedgerEntryService } from './services/ledger-entry.service';
+import { OpenCycleWalletRefreshService } from './services/open-cycle-wallet-refresh.service';
+import { ParticipationCapsService } from './services/participation-caps.service';
 
 // Controllers
 import { CyclesController } from './cycles.controller';
@@ -40,6 +43,9 @@ import { WalletModule } from '@api/tradecraft/wallet/wallet.module';
     // New focused services
     CycleService,
     CycleLifecycleService,
+    LedgerEntryService,
+    OpenCycleWalletRefreshService,
+    ParticipationCapsService,
     CycleRolloverService,
     CycleLineService,
     FeeService,
@@ -58,6 +64,9 @@ import { WalletModule } from '@api/tradecraft/wallet/wallet.module';
   exports: [
     CycleService,
     CycleLifecycleService,
+    LedgerEntryService,
+    OpenCycleWalletRefreshService,
+    ParticipationCapsService,
     CycleRolloverService,
     CycleLineService,
     FeeService,

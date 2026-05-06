@@ -7,7 +7,7 @@ import type {
   GameDataImportAllResult,
   GameDataImportCountResult,
   GameDataImportResult,
-  GameDataImportSummary,
+  GameDataImportSummaryResponse,
 } from "@eve/shared/tradecraft-data-ops";
 
 /**
@@ -27,7 +27,7 @@ export function useImportSummary() {
   const client = useApiClient();
   return useAuthenticatedQuery({
     queryKey: ["gameData", "importSummary"],
-    queryFn: () => client.get<GameDataImportSummary>("/import/summary"),
+    queryFn: () => client.get<GameDataImportSummaryResponse>("/import/summary"),
   });
 }
 

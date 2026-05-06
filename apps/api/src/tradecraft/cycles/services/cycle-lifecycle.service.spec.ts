@@ -41,8 +41,7 @@ const openedCycle = {
 
 function createService(overrides?: {
   cycles?: Record<string, unknown>;
-  wallet?: Record<string, unknown>;
-  allocation?: Record<string, unknown>;
+  walletRefresh?: Record<string, unknown>;
   prisma?: Record<string, unknown>;
   payouts?: Record<string, unknown>;
   rollovers?: Record<string, unknown>;
@@ -54,18 +53,15 @@ function createService(overrides?: {
     closeCycleInTransaction: jest.fn().mockResolvedValue(closedCycle),
     ...overrides?.cycles,
   };
-  const wallet = {
-    importAllLinked: jest.fn().mockResolvedValue(undefined),
-    ...overrides?.wallet,
-  };
-  const allocation = {
-    allocateAll: jest.fn().mockResolvedValue({
+  const walletRefresh = {
+    importWallets: jest.fn().mockResolvedValue(undefined),
+    allocateCycle: jest.fn().mockResolvedValue({
       buysAllocated: 3,
       sellsAllocated: 4,
       unmatchedBuys: 0,
       unmatchedSells: 0,
     }),
-    ...overrides?.allocation,
+    ...overrides?.walletRefresh,
   };
   const payouts = {
     createPayouts: jest.fn().mockResolvedValue([{ id: 'payout-1' }]),
@@ -129,8 +125,7 @@ function createService(overrides?: {
 
   const service = new CycleLifecycleService(
     cycles as never,
-    wallet as never,
-    allocation as never,
+    walletRefresh as never,
     prisma as never,
     payouts as never,
     rollovers as never,
@@ -140,8 +135,7 @@ function createService(overrides?: {
   return {
     service,
     cycles,
-    wallet,
-    allocation,
+    walletRefresh,
     prisma,
     tx,
     payouts,
@@ -242,7 +236,7 @@ describe('CycleLifecycleService', () => {
   });
 
   it('opens a planned Cycle without settlement steps when there is no previous Open Cycle', async () => {
-    const { service, wallet, allocation, payouts, rollovers } = createService({
+    const { service, walletRefresh, payouts, rollovers } = createService({
       cycles: {
         getCurrentOpenCycle: jest.fn().mockResolvedValue(null),
       },
@@ -257,8 +251,8 @@ describe('CycleLifecycleService', () => {
       steps: [],
       recoverableFailures: [],
     });
-    expect(wallet.importAllLinked).not.toHaveBeenCalled();
-    expect(allocation.allocateAll).not.toHaveBeenCalled();
+    expect(walletRefresh.importWallets).not.toHaveBeenCalled();
+    expect(walletRefresh.allocateCycle).not.toHaveBeenCalled();
     expect(rollovers.processInventoryBuyback).not.toHaveBeenCalled();
     expect(payouts.createPayouts).not.toHaveBeenCalled();
     expect(rollovers.processParticipationRollovers).not.toHaveBeenCalled();
@@ -338,9 +332,9 @@ describe('CycleLifecycleService', () => {
   });
 
   it('stops before closing when a Strict Settlement Step fails', async () => {
-    const { service, cycles, allocation, rollovers } = createService({
-      wallet: {
-        importAllLinked: jest
+    const { service, cycles, walletRefresh, rollovers } = createService({
+      walletRefresh: {
+        importWallets: jest
           .fn()
           .mockRejectedValue(new Error('wallet failed')),
       },
@@ -350,7 +344,7 @@ describe('CycleLifecycleService', () => {
       service.settleOpenCycle({ cycleId: 'open-cycle' }),
     ).rejects.toThrow('wallet failed');
 
-    expect(allocation.allocateAll).not.toHaveBeenCalled();
+    expect(walletRefresh.allocateCycle).not.toHaveBeenCalled();
     expect(rollovers.processInventoryBuyback).not.toHaveBeenCalled();
     expect(cycles.closeCycle).not.toHaveBeenCalled();
   });

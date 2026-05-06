@@ -15,7 +15,6 @@ import { ParticipantsOverviewCard } from "./sections/participants-overview-card"
 import { ManualMatchingCard } from "./sections/manual-matching-card";
 import { RefundsCard } from "./sections/refunds-card";
 import { PayoutsCard } from "./sections/payouts-card";
-import type { ParticipationWithCycle } from "./lib/types";
 import { deriveParticipationBuckets, deriveVisibleCycleIds, groupParticipationsByCycle } from "./lib/derivations";
 import {
   confirmParticipationPaid,
@@ -27,9 +26,8 @@ import {
 } from "./lib/actions";
 
 export default function ParticipationsPageClient() {
-  const { data: participationsRaw = [], isLoading: loading } = useAllParticipations();
+  const { data: participations = [], isLoading: loading } = useAllParticipations();
   const { data: unmatchedDonations = [] } = useUnmatchedDonations();
-  const participations = participationsRaw as ParticipationWithCycle[];
 
   const validatePayment = useValidateParticipationPayment();
   const refundParticipation = useRefundParticipation();

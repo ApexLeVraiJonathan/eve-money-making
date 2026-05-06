@@ -7,6 +7,7 @@ import { fetchStationOrders } from '@api/esi/market-helpers';
 import { CAPITAL_CONSTANTS } from '../utils/capital-helpers';
 import { PayoutService } from './payout.service';
 import { ParticipationService } from './participation.service';
+import { ParticipationCapsService } from './participation-caps.service';
 
 export type RolloverLineCandidate = {
   typeId: number;
@@ -28,6 +29,7 @@ export class CycleRolloverService {
     private readonly characterService: CharacterService,
     private readonly payouts: PayoutService,
     private readonly participations: ParticipationService,
+    private readonly participationCaps: ParticipationCapsService,
   ) {}
 
   /**
@@ -832,7 +834,6 @@ export class CycleRolloverService {
 
     let totalRolledOver = 0;
     let totalPaidOut = 0;
-    const DEFAULT_MAXIMUM_CAP_ISK = 20_000_000_000;
 
     for (const rollover of relevantRollovers) {
       const fromParticipation = rollover.rolloverFromParticipation!;
@@ -878,18 +879,10 @@ export class CycleRolloverService {
       const actualPayout = Number(actualPayoutIsk);
       const initialInvestment = Number(initialInvestmentIsk);
 
-      let maximumCapIsk = DEFAULT_MAXIMUM_CAP_ISK;
-      if (rollover.userId) {
-        const user = await this.prisma.user.findUnique({
-          where: { id: rollover.userId },
-          select: { tradecraftMaximumCapIsk: true },
-        });
-        const raw =
-          user?.tradecraftMaximumCapIsk == null
-            ? NaN
-            : Number(user.tradecraftMaximumCapIsk);
-        maximumCapIsk = Number.isFinite(raw) ? raw : DEFAULT_MAXIMUM_CAP_ISK;
-      }
+      const maximumCapIsk = rollover.userId
+        ? (await this.participationCaps.getUserTradecraftCaps(rollover.userId))
+            .maximumCapIsk
+        : this.participationCaps.defaults().maximumCapIsk;
 
       let rolloverAmount: number;
       let userExtraForRollover = 0;

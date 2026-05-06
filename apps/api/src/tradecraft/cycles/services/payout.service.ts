@@ -4,6 +4,15 @@ import { ProfitService } from './profit.service';
 import { NotificationService } from '@api/notifications/notification.service';
 import { JingleYieldService } from './jingle-yield.service';
 
+type ComputedPayout = {
+  participationId: string;
+  userId: string | null;
+  characterName: string;
+  investmentIsk: string;
+  profitShareIsk: string;
+  totalPayoutIsk: string;
+};
+
 /**
  * PayoutService handles payout computation and creation.
  * Responsibilities: Computing payouts based on profit share, creating payout records.
@@ -90,29 +99,10 @@ export class PayoutService {
     // Apply JingleYield interest accumulation for this cycle
     await this.jingleYield.applyCyclePayouts(cycleId, payouts);
 
-    const results: Array<{ participationId: string; payoutIsk: string }> = [];
-
-    for (const payout of payouts) {
-      // Update participation with payout amount and mark as AWAITING_PAYOUT
-      await this.prisma.cycleParticipation.update({
-        where: { id: payout.participationId },
-        data: {
-          payoutAmountIsk: payout.totalPayoutIsk,
-          status: 'AWAITING_PAYOUT', // Payout calculated, awaiting admin to send
-        },
-      });
-
-      this.logger.log(
-        `Set payout for ${payout.characterName}: ${payout.totalPayoutIsk} ISK (investment: ${payout.investmentIsk}, profit share: ${payout.profitShareIsk})`,
-      );
-
-      results.push({
-        participationId: payout.participationId,
-        payoutIsk: payout.totalPayoutIsk,
-      });
-    }
-
-    return results;
+    return await this.persistPayouts({
+      payouts,
+      notifyResults: false,
+    });
   }
 
   /**
@@ -134,26 +124,47 @@ export class PayoutService {
   }> {
     const rec = await this.computePayouts(cycleId, profitSharePct);
 
-    // Create payout records and mark as awaiting payout
-    for (const payout of rec.payouts) {
-      const participation = await this.prisma.cycleParticipation.update({
-        where: { id: payout.participationId },
-        data: {
-          payoutAmountIsk: payout.totalPayoutIsk,
-          status: 'AWAITING_PAYOUT', // Payout calculated, awaiting admin to send
-        },
-      });
-
-      // Notify participant that results are available (best-effort)
-      void this.notifications
-        .notifyCycleResults(participation.cycleId)
-        .catch((err: unknown) =>
-          this.logger.warn(
-            `Failed to send cycle results notifications: ${String(err)}`,
-          ),
-        );
-    }
+    await this.persistPayouts({
+      payouts: rec.payouts,
+      notifyResults: true,
+    });
 
     return rec;
+  }
+
+  private async persistPayouts(input: {
+    payouts: ComputedPayout[];
+    notifyResults: boolean;
+  }): Promise<Array<{ participationId: string; payoutIsk: string }>> {
+    return await Promise.all(
+      input.payouts.map(async (payout) => {
+        const participation = await this.prisma.cycleParticipation.update({
+          where: { id: payout.participationId },
+          data: {
+            payoutAmountIsk: payout.totalPayoutIsk,
+            status: 'AWAITING_PAYOUT',
+          },
+        });
+
+        this.logger.log(
+          `Set payout for ${payout.characterName}: ${payout.totalPayoutIsk} ISK (investment: ${payout.investmentIsk}, profit share: ${payout.profitShareIsk})`,
+        );
+
+        if (input.notifyResults) {
+          void this.notifications
+            .notifyCycleResults(participation.cycleId)
+            .catch((err: unknown) =>
+              this.logger.warn(
+                `Failed to send cycle results notifications: ${String(err)}`,
+              ),
+            );
+        }
+
+        return {
+          participationId: payout.participationId,
+          payoutIsk: payout.totalPayoutIsk,
+        };
+      }),
+    );
   }
 }

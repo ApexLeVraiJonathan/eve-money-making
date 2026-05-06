@@ -3,10 +3,9 @@ import { PrismaService } from '@api/prisma/prisma.service';
 import { CycleService } from './cycle.service';
 import { PayoutService } from './payout.service';
 import { CycleRolloverService } from './cycle-rollover.service';
-import { WalletService } from '@api/tradecraft/wallet/services/wallet.service';
-import { AllocationService } from '@api/tradecraft/wallet/services/allocation.service';
 import { NotificationService } from '@api/notifications/notification.service';
 import { Prisma } from '@eve/prisma';
+import { OpenCycleWalletRefreshService } from './open-cycle-wallet-refresh.service';
 import type {
   Cycle,
   CycleLifecycleResponse,
@@ -15,13 +14,6 @@ import type {
   CycleSettlementStepName,
   CycleSettlementStepReport,
 } from '@eve/shared/tradecraft-cycles' assert { 'resolution-mode': 'import' };
-
-type AllocationResult = {
-  buysAllocated: number;
-  sellsAllocated: number;
-  unmatchedBuys: number;
-  unmatchedSells: number;
-};
 
 type CycleRecord = {
   id: string;
@@ -49,8 +41,7 @@ export class CycleLifecycleService {
 
   constructor(
     private readonly cycles: CycleService,
-    private readonly wallet: WalletService,
-    private readonly allocation: AllocationService,
+    private readonly walletRefresh: OpenCycleWalletRefreshService,
     private readonly prisma: PrismaService,
     private readonly payouts: PayoutService,
     private readonly rollovers: CycleRolloverService,
@@ -330,7 +321,7 @@ export class CycleLifecycleService {
 
     const importStartedAt = Date.now();
     try {
-      await this.wallet.importAllLinked();
+      await this.walletRefresh.importWallets();
       recordSettlementStep(
         'wallet_import',
         'strict',
@@ -350,8 +341,8 @@ export class CycleLifecycleService {
 
     const allocationStartedAt = Date.now();
     try {
-      const allocationResult: AllocationResult =
-        await this.allocation.allocateAll(settledCycleId);
+      const allocationResult =
+        await this.walletRefresh.allocateCycle(settledCycleId);
       recordSettlementStep(
         'transaction_allocation',
         'strict',

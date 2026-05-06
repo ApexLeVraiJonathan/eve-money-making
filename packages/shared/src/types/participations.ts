@@ -1,4 +1,4 @@
-import type { ParticipationStatus, RolloverType } from "./core-enums";
+import type { ParticipationStatus, RolloverType } from "./core-enums.js";
 
 export interface RolloverIntent {
   rolloverType: RolloverType | null;
@@ -16,16 +16,29 @@ export interface CycleParticipation extends RolloverIntent {
   status: ParticipationStatus;
   memo: string;
   validatedAt: string | null;
-  walletJournalId: bigint | null;
+  walletJournalId: string | null;
   payoutAmountIsk: string | null;
   payoutPaidAt: string | null;
   rolloverDeductedIsk: string | null;
   refundAmountIsk: string | null;
   refundedAt: string | null;
   optedOutAt: string | null;
+  jingleYieldProgramId: string | null;
   createdAt: string;
   updatedAt: string;
 }
+
+export type ParticipationCycleSummary = {
+  id: string;
+  name: string | null;
+  startedAt: string;
+  closedAt: string | null;
+  status: string;
+};
+
+export type CycleParticipationWithCycle = CycleParticipation & {
+  cycle: ParticipationCycleSummary;
+};
 
 export interface JingleYieldProgramSummary {
   id: string;

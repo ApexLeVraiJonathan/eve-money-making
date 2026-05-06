@@ -93,6 +93,20 @@ export type CycleSettlementReport = {
   recoverableFailures: CycleSettlementStepReport[];
 };
 
+export const CYCLE_SETTLEMENT_STEP_LABELS = {
+  wallet_import: "Wallet Import",
+  transaction_allocation: "Transaction Allocation",
+  rollover_buyback: "Cycle Rollover Buyback",
+  close_previous_cycle: "Close Previous Cycle",
+  payout_creation: "Payout Creation",
+  cycle_rollover: "Cycle Rollover",
+} satisfies Record<CycleSettlementStepName, string>;
+
+export const CYCLE_SETTLEMENT_STEP_KIND_LABELS = {
+  strict: "Strict Settlement Step",
+  recoverable: "Recoverable Settlement Step",
+} satisfies Record<CycleSettlementStepKind, string>;
+
 export type CycleLifecycleResponse = {
   cycle: Cycle;
   settlementReport: CycleSettlementReport;
@@ -109,6 +123,7 @@ export type {
   CycleOverview,
   CycleProfit,
   CycleSnapshot,
+  CreateCycleSnapshotResponse,
   CapitalResponse,
   PayoutSuggestion,
 } from "./types/cycles.js";

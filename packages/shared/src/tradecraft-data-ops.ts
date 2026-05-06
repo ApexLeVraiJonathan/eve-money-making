@@ -33,6 +33,13 @@ export type GameDataImportSummary = {
   lastImport: string | null;
 };
 
+export type GameDataImportSummaryResponse = {
+  typeIds: number;
+  regionIds: number;
+  solarSystemIds: number;
+  npcStationIds: number;
+};
+
 export type GameDataImportResult = {
   imported: number;
   updated: number;

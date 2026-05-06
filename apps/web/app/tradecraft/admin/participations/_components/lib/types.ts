@@ -1,15 +1,6 @@
-import type { CycleParticipation } from "@eve/shared/tradecraft-participations";
+import type { CycleParticipationWithCycle } from "@eve/shared/tradecraft-participations";
 
-export type ParticipationWithCycle = CycleParticipation & {
-  cycle?: {
-    id: string;
-    name: string | null;
-    startedAt: string;
-    closedAt: string | null;
-    status: string;
-  } | null;
-  jingleYieldProgramId?: string | null;
-};
+export type ParticipationWithCycle = CycleParticipationWithCycle;
 
 export type CycleGroup = {
   cycleId: string;

@@ -111,6 +111,12 @@ export interface CycleSnapshot {
   createdAt: string;
 }
 
+export type CreateCycleSnapshotResponse = {
+  walletCashIsk: string;
+  inventoryIsk: string;
+  cycleProfitIsk: string;
+};
+
 export interface CycleFeeEvent {
   id: string;
   cycleId: string;

@@ -22,6 +22,7 @@ import {
 } from '@nestjs/swagger';
 import { CycleService } from './services/cycle.service';
 import { CycleLifecycleService } from './services/cycle-lifecycle.service';
+import { LedgerEntryService } from './services/ledger-entry.service';
 import { CycleLineService } from './services/cycle-line.service';
 import { FeeService } from './services/fee.service';
 import { SnapshotService } from './services/snapshot.service';
@@ -81,6 +82,7 @@ export class CyclesController {
   constructor(
     private readonly cycleService: CycleService,
     private readonly cycleLifecycle: CycleLifecycleService,
+    private readonly ledgerEntries: LedgerEntryService,
     private readonly cycleLineService: CycleLineService,
     private readonly feeService: FeeService,
     private readonly snapshotService: SnapshotService,
@@ -269,7 +271,7 @@ export class CyclesController {
   @ApiOperation({ summary: 'Append a ledger entry' })
   @ApiOkResponse({ description: 'Appended ledger entry' })
   async append(@Body() body: AppendEntryRequest): Promise<unknown> {
-    return await this.cycleService.appendEntry(body);
+    return await this.ledgerEntries.appendEntry(body);
   }
 
   @Public()
@@ -280,7 +282,7 @@ export class CyclesController {
   @ApiQuery({ name: 'offset', required: false, type: Number })
   @ApiOkResponse({ description: 'Ledger entries for a cycle' })
   async list(@Query() query: GetEntriesQuery): Promise<unknown> {
-    return await this.cycleService.listEntriesEnriched(
+    return await this.ledgerEntries.listEntriesEnriched(
       query.cycleId,
       query.limit,
       query.offset,
@@ -657,10 +659,7 @@ export class CyclesController {
   @ApiOperation({ summary: 'Match participation payments from wallet' })
   @ApiQuery({ name: 'cycleId', required: false, type: String })
   async matchPayments(@Query('cycleId') cycleId?: string): Promise<unknown> {
-    return await this.paymentMatchingService.matchParticipationPayments(
-      cycleId,
-      (entry) => this.cycleService.appendEntry(entry),
-    );
+    return await this.paymentMatchingService.matchParticipationPayments(cycleId);
   }
 
   @Post('participations/:id/validate')
@@ -676,7 +675,6 @@ export class CyclesController {
     return await this.participationService.adminValidatePayment(
       id,
       body.walletJournal ?? null,
-      (entry) => this.cycleService.appendEntry(entry),
     );
   }
 

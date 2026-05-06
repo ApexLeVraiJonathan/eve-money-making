@@ -7,6 +7,7 @@ import { qk } from "@eve/api-client/queryKeys";
 import { ApiError } from "@eve/api-client";
 import type {
   CycleParticipation,
+  CycleParticipationWithCycle,
   AutoRolloverSettings,
   IncreaseParticipationResponse,
   MatchParticipationPaymentsResponse,
@@ -38,7 +39,7 @@ export function useAllParticipations() {
   return useAuthenticatedQuery({
     queryKey: qk.participations.all(),
     queryFn: () =>
-      client.get<CycleParticipation[]>("/ledger/participations/all"),
+      client.get<CycleParticipationWithCycle[]>("/ledger/participations/all"),
   });
 }
 
