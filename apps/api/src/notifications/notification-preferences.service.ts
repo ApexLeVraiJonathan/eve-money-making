@@ -14,7 +14,10 @@ export class NotificationPreferencesService {
 
   async getForUser(userId: string): Promise<NotificationPreferenceItemDto[]> {
     const rows = await this.prisma.notificationPreference.findMany({
-      where: { userId },
+      where: {
+        userId,
+        notificationType: { in: [...NOTIFICATION_TYPES] },
+      },
     });
 
     const result: NotificationPreferenceItemDto[] = [];
