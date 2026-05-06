@@ -27,6 +27,7 @@ import { FeeService } from './services/fee.service';
 import { SnapshotService } from './services/snapshot.service';
 import { ParticipationService } from './services/participation.service';
 import { PayoutService } from './services/payout.service';
+import { CycleRolloverService } from './services/cycle-rollover.service';
 import { PaymentMatchingService } from './services/payment-matching.service';
 import { CapitalService } from './services/capital.service';
 import { ProfitService } from './services/profit.service';
@@ -86,6 +87,7 @@ export class CyclesController {
     private readonly snapshotService: SnapshotService,
     private readonly participationService: ParticipationService,
     private readonly payoutService: PayoutService,
+    private readonly cycleRolloverService: CycleRolloverService,
     private readonly paymentMatchingService: PaymentMatchingService,
     private readonly capitalService: CapitalService,
     private readonly profitService: ProfitService,
@@ -243,10 +245,12 @@ export class CyclesController {
     @Param('cycleId') cycleId: string,
     @Body() body: BackfillJingleYieldRolloversRequestDto,
   ): Promise<unknown> {
-    return await this.payoutService.backfillJingleYieldRolloversForTargetCycle({
-      targetCycleId: cycleId,
-      sourceClosedCycleId: body?.sourceClosedCycleId,
-    });
+    return await this.cycleRolloverService.backfillJingleYieldRolloversForTargetCycle(
+      {
+        targetCycleId: cycleId,
+        sourceClosedCycleId: body?.sourceClosedCycleId,
+      },
+    );
   }
 
   @Post('entries')

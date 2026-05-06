@@ -12,10 +12,25 @@ function createService(overrides?: {
   esiChars?: Record<string, unknown>;
   characterService?: Record<string, unknown>;
   payouts?: Record<string, unknown>;
+  participations?: Record<string, unknown>;
 }) {
   const prisma = {
+    autoRolloverSettings: {
+      findMany: jest.fn().mockResolvedValue([]),
+    },
+    cycle: {
+      findUnique: jest.fn(),
+      findFirst: jest.fn(),
+    },
     cycleLine: {
       findMany: jest.fn().mockResolvedValue([]),
+      findUnique: jest.fn(),
+      update: jest.fn(),
+    },
+    cycleParticipation: {
+      create: jest.fn(),
+      findMany: jest.fn().mockResolvedValue([]),
+      findFirst: jest.fn(),
       findUnique: jest.fn(),
       update: jest.fn(),
     },
@@ -24,6 +39,9 @@ function createService(overrides?: {
     },
     buyAllocation: {
       create: jest.fn(),
+    },
+    user: {
+      findUnique: jest.fn(),
     },
     ...overrides?.prisma,
   };
@@ -36,12 +54,15 @@ function createService(overrides?: {
     ...overrides?.characterService,
   };
   const payouts = {
-    processRollovers: jest.fn().mockResolvedValue({
-      processed: 0,
-      rolledOver: '0.00',
-      paidOut: '0.00',
+    computePayouts: jest.fn().mockResolvedValue({
+      payouts: [],
+      totalPayout: '0.00',
     }),
     ...overrides?.payouts,
+  };
+  const participations = {
+    createParticipation: jest.fn(),
+    ...overrides?.participations,
   };
 
   const service = new CycleRolloverService(
@@ -50,9 +71,17 @@ function createService(overrides?: {
     {} as never,
     characterService as never,
     payouts as never,
+    participations as never,
   );
 
-  return { service, prisma, esiChars, characterService, payouts };
+  return {
+    service,
+    prisma,
+    esiChars,
+    characterService,
+    payouts,
+    participations,
+  };
 }
 
 describe('CycleRolloverService', () => {
@@ -381,27 +410,187 @@ describe('CycleRolloverService', () => {
     });
   });
 
-  it('delegates participation Rollover Intent processing to payout logic', async () => {
-    const { service, payouts } = createService({
-      payouts: {
-        processRollovers: jest.fn().mockResolvedValue({
-          processed: 2,
-          rolledOver: '100.00',
-          paidOut: '25.00',
-        }),
+  it('seeds planned Cycle rollovers from auto-rollover settings and active JingleYield participations', async () => {
+    const createParticipation = jest.fn().mockResolvedValue({ id: 'auto-1' });
+    const cycleParticipationCreate = jest.fn();
+    const { service, prisma, participations } = createService({
+      participations: {
+        createParticipation,
+      },
+      prisma: {
+        autoRolloverSettings: {
+          findMany: jest.fn().mockResolvedValue([
+            {
+              userId: 'auto-user',
+              defaultRolloverType: 'FULL_PAYOUT',
+            },
+          ]),
+        },
+        cycle: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'open-cycle' }),
+        },
+        cycleParticipation: {
+          create: cycleParticipationCreate,
+          findMany: jest.fn().mockResolvedValue([
+            {
+              id: 'jy-source',
+              userId: 'jy-user',
+              characterName: 'Jingle Pilot',
+              amountIsk: '200.00',
+              userPrincipalIsk: '0.00',
+            },
+          ]),
+          findFirst: jest.fn().mockResolvedValue(null),
+          findUnique: jest.fn(),
+          update: jest.fn(),
+        },
+      },
+    });
+
+    await expect(
+      service.seedPlannedCycleRollovers('planned-cycle'),
+    ).resolves.toEqual({
+      autoRollover: {
+        created: 1,
+        skippedExisting: 0,
+        skippedIneligible: 0,
+        skippedUnsupported: 0,
+      },
+      jingleYield: { created: 1, skippedExisting: 0 },
+    });
+    expect(participations.createParticipation).toHaveBeenCalledWith({
+      cycleId: 'planned-cycle',
+      userId: 'auto-user',
+      amountIsk: '1.00',
+      rollover: { type: 'FULL_PAYOUT' },
+    });
+    expect(prisma.cycleParticipation.findMany).toHaveBeenCalledWith({
+      where: {
+        cycleId: 'open-cycle',
+        userId: { not: null },
+        jingleYieldProgramId: { not: null },
+        jingleYieldProgram: {
+          status: 'ACTIVE',
+        },
+        status: { in: ['OPTED_IN', 'AWAITING_PAYOUT'] },
+      },
+      select: {
+        id: true,
+        userId: true,
+        characterName: true,
+        amountIsk: true,
+        userPrincipalIsk: true,
+      },
+    });
+    expect(cycleParticipationCreate).toHaveBeenCalledWith({
+      data: {
+        cycleId: 'planned-cycle',
+        userId: 'jy-user',
+        characterName: 'Jingle Pilot',
+        amountIsk: '200.00',
+        userPrincipalIsk: '0.00',
+        memo: 'ROLLOVER-planned--jy-sourc-INITIAL',
+        status: 'AWAITING_INVESTMENT',
+        rolloverType: 'INITIAL_ONLY',
+        rolloverRequestedAmountIsk: '200.00',
+        rolloverFromParticipationId: 'jy-source',
+      },
+    });
+    expect(createParticipation).toHaveBeenCalledTimes(1);
+  });
+
+  it('processes participation Rollover Intent from a closed Cycle into the target Cycle', async () => {
+    const cycleParticipationUpdate = jest.fn();
+    const { service, prisma } = createService({
+      prisma: {
+        autoRolloverSettings: {
+          findMany: jest.fn().mockResolvedValue([]),
+        },
+        cycle: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: 'target-cycle',
+            status: 'OPEN',
+          }),
+        },
+        cycleParticipation: {
+          create: jest.fn(),
+          findMany: jest
+            .fn()
+            .mockResolvedValueOnce([])
+            .mockResolvedValueOnce([
+              {
+                id: 'rollover-participation',
+                userId: 'user-1',
+                characterName: 'Pilot',
+                amountIsk: '100.00',
+                userPrincipalIsk: '100.00',
+                rolloverType: 'INITIAL_ONLY',
+                rolloverRequestedAmountIsk: '100.00',
+                rolloverFromParticipationId: 'source-participation',
+                jingleYieldProgram: null,
+                rolloverFromParticipation: {
+                  id: 'source-participation',
+                  cycleId: 'closed-cycle',
+                  amountIsk: '100.00',
+                  userPrincipalIsk: '100.00',
+                  rolloverDeductedIsk: null,
+                  jingleYieldProgram: null,
+                },
+              },
+            ]),
+          findFirst: jest.fn(),
+          findUnique: jest.fn().mockResolvedValue({
+            payoutAmountIsk: '125.00',
+            amountIsk: '100.00',
+            status: 'AWAITING_PAYOUT',
+            payoutPaidAt: null,
+          }),
+          update: cycleParticipationUpdate,
+        },
+        user: {
+          findUnique: jest.fn().mockResolvedValue({
+            tradecraftMaximumCapIsk: null,
+          }),
+        },
       },
     });
 
     await expect(
       service.processParticipationRollovers('closed-cycle', 'target-cycle'),
     ).resolves.toEqual({
-      processed: 2,
+      processed: 1,
       rolledOver: '100.00',
       paidOut: '25.00',
     });
-    expect(payouts.processRollovers).toHaveBeenCalledWith(
-      'closed-cycle',
-      'target-cycle',
-    );
+    expect(prisma.cycleParticipation.findMany).toHaveBeenLastCalledWith({
+      where: {
+        cycleId: 'target-cycle',
+        rolloverType: { not: null },
+        rolloverFromParticipationId: { not: null },
+      },
+      include: {
+        rolloverFromParticipation: {
+          include: {
+            jingleYieldProgram: true,
+          },
+        },
+        jingleYieldProgram: true,
+      },
+    });
+    expect(cycleParticipationUpdate).toHaveBeenCalledWith({
+      where: { id: 'rollover-participation' },
+      data: expect.objectContaining({
+        amountIsk: '100.00',
+        status: 'OPTED_IN',
+      }),
+    });
+    expect(cycleParticipationUpdate).toHaveBeenCalledWith({
+      where: { id: 'source-participation' },
+      data: expect.objectContaining({
+        payoutAmountIsk: '25.00',
+        rolloverDeductedIsk: '100.00',
+        status: 'AWAITING_PAYOUT',
+      }),
+    });
   });
 });

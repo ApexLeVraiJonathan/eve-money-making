@@ -15,7 +15,7 @@ import { EsiService } from '@api/esi/esi.service';
 import { GameDataService } from '@api/game-data/services/game-data.service';
 import { CharacterService } from '@api/characters/services/character.service';
 import { NotificationService } from '@api/notifications/notification.service';
-import { ParticipationService } from './participation.service';
+import { CycleRolloverService } from './cycle-rollover.service';
 import { Prisma } from '@eve/prisma';
 import {
   CAPITAL_CONSTANTS,
@@ -54,7 +54,7 @@ export class CycleService {
     private readonly gameData: GameDataService,
     private readonly characterService: CharacterService,
     private readonly notifications: NotificationService,
-    private readonly participationService: ParticipationService,
+    private readonly rollovers: CycleRolloverService,
   ) {}
 
   /**
@@ -95,160 +95,11 @@ export class CycleService {
       },
     });
 
-    // Automatic rollover: if a user has enabled auto-rollover, create a rollover
-    // participation in this newly planned cycle immediately.
-    //
-    // Notes:
-    // - This is best-effort; failures (e.g., user has no eligible open-cycle
-    //   participation) should not block cycle planning.
-    // - Auto-rollover only supports FULL_PAYOUT and INITIAL_ONLY.
     try {
-      const openCycle = await this.prisma.cycle.findFirst({
-        where: { status: 'OPEN' },
-        select: { id: true },
-      });
-
-      if (openCycle) {
-        const enabled = await this.prisma.autoRolloverSettings.findMany({
-          where: { enabled: true },
-          select: { userId: true, defaultRolloverType: true },
-        });
-
-        if (enabled.length > 0) {
-          this.logger.log(
-            `[AutoRollover] Planning cycle ${cycle.id.substring(0, 8)}: evaluating ${enabled.length} user settings`,
-          );
-        }
-
-        for (const s of enabled) {
-          const type = s.defaultRolloverType;
-          if (type !== 'FULL_PAYOUT' && type !== 'INITIAL_ONLY') {
-            this.logger.warn(
-              `[AutoRollover] Skipping user ${s.userId.substring(0, 8)}: unsupported type=${String(
-                type,
-              )}`,
-            );
-            continue;
-          }
-
-          // Skip if the user already has a participation in this planned cycle
-          const existing = await this.prisma.cycleParticipation.findFirst({
-            where: {
-              cycleId: cycle.id,
-              userId: s.userId,
-            },
-            select: { id: true },
-          });
-          if (existing) continue;
-
-          try {
-            await this.participationService.createParticipation({
-              cycleId: cycle.id,
-              userId: s.userId,
-              amountIsk: '1.00',
-              rollover: { type },
-            });
-          } catch (err: unknown) {
-            // Most common: user isn't eligible (no active participation in OPEN cycle).
-            this.logger.debug(
-              `[AutoRollover] Could not create rollover participation for user ${s.userId.substring(
-                0,
-                8,
-              )}: ${String(err)}`,
-            );
-          }
-        }
-      } else {
-        this.logger.log(
-          `[AutoRollover] No OPEN cycle found; skipping auto-rollover creation for planned cycle ${cycle.id.substring(
-            0,
-            8,
-          )}`,
-        );
-      }
+      await this.rollovers.seedPlannedCycleRollovers(cycle.id);
     } catch (err: unknown) {
       this.logger.warn(
-        `[AutoRollover] Failed to process auto-rollover participations for planned cycle ${cycle.id.substring(
-          0,
-          8,
-        )}: ${String(err)}`,
-      );
-    }
-
-    // JingleYield default rollover:
-    // If a user is in an ACTIVE JingleYield program, their admin-funded locked
-    // principal should keep rolling forward each cycle even if the user doesn't
-    // take action. To support that (and to let the user optionally "increase"
-    // principal during the PLANNED window), we create an INITIAL_ONLY rollover
-    // participation in the newly planned cycle whenever they have a JY-linked
-    // participation in the current OPEN cycle.
-    try {
-      const openCycle = await this.prisma.cycle.findFirst({
-        where: { status: 'OPEN' },
-        select: { id: true },
-      });
-
-      if (openCycle) {
-        const jyFromParticipations =
-          await this.prisma.cycleParticipation.findMany({
-            where: {
-              cycleId: openCycle.id,
-              userId: { not: null },
-              jingleYieldProgramId: { not: null },
-              jingleYieldProgram: { status: 'ACTIVE' },
-              status: { in: ['OPTED_IN', 'AWAITING_PAYOUT'] },
-            },
-            select: {
-              id: true,
-              userId: true,
-              characterName: true,
-              amountIsk: true,
-            },
-          });
-
-        let createdJyRollovers = 0;
-        for (const fromP of jyFromParticipations) {
-          if (!fromP.userId) continue;
-
-          const existing = await this.prisma.cycleParticipation.findFirst({
-            where: { cycleId: cycle.id, userId: fromP.userId },
-            select: { id: true },
-          });
-          if (existing) continue;
-
-          const memo = `ROLLOVER-${cycle.id.substring(0, 8)}-${fromP.id.substring(
-            0,
-            8,
-          )}-INITIAL`;
-
-          await this.prisma.cycleParticipation.create({
-            data: {
-              cycleId: cycle.id,
-              userId: fromP.userId,
-              characterName: fromP.characterName,
-              amountIsk: fromP.amountIsk,
-              memo,
-              status: 'AWAITING_INVESTMENT',
-              rolloverType: 'INITIAL_ONLY',
-              rolloverRequestedAmountIsk: fromP.amountIsk,
-              rolloverFromParticipationId: fromP.id,
-            },
-          });
-          createdJyRollovers++;
-        }
-
-        if (createdJyRollovers > 0) {
-          this.logger.log(
-            `[JY AutoRollover] Planned cycle ${cycle.id.substring(
-              0,
-              8,
-            )}: created ${createdJyRollovers} default INITIAL_ONLY rollover participations`,
-          );
-        }
-      }
-    } catch (err: unknown) {
-      this.logger.warn(
-        `[JY AutoRollover] Failed to create default JY rollovers for planned cycle ${cycle.id.substring(
+        `[CycleRollover] Failed to seed rollovers for planned cycle ${cycle.id.substring(
           0,
           8,
         )}: ${String(err)}`,
