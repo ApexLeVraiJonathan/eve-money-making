@@ -8,6 +8,7 @@ import { NotificationsModule } from '@api/notifications/notifications.module';
 
 // Services
 import { CycleService } from './services/cycle.service';
+import { CycleLifecycleService } from './services/cycle-lifecycle.service';
 import { CycleLineService } from './services/cycle-line.service';
 import { FeeService } from './services/fee.service';
 import { SnapshotService } from './services/snapshot.service';
@@ -37,6 +38,7 @@ import { WalletModule } from '@api/tradecraft/wallet/wallet.module';
   providers: [
     // New focused services
     CycleService,
+    CycleLifecycleService,
     CycleLineService,
     FeeService,
     SnapshotService,
@@ -53,6 +55,7 @@ import { WalletModule } from '@api/tradecraft/wallet/wallet.module';
   controllers: [CyclesController],
   exports: [
     CycleService,
+    CycleLifecycleService,
     CycleLineService,
     FeeService,
     SnapshotService,

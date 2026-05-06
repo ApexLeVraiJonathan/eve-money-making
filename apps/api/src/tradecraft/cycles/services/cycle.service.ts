@@ -24,6 +24,51 @@ import {
   createJitaPriceFetcher,
 } from '../utils/capital-helpers';
 import { fetchStationOrders } from '@api/esi/market-helpers';
+import type {
+  CycleSettlementReport,
+  CycleSettlementStepKind,
+  CycleSettlementStepName,
+  CycleSettlementStepReport,
+} from '@eve/shared/tradecraft-cycles';
+
+type AllocationResult = {
+  buysAllocated: number;
+  sellsAllocated: number;
+  unmatchedBuys: number;
+  unmatchedSells: number;
+};
+
+type CycleSettlementDependencies = {
+  walletService?: { importAllLinked: () => Promise<unknown> };
+  allocationService?: {
+    allocateAll: (cycleId?: string) => Promise<AllocationResult>;
+  };
+};
+
+type CycleRecord = {
+  id: string;
+  name: string | null;
+  status: 'PLANNED' | 'OPEN' | 'COMPLETED';
+  startedAt: Date;
+  closedAt: Date | null;
+  initialCapitalIsk: unknown;
+  initialInjectionIsk: unknown;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+type CycleLifecycleResult = {
+  cycle: CycleRecord;
+  settlementReport: CycleSettlementReport;
+};
+
+type CycleSettlementRecorder = (
+  name: CycleSettlementStepName,
+  kind: CycleSettlementStepKind,
+  status: CycleSettlementStepReport['status'],
+  startedAt: number,
+  message?: string,
+) => void;
 
 /**
  * CycleService handles core cycle lifecycle management.
@@ -80,6 +125,221 @@ export class CycleService {
       where: { status: 'PLANNED' },
       orderBy: { startedAt: 'asc' },
     });
+  }
+
+  private createSettlementReportBuilder(input: {
+    settledCycleId: string | null;
+    targetCycleId: string | null;
+  }): {
+    recordSettlementStep: CycleSettlementRecorder;
+    buildSettlementReport: () => CycleSettlementReport;
+  } {
+    const settlementSteps: CycleSettlementStepReport[] = [];
+    const recordSettlementStep: CycleSettlementRecorder = (
+      name,
+      kind,
+      status,
+      startedAt,
+      message,
+    ) => {
+      settlementSteps.push({
+        name,
+        kind,
+        status,
+        durationMs: Date.now() - startedAt,
+        ...(message ? { message } : {}),
+      });
+    };
+
+    return {
+      recordSettlementStep,
+      buildSettlementReport: () => ({
+        settledCycleId: input.settledCycleId,
+        targetCycleId: input.targetCycleId,
+        steps: settlementSteps,
+        recoverableFailures: settlementSteps.filter(
+          (step) => step.kind === 'recoverable' && step.status === 'failed',
+        ),
+      }),
+    };
+  }
+
+  private async runStrictSettlementSteps(input: {
+    settledCycleId: string;
+    dependencies: CycleSettlementDependencies;
+    recordSettlementStep: CycleSettlementRecorder;
+  }): Promise<void> {
+    const { settledCycleId, dependencies, recordSettlementStep } = input;
+
+    // 1. Import all linked wallet activity before final allocation.
+    if (dependencies.walletService) {
+      const startedAt = Date.now();
+      try {
+        await dependencies.walletService.importAllLinked();
+        recordSettlementStep('wallet_import', 'strict', 'succeeded', startedAt);
+      } catch (error) {
+        recordSettlementStep(
+          'wallet_import',
+          'strict',
+          'failed',
+          startedAt,
+          error instanceof Error ? error.message : String(error),
+        );
+        throw error;
+      }
+    } else {
+      recordSettlementStep(
+        'wallet_import',
+        'strict',
+        'skipped',
+        Date.now(),
+        'No wallet import adapter was provided',
+      );
+    }
+
+    // 2. Run final allocation.
+    if (dependencies.allocationService) {
+      const startedAt = Date.now();
+      try {
+        const allocationResult =
+          await dependencies.allocationService.allocateAll(settledCycleId);
+        recordSettlementStep(
+          'transaction_allocation',
+          'strict',
+          'succeeded',
+          startedAt,
+          `buys=${allocationResult.buysAllocated}, sells=${allocationResult.sellsAllocated}`,
+        );
+        this.logger.log(
+          `Allocation: buys=${allocationResult.buysAllocated}, sells=${allocationResult.sellsAllocated}`,
+        );
+      } catch (error) {
+        recordSettlementStep(
+          'transaction_allocation',
+          'strict',
+          'failed',
+          startedAt,
+          error instanceof Error ? error.message : String(error),
+        );
+        throw error;
+      }
+    } else {
+      recordSettlementStep(
+        'transaction_allocation',
+        'strict',
+        'skipped',
+        Date.now(),
+        'No allocation adapter was provided',
+      );
+    }
+
+    // 3. Process rollover buyback (creates synthetic sell allocations).
+    const buybackStartedAt = Date.now();
+    try {
+      const buybackResult = await this.processRolloverBuyback(settledCycleId);
+      recordSettlementStep(
+        'rollover_buyback',
+        'strict',
+        'succeeded',
+        buybackStartedAt,
+        `${buybackResult.itemsBoughtBack} items, ${buybackResult.totalBuybackIsk.toFixed(2)} ISK`,
+      );
+      this.logger.log(
+        `Buyback: ${buybackResult.itemsBoughtBack} items, ${buybackResult.totalBuybackIsk.toFixed(2)} ISK`,
+      );
+    } catch (error) {
+      recordSettlementStep(
+        'rollover_buyback',
+        'strict',
+        'failed',
+        buybackStartedAt,
+        error instanceof Error ? error.message : String(error),
+      );
+      throw error;
+    }
+  }
+
+  private async runRecoverableSettlementSteps(input: {
+    settledCycleId: string;
+    targetCycleId: string | null;
+    recordSettlementStep: CycleSettlementRecorder;
+  }): Promise<void> {
+    const { settledCycleId, targetCycleId, recordSettlementStep } = input;
+    // 4. Try to create payouts (recoverable).
+    const payoutsStartedAt = Date.now();
+    try {
+      this.logger.log(`Creating payouts for cycle ${settledCycleId}...`);
+      const payouts = await this.payoutService.createPayouts(settledCycleId);
+      this.logger.log(
+        `Created ${payouts.length} payouts for cycle ${settledCycleId}`,
+      );
+      recordSettlementStep(
+        'payout_creation',
+        'recoverable',
+        'succeeded',
+        payoutsStartedAt,
+        `created=${payouts.length}`,
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Payout creation failed for cycle ${settledCycleId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      recordSettlementStep(
+        'payout_creation',
+        'recoverable',
+        'failed',
+        payoutsStartedAt,
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+
+    // 5. Process rollover participations only when there is a target Cycle.
+    const rolloverStartedAt = Date.now();
+    if (!targetCycleId) {
+      recordSettlementStep(
+        'cycle_rollover',
+        'recoverable',
+        'skipped',
+        rolloverStartedAt,
+        'No target Cycle; Rollover Intent becomes payout/admin follow-up',
+      );
+      return;
+    }
+
+    try {
+      this.logger.log(`Processing rollovers for cycle ${settledCycleId}...`);
+      const rolloverResult = await this.payoutService.processRollovers(
+        settledCycleId,
+        targetCycleId,
+      );
+      if (rolloverResult.processed > 0) {
+        this.logger.log(
+          `Processed ${rolloverResult.processed} rollovers: ${rolloverResult.rolledOver} ISK rolled over, ${rolloverResult.paidOut} ISK paid out`,
+        );
+      }
+      recordSettlementStep(
+        'cycle_rollover',
+        'recoverable',
+        'succeeded',
+        rolloverStartedAt,
+        `processed=${rolloverResult.processed}, rolledOver=${rolloverResult.rolledOver}, paidOut=${rolloverResult.paidOut}`,
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Failed to process rollovers for cycle ${settledCycleId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      recordSettlementStep(
+        'cycle_rollover',
+        'recoverable',
+        'failed',
+        rolloverStartedAt,
+        error instanceof Error ? error.message : String(error),
+      );
+    }
   }
 
   /**
@@ -661,15 +921,8 @@ export class CycleService {
    */
   async openPlannedCycle(
     input: { cycleId: string; startedAt?: Date },
-    allocationService?: {
-      allocateAll: (cycleId?: string) => Promise<{
-        buysAllocated: number;
-        sellsAllocated: number;
-        unmatchedBuys: number;
-        unmatchedSells: number;
-      }>;
-    },
-  ) {
+    settlementDependencies: CycleSettlementDependencies = {},
+  ): Promise<CycleLifecycleResult> {
     const now = new Date();
     const cycle = await this.prisma.cycle.findUnique({
       where: { id: input.cycleId },
@@ -678,6 +931,16 @@ export class CycleService {
 
     // Check if there's a currently open cycle (which we'll close and rollover from)
     const previousCycleToClose = await this.getCurrentOpenCycle();
+    const previousCycleToSettle =
+      previousCycleToClose && previousCycleToClose.id !== cycle.id
+        ? previousCycleToClose
+        : null;
+    const shouldSettlePreviousCycle = previousCycleToSettle != null;
+    const { recordSettlementStep, buildSettlementReport } =
+      this.createSettlementReportBuilder({
+        settledCycleId: previousCycleToSettle?.id ?? null,
+        targetCycleId: cycle.id,
+      });
 
     // Build rollover lines list
     const rolloverLinesTemp: Array<{
@@ -819,238 +1082,191 @@ export class CycleService {
       }
     }
 
-    // Auto-close previous cycle BEFORE transaction (if allocation service provided)
-    // Note: previousCycleToClose was already fetched above for rollover logic
-    if (
-      previousCycleToClose &&
-      previousCycleToClose.id !== cycle.id &&
-      allocationService
-    ) {
-      this.logger.log(`Auto-closing previous cycle ${previousCycleToClose.id}`);
-
-      // 1. Run final allocation
-      const allocationResult = await allocationService.allocateAll(
-        previousCycleToClose.id,
-      );
+    // Auto-settle previous cycle BEFORE transaction so the transition can open
+    // the target Cycle only after Strict Settlement Steps succeed.
+    if (shouldSettlePreviousCycle) {
       this.logger.log(
-        `Allocation: buys=${allocationResult.buysAllocated}, sells=${allocationResult.sellsAllocated}`,
+        `Auto-closing previous cycle ${previousCycleToSettle.id}`,
       );
-
-      // 2. Process rollover buyback (creates synthetic sell allocations)
-      const buybackResult = await this.processRolloverBuyback(
-        previousCycleToClose.id,
-      );
-      this.logger.log(
-        `Buyback: ${buybackResult.itemsBoughtBack} items, ${buybackResult.totalBuybackIsk.toFixed(2)} ISK`,
-      );
-
-      // 3. Try to create payouts (non-blocking)
-      try {
-        this.logger.log(
-          `Creating payouts for cycle ${previousCycleToClose.id}...`,
-        );
-        const payouts = await this.payoutService.createPayouts(
-          previousCycleToClose.id,
-        );
-        this.logger.log(
-          `✓ Created ${payouts.length} payouts for cycle ${previousCycleToClose.id}`,
-        );
-        if (payouts.length > 0) {
-          const totalPayout = payouts.reduce(
-            (sum, p) => sum + Number(p.payoutIsk),
-            0,
-          );
-          this.logger.log(
-            `  Total payout amount: ${totalPayout.toFixed(2)} ISK`,
-          );
-        }
-      } catch (error) {
-        this.logger.error(
-          `❌ Payout creation failed for cycle ${previousCycleToClose.id}: ${error instanceof Error ? error.message : String(error)}`,
-        );
-        if (error instanceof Error && error.stack) {
-          this.logger.error(error.stack);
-        }
-      }
-
-      // 4. Process rollover participations
-      try {
-        this.logger.log(
-          `Processing rollovers for cycle ${previousCycleToClose.id}...`,
-        );
-        const rolloverResult = await this.payoutService.processRollovers(
-          previousCycleToClose.id,
-          input.cycleId, // Pass the cycle being opened as the target for rollovers
-        );
-        if (rolloverResult.processed > 0) {
-          this.logger.log(
-            `✓ Processed ${rolloverResult.processed} rollovers: ${rolloverResult.rolledOver} ISK rolled over, ${rolloverResult.paidOut} ISK paid out`,
-          );
-        }
-      } catch (error) {
-        this.logger.warn(
-          `Failed to process rollovers for cycle ${previousCycleToClose.id}: ${error instanceof Error ? error.message : String(error)}`,
-        );
-      }
+      await this.runStrictSettlementSteps({
+        settledCycleId: previousCycleToSettle.id,
+        dependencies: settlementDependencies,
+        recordSettlementStep,
+      });
     }
 
     // All database operations within a transaction
+    const transitionStartedAt = Date.now();
     const openedCycle = await this.prisma.$transaction(
       async (tx: Prisma.TransactionClient) => {
-      // Clean up unpaid and refunded participations for this PLANNED cycle.
-      // BUT:
-      // - Keep rollover participations (they have rolloverType set)
-      // - Keep any JingleYield-linked participations (either the root
-      //   participation or children linked via jingleYieldProgramId), because
-      //   those are managed by the JY lifecycle.
-      await tx.cycleParticipation.deleteMany({
-        where: {
-          cycleId: input.cycleId,
-          status: { in: ['AWAITING_INVESTMENT', 'REFUNDED'] },
-          rolloverType: null,
-          jingleYieldProgramId: null,
-          rootForJingleYieldProgram: null,
-        },
-      });
-
-      // Close any existing open cycle (already handled before transaction if allocationService provided)
-      const open = await this.getCurrentOpenCycle();
-      if (open && open.id !== cycle.id) {
-        this.logger.log(
-          `Marking cycle ${open.id} as completed (already processed above)`,
-        );
-
-        // Mark all active packages as completed
-        await tx.committedPackage.updateMany({
+        // Clean up unpaid and refunded participations for this PLANNED cycle.
+        // BUT:
+        // - Keep rollover participations (they have rolloverType set)
+        // - Keep any JingleYield-linked participations (either the root
+        //   participation or children linked via jingleYieldProgramId), because
+        //   those are managed by the JY lifecycle.
+        await tx.cycleParticipation.deleteMany({
           where: {
-            cycleId: open.id,
-            status: 'active',
-          },
-          data: {
-            status: 'completed',
-          },
-        });
-
-        // Close the cycle
-        await tx.cycle.update({
-          where: { id: open.id },
-          data: {
-            status: 'COMPLETED',
-            closedAt: now,
+            cycleId: input.cycleId,
+            status: { in: ['AWAITING_INVESTMENT', 'REFUNDED'] },
+            rolloverType: null,
+            jingleYieldProgramId: null,
+            rootForJingleYieldProgram: null,
           },
         });
-      }
 
-      // Set startedAt if provided
-      const startedAt =
-        input.startedAt ?? (cycle.startedAt > now ? now : cycle.startedAt);
-      if (startedAt.getTime() !== cycle.startedAt.getTime()) {
-        await tx.cycle.update({
-          where: { id: cycle.id },
-          data: { startedAt },
-        });
-      }
+        // Close any existing open cycle (already handled before transaction if allocationService provided)
+        const open = await this.getCurrentOpenCycle();
+        if (open && open.id !== cycle.id) {
+          this.logger.log(
+            `Marking cycle ${open.id} as completed (already processed above)`,
+          );
 
-      // Sum validated participations
-      const validatedParticipations = await tx.cycleParticipation.aggregate({
-        where: {
-          cycleId: cycle.id,
-          status: 'OPTED_IN',
-          validatedAt: { not: null },
-        },
-        _sum: { amountIsk: true },
-      });
-      const participationTotal = validatedParticipations._sum.amountIsk
-        ? Number(validatedParticipations._sum.amountIsk)
-        : 0;
+          // Mark all active packages as completed
+          await tx.committedPackage.updateMany({
+            where: {
+              cycleId: open.id,
+              status: 'active',
+            },
+            data: {
+              status: 'completed',
+            },
+          });
 
-      // NEW: Initial capital = investor participations ONLY (no wallet ISK)
-      // Rollover purchase cost will be deducted from this capital after transaction
-      const inj = cycle.initialInjectionIsk
-        ? Number(cycle.initialInjectionIsk)
-        : 0;
-      const initialCapital = participationTotal + inj;
-      await tx.cycle.update({
-        where: { id: cycle.id },
-        data: {
-          status: 'OPEN',
-          initialCapitalIsk: initialCapital.toFixed(2),
-        },
-      });
-
-      // Create rollover cycle lines with pre-calculated buy costs
-      if (rolloverLinesTemp.length) {
-        const lineDataWithCosts: Array<{
-          typeId: number;
-          destinationStationId: number;
-          plannedUnits: number;
-          buyCostIsk: string;
-          currentSellPriceIsk: string | null;
-          rolloverFromLineId: string | null;
-        }> = [];
-
-        // Calculate total buy cost for each line
-        for (const l of rolloverLinesTemp) {
-          let totalBuyCost = 0;
-
-          if (l.buyCostIsk > 0) {
-            // Use WAC from previous cycle (already calculated as unit cost)
-            totalBuyCost = l.buyCostIsk * l.plannedUnits;
-          } else {
-            // Use pre-fetched Jita price
-            const jitaPrice = jitaPriceMap.get(l.typeId);
-            if (jitaPrice) {
-              totalBuyCost = jitaPrice * l.plannedUnits;
-              this.logger.log(
-                `[Jita Fallback] Type ${l.typeId}: ${jitaPrice.toFixed(2)} ISK/unit`,
-              );
-            } else {
-              this.logger.error(
-                `[Line Creation] Type ${l.typeId}: Missing buy cost and Jita price failed`,
-              );
-              totalBuyCost = 0;
-            }
-          }
-
-          lineDataWithCosts.push({
-            typeId: l.typeId,
-            destinationStationId: l.destinationStationId,
-            plannedUnits: l.plannedUnits,
-            buyCostIsk: totalBuyCost.toFixed(2),
-            currentSellPriceIsk: l.currentSellPriceIsk
-              ? l.currentSellPriceIsk.toFixed(2)
-              : null,
-            rolloverFromLineId: l.rolloverFromLineId,
+          // Close the cycle
+          await tx.cycle.update({
+            where: { id: open.id },
+            data: {
+              status: 'COMPLETED',
+              closedAt: now,
+            },
           });
         }
 
-        // Bulk create with pre-calculated costs (1 DB operation)
-        await tx.cycleLine.createMany({
-          data: lineDataWithCosts.map((l) => ({
+        // Set startedAt if provided
+        const startedAt =
+          input.startedAt ?? (cycle.startedAt > now ? now : cycle.startedAt);
+        if (startedAt.getTime() !== cycle.startedAt.getTime()) {
+          await tx.cycle.update({
+            where: { id: cycle.id },
+            data: { startedAt },
+          });
+        }
+
+        // Sum validated participations
+        const validatedParticipations = await tx.cycleParticipation.aggregate({
+          where: {
             cycleId: cycle.id,
-            typeId: l.typeId,
-            destinationStationId: l.destinationStationId,
-            plannedUnits: l.plannedUnits,
-            unitsBought: l.plannedUnits,
-            // Rollover inventory corresponds to already-listed market orders,
-            // so mark all rollover units as listed at cycle open.
-            listedUnits: l.plannedUnits,
-            buyCostIsk: l.buyCostIsk,
-            currentSellPriceIsk: l.currentSellPriceIsk,
-            // Mark as rollover and link to previous cycle
-            isRollover: true,
-            rolloverFromCycleId: previousCycleToClose?.id ?? null,
-            rolloverFromLineId: l.rolloverFromLineId,
-          })),
+            status: 'OPTED_IN',
+            validatedAt: { not: null },
+          },
+          _sum: { amountIsk: true },
         });
-        this.logger.log(
-          `Created ${rolloverLinesTemp.length} rollover cycle lines for cycle ${cycle.id}`,
-        );
-      }
+        const participationTotal = validatedParticipations._sum.amountIsk
+          ? Number(validatedParticipations._sum.amountIsk)
+          : 0;
+
+        // NEW: Initial capital = investor participations ONLY (no wallet ISK)
+        // Rollover purchase cost will be deducted from this capital after transaction
+        const inj = cycle.initialInjectionIsk
+          ? Number(cycle.initialInjectionIsk)
+          : 0;
+        const initialCapital = participationTotal + inj;
+        await tx.cycle.update({
+          where: { id: cycle.id },
+          data: {
+            status: 'OPEN',
+            initialCapitalIsk: initialCapital.toFixed(2),
+          },
+        });
+
+        // Create rollover cycle lines with pre-calculated buy costs
+        if (rolloverLinesTemp.length) {
+          const lineDataWithCosts: Array<{
+            typeId: number;
+            destinationStationId: number;
+            plannedUnits: number;
+            buyCostIsk: string;
+            currentSellPriceIsk: string | null;
+            rolloverFromLineId: string | null;
+          }> = [];
+
+          // Calculate total buy cost for each line
+          for (const l of rolloverLinesTemp) {
+            let totalBuyCost = 0;
+
+            if (l.buyCostIsk > 0) {
+              // Use WAC from previous cycle (already calculated as unit cost)
+              totalBuyCost = l.buyCostIsk * l.plannedUnits;
+            } else {
+              // Use pre-fetched Jita price
+              const jitaPrice = jitaPriceMap.get(l.typeId);
+              if (jitaPrice) {
+                totalBuyCost = jitaPrice * l.plannedUnits;
+                this.logger.log(
+                  `[Jita Fallback] Type ${l.typeId}: ${jitaPrice.toFixed(2)} ISK/unit`,
+                );
+              } else {
+                this.logger.error(
+                  `[Line Creation] Type ${l.typeId}: Missing buy cost and Jita price failed`,
+                );
+                totalBuyCost = 0;
+              }
+            }
+
+            lineDataWithCosts.push({
+              typeId: l.typeId,
+              destinationStationId: l.destinationStationId,
+              plannedUnits: l.plannedUnits,
+              buyCostIsk: totalBuyCost.toFixed(2),
+              currentSellPriceIsk: l.currentSellPriceIsk
+                ? l.currentSellPriceIsk.toFixed(2)
+                : null,
+              rolloverFromLineId: l.rolloverFromLineId,
+            });
+          }
+
+          // Bulk create with pre-calculated costs (1 DB operation)
+          await tx.cycleLine.createMany({
+            data: lineDataWithCosts.map((l) => ({
+              cycleId: cycle.id,
+              typeId: l.typeId,
+              destinationStationId: l.destinationStationId,
+              plannedUnits: l.plannedUnits,
+              unitsBought: l.plannedUnits,
+              // Rollover inventory corresponds to already-listed market orders,
+              // so mark all rollover units as listed at cycle open.
+              listedUnits: l.plannedUnits,
+              buyCostIsk: l.buyCostIsk,
+              currentSellPriceIsk: l.currentSellPriceIsk,
+              // Mark as rollover and link to previous cycle
+              isRollover: true,
+              rolloverFromCycleId: previousCycleToClose?.id ?? null,
+              rolloverFromLineId: l.rolloverFromLineId,
+            })),
+          });
+          this.logger.log(
+            `Created ${rolloverLinesTemp.length} rollover cycle lines for cycle ${cycle.id}`,
+          );
+        }
 
         return await tx.cycle.findUnique({ where: { id: cycle.id } });
       },
     );
+    if (!openedCycle) throw new Error('Opened cycle not found');
+    if (shouldSettlePreviousCycle) {
+      recordSettlementStep(
+        'close_previous_cycle',
+        'strict',
+        'succeeded',
+        transitionStartedAt,
+      );
+      await this.runRecoverableSettlementSteps({
+        settledCycleId: previousCycleToSettle.id,
+        targetCycleId: input.cycleId,
+        recordSettlementStep,
+      });
+    }
 
     // After transaction: Process rollover purchase (synthetic buy allocations)
     // Check if we actually have rollover lines (regardless of whether there's a previous cycle)
@@ -1084,7 +1300,7 @@ export class CycleService {
         );
     }
 
-    return openedCycle;
+    return { cycle: openedCycle, settlementReport: buildSettlementReport() };
   }
 
   /**
@@ -1319,116 +1535,67 @@ export class CycleService {
     };
   }
 
-  /**
-   * Orchestrate full cycle closing with final settlement.
-   *
-   * Steps:
-   * 1. Import all linked wallet transactions
-   * 2. Allocate transactions to cycle lines
-   * 3. Process rollover buyback (admin buys remaining inventory)
-   * 4. Close the cycle
-   * 5. Create payouts for participants
-   *
-   * @param cycleId - Cycle to close
-   * @param walletService - Wallet service for transaction import
-   * @param allocationService - Allocation service for transaction matching
-   * @returns Closed cycle
-   */
-  async closeCycleWithFinalSettlement(
-    cycleId: string,
-    walletService: { importAllLinked: () => Promise<unknown> },
-    allocationService: {
-      allocateAll: (cycleId?: string) => Promise<{
-        buysAllocated: number;
-        sellsAllocated: number;
-        unmatchedBuys: number;
-        unmatchedSells: number;
-      }>;
-    },
-  ): Promise<unknown> {
-    const tStart = Date.now();
-    this.logger.log(
-      `Closing cycle ${cycleId} - starting wallet import, allocation, buyback, payouts, and rollovers`,
-    );
-
-    // 1) Wallet import
-    const tWalletStart = Date.now();
-    await walletService.importAllLinked();
-    const tWalletMs = Date.now() - tWalletStart;
-    this.logger.log(
-      `[CloseCycle] Wallet import completed for cycle ${cycleId} in ${tWalletMs}ms`,
-    );
-
-    // 2) Allocation
-    const tAllocStart = Date.now();
-    const allocationResult = await allocationService.allocateAll(cycleId);
-    const tAllocMs = Date.now() - tAllocStart;
-    this.logger.log(
-      `[CloseCycle] Allocation completed for cycle ${cycleId} in ${tAllocMs}ms: buys=${allocationResult.buysAllocated}, sells=${allocationResult.sellsAllocated}`,
-    );
-
-    // 3) Rollover buyback BEFORE closing cycle
-    const tBuybackStart = Date.now();
-    const buybackResult = await this.processRolloverBuyback(cycleId);
-    const tBuybackMs = Date.now() - tBuybackStart;
-    this.logger.log(
-      `[CloseCycle] Buyback completed in ${tBuybackMs}ms: ${buybackResult.itemsBoughtBack} items, ${buybackResult.totalBuybackIsk.toFixed(2)} ISK`,
-    );
-
-    // 4) Close the cycle
-    const tCloseStart = Date.now();
-    const closedCycle = await this.closeCycle(cycleId, new Date());
-    const tCloseMs = Date.now() - tCloseStart;
-    this.logger.log(
-      `[CloseCycle] Cycle ${cycleId} marked COMPLETED in ${tCloseMs}ms`,
-    );
-
-    // 5) Create payouts
-    const tPayoutStart = Date.now();
-    try {
-      const payouts = await this.payoutService.createPayouts(cycleId);
-      const tPayoutMs = Date.now() - tPayoutStart;
-      this.logger.log(
-        `[CloseCycle] Created ${payouts.length} payouts for cycle ${cycleId} in ${tPayoutMs}ms`,
-      );
-    } catch (error) {
-      const tPayoutMs = Date.now() - tPayoutStart;
-      this.logger.warn(
-        `[CloseCycle] Failed to create payouts for cycle ${cycleId} after ${tPayoutMs}ms: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
+  async settleOpenCycle(
+    input: { cycleId: string },
+    settlementDependencies: CycleSettlementDependencies = {},
+  ): Promise<CycleLifecycleResult> {
+    const openCycle = await this.getCurrentOpenCycle();
+    if (!openCycle) {
+      throw new BadRequestException('No Open Cycle to settle');
+    }
+    if (openCycle.id !== input.cycleId) {
+      throw new BadRequestException(
+        'Only the current Open Cycle can be settled',
       );
     }
 
-    // 6) Process rollover participations
-    const tRolloverStart = Date.now();
-    try {
-      const rolloverResult = await this.payoutService.processRollovers(cycleId);
-      const tRolloverMs = Date.now() - tRolloverStart;
-      if (rolloverResult.processed > 0) {
-        this.logger.log(
-          `[CloseCycle] Processed ${rolloverResult.processed} rollovers in ${tRolloverMs}ms: ${rolloverResult.rolledOver} ISK rolled over, ${rolloverResult.paidOut} ISK paid out`,
-        );
-      } else {
-        this.logger.log(
-          `[CloseCycle] No rollovers to process for cycle ${cycleId} (took ${tRolloverMs}ms)`,
-        );
-      }
-    } catch (error) {
-      const tRolloverMs = Date.now() - tRolloverStart;
-      this.logger.warn(
-        `[CloseCycle] Failed to process rollovers for cycle ${cycleId} after ${tRolloverMs}ms: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
-    }
+    const { recordSettlementStep, buildSettlementReport } =
+      this.createSettlementReportBuilder({
+        settledCycleId: openCycle.id,
+        targetCycleId: null,
+      });
 
-    const tTotalMs = Date.now() - tStart;
     this.logger.log(
-      `[CloseCycle] Full closeCycleWithFinalSettlement for cycle ${cycleId} completed in ${tTotalMs}ms`,
+      `Settling Open Cycle ${openCycle.id} without opening a target Cycle`,
     );
 
-    return closedCycle;
+    await this.runStrictSettlementSteps({
+      settledCycleId: openCycle.id,
+      dependencies: settlementDependencies,
+      recordSettlementStep,
+    });
+
+    const closeStartedAt = Date.now();
+    let closedCycle: CycleRecord;
+    try {
+      closedCycle = await this.closeCycle(openCycle.id, new Date());
+      recordSettlementStep(
+        'close_previous_cycle',
+        'strict',
+        'succeeded',
+        closeStartedAt,
+      );
+    } catch (error) {
+      recordSettlementStep(
+        'close_previous_cycle',
+        'strict',
+        'failed',
+        closeStartedAt,
+        error instanceof Error ? error.message : String(error),
+      );
+      throw error;
+    }
+
+    await this.runRecoverableSettlementSteps({
+      settledCycleId: openCycle.id,
+      targetCycleId: null,
+      recordSettlementStep,
+    });
+
+    return {
+      cycle: closedCycle,
+      settlementReport: buildSettlementReport(),
+    };
   }
 
   /**

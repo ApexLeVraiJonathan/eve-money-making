@@ -1,3 +1,5 @@
+import type { Cycle } from "./types/cycles.js";
+
 export type CycleHistoryItem = {
   id: string;
   name: string | null;
@@ -64,6 +66,38 @@ export type FinalizePayoutsResponse = {
   created: number;
 };
 
+export type CycleSettlementStepName =
+  | "wallet_import"
+  | "transaction_allocation"
+  | "rollover_buyback"
+  | "close_previous_cycle"
+  | "payout_creation"
+  | "cycle_rollover";
+
+export type CycleSettlementStepKind = "strict" | "recoverable";
+
+export type CycleSettlementStepStatus = "succeeded" | "failed" | "skipped";
+
+export type CycleSettlementStepReport = {
+  name: CycleSettlementStepName;
+  kind: CycleSettlementStepKind;
+  status: CycleSettlementStepStatus;
+  durationMs?: number;
+  message?: string;
+};
+
+export type CycleSettlementReport = {
+  settledCycleId: string | null;
+  targetCycleId: string | null;
+  steps: CycleSettlementStepReport[];
+  recoverableFailures: CycleSettlementStepReport[];
+};
+
+export type CycleLifecycleResponse = {
+  cycle: Cycle;
+  settlementReport: CycleSettlementReport;
+};
+
 export type {
   Cycle,
   CycleFeeEvent,
@@ -77,4 +111,4 @@ export type {
   CycleSnapshot,
   CapitalResponse,
   PayoutSuggestion,
-} from "./types/cycles";
+} from "./types/cycles.js";

@@ -21,6 +21,7 @@ import {
   ApiParam,
 } from '@nestjs/swagger';
 import { CycleService } from './services/cycle.service';
+import { CycleLifecycleService } from './services/cycle-lifecycle.service';
 import { CycleLineService } from './services/cycle-line.service';
 import { FeeService } from './services/fee.service';
 import { SnapshotService } from './services/snapshot.service';
@@ -79,6 +80,7 @@ export class CyclesController {
 
   constructor(
     private readonly cycleService: CycleService,
+    private readonly cycleLifecycle: CycleLifecycleService,
     private readonly cycleLineService: CycleLineService,
     private readonly feeService: FeeService,
     private readonly snapshotService: SnapshotService,
@@ -191,11 +193,7 @@ export class CyclesController {
   @ApiParam({ name: 'id', description: 'Cycle ID' })
   @ApiOkResponse({ description: 'Closed cycle settlement result' })
   async closeCycle(@Param('id') id: string): Promise<unknown> {
-    return await this.cycleService.closeCycleWithFinalSettlement(
-      id,
-      this.wallet,
-      this.allocation,
-    );
+    return await this.cycleLifecycle.settleOpenCycle({ cycleId: id });
   }
 
   @Post('cycles/:id/allocate')
@@ -222,13 +220,10 @@ export class CyclesController {
     @Param('id') id: string,
     @Body() body: OpenCycleRequest,
   ): Promise<unknown> {
-    return await this.cycleService.openPlannedCycle(
-      {
-        cycleId: id,
-        startedAt: body.startedAt ? new Date(body.startedAt) : undefined,
-      },
-      this.allocation, // Pass allocation service for automatic cycle closure
-    );
+    return await this.cycleLifecycle.openPlannedCycle({
+      cycleId: id,
+      startedAt: body.startedAt ? new Date(body.startedAt) : undefined,
+    });
   }
 
   @Post('cycles/:cycleId/rollovers/backfill-jingle-yield')

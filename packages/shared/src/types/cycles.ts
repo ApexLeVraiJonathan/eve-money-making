@@ -1,4 +1,4 @@
-import type { CycleStatus } from "./core-enums";
+import type { CycleStatus } from "./core-enums.js";
 
 export interface Cycle {
   id: string;

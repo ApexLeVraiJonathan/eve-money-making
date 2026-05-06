@@ -14,6 +14,7 @@ import type {
   CycleProfit,
   CycleSnapshot,
   CapitalResponse,
+  CycleLifecycleResponse,
   PayoutSuggestion,
 } from "@eve/shared/tradecraft-cycles";
 import type {
@@ -321,7 +322,10 @@ export function useOpenCycle() {
     }: {
       cycleId: string;
       startedAt?: string;
-    }) => client.post<Cycle>(`/ledger/cycles/${cycleId}/open`, { startedAt }),
+    }) =>
+      client.post<CycleLifecycleResponse>(`/ledger/cycles/${cycleId}/open`, {
+        startedAt,
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: qk.cycles._root });
     },
@@ -337,7 +341,10 @@ export function useCloseCycle() {
 
   return useMutation({
     mutationFn: (cycleId: string) =>
-      client.post<Cycle>(`/ledger/cycles/${cycleId}/close`, {}),
+      client.post<CycleLifecycleResponse>(
+        `/ledger/cycles/${cycleId}/close`,
+        {},
+      ),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: qk.cycles._root });
     },
