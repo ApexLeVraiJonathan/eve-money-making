@@ -24,6 +24,7 @@ import { CycleLinesIntelService } from './services/cycle-lines-intel.service';
 import { LedgerEntryService } from './services/ledger-entry.service';
 import { OpenCycleWalletRefreshService } from './services/open-cycle-wallet-refresh.service';
 import { ParticipationCapsService } from './services/participation-caps.service';
+import { CycleSettlementRunnerService } from './services/cycle-settlement-runner.service';
 
 // Controllers
 import { CyclesController } from './cycles.controller';
@@ -44,6 +45,7 @@ import { WalletModule } from '@api/tradecraft/wallet/wallet.module';
     // New focused services
     CycleService,
     CycleLifecycleService,
+    CycleSettlementRunnerService,
     LedgerEntryService,
     OpenCycleWalletRefreshService,
     ParticipationCapsService,

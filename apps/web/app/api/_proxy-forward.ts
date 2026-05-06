@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-
-const API_URL = process.env.API_URL || "http://localhost:3000";
+import {
+  getServerApiBaseUrl,
+  getServerApiTimeoutMs,
+} from "@/lib/server-api-config";
 
 const HOP_BY_HOP_HEADERS = new Set([
   "connection",
@@ -15,7 +17,7 @@ const HOP_BY_HOP_HEADERS = new Set([
 
 function buildTargetUrl(req: NextRequest, pathParts: string[]): URL {
   const upstreamPath = pathParts.join("/");
-  const target = new URL(`/${upstreamPath}`, API_URL);
+  const target = new URL(`/${upstreamPath}`, getServerApiBaseUrl());
   target.search = req.nextUrl.search;
   return target;
 }
@@ -39,12 +41,26 @@ export async function forwardApiRequest(req: NextRequest, pathParts: string[]) {
   const body =
     method === "GET" || method === "HEAD" ? undefined : await req.arrayBuffer();
 
-  const upstream = await fetch(target.toString(), {
-    method,
-    headers,
-    body,
-    redirect: "manual",
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), getServerApiTimeoutMs());
+  let upstream: Response;
+  try {
+    upstream = await fetch(target.toString(), {
+      method,
+      headers,
+      body,
+      redirect: "manual",
+      signal: controller.signal,
+    });
+  } catch (error) {
+    const message =
+      error instanceof Error && error.name === "AbortError"
+        ? "Upstream API request timed out"
+        : "Upstream API request failed";
+    return NextResponse.json({ message }, { status: 502 });
+  } finally {
+    clearTimeout(timeout);
+  }
 
   return new NextResponse(upstream.body, {
     status: upstream.status,

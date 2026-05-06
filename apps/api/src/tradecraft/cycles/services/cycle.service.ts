@@ -22,6 +22,10 @@ import {
   computeCostBasisPositions,
   createJitaPriceFetcher,
 } from '../utils/capital-helpers';
+import type {
+  CycleHistoryItem,
+  CycleOverview,
+} from '@eve/shared/tradecraft-cycles' assert { 'resolution-mode': 'import' };
 /**
  * CycleService handles cycle records, ledger entries, and cycle summaries.
  *
@@ -129,7 +133,7 @@ export class CycleService {
   /**
    * Get public cycle history with profit metrics (for completed cycles only)
    */
-  async getCycleHistory() {
+  async getCycleHistory(): Promise<CycleHistoryItem[]> {
     const completedCycles = await this.prisma.cycle.findMany({
       where: { status: 'COMPLETED' },
       orderBy: { startedAt: 'desc' },
@@ -174,7 +178,7 @@ export class CycleService {
           startedAt: cycle.startedAt.toISOString(),
           closedAt: cycle.closedAt?.toISOString() ?? null,
           status: cycle.status,
-          initialCapitalIsk: cycle.initialCapitalIsk,
+          initialCapitalIsk: cycle.initialCapitalIsk?.toString() ?? '0.00',
           profitIsk: profit.toFixed(2),
           roiPercent: roi.toFixed(2),
           participantCount: participationCount,
@@ -500,59 +504,13 @@ export class CycleService {
   /**
    * Get overview of current and next cycles with stats
    */
-  async getCycleOverview(): Promise<{
-    current: null | {
-      id: string;
-      name: string | null;
-      startedAt: string;
-      endsAt: string | null;
-      status: 'Open' | 'Closed' | 'Planned';
-      profit: {
-        current: number;
-        estimated: number;
-        portfolioValue: number;
-      };
-      capital: {
-        cash: number;
-        inventory: number;
-        total: number;
-      };
-      initialCapitalIsk: number;
-      participantCount: number;
-      totalInvestorCapital: number;
-    };
-    next: null | {
-      id: string;
-      name: string | null;
-      startedAt: string;
-      status: 'Planned';
-    };
-  }> {
+  async getCycleOverview(): Promise<CycleOverview> {
     const [current, next] = await Promise.all([
       this.getCurrentOpenCycle(),
       this.getNextPlannedCycle(),
     ]);
 
-    let currentOut: null | {
-      id: string;
-      name: string | null;
-      startedAt: string;
-      endsAt: string | null;
-      status: 'Open' | 'Closed' | 'Planned';
-      profit: {
-        current: number;
-        estimated: number;
-        portfolioValue: number;
-      };
-      capital: {
-        cash: number;
-        inventory: number;
-        total: number;
-      };
-      initialCapitalIsk: number;
-      participantCount: number;
-      totalInvestorCapital: number;
-    } = null;
+    let currentOut: CycleOverview['current'] = null;
 
     if (current) {
       const [portfolioData, estimatedData, profitData] = await Promise.all([

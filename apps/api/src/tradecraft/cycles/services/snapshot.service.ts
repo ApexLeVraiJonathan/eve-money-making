@@ -3,6 +3,10 @@ import { PrismaService } from '@api/prisma/prisma.service';
 import { EsiCharactersService } from '@api/esi/esi-characters.service';
 import { CharacterService } from '@api/characters/services/character.service';
 import { ProfitService } from './profit.service';
+import type {
+  CreateCycleSnapshotResponse,
+  CycleSnapshot,
+} from '@eve/shared/tradecraft-cycles' assert { 'resolution-mode': 'import' };
 
 /**
  * SnapshotService handles cycle state snapshots.
@@ -36,11 +40,9 @@ export class SnapshotService {
    * @param cycleId - Cycle to snapshot
    * @returns Snapshot data
    */
-  async createCycleSnapshot(cycleId: string): Promise<{
-    walletCashIsk: string;
-    inventoryIsk: string;
-    cycleProfitIsk: string;
-  }> {
+  async createCycleSnapshot(
+    cycleId: string,
+  ): Promise<CreateCycleSnapshotResponse> {
     // 1) Get cycle's initial capital
     const cycle = await this.prisma.cycle.findUnique({
       where: { id: cycleId },
@@ -96,10 +98,19 @@ export class SnapshotService {
   /**
    * Get all snapshots for a cycle
    */
-  async getCycleSnapshots(cycleId: string) {
-    return await this.prisma.cycleSnapshot.findMany({
+  async getCycleSnapshots(cycleId: string): Promise<CycleSnapshot[]> {
+    const snapshots = await this.prisma.cycleSnapshot.findMany({
       where: { cycleId },
       orderBy: { snapshotAt: 'asc' },
     });
+    return snapshots.map((snapshot) => ({
+      id: snapshot.id,
+      cycleId: snapshot.cycleId,
+      snapshotAt: snapshot.snapshotAt.toISOString(),
+      walletCashIsk: snapshot.walletCashIsk.toString(),
+      inventoryIsk: snapshot.inventoryIsk.toString(),
+      cycleProfitIsk: snapshot.cycleProfitIsk.toString(),
+      createdAt: snapshot.createdAt.toISOString(),
+    }));
   }
 }

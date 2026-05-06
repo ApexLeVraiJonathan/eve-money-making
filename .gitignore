@@ -1,10 +1,15 @@
 node_modules  
 dist  
 build
+coverage
+.turbo
 .env
 .playwright-mcp
 prompts
 apps/api/sde-jsonl
+apps/api/dist/
+apps/web/.next/
+*.tsbuildinfo
 script/.venv
 script/.venv312
 script/__pycache__

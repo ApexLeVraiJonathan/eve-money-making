@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { clientForApp, type ApiClient, type AppId } from "@eve/api-client";
+import { getActiveAppByPathname } from "@/app/apps.config";
 
 /**
  * Hook to get an API client that always sends the browser's cookies
@@ -12,8 +13,9 @@ import { clientForApp, type ApiClient, type AppId } from "@eve/api-client";
  * infinite re-fetch loops.
  */
 function inferAppIdFromPathname(pathname: string): AppId {
-  if (pathname.startsWith("/tradecraft")) return "tradecraft";
-  if (pathname.startsWith("/characters")) return "characters";
+  const activeApp = getActiveAppByPathname(pathname);
+  if (activeApp?.id === "arbitrage") return "tradecraft";
+  if (activeApp?.id === "characters") return "characters";
   return "core";
 }
 

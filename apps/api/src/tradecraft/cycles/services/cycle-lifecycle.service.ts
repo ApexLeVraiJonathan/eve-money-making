@@ -1,21 +1,14 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '@api/prisma/prisma.service';
 import { CycleService } from './cycle.service';
-import { PayoutService } from './payout.service';
 import { CycleRolloverService } from './cycle-rollover.service';
 import { NotificationService } from '@api/notifications/notification.service';
 import { Prisma } from '@eve/prisma';
-import {
-  OpenCycleWalletRefreshError,
-  OpenCycleWalletRefreshService,
-} from './open-cycle-wallet-refresh.service';
+import { CycleSettlementReportBuilder } from './cycle-settlement-report.builder';
+import { CycleSettlementRunnerService } from './cycle-settlement-runner.service';
 import type {
   Cycle,
   CycleLifecycleResponse,
-  CycleSettlementReport,
-  CycleSettlementStepKind,
-  CycleSettlementStepName,
-  CycleSettlementStepReport,
 } from '@eve/shared/tradecraft-cycles' assert { 'resolution-mode': 'import' };
 
 type CycleRecord = {
@@ -30,24 +23,15 @@ type CycleRecord = {
   updatedAt: Date;
 };
 
-type CycleSettlementRecorder = (
-  name: CycleSettlementStepName,
-  kind: CycleSettlementStepKind,
-  status: CycleSettlementStepReport['status'],
-  startedAt: number,
-  message?: string,
-) => void;
-
 @Injectable()
 export class CycleLifecycleService {
   private readonly logger = new Logger(CycleLifecycleService.name);
 
   constructor(
     private readonly cycles: CycleService,
-    private readonly walletRefresh: OpenCycleWalletRefreshService,
     private readonly prisma: PrismaService,
-    private readonly payouts: PayoutService,
     private readonly rollovers: CycleRolloverService,
+    private readonly settlementRunner: CycleSettlementRunnerService,
     private readonly notifications: NotificationService,
   ) {}
 
@@ -67,11 +51,10 @@ export class CycleLifecycleService {
         ? previousCycleToClose
         : null;
     const shouldSettlePreviousCycle = previousCycleToSettle != null;
-    const { recordSettlementStep, buildSettlementReport } =
-      this.createSettlementReportBuilder({
-        settledCycleId: previousCycleToSettle?.id ?? null,
-        targetCycleId: cycle.id,
-      });
+    const settlementReport = new CycleSettlementReportBuilder({
+      settledCycleId: previousCycleToSettle?.id ?? null,
+      targetCycleId: cycle.id,
+    });
 
     const rolloverLinesTemp = await this.rollovers.buildRolloverLineCandidates(
       previousCycleToSettle?.id ?? null,
@@ -85,9 +68,9 @@ export class CycleLifecycleService {
       this.logger.log(
         `Auto-closing previous cycle ${previousCycleToSettle.id}`,
       );
-      await this.runStrictSettlementSteps({
+      await this.settlementRunner.runStrictSteps({
         settledCycleId: previousCycleToSettle.id,
-        recordSettlementStep,
+        recordSettlementStep: settlementReport.recordStep,
       });
     }
 
@@ -173,35 +156,30 @@ export class CycleLifecycleService {
     if (!openedCycle) throw new Error('Opened cycle not found');
 
     if (shouldSettlePreviousCycle) {
-      recordSettlementStep(
+      settlementReport.recordStep(
         'close_previous_cycle',
         'strict',
         'succeeded',
         transitionStartedAt,
       );
-      await this.runRecoverableSettlementSteps({
+      await this.settlementRunner.runRecoverableSteps({
         settledCycleId: previousCycleToSettle.id,
         targetCycleId: input.cycleId,
-        recordSettlementStep,
+        recordSettlementStep: settlementReport.recordStep,
       });
     }
 
-    const rolloverLineCount = await this.prisma.cycleLine.count({
-      where: { cycleId: cycle.id, isRollover: true },
-    });
-
-    if (rolloverLineCount > 0) {
-      const rolloverResult = await this.rollovers.processInventoryPurchase(
+    const rolloverResult =
+      await this.rollovers.processInventoryPurchaseIfPresent(
         cycle.id,
         previousCycleToClose?.id ?? null,
       );
 
-      if (rolloverResult.totalRolloverCostIsk > 0) {
-        this.logger.log(
-          `Rollover purchase completed: ${rolloverResult.itemsRolledOver} items, ` +
-            `${rolloverResult.totalRolloverCostIsk.toFixed(2)} ISK in inventory from rollover`,
-        );
-      }
+    if (rolloverResult.totalRolloverCostIsk > 0) {
+      this.logger.log(
+        `Rollover purchase completed: ${rolloverResult.itemsRolledOver} items, ` +
+          `${rolloverResult.totalRolloverCostIsk.toFixed(2)} ISK in inventory from rollover`,
+      );
     }
 
     void this.notifications
@@ -214,7 +192,7 @@ export class CycleLifecycleService {
 
     return {
       cycle: this.toCycleContract(openedCycle),
-      settlementReport: buildSettlementReport(),
+      settlementReport: settlementReport.build(),
     };
   }
 
@@ -231,33 +209,32 @@ export class CycleLifecycleService {
       );
     }
 
-    const { recordSettlementStep, buildSettlementReport } =
-      this.createSettlementReportBuilder({
-        settledCycleId: openCycle.id,
-        targetCycleId: null,
-      });
+    const settlementReport = new CycleSettlementReportBuilder({
+      settledCycleId: openCycle.id,
+      targetCycleId: null,
+    });
 
     this.logger.log(
       `Settling Open Cycle ${openCycle.id} without opening a target Cycle`,
     );
 
-    await this.runStrictSettlementSteps({
+    await this.settlementRunner.runStrictSteps({
       settledCycleId: openCycle.id,
-      recordSettlementStep,
+      recordSettlementStep: settlementReport.recordStep,
     });
 
     const closeStartedAt = Date.now();
     let closedCycle: CycleRecord;
     try {
       closedCycle = await this.cycles.closeCycle(openCycle.id, new Date());
-      recordSettlementStep(
+      settlementReport.recordStep(
         'close_previous_cycle',
         'strict',
         'succeeded',
         closeStartedAt,
       );
     } catch (error) {
-      recordSettlementStep(
+      settlementReport.recordStep(
         'close_previous_cycle',
         'strict',
         'failed',
@@ -267,214 +244,16 @@ export class CycleLifecycleService {
       throw error;
     }
 
-    await this.runRecoverableSettlementSteps({
+    await this.settlementRunner.runRecoverableSteps({
       settledCycleId: openCycle.id,
       targetCycleId: null,
-      recordSettlementStep,
+      recordSettlementStep: settlementReport.recordStep,
     });
 
     return {
       cycle: this.toCycleContract(closedCycle),
-      settlementReport: buildSettlementReport(),
+      settlementReport: settlementReport.build(),
     };
-  }
-
-  private createSettlementReportBuilder(input: {
-    settledCycleId: string | null;
-    targetCycleId: string | null;
-  }): {
-    recordSettlementStep: CycleSettlementRecorder;
-    buildSettlementReport: () => CycleSettlementReport;
-  } {
-    const settlementSteps: CycleSettlementStepReport[] = [];
-    const recordSettlementStep: CycleSettlementRecorder = (
-      name,
-      kind,
-      status,
-      startedAt,
-      message,
-    ) => {
-      settlementSteps.push({
-        name,
-        kind,
-        status,
-        durationMs: Date.now() - startedAt,
-        ...(message ? { message } : {}),
-      });
-    };
-
-    return {
-      recordSettlementStep,
-      buildSettlementReport: () => ({
-        settledCycleId: input.settledCycleId,
-        targetCycleId: input.targetCycleId,
-        steps: settlementSteps,
-        recoverableFailures: settlementSteps.filter(
-          (step) => step.kind === 'recoverable' && step.status === 'failed',
-        ),
-      }),
-    };
-  }
-
-  private async runStrictSettlementSteps(input: {
-    settledCycleId: string;
-    recordSettlementStep: CycleSettlementRecorder;
-  }): Promise<void> {
-    const { settledCycleId, recordSettlementStep } = input;
-
-    const walletStartedAt = Date.now();
-    try {
-      const allocationResult =
-        await this.walletRefresh.prepareStrictSettlementWalletActivity(
-          settledCycleId,
-        );
-      recordSettlementStep(
-        'wallet_import',
-        'strict',
-        'succeeded',
-        walletStartedAt,
-      );
-      recordSettlementStep(
-        'transaction_allocation',
-        'strict',
-        'succeeded',
-        walletStartedAt,
-        `buys=${allocationResult.buysAllocated}, sells=${allocationResult.sellsAllocated}`,
-      );
-      this.logger.log(
-        `Allocation: buys=${allocationResult.buysAllocated}, sells=${allocationResult.sellsAllocated}`,
-      );
-    } catch (error) {
-      if (
-        error instanceof OpenCycleWalletRefreshError &&
-        error.phase === 'transaction_allocation'
-      ) {
-        recordSettlementStep(
-          'wallet_import',
-          'strict',
-          'succeeded',
-          walletStartedAt,
-        );
-      }
-      recordSettlementStep(
-        error instanceof OpenCycleWalletRefreshError
-          ? error.phase
-          : 'wallet_import',
-        'strict',
-        'failed',
-        walletStartedAt,
-        error instanceof Error ? error.message : String(error),
-      );
-      throw error;
-    }
-
-    const buybackStartedAt = Date.now();
-    try {
-      const buybackResult =
-        await this.rollovers.processInventoryBuyback(settledCycleId);
-      recordSettlementStep(
-        'rollover_buyback',
-        'strict',
-        'succeeded',
-        buybackStartedAt,
-        `${buybackResult.itemsBoughtBack} items, ${buybackResult.totalBuybackIsk.toFixed(2)} ISK`,
-      );
-      this.logger.log(
-        `Buyback: ${buybackResult.itemsBoughtBack} items, ${buybackResult.totalBuybackIsk.toFixed(2)} ISK`,
-      );
-    } catch (error) {
-      recordSettlementStep(
-        'rollover_buyback',
-        'strict',
-        'failed',
-        buybackStartedAt,
-        error instanceof Error ? error.message : String(error),
-      );
-      throw error;
-    }
-  }
-
-  private async runRecoverableSettlementSteps(input: {
-    settledCycleId: string;
-    targetCycleId: string | null;
-    recordSettlementStep: CycleSettlementRecorder;
-  }): Promise<void> {
-    const { settledCycleId, targetCycleId, recordSettlementStep } = input;
-
-    const payoutsStartedAt = Date.now();
-    try {
-      this.logger.log(`Creating payouts for cycle ${settledCycleId}...`);
-      const payouts =
-        await this.payouts.createSettlementPayoutSnapshot(settledCycleId);
-      this.logger.log(
-        `Created ${payouts.length} payouts for cycle ${settledCycleId}`,
-      );
-      recordSettlementStep(
-        'payout_creation',
-        'recoverable',
-        'succeeded',
-        payoutsStartedAt,
-        `created=${payouts.length}`,
-      );
-    } catch (error) {
-      this.logger.warn(
-        `Payout creation failed for cycle ${settledCycleId}: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
-      recordSettlementStep(
-        'payout_creation',
-        'recoverable',
-        'failed',
-        payoutsStartedAt,
-        error instanceof Error ? error.message : String(error),
-      );
-    }
-
-    const rolloverStartedAt = Date.now();
-    if (!targetCycleId) {
-      recordSettlementStep(
-        'cycle_rollover',
-        'recoverable',
-        'skipped',
-        rolloverStartedAt,
-        'No target Cycle; Rollover Intent becomes payout/admin follow-up',
-      );
-      return;
-    }
-
-    try {
-      this.logger.log(`Processing rollovers for cycle ${settledCycleId}...`);
-      const rolloverResult = await this.rollovers.processParticipationRollovers(
-        settledCycleId,
-        targetCycleId,
-      );
-      if (rolloverResult.processed > 0) {
-        this.logger.log(
-          `Processed ${rolloverResult.processed} rollovers: ${rolloverResult.rolledOver} ISK rolled over, ${rolloverResult.paidOut} ISK paid out`,
-        );
-      }
-      recordSettlementStep(
-        'cycle_rollover',
-        'recoverable',
-        'succeeded',
-        rolloverStartedAt,
-        `processed=${rolloverResult.processed}, rolledOver=${rolloverResult.rolledOver}, paidOut=${rolloverResult.paidOut}`,
-      );
-    } catch (error) {
-      this.logger.warn(
-        `Failed to process rollovers for cycle ${settledCycleId}: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
-      recordSettlementStep(
-        'cycle_rollover',
-        'recoverable',
-        'failed',
-        rolloverStartedAt,
-        error instanceof Error ? error.message : String(error),
-      );
-    }
   }
 
   private toCycleContract(cycle: CycleRecord): Cycle {

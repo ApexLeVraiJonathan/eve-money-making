@@ -12,6 +12,14 @@ export type OpenCycleWalletRefreshResult = {
   snapshottedCycleIds: string[];
 };
 
+export type WalletRealitySyncMode = 'steady-state' | 'settlement-prelude';
+
+export type WalletRealitySyncInput = {
+  mode: WalletRealitySyncMode;
+  cycleId?: string;
+  createSnapshots?: boolean;
+};
+
 export class OpenCycleWalletRefreshError extends Error {
   constructor(
     readonly phase: 'wallet_import' | 'transaction_allocation',
@@ -37,9 +45,47 @@ export class OpenCycleWalletRefreshService {
     cycleId?: string;
     createSnapshots?: boolean;
   }): Promise<OpenCycleWalletRefreshResult> {
-    await this.importWallets();
-    const result = await this.allocateCycle(input?.cycleId);
-    const snapshottedCycleIds = input?.createSnapshots
+    return await this.syncWalletReality({
+      mode: 'steady-state',
+      cycleId: input?.cycleId,
+      createSnapshots: input?.createSnapshots,
+    });
+  }
+
+  async prepareStrictSettlementWalletActivity(
+    cycleId: string,
+  ): Promise<Omit<OpenCycleWalletRefreshResult, 'snapshottedCycleIds'>> {
+    const result = await this.syncWalletReality({
+      mode: 'settlement-prelude',
+      cycleId,
+    });
+    return {
+      buysAllocated: result.buysAllocated,
+      sellsAllocated: result.sellsAllocated,
+      unmatchedBuys: result.unmatchedBuys,
+      unmatchedSells: result.unmatchedSells,
+    };
+  }
+
+  async syncWalletReality(
+    input: WalletRealitySyncInput,
+  ): Promise<OpenCycleWalletRefreshResult> {
+    try {
+      await this.importWallets();
+    } catch (error) {
+      if (input.mode === 'steady-state') throw error;
+      throw new OpenCycleWalletRefreshError('wallet_import', error);
+    }
+
+    let result: Omit<OpenCycleWalletRefreshResult, 'snapshottedCycleIds'>;
+    try {
+      result = await this.allocateCycle(input.cycleId);
+    } catch (error) {
+      if (input.mode === 'steady-state') throw error;
+      throw new OpenCycleWalletRefreshError('transaction_allocation', error);
+    }
+
+    const snapshottedCycleIds = input.createSnapshots
       ? await this.snapshotOpenCycles()
       : [];
 
@@ -47,22 +93,6 @@ export class OpenCycleWalletRefreshService {
       ...result,
       snapshottedCycleIds,
     };
-  }
-
-  async prepareStrictSettlementWalletActivity(
-    cycleId: string,
-  ): Promise<Omit<OpenCycleWalletRefreshResult, 'snapshottedCycleIds'>> {
-    try {
-      await this.importWallets();
-    } catch (error) {
-      throw new OpenCycleWalletRefreshError('wallet_import', error);
-    }
-
-    try {
-      return await this.allocateCycle(cycleId);
-    } catch (error) {
-      throw new OpenCycleWalletRefreshError('transaction_allocation', error);
-    }
   }
 
   private async importWallets(): Promise<void> {

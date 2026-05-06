@@ -71,6 +71,12 @@ import {
   UpdateAutoRolloverSettingsRequestDto,
 } from './dto/auto-rollover-settings.dto';
 import { BackfillJingleYieldRolloversRequestDto } from './dto/backfill-jingle-yield-rollovers.dto';
+import type {
+  CreateCycleSnapshotResponse,
+  CycleHistoryItem,
+  CycleOverview,
+  CycleSnapshot,
+} from '@eve/shared/tradecraft-cycles' assert { 'resolution-mode': 'import' };
 
 @ApiTags('ledger')
 @Controller('ledger')
@@ -135,7 +141,7 @@ export class CyclesController {
   @Get('cycles/history')
   @ApiOperation({ summary: 'Get public cycle history with profit metrics' })
   @ApiOkResponse({ description: 'Public cycle history with profit metrics' })
-  async getCycleHistory(): Promise<unknown> {
+  async getCycleHistory(): Promise<CycleHistoryItem[]> {
     return await this.cycleService.getCycleHistory();
   }
 
@@ -143,8 +149,8 @@ export class CyclesController {
   @Get('cycles/overview')
   @ApiOperation({ summary: 'Get cycles overview' })
   @ApiOkResponse({ description: 'Cycle overview summary' })
-  async cyclesOverview(): Promise<unknown> {
-    return (await this.cycleService.getCycleOverview()) as unknown;
+  async cyclesOverview(): Promise<CycleOverview> {
+    return await this.cycleService.getCycleOverview();
   }
 
   @Public()
@@ -912,7 +918,9 @@ export class CyclesController {
   @ApiOperation({ summary: 'Create a cycle snapshot' })
   @ApiParam({ name: 'cycleId', description: 'Cycle ID' })
   @ApiOkResponse({ description: 'Created cycle snapshot' })
-  async createSnapshot(@Param('cycleId') cycleId: string): Promise<unknown> {
+  async createSnapshot(
+    @Param('cycleId') cycleId: string,
+  ): Promise<CreateCycleSnapshotResponse> {
     return await this.snapshotService.createCycleSnapshot(cycleId);
   }
 
@@ -921,7 +929,9 @@ export class CyclesController {
   @ApiOperation({ summary: 'Get cycle snapshots' })
   @ApiParam({ name: 'cycleId', description: 'Cycle ID' })
   @ApiOkResponse({ description: 'Cycle snapshots' })
-  async getSnapshots(@Param('cycleId') cycleId: string): Promise<unknown> {
+  async getSnapshots(
+    @Param('cycleId') cycleId: string,
+  ): Promise<CycleSnapshot[]> {
     return await this.snapshotService.getCycleSnapshots(cycleId);
   }
 }

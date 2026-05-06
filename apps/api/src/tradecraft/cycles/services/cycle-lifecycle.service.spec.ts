@@ -1,4 +1,5 @@
 import { CycleLifecycleService } from './cycle-lifecycle.service';
+import { CycleSettlementRunnerService } from './cycle-settlement-runner.service';
 
 const openCycle = {
   id: 'open-cycle',
@@ -80,6 +81,10 @@ function createService(overrides?: {
       itemsRolledOver: 1,
       totalRolloverCostIsk: 50,
     }),
+    processInventoryPurchaseIfPresent: jest.fn().mockResolvedValue({
+      itemsRolledOver: 0,
+      totalRolloverCostIsk: 0,
+    }),
     processParticipationRollovers: jest.fn().mockResolvedValue({
       processed: 1,
       rolledOver: 200,
@@ -124,12 +129,16 @@ function createService(overrides?: {
     ...overrides?.notifications,
   };
 
-  const service = new CycleLifecycleService(
-    cycles as never,
+  const settlementRunner = new CycleSettlementRunnerService(
     walletRefresh as never,
-    prisma as never,
     payouts as never,
     rollovers as never,
+  );
+  const service = new CycleLifecycleService(
+    cycles as never,
+    prisma as never,
+    rollovers as never,
+    settlementRunner,
     notifications as never,
   );
 
@@ -301,7 +310,7 @@ describe('CycleLifecycleService', () => {
 
     await service.openPlannedCycle({ cycleId: 'planned-cycle' });
 
-    expect(rollovers.processInventoryPurchase).toHaveBeenCalledWith(
+    expect(rollovers.processInventoryPurchaseIfPresent).toHaveBeenCalledWith(
       'planned-cycle',
       'open-cycle',
     );

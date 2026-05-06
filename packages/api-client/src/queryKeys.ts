@@ -91,6 +91,7 @@ export const qk = {
   cycles: {
     _root: ["cycles"] as const,
     list: () => ["cycles", "list"] as const,
+    history: () => ["cycles", "history"] as const,
     byId: (id: string) => ["cycles", "byId", id] as const,
     current: () => ["cycles", "current"] as const,
     overview: () => ["cycles", "overview"] as const,

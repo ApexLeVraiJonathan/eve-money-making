@@ -698,6 +698,26 @@ export class CycleRolloverService {
     };
   }
 
+  async processInventoryPurchaseIfPresent(
+    newCycleId: string,
+    previousCycleId: string | null,
+  ): Promise<{
+    itemsRolledOver: number;
+    totalRolloverCostIsk: number;
+  }> {
+    const rolloverLineCount = await this.prisma.cycleLine.count({
+      where: { cycleId: newCycleId, isRollover: true },
+    });
+    if (rolloverLineCount === 0) {
+      return {
+        itemsRolledOver: 0,
+        totalRolloverCostIsk: 0,
+      };
+    }
+
+    return await this.processInventoryPurchase(newCycleId, previousCycleId);
+  }
+
   async processParticipationRollovers(
     closedCycleId: string,
     targetCycleId: string,
