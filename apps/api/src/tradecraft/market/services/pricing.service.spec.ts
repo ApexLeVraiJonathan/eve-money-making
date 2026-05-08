@@ -416,6 +416,7 @@ describe('PricingService.confirmBatchScript', () => {
       {} as any,
       {} as any,
       {} as any,
+      {} as any,
       { sendSystemAlertDm: async () => undefined } as any,
     );
 

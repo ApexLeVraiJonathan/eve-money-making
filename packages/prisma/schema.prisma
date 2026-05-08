@@ -392,6 +392,36 @@ model NpcMarketRun {
   @@map("npc_market_runs")
 }
 
+/// Recorded suspicious market prices from NPC and self-market gathering.
+/// Raw snapshots remain unchanged; anomaly rows explain what was flagged or excluded.
+model MarketPriceAnomaly {
+  id              String   @id @default(uuid()) @map("id")
+  source          String   @map("source")
+  locationId      BigInt   @map("location_id") @db.BigInt
+  typeId          Int      @map("type_id")
+  isBuyOrder      Boolean  @map("is_buy_order")
+  observedPrice   Decimal  @map("observed_price") @db.Decimal(28, 2)
+  observedVolume  BigInt   @map("observed_volume") @db.BigInt
+  referencePrice  Decimal? @map("reference_price") @db.Decimal(28, 2)
+  thresholdLow    Decimal? @map("threshold_low") @db.Decimal(28, 2)
+  thresholdHigh   Decimal? @map("threshold_high") @db.Decimal(28, 2)
+  severity        String   @map("severity")
+  action          String   @map("action")
+  reasonCode      String   @map("reason_code")
+  referenceSource String?  @map("reference_source")
+  scanObservedAt  DateTime @map("scan_observed_at")
+  metadata        Json?    @map("metadata")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([source, scanObservedAt])
+  @@index([locationId, scanObservedAt])
+  @@index([typeId, scanObservedAt])
+  @@index([severity, action])
+  @@map("market_price_anomalies")
+}
+
 /// Users of the application (can be single owner for now)
 model User {
   id                 String        @id @default(uuid()) @map("id")
@@ -409,8 +439,8 @@ model User {
   /// JingleYield programs this user participates in
   jingleYieldPrograms JingleYieldProgram[]
 
-  discordAccounts          DiscordAccount[]
-  notificationPreferences  NotificationPreference[]
+  discordAccounts         DiscordAccount[]
+  notificationPreferences NotificationPreference[]
 
   autoRolloverSettings AutoRolloverSettings?
 

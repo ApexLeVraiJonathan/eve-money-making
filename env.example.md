@@ -119,6 +119,7 @@ Per-job flags (all default to **enabled** when the env var is **unset**):
 
 - **JOB_MARKET_GATHERING_ENABLED**: Market gatherer (structure + NPC) runner (every 15 minutes).
   - Legacy alias: `JOB_MARKET_GATHER_ENABLED`
+- **JOB_MARKET_DATA_CLEANUP_ENABLED**: Market data cleanup runner (daily @ 11:00).
 - **JOB_WALLET_IMPORTS_ENABLED**: Wallet imports + allocation (hourly).
   - Legacy alias: `JOB_WALLETS_ENABLED`
 - **JOB_CAPITAL_RECOMPUTE_ENABLED**: Capital recompute for open cycles (hourly).
@@ -161,6 +162,14 @@ Then each collector has its own enable flag:
 - **MARKET_NPC_GATHER_EXPIRY_WINDOW_MINUTES**: Expiry window heuristic (upper-bound mode). Default: `360`.
 - **MARKET_NPC_GATHER_NOTIFY_USER_ID**: Optional Discord userId to DM after repeated failures.
 - **MARKET_NPC_GATHER_TIMING_DEBUG**: Verbose timing logs (`true/false`). Default: `false`.
+
+**Market data retention:**
+
+- **MARKET_CLEANUP_ENABLED**: Master enable for market data cleanup. Default: `true`.
+- **MARKET_RAW_RETENTION_DAYS**: Raw NPC snapshot/run retention window. Default: `14`.
+- **MARKET_ANOMALY_RETENTION_DAYS**: Market anomaly retention window once anomaly records exist. Default: `90`.
+- **MARKET_VALIDATION_START_DATE**: UTC date when the new market validation/readiness signals should start counting from. Default: `2026-05-08`.
+- **MARKET_VALIDATION_REQUIRED_DAYS**: Number of healthy new-signal days required before readiness can become `ready-candidate`. Default: `14`.
 
 #### Cycle Accounting (optional tuning)
 

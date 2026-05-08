@@ -245,7 +245,9 @@ describe('CycleRolloverService', () => {
   it('fetches unique Jita fallback prices only for candidates without buy cost', async () => {
     const { service } = createService();
     mockedFetchStationOrders.mockImplementation((_esi, input) =>
-      Promise.resolve([{ price: input.typeId === 35 ? 8 : 11 }]),
+      Promise.resolve([
+        { price: input.typeId === 35 ? 8 : 11, volume: 1 },
+      ]),
     );
 
     const prices = await service.fetchJitaPricesForRolloverLines([

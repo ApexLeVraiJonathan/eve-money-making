@@ -119,6 +119,43 @@ export type NpcMarketCollectResponse = {
   hadPreviousBaseline: boolean;
 };
 
+export type NpcMarketCompareAdam4EveResponse = {
+  station: {
+    id: number;
+    name: string | null;
+  };
+  range: {
+    startDate: string | undefined;
+    endDate: string | undefined;
+  };
+  side: MarketSide;
+  summary: {
+    npcRows: number;
+    adamRows: number;
+    unionKeys: number;
+    missingNpc: number;
+    missingAdam: number;
+  };
+  coverage: {
+    successfulNpcRunsByDay: Record<string, number>;
+  };
+  diffs: Array<{
+    key: string;
+    scanDate: string;
+    typeId: number;
+    isBuyOrder: boolean;
+    hasGone: boolean;
+    npc: Record<string, string> | null;
+    adam4eve: Record<string, string> | null;
+    diff: {
+      amount: string | null;
+      orderNum: string | null;
+      iskValue: string | null;
+      absIskValue: string | null;
+    };
+  }>;
+};
+
 export type SelfMarketStatusResponse = {
   config: {
     enabled: boolean;
@@ -217,6 +254,154 @@ export type SelfMarketClearDailyResponse =
     }
   | { ok: false; error: string };
 
+export type MarketDataSpaceReportResponse = {
+  generatedAt: string;
+  tables: Array<{
+    tableName: string;
+    label: string;
+    category:
+      | "raw-npc"
+      | "snapshot-latest"
+      | "run-metadata"
+      | "baseline"
+      | "daily-aggregate"
+      | "anomaly"
+      | "supporting";
+    retentionPolicy: "short-lived" | "latest-only" | "indefinite" | "planned";
+    exists: boolean;
+    rowCountEstimate: string | null;
+    rowCountIsEstimate: boolean;
+    tableBytes: string | null;
+    indexBytes: string | null;
+    totalBytes: string | null;
+    oldestRecordAt: string | null;
+    newestRecordAt: string | null;
+    timestampColumn: string | null;
+    notes: string | null;
+  }>;
+  totals: {
+    tableBytes: string;
+    indexBytes: string;
+    totalBytes: string;
+    existingTableCount: number;
+    missingTableCount: number;
+  };
+};
+
+export type MarketDataCleanupResponse = {
+  ok: true;
+  skipped: boolean;
+  reason: string | null;
+  retentionDays: number;
+  cutoff: string;
+  protectedBaselineIds: string[];
+  deleted: {
+    npcMarketSnapshots: number;
+    npcMarketRegionTypesSnapshots: number;
+    npcMarketRuns: number;
+  };
+};
+
+export type MarketDataHealthResponse = {
+  generatedAt: string;
+  range: {
+    startDate: string;
+    endDate: string;
+  };
+  sources: Array<{
+    source: "npc" | "self";
+    label: string;
+    status: "healthy" | "watch" | "missing";
+    expectedDays: number;
+    daysWithData: number;
+    missingDays: string[];
+    successfulRuns: number | null;
+    failedRuns: number | null;
+    latestObservedAt: string | null;
+    warnings: string[];
+    days: Array<{
+      date: string;
+      successfulRuns: number | null;
+      failedRuns: number | null;
+      aggregateRows: number;
+      totalIskValue: string;
+      warning: string | null;
+    }>;
+  }>;
+};
+
+export type MarketDataAnomaliesResponse = {
+  generatedAt: string;
+  retentionDays: number;
+  summary: {
+    total: number;
+    bySeverity: Record<string, number>;
+    byAction: Record<string, number>;
+  };
+  examples: Array<{
+    id: string;
+    source: "npc" | "self";
+    locationId: string;
+    typeId: number;
+    isBuyOrder: boolean;
+    observedPrice: string;
+    observedVolume: string;
+    referencePrice: string | null;
+    thresholdLow: string | null;
+    thresholdHigh: string | null;
+    severity: string;
+    action: string;
+    reasonCode: string;
+    referenceSource: string | null;
+    scanObservedAt: string;
+    createdAt: string;
+  }>;
+};
+
+export type MarketDataReadinessResponse = {
+  generatedAt: string;
+  status: "not-ready" | "watch" | "ready-candidate";
+  label: string;
+  validationWindow: {
+    requiredDays: number;
+    validationStartDate: string;
+    eligibleOn: string;
+    evaluatedStartDate: string;
+    evaluatedEndDate: string;
+    elapsedDays: number;
+  };
+  reasons: string[];
+  checks: {
+    newSignalGate: {
+      ok: boolean;
+      detail: string;
+    };
+    scanHealth: {
+      ok: boolean;
+      npcStatus: "healthy" | "watch" | "missing";
+      selfStatus: "healthy" | "watch" | "missing";
+      warnings: string[];
+    };
+    adam4eveReference: {
+      ok: boolean;
+      stationId: number;
+      npcRows: number;
+      adamRows: number;
+      unionKeys: number;
+      missingNpc: number;
+      missingAdam: number;
+      missingNpcRatio: number;
+      note: string;
+    };
+    anomalies: {
+      ok: boolean;
+      severe: number;
+      borderline: number;
+      total: number;
+    };
+  };
+};
+
 export type TrackedStation = {
   id: string;
   stationId: number;
@@ -229,9 +414,9 @@ export type TrackedStation = {
 
 export type {
   CommittedPackage,
-} from "./types/market-arbitrage";
+} from "./types/market-arbitrage.js";
 
 export type {
   JingleYieldProgramSummary,
   JingleYieldStatus,
-} from "./types/participations";
+} from "./types/participations.js";

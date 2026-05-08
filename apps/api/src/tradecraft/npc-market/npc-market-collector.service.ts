@@ -5,6 +5,11 @@ import { AppConfig } from '@api/common/config';
 import { NotificationService } from '@api/notifications/notification.service';
 import { Prisma } from '@eve/prisma';
 import { randomUUID } from 'crypto';
+import {
+  MarketDataAnomalyService,
+  type MarketPriceAnomalyDecision,
+  type MarketPriceAnomalyInput,
+} from '@api/tradecraft/market-data/market-data-anomaly.service';
 
 type RegionMarketOrder = {
   duration: number; // days
@@ -91,6 +96,7 @@ export class NpcMarketCollectorService {
     private readonly prisma: PrismaService,
     private readonly esi: EsiService,
     private readonly notifications: NotificationService,
+    private readonly anomalies: MarketDataAnomalyService,
   ) {}
 
   private buildAggKey(params: {
@@ -409,6 +415,69 @@ export class NpcMarketCollectorService {
       const typeIds = Array.from(typeIdsSet.values()).sort((a, b) => a - b);
 
       const aggs = new Map<AggKey, Agg>();
+      const anomalyRecords: Array<{
+        input: MarketPriceAnomalyInput;
+        decision: MarketPriceAnomalyDecision;
+      }> = [];
+      const anomalyReferences = hadPreviousBaseline
+        ? await timed('db.preloadAnomalyReferences', async () =>
+            this.anomalies.preloadLocalReferences({
+              source: 'npc',
+              locationId: BigInt(stationId),
+              typeIds,
+              observedAt,
+            }),
+          )
+        : new Map();
+
+      const maybeAddToAgg = (params: {
+        typeId: number;
+        isBuyOrder: boolean;
+        amountDelta: bigint;
+        orderNumDelta: bigint;
+        price: Prisma.Decimal;
+        hasGoneModes: boolean[];
+        contributionKind: 'delta' | 'gone';
+      }) => {
+        const input: MarketPriceAnomalyInput = {
+          source: 'npc',
+          locationId: BigInt(stationId),
+          typeId: params.typeId,
+          isBuyOrder: params.isBuyOrder,
+          observedPrice: params.price,
+          observedVolume: params.amountDelta,
+          scanObservedAt: observedAt,
+          localReference:
+            anomalyReferences.get(
+              this.anomalies.referenceKey(params.typeId, params.isBuyOrder),
+            ) ?? { price: null, source: null },
+          metadata: {
+            contributionKind: params.contributionKind,
+            hasGoneModes: params.hasGoneModes,
+            amountDelta: params.amountDelta.toString(),
+          },
+        };
+        const decision = this.anomalies.evaluateWithReference(
+          input,
+          input.localReference ?? { price: null, source: null },
+        );
+        if (this.anomalies.shouldRecordAggregateDecision(decision)) {
+          anomalyRecords.push({ input, decision });
+        }
+        if (!this.anomalies.shouldIncludeInAggregate(decision)) return;
+        for (const hasGone of params.hasGoneModes) {
+          this.addToAgg(aggs, {
+            scanDate,
+            stationId,
+            typeId: params.typeId,
+            isBuyOrder: params.isBuyOrder,
+            hasGone,
+            amountDelta: params.amountDelta,
+            orderNumDelta: params.orderNumDelta,
+            price: params.price,
+          });
+        }
+      };
 
       // Batch DB writes for snapshots to avoid 2 writes per type.
       // This is independent from EsiService concurrency (network); it reduces DB write overhead
@@ -525,25 +594,14 @@ export class NpcMarketCollectorService {
               const price = toDecimal(prev.price ?? curr.price);
               const amountDelta = BigInt(Math.floor(delta));
 
-              this.addToAgg(aggs, {
-                scanDate,
-                stationId,
+              maybeAddToAgg({
                 typeId,
                 isBuyOrder,
-                hasGone: false,
                 amountDelta,
                 orderNumDelta: 1n,
                 price,
-              });
-              this.addToAgg(aggs, {
-                scanDate,
-                stationId,
-                typeId,
-                isBuyOrder,
-                hasGone: true,
-                amountDelta,
-                orderNumDelta: 1n,
-                price,
+                hasGoneModes: [false, true],
+                contributionKind: 'delta',
               });
             }
 
@@ -566,15 +624,14 @@ export class NpcMarketCollectorService {
               if (!Number.isFinite(remaining) || remaining <= 0) continue;
               const price = toDecimal(prev.price);
               const amountDelta = BigInt(Math.floor(remaining));
-              this.addToAgg(aggs, {
-                scanDate,
-                stationId,
+              maybeAddToAgg({
                 typeId,
                 isBuyOrder,
-                hasGone: true,
                 amountDelta,
                 orderNumDelta: 1n,
                 price,
+                hasGoneModes: [true],
+                contributionKind: 'gone',
               });
             }
           }
@@ -668,6 +725,8 @@ export class NpcMarketCollectorService {
                 );
               }
             }
+
+            await this.anomalies.recordBatch(anomalyRecords, tx);
 
             await tx.npcMarketStationBaseline.upsert({
               where: { stationId },

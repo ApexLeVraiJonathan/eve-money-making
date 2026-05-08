@@ -21,7 +21,15 @@ function makeResponse(): MockResponse {
 }
 
 function makeController() {
-  const auth = {
+  const auth: {
+    getAuthorizeUrl: jest.Mock;
+    getAuthorizeLinkingUrl: jest.Mock;
+    getUserRequestedScopes: jest.Mock;
+    exchangeCodeForToken?: jest.Mock;
+    upsertCharacterWithToken?: jest.Mock;
+    setCharacterRole?: jest.Mock;
+    ensureUserForCharacter?: jest.Mock;
+  } = {
     getAuthorizeUrl: jest.fn(() => 'https://login.eveonline.test/oauth'),
     getAuthorizeLinkingUrl: jest.fn(() => 'https://login.eveonline.test/link'),
     getUserRequestedScopes: jest.fn(async () => ['publicData']),

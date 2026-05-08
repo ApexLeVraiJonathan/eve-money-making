@@ -366,8 +366,8 @@ describe('EVE Auth (e2e)', () => {
 
   describe('Owner Change Detection', () => {
     let testCharId: number;
-    const originalOwnerHash = 'original-owner-hash';
-    const newOwnerHash = 'new-owner-hash-after-sale';
+    const originalOwnerHash: string = 'original-owner-hash';
+    const newOwnerHash: string = 'new-owner-hash-after-sale';
 
     beforeEach(async () => {
       testCharId = 444444444;

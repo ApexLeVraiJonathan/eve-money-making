@@ -3,7 +3,7 @@ import cookieParser from 'cookie-parser';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
-import { AuthService } from '../src/auth/auth.service';
+import { AuthService } from '../src/characters/services/auth.service';
 import { PrismaService } from '../src/prisma/prisma.service';
 
 describe('Auth flows (e2e)', () => {

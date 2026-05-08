@@ -9,7 +9,7 @@ Type: HITL
 
 ## Parent
 
-[`../prd/pre-main-tradecraft-acceptance-testing.md`](../prd/pre-main-tradecraft-acceptance-testing.md)
+[`../../prd/pre-main-tradecraft-acceptance-testing.md`](../../prd/pre-main-tradecraft-acceptance-testing.md)
 
 ## What to build
 

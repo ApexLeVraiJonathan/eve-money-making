@@ -39,6 +39,61 @@ type ScriptUiTargetContext = {
   matchingOwnOrders: ScriptTargetOrderContext[];
 };
 
+type UndercutCheckResultGroup = {
+  characterId: number;
+  characterName: string;
+  stationId: number;
+  stationName: string;
+  updates: Array<{
+    lineId?: string;
+    orderId: number;
+    typeId: number;
+    itemName: string;
+    remaining: number;
+    currentPrice: number;
+    competitorLowest: number;
+    suggestedNewPriceTicked: number;
+    expiresAt?: string;
+    expiresInHours?: number;
+    isExpiringSoon?: boolean;
+    reasons?: Array<'undercut' | 'expiry' | 'ladder'>;
+    estimatedMarginPercentAfter?: number;
+    estimatedProfitIskAfter?: number;
+    wouldBeLossAfter?: boolean;
+  }>;
+};
+
+type UndercutCheckScriptResultGroup = Omit<
+  UndercutCheckResultGroup,
+  'updates'
+> & {
+  updates: Array<
+    UndercutCheckResultGroup['updates'][number] & {
+      expectedRelistFeeIsk: number;
+      uiTarget: ScriptUiTargetContext;
+    }
+  >;
+};
+
+type ScriptConfirmBatchResponse = {
+  ok: true;
+  confirmedCount: number;
+  skippedCount: number;
+  failedCount: number;
+  clientFailedCount: number;
+  clientFailedItems: Array<{
+    lineId?: string;
+    itemName?: string;
+    reason: string;
+  }>;
+  results: Array<{
+    lineId: string;
+    status: 'confirmed' | 'skipped' | 'failed';
+    message?: string;
+  }>;
+  cached?: boolean;
+};
+
 @Injectable()
 export class PricingService {
   private readonly logger = new Logger(PricingService.name);
@@ -203,31 +258,7 @@ export class PricingService {
     minUndercutVolumeRatio?: number;
     minUndercutUnits?: number;
     expiryRefreshDays?: number;
-  }): Promise<
-    Array<{
-      characterId: number;
-      characterName: string;
-      stationId: number;
-      stationName: string;
-      updates: Array<{
-        lineId?: string;
-        orderId: number;
-        typeId: number;
-        itemName: string;
-        remaining: number;
-        currentPrice: number;
-        competitorLowest: number;
-        suggestedNewPriceTicked: number;
-        expiresAt?: string;
-        expiresInHours?: number;
-        isExpiringSoon?: boolean;
-        reasons?: Array<'undercut' | 'expiry' | 'ladder'>;
-        estimatedMarginPercentAfter?: number;
-        estimatedProfitIskAfter?: number;
-        wouldBeLossAfter?: boolean;
-      }>;
-    }>
-  > {
+  }): Promise<UndercutCheckResultGroup[]> {
     const startTime = Date.now();
 
     // Set defaults for new parameters
@@ -870,7 +901,7 @@ export class PricingService {
     normalizeFilterText?: boolean;
     filterForceLowercase?: boolean;
     filterStripQuotes?: boolean;
-  }) {
+  }): Promise<UndercutCheckScriptResultGroup[]> {
     let effectiveCycleId = params.cycleId;
     if (!effectiveCycleId) {
       try {
@@ -886,7 +917,7 @@ export class PricingService {
       cycleId: effectiveCycleId,
     });
 
-    if (!groups.length) return groups;
+    if (!groups.length) return [];
 
     const filterOpts: ScriptFilterOptions = {
       filterMaxChars: params.filterMaxChars ?? 37,
@@ -1059,7 +1090,7 @@ export class PricingService {
       reason: string;
     }>;
     notifyUserId?: string;
-  }) {
+  }): Promise<ScriptConfirmBatchResponse> {
     const idempotencyKey = (params.idempotencyKey ?? '').trim();
     if (!idempotencyKey) {
       throw new BadRequestException('idempotencyKey is required');
@@ -1117,7 +1148,16 @@ export class PricingService {
           message?: string;
         }>;
       };
-      return { ...cached, cached: true };
+      return {
+        ok: cached.ok,
+        confirmedCount: cached.confirmedCount,
+        skippedCount: cached.skippedCount,
+        failedCount: cached.failedCount,
+        clientFailedCount: cached.clientFailedCount ?? 0,
+        clientFailedItems: cached.clientFailedItems ?? [],
+        results: cached.results,
+        cached: true,
+      };
     }
 
     const feeDefaults = AppConfig.arbitrage().fees;

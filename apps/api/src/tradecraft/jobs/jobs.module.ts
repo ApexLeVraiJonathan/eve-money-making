@@ -10,6 +10,7 @@ import { NotificationsModule } from '@api/notifications/notifications.module';
 import { EsiModule } from '@api/esi/esi.module';
 import { SelfMarketModule } from '@api/tradecraft/self-market/self-market.module';
 import { NpcMarketModule } from '@api/tradecraft/npc-market/npc-market.module';
+import { MarketDataModule } from '@api/tradecraft/market-data/market-data.module';
 import { JobsGate } from './jobs-gate.service';
 import { JobsFacadeService } from './jobs-facade.service';
 import { CleanupRunner } from './cleanup.runner';
@@ -21,6 +22,7 @@ import { EsiCacheCleanupJob } from './esi-cache-cleanup.job';
 import { OAuthStateCleanupJob } from './oauth-state-cleanup.job';
 import { DailyImportsJob } from './daily-imports.job';
 import { MarketGatheringJob } from './market-gathering.job';
+import { MarketDataCleanupJob } from './market-data-cleanup.job';
 import { ExpiryNotificationsJob } from './expiry-notifications.job';
 import { WalletImportsJob } from './wallet-imports.job';
 import { CapitalRecomputeJob } from './capital-recompute.job';
@@ -39,6 +41,7 @@ import { ScriptRunWatchdogJob } from './script-run-watchdog.job';
     EsiModule,
     SelfMarketModule,
     NpcMarketModule,
+    MarketDataModule,
   ],
   providers: [
     // Shared helpers
@@ -55,6 +58,7 @@ import { ScriptRunWatchdogJob } from './script-run-watchdog.job';
     OAuthStateCleanupJob,
     DailyImportsJob,
     MarketGatheringJob,
+    MarketDataCleanupJob,
     ExpiryNotificationsJob,
     WalletImportsJob,
     CapitalRecomputeJob,

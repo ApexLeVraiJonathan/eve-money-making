@@ -3,6 +3,12 @@ import { PrismaService } from '@api/prisma/prisma.service';
 import { EsiService } from '@api/esi/esi.service';
 import { AppConfig } from '@api/common/config';
 import { Prisma } from '@eve/prisma';
+import {
+  MarketDataAnomalyService,
+  type MarketPriceAnomalyDecision,
+  type MarketPriceAnomalyInput,
+  type MarketPriceReference,
+} from '@api/tradecraft/market-data/market-data-anomaly.service';
 
 type StructureMarketOrder = {
   duration: number; // days
@@ -62,6 +68,7 @@ export class SelfMarketCollectorService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly esi: EsiService,
+    private readonly anomalies: MarketDataAnomalyService,
   ) {}
 
   private buildAggKey(params: {
@@ -253,6 +260,67 @@ export class SelfMarketCollectorService {
     }
 
     const aggs = new Map<AggKey, Agg>();
+    const anomalyRecords: Array<{
+      input: MarketPriceAnomalyInput;
+      decision: MarketPriceAnomalyDecision;
+    }> = [];
+    const diffTypeIds = Array.from(
+      new Set(
+        [...prevById.values(), ...currById.values()]
+          .map((order) => Number(order.type_id))
+          .filter((typeId) => Number.isFinite(typeId) && typeId > 0),
+      ),
+    );
+    let anomalyReferences = new Map<string, MarketPriceReference>();
+
+    const maybeAddToAgg = (params: {
+      typeId: number;
+      isBuyOrder: boolean;
+      amountDelta: bigint;
+      orderNumDelta: bigint;
+      price: Prisma.Decimal;
+      hasGoneModes: boolean[];
+      contributionKind: 'delta' | 'gone';
+    }) => {
+      const input: MarketPriceAnomalyInput = {
+        source: 'self',
+        locationId,
+        typeId: params.typeId,
+        isBuyOrder: params.isBuyOrder,
+        observedPrice: params.price,
+        observedVolume: params.amountDelta,
+        scanObservedAt: observedAt,
+        localReference:
+          anomalyReferences.get(
+            this.anomalies.referenceKey(params.typeId, params.isBuyOrder),
+          ) ?? { price: null, source: null },
+        metadata: {
+          contributionKind: params.contributionKind,
+          hasGoneModes: params.hasGoneModes,
+          amountDelta: params.amountDelta.toString(),
+        },
+      };
+      const decision = this.anomalies.evaluateWithReference(
+        input,
+        input.localReference ?? { price: null, source: null },
+      );
+      if (this.anomalies.shouldRecordAggregateDecision(decision)) {
+        anomalyRecords.push({ input, decision });
+      }
+      if (!this.anomalies.shouldIncludeInAggregate(decision)) return;
+      for (const hasGone of params.hasGoneModes) {
+        this.addToAgg(aggs, {
+          scanDate,
+          locationId,
+          typeId: params.typeId,
+          isBuyOrder: params.isBuyOrder,
+          hasGone,
+          amountDelta: params.amountDelta,
+          orderNumDelta: params.orderNumDelta,
+          price: params.price,
+        });
+      }
+    };
 
     // Fast path: if the snapshot is bitwise-equivalent (for our purposes), skip
     // aggregate computation and avoid rewriting the large JSONB `orders` payload.
@@ -280,6 +348,15 @@ export class SelfMarketCollectorService {
     }
 
     if (!snapshotUnchanged) {
+      anomalyReferences = await this.anomalies.preloadLocalReferences({
+        source: 'self',
+        locationId,
+        typeIds: diffTypeIds,
+        observedAt,
+      });
+    }
+
+    if (!snapshotUnchanged) {
       // Deltas (contribute to both lower and upper bounds)
       for (const [orderId, curr] of currById.entries()) {
         const prev = prevById.get(orderId);
@@ -291,27 +368,14 @@ export class SelfMarketCollectorService {
         const price = toDecimal(prev.price ?? curr.price);
         const amountDelta = BigInt(Math.floor(delta));
 
-        // lower-bound
-        this.addToAgg(aggs, {
-          scanDate,
-          locationId,
+        maybeAddToAgg({
           typeId,
           isBuyOrder,
-          hasGone: false,
           amountDelta,
           orderNumDelta: 1n,
           price,
-        });
-        // upper-bound
-        this.addToAgg(aggs, {
-          scanDate,
-          locationId,
-          typeId,
-          isBuyOrder,
-          hasGone: true,
-          amountDelta,
-          orderNumDelta: 1n,
-          price,
+          hasGoneModes: [false, true],
+          contributionKind: 'delta',
         });
       }
 
@@ -340,15 +404,14 @@ export class SelfMarketCollectorService {
         const price = toDecimal(prev.price);
         const amountDelta = BigInt(Math.floor(remaining));
 
-        this.addToAgg(aggs, {
-          scanDate,
-          locationId,
+        maybeAddToAgg({
           typeId,
           isBuyOrder,
-          hasGone: true,
           amountDelta,
           orderNumDelta: 1n,
           price,
+          hasGoneModes: [true],
+          contributionKind: 'gone',
         });
       }
     }
@@ -432,6 +495,7 @@ export class SelfMarketCollectorService {
             `,
           );
         }
+        await this.anomalies.recordBatch(anomalyRecords, tx);
         dbAggMs = Date.now() - tAggStart;
       },
       { timeout: 60_000, maxWait: 10_000 },

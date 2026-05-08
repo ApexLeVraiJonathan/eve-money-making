@@ -3,7 +3,7 @@
 -- configs, plans, plan steps, and plan assignments are dropped.
 
 DELETE FROM "notification_preferences"
-WHERE "notification_type" IN (
+WHERE "notification_type"::text IN (
   'SKILL_PLAN_REMAP_REMINDER',
   'SKILL_PLAN_COMPLETION',
   'SKILL_FARM_EXTRACTOR_READY',

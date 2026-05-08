@@ -8,3 +8,4 @@ export * from "./participations.hooks";
 export * from "./jingle-yield.hooks";
 export * from "./self-market.hooks";
 export * from "./npc-market.hooks";
+export * from "./market-data.hooks";

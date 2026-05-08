@@ -67,6 +67,17 @@ export type MarketNpcGatherConfig = {
   notifyUserId: string | null;
 };
 
+export type MarketDataRetentionConfig = {
+  cleanupEnabled: boolean;
+  rawRetentionDays: number;
+  anomalyRetentionDays: number;
+};
+
+export type MarketDataReadinessConfig = {
+  validationStartDate: string;
+  requiredHealthyDays: number;
+};
+
 export type SdeImportConfig = {
   freshnessWindowMs: number;
 };
@@ -410,6 +421,49 @@ export const AppConfig = {
           ? expiryWindowMinutes
           : 360,
       notifyUserId,
+    };
+  },
+
+  /**
+   * Market data retention controls for raw snapshots and anomaly explanations.
+   */
+  marketDataRetention(): MarketDataRetentionConfig {
+    const cleanupEnabledRaw = process.env.MARKET_CLEANUP_ENABLED;
+    const cleanupEnabled =
+      cleanupEnabledRaw === undefined
+        ? true
+        : AppConfig.boolEnv(cleanupEnabledRaw);
+
+    const rawRetentionDays = Number(process.env.MARKET_RAW_RETENTION_DAYS ?? 14);
+    const anomalyRetentionDays = Number(
+      process.env.MARKET_ANOMALY_RETENTION_DAYS ?? 90,
+    );
+
+    return {
+      cleanupEnabled,
+      rawRetentionDays:
+        Number.isFinite(rawRetentionDays) && rawRetentionDays >= 1
+          ? rawRetentionDays
+          : 14,
+      anomalyRetentionDays:
+        Number.isFinite(anomalyRetentionDays) && anomalyRetentionDays >= 1
+          ? anomalyRetentionDays
+          : 90,
+    };
+  },
+
+  marketDataReadiness(): MarketDataReadinessConfig {
+    const validationStartDate =
+      process.env.MARKET_VALIDATION_START_DATE?.trim() || '2026-05-08';
+    const requiredHealthyDays = Number(
+      process.env.MARKET_VALIDATION_REQUIRED_DAYS ?? 14,
+    );
+    return {
+      validationStartDate,
+      requiredHealthyDays:
+        Number.isFinite(requiredHealthyDays) && requiredHealthyDays >= 1
+          ? requiredHealthyDays
+          : 14,
     };
   },
 

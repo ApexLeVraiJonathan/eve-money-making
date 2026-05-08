@@ -53,6 +53,10 @@ export const JobKeys = {
     envKey: 'JOB_MARKET_GATHERING_ENABLED',
     legacyEnvKeys: ['JOB_MARKET_GATHER_ENABLED'],
   },
+  marketDataCleanup: {
+    id: 'marketDataCleanup',
+    envKey: 'JOB_MARKET_DATA_CLEANUP_ENABLED',
+  },
   expiryNotifications: {
     id: 'expiryNotifications',
     envKey: 'JOB_EXPIRY_NOTIFICATIONS_ENABLED',

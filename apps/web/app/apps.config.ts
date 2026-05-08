@@ -164,6 +164,11 @@ export const APPS: AppConfig[] = [
             url: "/tradecraft/admin/self-market",
             icon: Database,
           },
+          {
+            name: "Market Data",
+            url: "/tradecraft/admin/market-data",
+            icon: Database,
+          },
           { name: "Planner", url: "/tradecraft/admin/planner", icon: Recycle },
           {
             name: "Undercut Checker",

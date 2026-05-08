@@ -6,6 +6,7 @@ import { useApiClient } from "@/app/api-hooks/useApiClient";
 import type {
   MarketSide,
   NpcMarketCollectResponse,
+  NpcMarketCompareAdam4EveResponse,
   NpcMarketDailyAggregatesResponse,
   NpcMarketSnapshotLatestResponse,
   NpcMarketSnapshotTypeSummaryResponse,
@@ -13,6 +14,7 @@ import type {
 } from "@eve/shared/tradecraft-market";
 export type {
   NpcMarketCollectResponse,
+  NpcMarketCompareAdam4EveResponse,
   NpcMarketDailyAggregatesResponse,
   NpcMarketOrder,
   NpcMarketSnapshotLatestResponse,
@@ -127,5 +129,29 @@ export function useNpcMarketDailyAggregates(params: {
         `/npc-market/aggregates/daily?${qs.toString()}`,
       ),
     staleTime: 10_000,
+  });
+}
+
+export function useNpcMarketAdam4EveComparison(params: {
+  stationId?: number;
+  startDate: string;
+  endDate: string;
+  side: MarketSide;
+  limit: number;
+}) {
+  const client = useApiClient();
+  const qs = new URLSearchParams();
+  qs.set("startDate", params.startDate);
+  qs.set("endDate", params.endDate);
+  qs.set("side", params.side);
+  qs.set("limit", String(params.limit));
+  if (params.stationId) qs.set("stationId", String(params.stationId));
+  return useAuthenticatedQuery({
+    queryKey: ["npcMarket", "adam4eveComparison", params],
+    queryFn: () =>
+      client.get<NpcMarketCompareAdam4EveResponse>(
+        `/npc-market/compare/adam4eve?${qs.toString()}`,
+      ),
+    staleTime: 30_000,
   });
 }

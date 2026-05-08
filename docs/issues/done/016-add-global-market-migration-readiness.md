@@ -1,6 +1,6 @@
 ---
 category: enhancement
-state: needs-triage
+state: done
 ---
 
 # Add Global Market Migration Readiness
@@ -9,7 +9,7 @@ Type: AFK
 
 ## Parent
 
-[`../prd/market-data-validation-and-retention.md`](../prd/market-data-validation-and-retention.md)
+[`../../prd/market-data-validation-and-retention.md`](../../prd/market-data-validation-and-retention.md)
 
 ## What to build
 
@@ -19,15 +19,15 @@ Readiness should be global rather than per source or location. Individual report
 
 ## Acceptance criteria
 
-- [ ] The admin API returns one global readiness state.
-- [ ] Readiness states include not ready, watch, and ready candidate.
-- [ ] Readiness considers NPC versus Adam4EVE comparison as a reference signal only.
-- [ ] Readiness considers NPC and self-market scan health.
-- [ ] Readiness considers severe and borderline anomaly activity.
-- [ ] Ready candidate requires at least 14 days of healthy validation signals after the new validation/reporting system is in place.
-- [ ] Existing months of data can be included as historical context without bypassing the 14-day new-signal gate.
-- [ ] The admin UI shows the global readiness state and the main reasons behind it.
-- [ ] Tests cover not ready, watch, and ready candidate scenarios.
+- [x] The admin API returns one global readiness state.
+- [x] Readiness states include not ready, watch, and ready candidate.
+- [x] Readiness considers NPC versus Adam4EVE comparison as a reference signal only.
+- [x] Readiness considers NPC and self-market scan health.
+- [x] Readiness considers severe and borderline anomaly activity.
+- [x] Ready candidate requires at least 14 days of healthy validation signals after the new validation/reporting system is in place.
+- [x] Existing months of data can be included as historical context without bypassing the 14-day new-signal gate.
+- [x] The admin UI shows the global readiness state and the main reasons behind it.
+- [x] Tests cover not ready, watch, and ready candidate scenarios.
 
 ## Blocked by
 

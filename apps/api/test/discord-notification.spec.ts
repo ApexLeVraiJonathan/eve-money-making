@@ -155,7 +155,8 @@ describe('DiscordNotificationService', () => {
     });
 
     it('should skip sending if webhook URL is not configured', async () => {
-      service['supportWebhookUrl'] = undefined;
+      (service as unknown as { supportWebhookUrl?: string }).supportWebhookUrl =
+        undefined;
       const mockFetch = jest.fn();
       global.fetch = mockFetch as any;
 
@@ -278,7 +279,8 @@ describe('DiscordNotificationService', () => {
     });
 
     it('should skip sending if webhook URL is not configured', async () => {
-      service['feedbackWebhookUrl'] = undefined;
+      (service as unknown as { feedbackWebhookUrl?: string }).feedbackWebhookUrl =
+        undefined;
       const mockFetch = jest.fn();
       global.fetch = mockFetch as any;
 
