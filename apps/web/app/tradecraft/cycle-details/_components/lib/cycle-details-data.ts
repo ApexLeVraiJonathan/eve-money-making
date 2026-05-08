@@ -63,17 +63,12 @@ export function getCurrentParticipationPayout(
   const participation = cycle.myParticipation;
   if (!participation) return null;
 
-  if (participation.payoutAmountIsk !== null) {
-    return Number(participation.payoutAmountIsk);
-  }
-
   const investment = Number(participation.amountIsk);
-  if (investment <= 0 || cycle.totalInvestorCapital <= 0) return null;
+  const startingCapital = getStartingCapital(cycle);
+  if (investment <= 0 || startingCapital <= 0) return null;
 
-  const share = investment / cycle.totalInvestorCapital;
-  const currentProfitShare =
-    cycle.profit.current * INVESTOR_PROFIT_SHARE * share;
-  return investment + currentProfitShare;
+  const currentProfitRoi = cycle.profit.current / startingCapital;
+  return currentProfitRoi * INVESTOR_PROFIT_SHARE * investment;
 }
 
 export function sortSnapshotsByDate(

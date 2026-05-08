@@ -77,23 +77,28 @@ describe("cycle details data", () => {
     });
   });
 
-  it("calculates open-cycle current payout from current profit", () => {
+  it("calculates profit-only current payout from current ROI", () => {
     const cycle = makeCycle();
 
     expect(getCurrentParticipationPayout(cycle)).toBeCloseTo(
-      20_004_814_461.84,
+      4_814_461.84,
       2,
     );
   });
 
-  it("prefers finalized payout amount when one exists", () => {
+  it("does not include principal in the current payout", () => {
     const cycle = makeCycle({
+      profit: {
+        current: 5_698_165_062.07,
+        estimated: 5_698_165_062.07,
+        portfolioValue: 0,
+      },
       myParticipation: {
         ...makeCycle().myParticipation!,
         payoutAmountIsk: "21000000000.00",
       },
     });
 
-    expect(getCurrentParticipationPayout(cycle)).toBe(21_000_000_000);
+    expect(getCurrentParticipationPayout(cycle)).toBeCloseTo(400_000_000, 2);
   });
 });
