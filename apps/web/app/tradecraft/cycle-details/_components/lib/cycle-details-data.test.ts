@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   getCapitalDistributionData,
   getCurrentPortfolioValue,
-  getEstimatedParticipationPayout,
+  getCurrentParticipationPayout,
   getStartingCapital,
 } from "./cycle-details-data";
 import type { CycleDetailsCycle } from "./types";
@@ -77,11 +77,11 @@ describe("cycle details data", () => {
     });
   });
 
-  it("estimates open-cycle participation payout from estimated profit", () => {
+  it("calculates open-cycle current payout from current profit", () => {
     const cycle = makeCycle();
 
-    expect(getEstimatedParticipationPayout(cycle)).toBeCloseTo(
-      20_335_078_410.9,
+    expect(getCurrentParticipationPayout(cycle)).toBeCloseTo(
+      20_004_814_461.84,
       2,
     );
   });
@@ -94,6 +94,6 @@ describe("cycle details data", () => {
       },
     });
 
-    expect(getEstimatedParticipationPayout(cycle)).toBe(21_000_000_000);
+    expect(getCurrentParticipationPayout(cycle)).toBe(21_000_000_000);
   });
 });

@@ -57,7 +57,7 @@ export function getCapitalDistributionData(
   ];
 }
 
-export function getEstimatedParticipationPayout(
+export function getCurrentParticipationPayout(
   cycle: CycleDetailsCycle,
 ): number | null {
   const participation = cycle.myParticipation;
@@ -71,9 +71,9 @@ export function getEstimatedParticipationPayout(
   if (investment <= 0 || cycle.totalInvestorCapital <= 0) return null;
 
   const share = investment / cycle.totalInvestorCapital;
-  const estimatedProfitShare =
-    cycle.profit.estimated * INVESTOR_PROFIT_SHARE * share;
-  return investment + estimatedProfitShare;
+  const currentProfitShare =
+    cycle.profit.current * INVESTOR_PROFIT_SHARE * share;
+  return investment + currentProfitShare;
 }
 
 export function sortSnapshotsByDate(
