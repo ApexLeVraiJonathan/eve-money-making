@@ -526,10 +526,6 @@ export class CycleService {
         ? Number(estimatedData.estimatedTotalProfit)
         : currentProfit;
 
-      const initial = current.initialCapitalIsk
-        ? Number(current.initialCapitalIsk)
-        : 0;
-
       const endsAt = next
         ? next.startedAt.toISOString()
         : new Date(
@@ -549,6 +545,16 @@ export class CycleService {
       const totalInvestorCapital = participations.reduce(
         (sum: number, p: { amountIsk: unknown }) => sum + Number(p.amountIsk),
         0,
+      );
+      const persistedInitial = current.initialCapitalIsk
+        ? Number(current.initialCapitalIsk)
+        : 0;
+      const initialInjection = current.initialInjectionIsk
+        ? Number(current.initialInjectionIsk)
+        : 0;
+      const initial = Math.max(
+        persistedInitial,
+        totalInvestorCapital + initialInjection,
       );
 
       // Portfolio = Starting Capital + Profit

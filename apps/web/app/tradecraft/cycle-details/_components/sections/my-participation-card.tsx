@@ -1,5 +1,6 @@
 import { formatIsk } from "@/lib/utils";
 import { Badge, Card, CardContent, CardHeader, CardTitle } from "@eve/ui";
+import { getEstimatedParticipationPayout } from "../lib/cycle-details-data";
 import type { CycleDetailsCycle } from "../lib/types";
 
 type Props = {
@@ -8,6 +9,9 @@ type Props = {
 
 export function MyParticipationCard({ cycle }: Props) {
   if (!cycle.myParticipation) return null;
+
+  const investment = Number(cycle.myParticipation.amountIsk);
+  const estimatedPayout = getEstimatedParticipationPayout(cycle);
 
   return (
     <Card className="border-primary/20 bg-primary/5">
@@ -25,17 +29,16 @@ export function MyParticipationCard({ cycle }: Props) {
           <div>
             <p className="text-sm text-muted-foreground">Estimated Payout</p>
             <p className="text-xl font-semibold tabular-nums">
-              {cycle.myParticipation.payoutAmountIsk
-                ? formatIsk(Number(cycle.myParticipation.payoutAmountIsk))
+              {estimatedPayout !== null
+                ? formatIsk(estimatedPayout)
                 : "—"}
             </p>
           </div>
           <div>
             <p className="text-sm text-muted-foreground">Expected Return</p>
             <p className="text-xl font-semibold tabular-nums text-emerald-600">
-              {cycle.myParticipation.payoutAmountIsk &&
-              Number(cycle.myParticipation.amountIsk) > 0
-                ? `${((Number(cycle.myParticipation.payoutAmountIsk) / Number(cycle.myParticipation.amountIsk)) * 100).toFixed(2)}%`
+              {estimatedPayout !== null && investment > 0
+                ? `${((estimatedPayout / investment) * 100).toFixed(2)}%`
                 : "—"}
             </p>
           </div>

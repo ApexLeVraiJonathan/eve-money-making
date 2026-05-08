@@ -1,6 +1,10 @@
 import { TrendingUp } from "lucide-react";
 import { formatIsk } from "@/lib/utils";
 import { Card, CardContent, CardHeader } from "@eve/ui";
+import {
+  getCurrentPortfolioValue,
+  getStartingCapital,
+} from "../lib/cycle-details-data";
 import type { CycleDetailsCycle } from "../lib/types";
 
 type Props = {
@@ -8,6 +12,9 @@ type Props = {
 };
 
 export function CycleMetricsGrid({ cycle }: Props) {
+  const startingCapital = getStartingCapital(cycle);
+  const portfolioValue = getCurrentPortfolioValue(cycle);
+
   return (
     <div className="grid gap-4 md:grid-cols-4">
       <Card>
@@ -16,7 +23,7 @@ export function CycleMetricsGrid({ cycle }: Props) {
         </CardHeader>
         <CardContent>
           <div className="text-2xl font-semibold tabular-nums">
-            {formatIsk(cycle.initialCapitalIsk)}
+            {formatIsk(startingCapital)}
           </div>
           <p className="text-xs text-muted-foreground mt-1">Initial investment</p>
         </CardContent>
@@ -31,7 +38,7 @@ export function CycleMetricsGrid({ cycle }: Props) {
         </CardHeader>
         <CardContent>
           <div className="text-2xl font-semibold tabular-nums text-blue-600">
-            {formatIsk(cycle.capital.total)}
+            {formatIsk(portfolioValue)}
           </div>
           <p className="text-xs text-muted-foreground mt-1">Current total value</p>
         </CardContent>
@@ -50,8 +57,8 @@ export function CycleMetricsGrid({ cycle }: Props) {
             {formatIsk(cycle.profit.current)}
           </div>
           <p className="text-xs text-muted-foreground mt-1">
-            {cycle.initialCapitalIsk > 0
-              ? `${((cycle.profit.current / cycle.initialCapitalIsk) * 100).toFixed(1)}% ROI`
+            {startingCapital > 0
+              ? `${((cycle.profit.current / startingCapital) * 100).toFixed(1)}% ROI`
               : "—"}
           </p>
         </CardContent>
