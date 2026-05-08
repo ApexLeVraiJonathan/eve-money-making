@@ -17,3 +17,18 @@ Issues:
 7. [`007-verify-api-bff-shared-contract-gate.md`](007-verify-api-bff-shared-contract-gate.md)
 8. [`008-create-browser-smoke-and-human-signoff-checklist.md`](008-create-browser-smoke-and-human-signoff-checklist.md)
 9. [`009-create-acceptance-runner-and-local-release-gate-doc.md`](009-create-acceptance-runner-and-local-release-gate-doc.md)
+
+## Market Data Validation and Retention
+
+Parent PRD: [`../prd/market-data-validation-and-retention.md`](../prd/market-data-validation-and-retention.md)
+
+Issues:
+
+10. [`010-add-market-data-space-report.md`](010-add-market-data-space-report.md)
+11. [`011-add-raw-npc-market-cleanup.md`](011-add-raw-npc-market-cleanup.md)
+12. [`012-expose-npc-adam4eve-validation-view.md`](012-expose-npc-adam4eve-validation-view.md)
+13. [`013-add-market-scan-health-checks.md`](013-add-market-scan-health-checks.md)
+14. [`014-add-market-anomaly-recording.md`](014-add-market-anomaly-recording.md)
+15. [`015-apply-severe-outlier-filtering-to-aggregates.md`](015-apply-severe-outlier-filtering-to-aggregates.md)
+16. [`016-add-global-market-migration-readiness.md`](016-add-global-market-migration-readiness.md)
+17. [`017-document-recent-aggregate-recompute-path.md`](017-document-recent-aggregate-recompute-path.md)

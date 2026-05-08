@@ -8,6 +8,7 @@ This directory contains current project notes plus archived historical docs.
 - [`issues/README.md`](issues/README.md) - local markdown issue index for work not tracked in an external issue tracker.
 - [`JINGLEYIELD.md`](JINGLEYIELD.md) - current JingleYield promotion behavior and admin/user workflows.
 - [`Market-Data-Self-Gathering.md`](Market-Data-Self-Gathering.md) - plan and rationale for replacing or reducing Adam4EVE market data dependency.
+- [`prd/market-data-validation-and-retention.md`](prd/market-data-validation-and-retention.md) - PRD for market data retention, validation, anomaly detection, and Adam4EVE migration readiness.
 - [`prd/pre-main-tradecraft-acceptance-testing.md`](prd/pre-main-tradecraft-acceptance-testing.md) - PRD for the local pre-main Tradecraft acceptance testing work.
 - [`testing/pre-main-tradecraft-acceptance.md`](testing/pre-main-tradecraft-acceptance.md) - release gate for validating Tradecraft behavior before merging refactors to `main`.
 - [`testing/tradecraft-local-release-gate.md`](testing/tradecraft-local-release-gate.md) - local runner and release-gate runbook for the final Tradecraft pre-main pass.
